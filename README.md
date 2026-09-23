@@ -38,6 +38,7 @@ A small installable web app for tracking a 5-day gym split: every set you lift (
 ## Everyday use
 - The app opens on today. Tap a day in the week strip to look at or fill in another day.
 - **Sets:** each lift has a row per planned set. Enter reps and kg; the next set copies the weight you just used, and the grey numbers show what you did last time. Logging the planned number of sets ticks the lift off. Use **+ Set** for extra sets.
+- **Change a day's workout:** the picker under the day's title lets any day use another day's workout, e.g. do a missed Push on a rest day. Rest days list the sessions you missed earlier that week, with a button to do one. The weekly count still counts each planned session once.
 - **Skip or swap:** tap **···** on a lift. *Skip today* (with an optional reason, e.g. machine busy) or *Swap for another lift* to log a different exercise in its place. The same menu undoes either.
 - **Edit your plan:** **Menu → Edit plan**. Change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back `plan.json`.
 - Changes save automatically. With poor gym signal they're kept on the phone and sync when you're back online.

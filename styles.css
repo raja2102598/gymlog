@@ -130,3 +130,11 @@ p{max-width:65ch}
 .pe-btns{display:flex;flex-wrap:wrap;gap:6px}
 .warn{color:var(--accent);font-size:13px;margin:0 0 8px}
 @media (max-width:560px){.sets,.acts,.skipnote{padding-left:0}.pe-grid{grid-template-columns:1fr}.pe-row{grid-template-columns:1fr 1fr}.pe-row .field:first-child{grid-column:1/-1}}
+
+/* per-day workout choice */
+.sess-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.sess-pick select{max-width:100%}
+.moved{font-size:12px;color:var(--accent)}
+.catchup{border:1px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:10px 12px;margin:0 0 12px}
+.catchup p{margin:0 0 8px;font-size:14px}
+.catchup-btns{display:flex;flex-wrap:wrap;gap:6px}

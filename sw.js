@@ -1,5 +1,5 @@
 // Offline shell for Gym Log. Bump VERSION whenever app files change.
-const VERSION = "gymlog-v3";
+const VERSION = "gymlog-v4";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "config.js", "plan.json",
   "manifest.webmanifest", "vendor/supabase.js",
