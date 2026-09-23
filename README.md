@@ -1,6 +1,6 @@
 # Gym Log
 
-A small installable web app for tracking a 5-day gym split: every set you lift (reps × weight), warm-ups, a cardio finisher, daily steps, body weight and notes. Your data lives in your own free Supabase database, and only your account can read it.
+A small installable web app for tracking a 5-day gym split: every set you lift (reps × weight), warm-ups, a cardio finisher, daily steps, body weight, waist, knee pain and notes, with a dashboard that shows how it's going. Your data lives in your own free Supabase database, and only your account can read it.
 
 **Live app:** https://gym-log-omega-seven.vercel.app
 
@@ -10,6 +10,7 @@ A small installable web app for tracking a 5-day gym split: every set you lift (
 | File | What it does |
 |---|---|
 | `index.html`, `styles.css`, `app.js` | The app itself (plain HTML/JS, no build step) |
+| `stats.js` | The calculations behind the dashboard, add-weight hints and records (weight trend, weekly rate, estimated 1RM, personal records) |
 | `plan.json` | The default workout plan: days, exercises, sets/reps, cues, cardio, warm-ups. Used until you edit your plan in the app. |
 | `config.js` | Supabase project URL and publishable key (safe to publish; RLS protects the data) |
 | `supabase/schema.sql` | The database tables (`logs`, `plans`) and their security rules. Safe to re-run. |
@@ -40,9 +41,21 @@ A small installable web app for tracking a 5-day gym split: every set you lift (
 - **Sets:** each lift has a row per planned set. Enter reps and kg; the next set copies the weight you just used, and the grey numbers show what you did last time. Logging the planned number of sets ticks the lift off. Use **+ Set** for extra sets.
 - **Change a day's workout:** the picker under the day's title lets any day use another day's workout, e.g. do a missed Push on a rest day. Rest days list the sessions you missed earlier that week, with a button to do one. The weekly count still counts each planned session once.
 - **Skip or swap:** tap **···** on a lift. *Skip today* (with an optional reason, e.g. machine busy) or *Swap for another lift* to log a different exercise in its place. The same menu undoes either.
-- **Edit your plan:** **Menu → Edit plan**. Change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back `plan.json`.
-- Changes save automatically. With poor gym signal they're kept on the phone and sync when you're back online.
+- **Adding weight:** when every set of a lift reached the top of its rep range last time, the lift says *Go up to … kg* and the grey numbers switch to the new weight at the bottom of the range. Each lift adds 2.5 kg unless you set its own step in the plan.
+- **Records:** a set that beats every earlier session of that lift (heaviest weight, best estimated 1RM, or most reps at that weight or more) gets a **PR** badge as you type it.
+- **Knee:** on days with knee-sensitive lifts, tap your knee pain from 0 to 10 before and after the session, and on waking the next morning. If it goes above your limit (5 unless you change it), or hasn't settled by the morning, knee-sensitive lifts say *Hold … kg* instead of going up next time.
+- **Cardio and waist:** under the cardio finisher, log minutes, speed and incline (entering minutes ticks the finisher). The waist field sits next to body weight; once a week is enough.
+- **Dashboard:** the **Dashboard** button at the top. Weight trend and weekly rate, with a goal date and your pace against the target once you set them in the plan; sessions kept, full weeks in a row and a calendar; steps by week; strength (estimated 1RM of each day's first lift, lifts ready for more weight, recent records); knee scores by session. Notes at the top point out anything that needs attention, such as no weigh-in for a while.
+- **Home-screen shortcuts:** once installed, long-press the app icon for *Today*, *Log weight* or *Log steps*.
+- **Edit your plan:** **Menu → Edit plan**. Change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Each lift can have its own weight step and be marked knee-sensitive; the plan also holds your goal weight, target loss a week (% of body weight) and knee pain limit. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back `plan.json`.
+- Changes save automatically. With poor gym signal they're kept on the phone and sync when you're back online. The app asks the browser to keep its storage, so edits waiting to sync aren't cleared to free space.
 - **Menu → Export my data** downloads every day as JSON; **Import data** brings a file like that back in.
+
+
+## How the numbers work
+- **Weight trend:** one value a day from your weigh-ins, with gaps filled by straight lines, smoothed with Holt's method as [TrendWeight](https://github.com/ervwalter/trendweight) does. It starts from a straight-line fit of your first two weeks, so it doesn't lag behind at the start.
+- **Weekly rate:** a straight-line fit of your weigh-ins over the last four weeks. It shows once you have six weigh-ins spread over two weeks; before that, water weight hides the real change.
+- **Estimated 1RM:** Brzycki's formula, only from sets of 12 reps or fewer.
 
 
 ## Notes

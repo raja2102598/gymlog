@@ -6,9 +6,13 @@
  *       skipped?: bool, reason?: string,        // skipped that day, e.g. machine busy
  *       swap?: string } },                      // did this exercise instead that day
  *     warmup: [names], cardio: bool, steps: number|null, weight: number|null, note: string,
- *     session?: 0-6 }                           // did another weekday's workout that day (e.g. a missed one)
+ *     session?: 0-6,                            // did another weekday's workout that day (e.g. a missed one)
+ *     waist?: cm, cardioMin?, cardioKmh?, cardioIncline?,
+ *     kneeBefore?, kneeAfter?, kneeWake?: 0-10 } // knee pain around knee-sensitive sessions, and on waking
  * Exercises are keyed by their planned name, so editing the plan never scrambles old logs.
  * The plan itself is one row per user in table `plans`; plan.json is the default until it's edited.
+ * Besides the days, it holds goalWeight, weeklyRatePct and kneeLimit, and each lift's step (kg per
+ * increase) and knee (knee-sensitive) flag. The calculations behind hints and the dashboard are in stats.js.
  */
 (() => {
   "use strict";
@@ -18,6 +22,8 @@
   const CACHE_KEY = "gymlog.cache.v1";
   const PENDING_KEY = "gymlog.pending.v1";
   const PLAN_KEY = "gymlog.plan.v1";
+  const EXTRA = ["waist", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"];
+  const G = window.GymStats;
 
   let DEFAULT_PLAN = null;  // plan.json
   let PLAN = null;          // the signed-in user's plan (a copy of DEFAULT_PLAN until they edit it)
@@ -28,7 +34,7 @@
   let sel = todayKey();
   let flushTimer = null, flushing = false;
   let planDirty = false, planRev = 0, planTimer = null, planFlushing = false;
-  let view = "day";         // "day" or "plan" (the plan editor)
+  let view = "day";         // "day", "dash" (dashboard) or "plan" (the plan editor)
   let editDay = 0;          // weekday open in the plan editor
   let acts = null;          // open lift menu: { day, name, mode: "menu" | "swap" }
 
@@ -65,11 +71,12 @@
       note: e.note || ""
     };
     if (isSlot(e.session)) out.session = e.session;
+    for (const f of EXTRA) if (e[f] != null) out[f] = e[f];
     return out;
   }
   function clone(k) { return copy(entry(k)); }
   function hasData(e) {
-    return Object.keys(e.exercises).length || e.warmup.length || e.cardio || e.steps != null || e.weight != null || e.note;
+    return Object.keys(e.exercises).length || e.warmup.length || e.cardio || e.steps != null || e.weight != null || e.note || EXTRA.some((f) => e[f] != null);
   }
 
   /* ---------- lifts: sets, skips and swaps ---------- */
@@ -109,8 +116,10 @@
     const up = cur != null && cur > top;
     return `<span class="last${up ? " up" : ""}">last ${top} kg &middot; ${dayMonth(L.day)}${up ? " &uarr;" : ""}</span>`;
   }
-  // Placeholders show what you did last time, so there's something to beat.
-  function placeholders(x, L, j) {
+  // Placeholders show what you did last time, so there's something to beat; when it's time to add
+  // weight, they show the new weight at the bottom of the rep range.
+  function placeholders(x, L, j, next) {
+    if (next && !next.held) return [G.repRange(x.reps)[0], next.to];
     const ls = L ? setsOf(L.r) : [], s = ls[j] || ls[ls.length - 1] || {};
     return [s.reps ?? (parseInt(x.reps, 10) || "–"), s.kg ?? "–"];
   }
@@ -127,6 +136,34 @@
     const created = user?.created_at ? keyOf(new Date(user.created_at)) : null;
     return [Object.keys(logs).sort()[0], created, todayKey()].filter(Boolean).sort()[0];
   }
+  /* ---------- knee, next weight and records ---------- */
+  function kneeLifts(p) { return p.exercises.filter((x) => x.knee); }
+  function kneeDay(k) { return kneeLifts(planFor(k)).length > 0; }
+  // Pain-monitoring model: a session was hard on the knee when pain after it or on waking the next
+  // morning passed the limit, or the knee hadn't settled back to its pre-session level by morning.
+  function kneeBad(k) {
+    const e = entry(k), w = entry(addDays(k, 1)).kneeWake, lim = PLAN.kneeLimit;
+    return [e.kneeAfter, w].some((v) => v != null && v > lim) || (w != null && e.kneeBefore != null && w > e.kneeBefore);
+  }
+  function stepOf(x) { const v = parseFloat(x.step); return v > 0 ? v : 2.5; }
+  // Double progression from the last time this exercise was done, held back on knee-sensitive lifts
+  // when that session was hard on the knee.
+  function nextWeight(x, did, k) {
+    const L = lastDone(did, k);
+    const r = L && G.readyToAdd(setsOf(L.r), x.reps, minSets(x), stepOf(x));
+    return r ? { ...r, day: L.day, held: !!x.knee && kneeBad(L.day) } : null;
+  }
+  function liftSets(d) {
+    return Object.entries(logs[d]?.exercises || {}).filter(([, r]) => r && !r.skipped).map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r) }));
+  }
+  function allRecords(upTo) {
+    return G.records(Object.keys(logs).filter((d) => d <= upTo).sort().map((d) => ({ day: d, lifts: liftSets(d) })));
+  }
+  // Records set on day k, as "exercise|set index" -> kinds.
+  function recordsOn(k) { return new Map(allRecords(k).filter((r) => r.day === k).map((r) => [`${r.name}|${r.set}`, r.kinds])); }
+  const PR_WORDS = { weight: "heaviest yet", e1rm: "best estimated 1RM", reps: "most reps at this weight" };
+  function prTitle(kinds) { return kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : ""; }
+
   function swapSuggestions(exclude) {
     const s = new Set();
     for (const d of PLAN.days) for (const x of d.exercises) s.add(x.name);
@@ -140,10 +177,14 @@
   function normalizePlan(p) {
     const d = DEFAULT_PLAN;
     const str = (v) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
-    const goal = Math.round(+p?.stepGoal);
+    const pos = (v) => (v != null && v !== "" && +v > 0 ? +v : null);
+    const goal = Math.round(+p?.stepGoal), lim = p?.kneeLimit;
     return {
       tempo: typeof p?.tempo === "string" ? p.tempo : d ? d.tempo : "",
       stepGoal: goal > 0 ? goal : d ? d.stepGoal : 10000,
+      goalWeight: pos(p?.goalWeight),
+      weeklyRatePct: pos(p?.weeklyRatePct),
+      kneeLimit: lim != null && lim !== "" && Number.isInteger(+lim) && +lim >= 0 && +lim <= 10 ? +lim : d ? d.kneeLimit : 5,
       warmups: Array.isArray(p?.warmups) ? [...new Set(p.warmups.map((w) => str(w).trim()).filter(Boolean))] : d ? d.warmups.slice() : [],
       days: DOW.map((wd, i) => {
         const s = (Array.isArray(p?.days) && p.days[i]) || d?.days[i] || {};
@@ -152,7 +193,10 @@
           name: str(s.name).trim() || wd,
           focus: str(s.focus),
           exercises: (Array.isArray(s.exercises) ? s.exercises : [])
-            .map((x) => ({ name: str(x?.name).trim(), sets: str(x?.sets), reps: str(x?.reps), cue: str(x?.cue), flag: str(x?.flag) }))
+            .map((x) => ({
+              name: str(x?.name).trim(), sets: str(x?.sets), reps: str(x?.reps), cue: str(x?.cue), flag: str(x?.flag), step: str(x?.step),
+              knee: typeof x?.knee === "boolean" ? x.knee : /knee/i.test(str(x?.flag)) // plan.json marks these with a KNEE NOTE
+            }))
             .filter((x) => x.name),
           cardio: { name: str(s.cardio?.name), detail: str(s.cardio?.detail) }
         };
@@ -162,9 +206,13 @@
 
   /* ---------- views ---------- */
   function show(v) {
-    for (const id of ["setupView", "loginView", "appView", "planView"]) $(id).hidden = id !== v;
-    $("menuBtn").hidden = v !== "appView";
-    if (v !== "appView") { $("menu").hidden = true; $("menuBtn").setAttribute("aria-expanded", "false"); }
+    for (const id of ["setupView", "loginView", "appView", "planView", "dashView"]) $(id).hidden = id !== v;
+    const inApp = v === "appView" || v === "dashView";
+    $("menuBtn").hidden = !inApp;
+    $("dashBtn").hidden = !inApp;
+    $("dashBtn").textContent = v === "dashView" ? "Today" : "Dashboard";
+    $("menu").hidden = true;
+    $("menuBtn").setAttribute("aria-expanded", "false");
   }
 
   /* ---------- rendering ---------- */
@@ -201,9 +249,17 @@
     return `<span class="pill ${cls}">${done}/${p.exercises.length} lifts${skipped ? ` &middot; ${skipped} skipped` : ""}</span>`;
   }
 
-  function liftHtml(it, i, e) {
+  function kneeBlock(e, field, title, sub, msg) {
+    const lim = PLAN.kneeLimit, v = e[field];
+    return `<div class="knee"><div class="kn-head"><b>${title}</b>${sub ? ` <span class="sub">${sub}</span>` : ""}<span class="kn-lim">0 none &middot; 10 worst &middot; your limit ${lim}</span></div>
+      <div class="kn-scale" role="group" aria-label="${title}, 0 to 10">${Array.from({ length: 11 }, (_, n) =>
+        `<button type="button" class="kn${v === n ? " on" : ""}${n > lim ? " hi" : ""}" data-knee="${field}:${n}" aria-pressed="${v === n}">${n}</button>`).join("")}</div>
+      ${msg ? `<p class="kn-msg">${msg}</p>` : ""}</div>`;
+  }
+
+  function liftHtml(it, i, e, marks) {
     const { x, name, extra } = it, r = e.exercises[name] || {};
-    const did = performed(name, r), L = lastDone(did, sel);
+    const did = performed(name, r), L = lastDone(did, sel), next = r.skipped ? null : nextWeight(x, did, sel);
     const sets = setsOf(r), min = extra ? 1 : minSets(x), rows = Math.max(min, sets.length);
     const open = acts && acts.day === sel && acts.name === name ? acts.mode : null;
     const cls = [r.done ? "checked" : "", r.skipped ? "skipped" : "", r.swap ? "swapped" : ""].join(" ").trim();
@@ -226,13 +282,16 @@
 
     const body = r.skipped
       ? `<div class="skipnote">Skipped${r.reason ? " &middot; " + esc(r.reason) : ""}</div>`
-      : `<div class="sets">${Array.from({ length: rows }, (_, j) => {
-          const s = sets[j] || {}, [phR, phK] = placeholders(x, L, j);
-          return `<div class="set"><span class="sn">${j + 1}</span>
+      : `${next ? `<div class="prog${next.held ? " hold" : ""}">${next.held
+          ? `Hold ${next.from} kg: your knee was sore after ${dayMonth(next.day)}.`
+          : `Go up to <b>${next.to} kg</b>: every set hit ${next.top} reps last time.`}</div>` : ""}
+        <div class="sets">${Array.from({ length: rows }, (_, j) => {
+          const s = sets[j] || {}, [phR, phK] = placeholders(x, L, j, next), pr = marks.get(`${did}|${j}`);
+          return `<div class="set${pr ? " pr" : ""}"><span class="sn">${j + 1}</span>
             <input id="s${i}_${j}_r" data-set="${i}:${j}:reps" type="number" inputmode="numeric" min="0" step="1" placeholder="${esc(phR)}" value="${s.reps ?? ""}" aria-label="${esc(did)}, set ${j + 1}, reps">
             <span class="x">&times;</span>
             <input id="s${i}_${j}_k" data-set="${i}:${j}:kg" type="number" inputmode="decimal" min="0" step="0.5" placeholder="${esc(phK)}" value="${s.kg ?? ""}" aria-label="${esc(did)}, set ${j + 1}, weight in kg">
-            <span class="u">kg</span></div>`;
+            <span class="u">kg</span><span class="prb" title="${prTitle(pr)}">PR</span></div>`;
         }).join("")}
         <div class="setbtns"><button class="ghost tiny" data-addset="${i}">+ Set</button>${sets.length > min ? `<button class="ghost tiny" data-rmset="${i}">&minus; Set</button>` : ""}</div></div>`;
 
@@ -255,6 +314,10 @@
     const wus = PLAN.warmups.concat(e.warmup.filter((w) => !PLAN.warmups.includes(w)));
     const slot = slotFor(sel), own = wdIndex(sel), t = todayKey();
     const missed = !p.exercises.length && sel >= t ? missedThisWeek(sel) : [];
+    const marks = recordsOn(sel), kneeHere = kneeDay(sel), yest = addDays(sel, -1);
+    const wake = kneeDay(yest) && (worked(yest) || entry(yest).kneeAfter != null);
+    const wakeMsg = e.kneeWake == null ? "" : kneeBad(yest) ? "Not settled since yesterday: knee lifts will hold their weight next time." : "Settled since yesterday.";
+    const afterMsg = e.kneeAfter != null && e.kneeAfter > PLAN.kneeLimit ? "Above your limit: knee lifts will hold their weight next time." : "";
     el.innerHTML = `
       <div class="sess-head">
         <div><h2>${esc(p.name)}</h2><div class="sub">${esc(p.focus)} &middot; ${d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</div>
@@ -269,14 +332,22 @@
         <p>Missed this week: ${missed.map((i) => `<b>${esc(PLAN.days[i].name)}</b> (${DOW[i]})`).join(", ")}. Do ${missed.length > 1 ? "one" : "it"} ${sel === t ? "today" : "on " + DOW[own]}?</p>
         <div class="catchup-btns">${missed.map((i) => `<button class="ghost" data-catch="${i}">Do ${esc(PLAN.days[i].name)}</button>`).join("")}</div>
       </div>` : ""}
+      ${wake ? kneeBlock(e, "kneeWake", "Knee on waking", `after ${esc(planFor(yest).name)} yesterday`, wakeMsg) : ""}
       <div class="wu"><h3>Warm-up <span style="text-transform:none;letter-spacing:0;font-weight:400">&middot; ${e.warmup.length} done</span></h3>
         <div class="chips">${wus.map((w, i) => `<label class="chip" for="wu${i}"><input type="checkbox" id="wu${i}" data-w="${esc(w)}" ${e.warmup.includes(w) ? "checked" : ""}><span>${esc(w)}</span></label>`).join("")}</div>
       </div>
-      <ul class="ex">${items.map((it, i) => liftHtml(it, i, e)).join("")}</ul>
+      ${kneeHere ? kneeBlock(e, "kneeBefore", "Knee pain before you start", "", "") : ""}
+      <ul class="ex">${items.map((it, i) => liftHtml(it, i, e, marks)).join("")}</ul>
+      ${kneeHere ? kneeBlock(e, "kneeAfter", "Knee pain after the session", "", afterMsg) : ""}
       <ul class="ex cardio"><li class="${e.cardio ? "checked" : ""}"><label for="cardio">
         <input type="checkbox" id="cardio" ${e.cardio ? "checked" : ""}>
         <span><div class="nm">${esc(p.cardio.name || "Cardio")}</div><div class="nt">${esc(p.cardio.detail)}</div></span><span class="sr">cardio</span>
-      </label></li></ul>
+      </label>
+      <div class="cardio-log">
+        <label for="cMin"><input id="cMin" data-num="cardioMin" type="number" inputmode="numeric" min="0" step="1" placeholder="–" value="${e.cardioMin ?? ""}"><span>min</span></label>
+        <label for="cKmh"><input id="cKmh" data-num="cardioKmh" type="number" inputmode="decimal" min="0" step="0.1" placeholder="–" value="${e.cardioKmh ?? ""}"><span>km/h</span></label>
+        <label for="cInc"><input id="cInc" data-num="cardioIncline" type="number" inputmode="decimal" min="0" step="0.5" placeholder="–" value="${e.cardioIncline ?? ""}"><span>% incline</span></label>
+      </div></li></ul>
       <div class="inputs">
         <label class="field" for="steps"><span>Steps</span>
           <input id="steps" type="number" inputmode="numeric" min="0" step="100" placeholder="0" value="${e.steps ?? ""}">
@@ -284,6 +355,9 @@
         </label>
         <label class="field" for="weight"><span>Body weight (kg)</span>
           <input id="weight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="optional" value="${e.weight ?? ""}">
+        </label>
+        <label class="field" for="waist"><span>Waist (cm)</span>
+          <input id="waist" data-num="waist" type="number" inputmode="decimal" min="0" step="0.5" placeholder="once a week" value="${e.waist ?? ""}">
         </label>
         <label class="field wide" for="note"><span>Notes / extra exercise</span>
           <textarea id="note" placeholder="e.g. 65 jumping jacks, knee felt fine">${esc(e.note)}</textarea>
@@ -336,7 +410,13 @@
           c.closest("li").classList.add("checked");
         }
       }, false);
-      c.closest("li").querySelector(".hint").innerHTML = lastHint(performed(it.name, r), sel, r.kg);
+      const did = performed(it.name, r), now = recordsOn(sel);
+      c.closest("li").querySelector(".hint").innerHTML = lastHint(did, sel, r.kg);
+      c.closest("li").querySelectorAll(".set").forEach((row, n) => {
+        const kinds = now.get(`${did}|${n}`);
+        row.classList.toggle("pr", !!kinds);
+        row.querySelector(".prb").title = prTitle(kinds);
+      });
       $("liftPill").innerHTML = liftPill(p, entry(sel));
     });
     el.querySelectorAll("button[data-addset]").forEach((b) => b.onclick = () => {
@@ -386,6 +466,18 @@
       acts = null;
       edit(+b.dataset.unswap, (r) => { delete r.swap; }, true);
     });
+    el.querySelectorAll("button[data-knee]").forEach((b) => b.onclick = () => {
+      const [f, v] = b.dataset.knee.split(":"), n = clone(sel);
+      if (n[f] === +v) delete n[f]; else n[f] = +v;
+      save(sel, n, true);
+    });
+    el.querySelectorAll("input[data-num]").forEach((c) => c.oninput = () => {
+      const n = clone(sel), f = c.dataset.num, v = num(c.value);
+      if (v == null || v < 0) delete n[f]; else n[f] = Math.round(v * 10) / 10;
+      // Entering cardio minutes ticks the finisher off.
+      if (f === "cardioMin" && v > 0 && !n.cardio) { n.cardio = true; $("cardio").checked = true; $("cardio").closest("li").classList.add("checked"); }
+      save(sel, n, false);
+    });
     $("cardio").onchange = (ev) => { const n = clone(sel); n.cardio = ev.target.checked; save(sel, n, true); };
     $("steps").oninput = () => {
       const n = clone(sel), v = $("steps").value;
@@ -397,11 +489,16 @@
     $("note").oninput = () => { const n = clone(sel); n.note = $("note").value; save(sel, n, false); };
   }
 
-  function renderStats() {
-    const mon = mondayOf(sel), days = DOW.map((_, i) => addDays(mon, i));
-    // Each planned session counts once, on whichever day of the week it was done.
+  // Planned gym sessions done in the week starting `mon`: each counts once, on whichever day it was done.
+  function weekSessions(mon) {
+    const days = DOW.map((_, i) => addDays(mon, i));
     const gym = PLAN.days.map((p, s) => (p.exercises.length ? s : -1)).filter((s) => s >= 0);
-    const sess = gym.filter((s) => days.some((k) => slotFor(k) === s && PLAN.days[s].exercises.every((x) => entry(k).exercises[x.name]?.done))).length;
+    const done = gym.filter((s) => days.some((k) => slotFor(k) === s && PLAN.days[s].exercises.every((x) => entry(k).exercises[x.name]?.done))).length;
+    return { days, done, planned: gym.length };
+  }
+
+  function renderStats() {
+    const { days, done: sess, planned } = weekSessions(mondayOf(sel));
     let cardio = 0, steps = 0, stepDays = 0;
     for (const k of days) {
       const e = entry(k);
@@ -410,36 +507,231 @@
     }
     const avg = stepDays ? Math.round(steps / stepDays) : null;
     $("stats").innerHTML = [
-      [sess + "/" + gym.length, "gym sessions complete"],
+      [sess + "/" + planned, "gym sessions complete"],
       [cardio + "/7", "cardio finishers"],
       [fmt(avg), "avg steps / logged day"],
       [fmt(steps), "total steps"]
     ].map(([v, l]) => `<div class="stat"><div class="v num">${v}</div><div class="l">${l}</div></div>`).join("");
   }
 
+  function weightSeries() { return G.weightTrend(Object.keys(logs).filter((k) => logs[k].weight != null).map((k) => [k, +logs[k].weight])); }
+  function ago(n) { return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`; }
+  function signed(v, dp = 1) { return (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(dp); }
+  function dm(k) { return parseKey(k).toLocaleDateString("en-IN", { day: "numeric", month: "short" }); }
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const avg = (a) => (a.length ? sum(a) / a.length : null);
+
+  // The Today screen keeps a one-line trend; the chart lives on the dashboard.
   function renderChart() {
-    const pts = Object.keys(logs).sort().filter((k) => logs[k].weight != null).map((k) => [k, logs[k].weight]);
-    const el = $("chart");
-    if (pts.length < 2) {
-      el.innerHTML = `<p class="empty">Log your weight on two or more days to see the trend.${pts.length ? ` Latest: <span class="num">${pts[0][1]} kg</span>.` : ""}</p>`;
-      return;
+    const s = weightSeries(), el = $("chart");
+    if (!s.length) { el.innerHTML = `<p class="empty">Log your weight to start the trend.</p>`; return; }
+    const last = s[s.length - 1], rate = G.weeklyRate(s), lastIn = s.filter((p) => p.measured).pop().day;
+    el.innerHTML = `<p class="sub"><span class="num">${last.trend.toFixed(1)} kg</span> trend${rate != null ? ` &middot; <span class="num">${signed(rate, 2)} kg</span> a week` : ""} &middot; weighed ${ago(G.daysBetween(lastIn, todayKey()))}</p>
+      <button class="ghost tiny" id="toDash">Open dashboard</button>`;
+    $("toDash").onclick = openDash;
+  }
+
+  /* ---------- dashboard ---------- */
+  function openDash() { view = "dash"; acts = null; show("dashView"); renderDash(); window.scrollTo(0, 0); }
+  function closeDash() { view = "day"; show("appView"); render(); }
+
+  function renderDash() {
+    const t = todayKey(), flags = [];
+    $("dashAsOf").textContent = parseKey(t).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
+    $("dashWeight").innerHTML = dashWeight(t, flags);
+    $("dashPlan").innerHTML = dashPlan(t);
+    $("dashSteps").innerHTML = dashSteps(t);
+    $("dashStrength").innerHTML = dashStrength(t, flags);
+    $("dashKnee").innerHTML = dashKnee(t, flags);
+    flags.sort((a, b) => a.pri - b.pri);
+    $("dashFlags").innerHTML = `<ul class="flags">${flags.map((f) => `<li class="${f.warn ? "warn" : ""}">${f.text}</li>`).join("")}</ul>`;
+    $("dashFlags").hidden = !flags.length;
+  }
+
+  // Is the weight trend moving at the intended pace?
+  function dashWeight(t, flags) {
+    const s = weightSeries(), head = `<h2>Weight trend</h2>`;
+    if (!s.length) return head + `<p class="empty">Log your body weight on the Today screen to start the trend.</p>`;
+    const first = s[0], last = s[s.length - 1], since = G.daysBetween(s.filter((p) => p.measured).pop().day, t);
+    const rate = G.weeklyRate(s), pct = rate != null ? (rate / last.trend) * 100 : null, goal = PLAN.goalWeight, target = PLAN.weeklyRatePct;
+    if (since >= 5) flags.push({ pri: 2, warn: true, text: `No weigh-in for ${since} days. A few weigh-ins a week keep the trend honest.` });
+    if (target && pct != null && s.length >= 21) {
+      const loss = -pct;
+      if (loss < target / 2) flags.push({ pri: 3, text: loss > 0 ? `Losing ${loss.toFixed(2)}% a week, well under your ${target}% target.` : `The trend isn't going down yet (${signed(pct, 2)}% a week) against your ${target}% target.` });
+      else if (loss > target * 1.5) flags.push({ pri: 3, warn: true, text: `Losing ${loss.toFixed(2)}% a week, faster than your ${target}% target.` });
     }
-    const W = 700, H = 180, L = 44, R = 14, T = 12, B = 26;
-    const ys = pts.map((p) => p[1]);
-    const lo = Math.floor(Math.min(...ys) - 0.5), hi = Math.ceil(Math.max(...ys) + 0.5);
-    const x = (i) => L + i * (W - L - R) / (pts.length - 1), y = (v) => T + (hi - v) * (H - T - B) / (hi - lo);
-    const ticks = [lo, (lo + hi) / 2, hi];
-    const path = pts.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[1]).toFixed(1)).join(" ");
-    const area = path + ` L${x(pts.length - 1).toFixed(1)} ${H - B} L${L} ${H - B} Z`;
-    const last = pts[pts.length - 1], first = pts[0], diff = (last[1] - first[1]).toFixed(1);
-    el.innerHTML = `<p class="sub" style="margin-bottom:6px"><span class="num">${last[1]} kg</span> now &middot; <span class="num">${diff > 0 ? "+" : ""}${diff} kg</span> since ${parseKey(first[0]).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</p>
-    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Body weight trend">
-      ${ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${t.toFixed(1)}</text>`).join("")}
-      <path d="${area}" fill="var(--good-soft)"/>
-      <path d="${path}" fill="none" stroke="var(--good)" stroke-width="2"/>
-      <circle cx="${x(pts.length - 1)}" cy="${y(last[1])}" r="4" fill="var(--good)"/>
-      <text x="${L}" y="${H - 6}">${first[0].slice(5)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${last[0].slice(5)}</text>
+    let goalKpi;
+    if (goal == null) goalKpi = `<div class="v">–</div><div class="l">set a goal weight in Edit plan</div>`;
+    else if ((last.trend - goal) * (first.trend - goal) <= 0) goalKpi = `<div class="v">Reached</div><div class="l">goal ${goal} kg</div>`;
+    else {
+      const gd = G.goalDate(s, rate, goal);
+      goalKpi = gd ? `<div class="v num">${dm(gd)}</div><div class="l">goal ${goal} kg at this pace</div>`
+        : `<div class="v">–</div><div class="l">goal ${goal} kg: ${rate == null ? "needs 2 weeks of weigh-ins" : "not heading there yet"}</div>`;
+    }
+    const changes = [7, 14, 28].map((d) => [d / 7, G.trendChange(s, d)]).filter(([, v]) => v != null);
+    const wd = Object.keys(logs).filter((k) => logs[k].waist != null).sort(), wl = wd[wd.length - 1];
+    const w4 = wl && wd.filter((k) => G.daysBetween(k, wl) >= 28).pop();
+    return head + `<div class="kpis">
+        <div class="kpi"><div class="v num">${last.trend.toFixed(1)} kg</div><div class="l">trend weight &middot; weighed ${ago(since)}</div></div>
+        <div class="kpi"><div class="v num">${rate != null ? signed(rate, 2) + " kg" : "–"}</div><div class="l">${rate != null ? `a week (${signed(pct, 2)}% of body weight)` : "a week: needs 6 weigh-ins over 2 weeks"}</div></div>
+        <div class="kpi">${goalKpi}</div>
+      </div>
+      ${changes.length ? `<p class="sub">Change: ${changes.map(([w, v]) => `${w} wk <span class="num">${signed(v)} kg</span>`).join(" &middot; ")}</p>` : ""}
+      ${s.length >= 2 ? lineChart(s.map((p) => [p.day, p.trend]), s.filter((p) => p.measured).map((p) => [p.day, p.weight]), goal != null && Math.abs(goal - last.trend) <= 8 ? goal : null, chartWidth("dashWeight"))
+        : `<p class="empty">One weigh-in so far. The trend line starts after a few more.</p>`}
+      ${wl ? `<p class="sub">Waist <span class="num">${logs[wl].waist} cm</span> on ${dm(wl)}${w4 ? ` &middot; <span class="num">${signed(logs[wl].waist - logs[w4].waist)} cm</span> since ${dm(w4)}` : ""}</p>` : ""}`;
+  }
+
+  // Charts are drawn at the panel's real width, so their 11px labels stay readable on a phone.
+  function chartWidth(id) { return Math.max(260, $(id).clientWidth - 36); }
+
+  // Trend line over real dates, the weigh-ins as pale dots, and an optional goal line.
+  function lineChart(line, dots, goal, W) {
+    const H = 180, L = 40, R = 8, T = 10, B = 22;
+    const n0 = G.dayNum(line[0][0]), n1 = G.dayNum(line[line.length - 1][0]);
+    const vals = line.map((p) => p[1]).concat(dots.map((p) => p[1]), goal != null ? [goal] : []);
+    const pad = Math.max(0.3, (Math.max(...vals) - Math.min(...vals)) * 0.1);
+    const lo = Math.floor((Math.min(...vals) - pad) * 2) / 2, hi = Math.ceil((Math.max(...vals) + pad) * 2) / 2;
+    const x = (k) => (L + ((G.dayNum(k) - n0) * (W - L - R)) / Math.max(1, n1 - n0)).toFixed(1);
+    const y = (v) => (T + ((hi - v) * (H - T - B)) / (hi - lo)).toFixed(1);
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Body weight trend">
+      ${[lo, (lo + hi) / 2, hi].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${+y(v) + 4}" text-anchor="end">${v.toFixed(1)}</text>`).join("")}
+      ${goal != null ? `<line x1="${L}" x2="${W - R}" y1="${y(goal)}" y2="${y(goal)}" class="goal"/><text x="${W - R}" y="${+y(goal) - 5}" text-anchor="end">goal ${goal}</text>` : ""}
+      ${dots.map(([k, v]) => `<circle cx="${x(k)}" cy="${y(v)}" r="3" class="dot"/>`).join("")}
+      <path d="${line.map(([k, v], i) => `${i ? "L" : "M"}${x(k)} ${y(v)}`).join(" ")}" class="trendline"/>
+      <text x="${L}" y="${H - 6}">${dm(line[0][0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${dm(line[line.length - 1][0])}</text>
     </svg>`;
+  }
+
+  // Am I keeping the plan?
+  function dashPlan(t) {
+    const start = firstDay(), mon = mondayOf(t), weeks = [];
+    for (let m = mondayOf(start); m <= mon; m = addDays(m, 7)) weeks.push({ mon: m, ...weekSessions(m) });
+    let streak = 0; // full weeks in a row; the current week only counts once it's full
+    for (let i = weeks.length - 1; i >= 0; i--) {
+      if (weeks[i].planned && weeks[i].done >= weeks[i].planned) streak++;
+      else if (weeks[i].mon !== mon) break;
+    }
+    const recent = weeks.slice(-12), done = sum(recent.map((w) => w.done)), planned = sum(recent.map((w) => w.planned));
+    const tw = weeks[weeks.length - 1], wk = tw.days.filter((k) => k <= t && k >= start);
+    const cardioDays = wk.filter((k) => entry(k).cardio).length, cardioMin = sum(wk.map((k) => entry(k).cardioMin || 0));
+    const weighIns = wk.filter((k) => entry(k).weight != null).length;
+    return `<h2>Plan kept</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="v num">${tw.done}/${tw.planned}</div><div class="l">sessions this week</div></div>
+        <div class="kpi"><div class="v num">${streak}</div><div class="l">full week${streak === 1 ? "" : "s"} in a row</div></div>
+        <div class="kpi"><div class="v num">${planned ? Math.round((done / planned) * 100) : 0}%</div><div class="l">${done} of ${planned} sessions ${recent.length > 1 ? `in ${recent.length} weeks` : "this week"}</div></div>
+      </div>
+      <p class="sub">This week: cardio on ${cardioDays} day${cardioDays === 1 ? "" : "s"}${cardioMin ? ` (<span class="num">${cardioMin}</span> min)` : ""} &middot; ${weighIns} weigh-in${weighIns === 1 ? "" : "s"}</p>
+      ${heatmap(weeks.slice(-16).map((w) => w.mon), t, start)}`;
+  }
+
+  const HEAT = { done: "all lifts done", part: "some lifts done", miss: "missed", todo: "to do", rest: "rest day", fut: "ahead", pre: "before you started" };
+  // Workout days only: steps and weigh-ins have their own cards.
+  function heatmap(mons, t, start) {
+    const cls = (k) => {
+      if (k > t) return "fut";
+      if (k < start) return "pre";
+      const p = planFor(k), n = p.exercises.filter((x) => entry(k).exercises[x.name]?.done).length;
+      if (!p.exercises.length) return "rest";
+      return n === p.exercises.length ? "done" : n || worked(k) ? "part" : k < t ? "miss" : "todo";
+    };
+    return `<div class="heat" role="img" aria-label="Calendar of the last ${mons.length} week${mons.length === 1 ? "" : "s"}">${mons.map((m) =>
+      `<div class="hw">${DOW.map((_, i) => { const k = addDays(m, i), c = cls(k); return `<i class="${c}${k === t ? " now" : ""}" title="${dm(k)}: ${HEAT[c]}"></i>`; }).join("")}</div>`).join("")}</div>
+      <p class="legend"><i class="done"></i>all lifts <i class="part"></i>some lifts <i class="miss"></i>missed <i class="rest"></i>rest</p>`;
+  }
+
+  // Am I walking enough?
+  function dashSteps(t) {
+    const start = firstDay(), goal = PLAN.stepGoal, mon = mondayOf(t);
+    const a7 = avg(DOW.map((_, i) => addDays(t, -i)).filter((k) => k >= start).map((k) => entry(k).steps).filter((v) => v != null));
+    const wk = DOW.map((_, i) => addDays(mon, i)).filter((k) => k <= t && k >= start);
+    const atGoal = wk.filter((k) => (entry(k).steps || 0) >= goal).length, weeks = [];
+    for (let m = mondayOf(start); m <= mon; m = addDays(m, 7)) weeks.push(m);
+    const bars = weeks.slice(-12).map((m) => [m, avg(DOW.map((_, i) => entry(addDays(m, i)).steps).filter((v) => v != null))]);
+    return `<h2>Steps</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="v num">${a7 != null ? fmt(Math.round(a7)) : "–"}</div><div class="l">7-day average (goal ${fmt(goal)})</div></div>
+        <div class="kpi"><div class="v num">${atGoal}/${wk.length}</div><div class="l">days at goal this week</div></div>
+      </div>
+      ${bars.some(([, v]) => v != null) ? barChart(bars, [[goal, fmt(goal)], [7000, "7,000"]], chartWidth("dashSteps")) : `<p class="empty">Log your daily steps on the Today screen to see weekly averages.</p>`}
+      <p class="note">Most of the health benefit of walking is in by about 7,000 steps a day, so days between that line and your goal still count.</p>`;
+  }
+
+  function barChart(bars, lines, W) {
+    const H = 150, L = 48, R = 8, T = 10, B = 22;
+    const hi = Math.max(...bars.map(([, v]) => v || 0), ...lines.map(([v]) => v)) * 1.1;
+    const bw = Math.min((W - L - R) / bars.length, 44), y = (v) => (T + ((hi - v) * (H - T - B)) / hi).toFixed(1);
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Average daily steps by week">
+      ${lines.map(([v, lab]) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="ref"/><text x="${L - 6}" y="${+y(v) + 4}" text-anchor="end">${lab}</text>`).join("")}
+      ${bars.map(([m, v], i) => (v == null ? "" : `<rect x="${(L + i * bw + bw * 0.15).toFixed(1)}" y="${y(v)}" width="${(bw * 0.7).toFixed(1)}" height="${(H - B - y(v)).toFixed(1)}" rx="3" class="wbar${v >= lines[0][0] ? " met" : ""}"><title>Week of ${dm(m)}: ${fmt(Math.round(v))} a day</title></rect>`)).join("")}
+      <text x="${L}" y="${H - 6}">wk of ${dm(bars[0][0])}</text>${bars.length > 1 ? `<text x="${W - R}" y="${H - 6}" text-anchor="end">${dm(bars[bars.length - 1][0])}</text>` : ""}
+    </svg>`;
+  }
+
+  function sparkline(vals) {
+    if (vals.length < 2) return `<svg class="spark" viewBox="0 0 120 32" aria-hidden="true"></svg>`;
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+    const pts = vals.map((v, i) => `${((i * 116) / (vals.length - 1) + 2).toFixed(1)},${(28 - ((v - lo) * 24) / span).toFixed(1)}`).join(" ");
+    return `<svg class="spark" viewBox="0 0 120 32" aria-hidden="true"><polyline points="${pts}"/></svg>`;
+  }
+
+  // Is strength holding during the cut?
+  function dashStrength(t, flags) {
+    const rows = PLAN.days.filter((d) => d.exercises.length).map((d) => {
+      const x = d.exercises[0];
+      const pts = Object.keys(logs).filter((k) => k <= t).sort().map((k) => [k, Math.max(0, ...liftSets(k).filter((l) => l.name === x.name).flatMap((l) => l.sets.map((s) => G.e1rm(s.kg, s.reps) || 0)))]).filter(([, v]) => v > 0);
+      let change = "";
+      if (pts.length >= 2) {
+        const [lk, lv] = pts[pts.length - 1], base = pts.filter(([k]) => G.daysBetween(k, lk) >= 28).pop() || pts[0], pc = ((lv - base[1]) / base[1]) * 100;
+        change = Math.abs(pc) < 2.5 ? `holding since ${dm(base[0])}` : `${signed(pc, 0)}% since ${dm(base[0])}`;
+      }
+      return `<li><span class="ln">${esc(x.name)} <span class="sub">${esc(d.name)}</span></span>${sparkline(pts.map((p) => p[1]))}
+        <span class="lv num">${pts.length ? Math.round(pts[pts.length - 1][1]) + " kg" : "–"}</span><span class="lc">${pts.length ? change || "first session" : "no sets with ≤12 reps yet"}</span></li>`;
+    });
+    const tomorrow = addDays(t, 1), seen = new Set(), ready = [], held = [];
+    PLAN.days.forEach((d) => d.exercises.forEach((x) => {
+      if (seen.has(x.name)) return;
+      seen.add(x.name);
+      const nw = nextWeight(x, x.name, tomorrow);
+      if (nw) (nw.held ? held : ready).push(`<li><b>${esc(x.name)}</b> <span class="sub">${esc(d.name)}</span>: ${nw.held ? `hold ${nw.from} kg (knee)` : `${nw.from} → <b>${nw.to} kg</b>`}</li>`);
+    }));
+    if (ready.length) flags.push({ pri: 4, text: `${ready.length} lift${ready.length === 1 ? " is" : "s are"} ready for more weight. See Strength.` });
+    const recs = allRecords(t).filter((r) => r.day > addDays(t, -30)).reverse().slice(0, 8);
+    return `<h2>Strength</h2>
+      <p class="note">Estimated 1RM of each day's first lift, from sets of 12 reps or fewer. Holding steady is a win during a cut.</p>
+      <ul class="lifts">${rows.join("")}</ul>
+      <h3 class="dh">Ready to add weight</h3>
+      ${ready.length || held.length ? `<ul class="plain">${ready.join("")}${held.join("")}</ul>` : `<p class="empty">Nothing yet. A lift is ready once every set reaches the top of its rep range.</p>`}
+      <h3 class="dh">Records in the last 30 days</h3>
+      ${recs.length ? `<ul class="plain">${recs.map((r) => `<li><span class="num">${dayMonth(r.day)}</span> <b>${esc(r.name)}</b> ${r.reps != null ? `${r.reps} × ` : ""}${r.kg} kg <span class="sub">${r.kinds.map((k) => PR_WORDS[k]).join(", ")}</span></li>`).join("")}</ul>`
+        : `<p class="empty">None yet. Records show up once a lift beats an earlier session.</p>`}`;
+  }
+
+  // How is the knee responding?
+  function dashKnee(t, flags) {
+    const lim = PLAN.kneeLimit, head = `<h2>Knee</h2>`, kneeDays = PLAN.days.filter((d) => kneeLifts(d).length);
+    if (!kneeDays.length) return head + `<p class="empty">No lifts are marked knee-sensitive. Mark them in Edit plan to track knee pain around them.</p>`;
+    const scored = (k) => entry(k).kneeBefore != null || entry(k).kneeAfter != null || entry(addDays(k, 1)).kneeWake != null;
+    const sess = Object.keys(logs).filter((k) => k <= t && kneeDay(k) && (worked(k) || scored(k))).sort().slice(-10);
+    if (!sess.some(scored)) {
+      return head + `<p class="empty">Tap your knee pain (0–10) before and after ${[...new Set(kneeDays.map((d) => esc(d.name)))].join(" and ")} sessions, and on waking the next morning. Scores above ${lim} are flagged, and knee lifts hold their weight after a bad day.</p>`;
+    }
+    const last = sess[sess.length - 1];
+    if (kneeBad(last)) flags.push({ pri: 1, warn: true, text: `Knee was above your limit after ${esc(planFor(last).name)} on ${dm(last)}. Knee lifts hold their weight until a better session.` });
+    const mon = mondayOf(t), vals = (m) => DOW.map((_, i) => addDays(m, i)).flatMap((k) => [entry(k).kneeAfter, entry(k).kneeWake]).filter((v) => v != null);
+    const now = avg(vals(mon)), prev = avg(vals(addDays(mon, -7)));
+    if (now != null && prev != null && now > prev + 0.5) flags.push({ pri: 1, warn: true, text: `Knee pain is up this week: ${now.toFixed(1)} on average, against ${prev.toFixed(1)} last week.` });
+    const hi = (v, notSettled) => (v != null && (v > lim || notSettled) ? " hi" : "");
+    return head + `${now != null ? `<p class="sub">This week, after sessions and on waking: <span class="num">${now.toFixed(1)}</span> on average${prev != null ? ` (last week ${prev.toFixed(1)})` : ""}</p>` : ""}
+      <table class="knee-t"><thead><tr><th>Session</th><th class="r">Before</th><th class="r">After</th><th class="r">Next morning</th></tr></thead><tbody>
+      ${sess.slice().reverse().map((k) => {
+        const e = entry(k), w = entry(addDays(k, 1)).kneeWake;
+        const loads = kneeLifts(planFor(k)).map((x) => { const r = e.exercises[x.name], top = r && !r.skipped ? topKg(setsOf(r)) : null; return top != null ? `${esc(r.swap || x.name)} ${top} kg` : ""; }).filter(Boolean);
+        return `<tr><td>${dm(k)} ${esc(planFor(k).name)}${loads.length ? `<div class="loads">${loads.join(" &middot; ")}</div>` : ""}</td>
+          <td class="r num">${e.kneeBefore ?? "–"}</td><td class="r num${hi(e.kneeAfter)}">${e.kneeAfter ?? "–"}</td><td class="r num${hi(w, w != null && e.kneeBefore != null && w > e.kneeBefore)}">${w ?? "–"}</td></tr>`;
+      }).join("")}</tbody></table>
+      <p class="note">Your limit is ${lim}/10 (change it in Edit plan). Pain above it, or not settled by the next morning, holds the weight on knee lifts. Worth agreeing the limit with a physio.</p>`;
   }
 
   function renderHist() {
@@ -535,6 +827,10 @@
           </div>
           <label class="field" for="pe_x${j}_cue"><span>How to do it</span><textarea id="pe_x${j}_cue" data-px="${j}:cue" rows="2">${esc(x.cue)}</textarea></label>
           <label class="field" for="pe_x${j}_flag"><span>Note shown in orange (optional)</span><input id="pe_x${j}_flag" data-px="${j}:flag" value="${esc(x.flag)}" placeholder="e.g. KNEE NOTE: pain-free range only" autocomplete="off"></label>
+          <div class="pe-row2">
+            <label class="field" for="pe_x${j}_step"><span>Add per increase (kg)</span><input id="pe_x${j}_step" data-px="${j}:step" inputmode="decimal" value="${esc(x.step)}" placeholder="2.5" autocomplete="off"></label>
+            <label class="pe-check" for="pe_x${j}_knee"><input type="checkbox" id="pe_x${j}_knee" data-pknee="${j}" ${x.knee ? "checked" : ""}> Knee-sensitive</label>
+          </div>
           <div class="pe-btns">
             <button class="ghost tiny" data-pmove="${j}:-1" ${j === 0 ? "disabled" : ""} aria-label="Move lift ${j + 1} up">&uarr; Up</button>
             <button class="ghost tiny" data-pmove="${j}:1" ${j === last ? "disabled" : ""} aria-label="Move lift ${j + 1} down">&darr; Down</button>
@@ -553,6 +849,11 @@
       <div class="pe-grid">
         <label class="field" for="pe_goal"><span>Daily step goal</span><input id="pe_goal" type="number" inputmode="numeric" min="1" step="500" value="${PLAN.stepGoal}"></label>
         <label class="field" for="pe_tempo"><span>Lift tempo</span><input id="pe_tempo" value="${esc(PLAN.tempo)}" placeholder="3:1:2:1" autocomplete="off"></label>
+      </div>
+      <div class="pe-grid">
+        <label class="field" for="pe_goalw"><span>Goal weight (kg)</span><input id="pe_goalw" type="number" inputmode="decimal" min="0" step="0.1" value="${PLAN.goalWeight ?? ""}" placeholder="optional"></label>
+        <label class="field" for="pe_rate"><span>Target loss a week (% of body weight)</span><input id="pe_rate" type="number" inputmode="decimal" min="0" step="0.1" value="${PLAN.weeklyRatePct ?? ""}" placeholder="optional, e.g. 0.7"></label>
+        <label class="field" for="pe_klim"><span>Knee pain limit (0–10)</span><input id="pe_klim" type="number" inputmode="numeric" min="0" max="10" step="1" value="${PLAN.kneeLimit}"></label>
       </div>
       <label class="field" for="pe_warm"><span>Warm-ups, one per line</span><textarea id="pe_warm" rows="7">${esc(PLAN.warmups.join("\n"))}</textarea></label>
       <p class="note">Your history follows each lift by its name, so renaming a lift starts a fresh history for it. Days you've already logged keep what you logged.</p>
@@ -577,8 +878,9 @@
       d.exercises.splice(j, 1);
       planChanged(true);
     });
+    $("planDay").querySelectorAll("[data-pknee]").forEach((c) => c.onchange = () => { d.exercises[+c.dataset.pknee].knee = c.checked; planChanged(); });
     $("pe_add").onclick = () => {
-      d.exercises.push({ name: "", sets: "3", reps: "10-12", cue: "", flag: "" });
+      d.exercises.push({ name: "", sets: "3", reps: "10-12", cue: "", flag: "", step: "", knee: false });
       planChanged(true);
       $(`pe_x${d.exercises.length - 1}_name`).focus();
     };
@@ -586,6 +888,9 @@
     $("pe_cdetail").oninput = (ev) => { d.cardio.detail = ev.target.value; planChanged(); };
     $("pe_goal").oninput = (ev) => { const v = Math.round(+ev.target.value); if (v > 0) { PLAN.stepGoal = v; planChanged(); } };
     $("pe_tempo").oninput = (ev) => { PLAN.tempo = ev.target.value; planChanged(); };
+    $("pe_goalw").oninput = (ev) => { const v = num(ev.target.value); PLAN.goalWeight = v > 0 ? v : null; planChanged(); };
+    $("pe_rate").oninput = (ev) => { const v = num(ev.target.value); PLAN.weeklyRatePct = v > 0 ? v : null; planChanged(); };
+    $("pe_klim").oninput = (ev) => { const v = num(ev.target.value); if (Number.isInteger(v) && v >= 0 && v <= 10) { PLAN.kneeLimit = v; planChanged(); } };
     $("pe_warm").oninput = (ev) => { PLAN.warmups = [...new Set(ev.target.value.split("\n").map((s) => s.trim()).filter(Boolean))]; planChanged(); };
     $("pe_reset").onclick = () => {
       if (!confirm("Replace your plan with the default plan? Days you've already logged are kept.")) return;
@@ -634,6 +939,7 @@
     logs = next;
     persistLocal();
     if (view === "day") editing() ? renderLight() : render();
+    else if (view === "dash") renderDash();
     if (!Object.keys(pending).length) setStatus("Synced");
   }
 
@@ -660,7 +966,7 @@
     PLAN = data?.plan ? normalizePlan(data.plan) : copy(DEFAULT_PLAN);
     persistPlan();
     if (editing()) return;
-    view === "plan" ? renderPlanEditor() : render();
+    if (view === "plan") renderPlanEditor(); else if (view === "dash") renderDash(); else render();
   }
 
   /* ---------- import / export ---------- */
@@ -704,9 +1010,24 @@
     view = "day";
     show("appView");
     render();
+    openShortcut();
+    // Ask Chrome to keep this site's storage, so edits waiting to sync can't be evicted.
+    if (navigator.storage?.persist) navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {});
     setStatus(Object.keys(pending).length ? "Syncing…" : "Loading…");
     await Promise.all([flush(), flushPlan()]);
     await Promise.all([pull(), pullPlan()]);
+  }
+
+  // Home-screen shortcuts (manifest.webmanifest) open ./?go=today, weight or steps.
+  function openShortcut() {
+    const u = new URL(location.href), go = u.searchParams.get("go");
+    if (!go) return;
+    u.searchParams.delete("go");
+    history.replaceState(null, "", u.pathname + u.search + u.hash);
+    sel = todayKey();
+    render();
+    const f = go === "weight" || go === "steps" ? $(go) : null;
+    if (f) { f.scrollIntoView({ block: "center" }); f.focus({ preventScroll: true }); }
   }
 
   function onSignedOut() {
@@ -747,6 +1068,7 @@
     };
     $("menuBtn").onclick = () => { const m = $("menu"); m.hidden = !m.hidden; $("menuBtn").setAttribute("aria-expanded", String(!m.hidden)); };
     $("planBtn").onclick = openPlan;
+    $("dashBtn").onclick = () => (view === "dash" ? closeDash() : openDash());
     $("planDone").onclick = closePlan;
     $("exportBtn").onclick = exportData;
     $("importFile").onchange = (ev) => { const f = ev.target.files[0]; if (f) importData(f); ev.target.value = ""; };

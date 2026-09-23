@@ -23,6 +23,7 @@
     </div>
     <div class="topright">
       <div class="status" id="status" aria-live="polite"></div>
+      <button class="ghost" id="dashBtn" hidden>Dashboard</button>
       <button class="ghost" id="menuBtn" aria-haspopup="true" aria-expanded="false" hidden>Menu</button>
     </div>
   </header>
@@ -91,6 +92,17 @@
     <p class="note" id="tempoNote"></p>
   </div>
 
+  <!-- Dashboard -->
+  <div id="dashView" class="dash" hidden>
+    <div class="top"><h2>Dashboard</h2><span class="sub" id="dashAsOf"></span></div>
+    <section id="dashFlags" aria-live="polite" hidden></section>
+    <section class="panel" id="dashWeight"></section>
+    <section class="panel" id="dashPlan"></section>
+    <section class="panel" id="dashSteps"></section>
+    <section class="panel" id="dashStrength"></section>
+    <section class="panel" id="dashKnee"></section>
+  </div>
+
   <!-- Plan editor -->
   <div id="planView" class="pe" hidden>
     <section class="panel">
@@ -107,6 +119,7 @@
 
 <script src="vendor/supabase.js"></script>
 <script src="config.js"></script>
+<script src="stats.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
