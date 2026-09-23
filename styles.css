@@ -47,9 +47,6 @@ button:focus-visible,input:focus-visible,.dchip:focus-visible{outline:2px solid 
 .exrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start}
 .exrow label{grid-template-columns:26px minmax(0,1fr)}
 .load{display:grid;justify-items:end;gap:4px;padding:10px 0}
-.load .kg{display:flex;align-items:center;gap:4px}
-.load input{width:74px;font:500 15px var(--mono);padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--ground);color:var(--ink);text-align:right}
-.load .u{font-size:12px;color:var(--muted)}
 .load .last{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
 .load .last.up{color:var(--good)}
 .ex input[type="checkbox"]{width:20px;height:20px;margin:2px 0 0;accent-color:var(--good)}
@@ -100,3 +97,36 @@ button.primary{background:var(--ink);color:var(--ground);border:0;border-radius:
 button.primary:disabled{opacity:.6}
 code{font-family:var(--mono);font-size:.9em;background:var(--chip);padding:1px 5px;border-radius:4px}
 p{max-width:65ch}
+
+/* sets, skip and swap */
+.ghost.tiny{padding:6px 10px;font-size:13px}
+.ghost.danger{color:var(--accent)}
+.ghost:disabled{opacity:.45;cursor:default}
+.load .more{min-width:40px;letter-spacing:.08em}
+.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px;padding:0 0 12px 36px}
+.set{display:flex;align-items:center;gap:4px}
+.set .sn{font:500 12px var(--mono);color:var(--muted);min-width:12px}
+.set input{width:46px;font:500 14px var(--mono);padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--ground);color:var(--ink);text-align:right;appearance:textfield;-moz-appearance:textfield}
+.set input::-webkit-outer-spin-button,.set input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.set input[data-set$=":kg"]{width:56px}
+.set .x,.set .u{font-size:12px;color:var(--muted)}
+.setbtns{grid-column:1/-1;display:flex;gap:6px}
+.acts{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:0 0 12px 36px}
+.ex .acts .field{display:grid;grid-template-columns:none;gap:4px;padding:0;cursor:auto;flex:1 1 200px}
+.acts .field input{font:15px var(--body);padding:6px 8px}
+.skipnote{font-size:13px;color:var(--accent);padding:0 0 12px 36px}
+.ex li.skipped .nm{text-decoration:line-through;color:var(--muted)}
+.ex .was{font-weight:400;font-size:12px;color:var(--muted)}
+
+/* plan editor */
+#planDays{margin-top:14px}
+.pe .field input,.pe .field textarea{font:15px/1.4 var(--body)}
+.pe-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.pe-h{font:600 12px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 8px}
+.pe-list{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}
+.pe-ex{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:8px}
+.pe-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 76px;gap:8px}
+.pe-stack{display:grid;gap:8px}
+.pe-btns{display:flex;flex-wrap:wrap;gap:6px}
+.warn{color:var(--accent);font-size:13px;margin:0 0 8px}
+@media (max-width:560px){.sets,.acts,.skipnote{padding-left:0}.pe-grid{grid-template-columns:1fr}.pe-row{grid-template-columns:1fr 1fr}.pe-row .field:first-child{grid-column:1/-1}}
