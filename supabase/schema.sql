@@ -10,7 +10,9 @@ create table if not exists public.logs (
 
 -- keep updated_at current on every change
 create or replace function public.touch_updated_at() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = ''
+as $$
 begin
   new.updated_at := now();
   return new;
@@ -28,7 +30,7 @@ drop policy if exists "own rows: insert" on public.logs;
 drop policy if exists "own rows: update" on public.logs;
 drop policy if exists "own rows: delete" on public.logs;
 
-create policy "own rows: select" on public.logs for select to authenticated using (user_id = auth.uid());
-create policy "own rows: insert" on public.logs for insert to authenticated with check (user_id = auth.uid());
-create policy "own rows: update" on public.logs for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
-create policy "own rows: delete" on public.logs for delete to authenticated using (user_id = auth.uid());
+create policy "own rows: select" on public.logs for select to authenticated using (user_id = (select auth.uid()));
+create policy "own rows: insert" on public.logs for insert to authenticated with check (user_id = (select auth.uid()));
+create policy "own rows: update" on public.logs for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+create policy "own rows: delete" on public.logs for delete to authenticated using (user_id = (select auth.uid()));
