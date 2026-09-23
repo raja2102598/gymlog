@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gym Log</title>
+<meta name="description" content="Daily tracker for a 5-day gym split, cardio, steps and body weight.">
+<meta name="theme-color" content="#15171b" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eef0f2" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Gym Log</h1>
+      <p class="sub">5-day split + cardio + 10,000 steps.</p>
+    </div>
+    <div class="topright">
+      <div class="status" id="status" aria-live="polite"></div>
+      <button class="ghost" id="menuBtn" aria-haspopup="true" aria-expanded="false" hidden>Menu</button>
+    </div>
+  </header>
+
+  <div class="menu panel" id="menu" hidden>
+    <div class="menu-row"><span id="whoami" class="sub"></span></div>
+    <div class="menu-row">
+      <button class="ghost" id="exportBtn">Export my data (.json)</button>
+      <label class="ghost filebtn" for="importFile">Import data (.json)</label>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <button class="ghost" id="signOutBtn">Sign out</button>
+    </div>
+    <p class="note" id="menuMsg"></p>
+  </div>
+
+  <!-- Setup (no Supabase config yet) -->
+  <section class="panel" id="setupView" hidden>
+    <h2>Almost ready</h2>
+    <p>This copy of Gym Log isn't connected to a database yet. Add your Supabase project URL and anon key to <code>config.js</code> in the repo. The README has the steps.</p>
+  </section>
+
+  <!-- Login -->
+  <section class="panel" id="loginView" hidden>
+    <h2>Sign in</h2>
+    <p class="sub">Enter your email and we'll send you a sign-in link. No password needed.</p>
+    <form id="loginForm" class="login">
+      <label class="field" for="email"><span>Email</span>
+        <input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+      </label>
+      <button class="primary" type="submit" id="loginBtn">Email me a sign-in link</button>
+    </form>
+    <p class="note" id="loginMsg" aria-live="polite"></p>
+  </section>
+
+  <!-- App -->
+  <div id="appView" hidden>
+    <section>
+      <div class="top" style="margin-bottom:8px">
+        <h2 id="weekLabel">This week</h2>
+        <div class="nav">
+          <button class="ghost" id="prevW" aria-label="Previous week">&lsaquo; Week</button>
+          <button class="ghost" id="todayB">Today</button>
+          <button class="ghost" id="nextW" aria-label="Next week">Week &rsaquo;</button>
+        </div>
+      </div>
+      <div class="week" id="week"></div>
+    </section>
+
+    <section class="panel" id="session"></section>
+
+    <section class="panel">
+      <h2 style="margin-bottom:12px">This week so far</h2>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <section class="panel">
+      <h2 style="margin-bottom:8px">Body weight</h2>
+      <div id="chart"></div>
+    </section>
+
+    <section class="panel">
+      <h2 style="margin-bottom:8px">Last 14 days</h2>
+      <div class="hist" id="hist"></div>
+    </section>
+    <p class="note" id="tempoNote"></p>
+  </div>
+</div>
+
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
