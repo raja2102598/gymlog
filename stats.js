@@ -110,41 +110,55 @@
   // Per exercise and day, each kind of record goes to the best set only.
   function records(days) {
     const best = new Map(), out = [];
-    for (const { day, lifts } of days) {
-      for (const { name, sets } of lifts) {
-        const b = best.get(name);
-        if (!b) continue;
-        const top = {};
-        sets.forEach((s, i) => {
-          if (!s || s.kg == null) return;
-          const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
-          const heavier = b.sets.filter((p) => p.kg >= s.kg && p.reps != null);
-          const cands = [];
-          if (s.kg > b.kg) cands.push(["weight", s.kg]);
-          if (e != null && b.e1rm != null && e > b.e1rm + 1e-9) cands.push(["e1rm", e]);
-          if (s.reps != null && heavier.length && s.reps > Math.max(...heavier.map((p) => p.reps))) cands.push(["reps", s.reps * 1000 + s.kg]);
-          for (const [kind, v] of cands) if (!top[kind] || v > top[kind].v) top[kind] = { v, i };
-        });
-        const bySet = new Map();
-        for (const [kind, { i }] of Object.entries(top)) bySet.set(i, [...(bySet.get(i) || []), kind]);
-        for (const [i, kinds] of bySet) out.push({ day, name, set: i, kg: sets[i].kg, reps: sets[i].reps, e1rm: e1rm(sets[i].kg, sets[i].reps), kinds });
-      }
-      // Fold this day in only after checking it, so sets on the same day don't compete.
-      for (const { name, sets } of lifts) {
-        const good = sets.filter((s) => s && s.kg != null);
-        if (!good.length) continue;
-        const b = best.get(name) || { kg: -Infinity, e1rm: null, sets: [] };
-        for (const s of good) {
-          b.kg = Math.max(b.kg, s.kg);
-          const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
-          if (e != null) b.e1rm = Math.max(b.e1rm ?? 0, e);
-          b.sets.push({ kg: s.kg, reps: s.reps });
+    for (const d of days) { out.push(...checkDay(best, d)); foldDay(best, d); }
+    return out;
+  }
+
+  // The records one day sets against `best`, the fold of every earlier day. Leaves `best` alone, so a
+  // caller can keep the fold of the days before today and re-check today on every keystroke.
+  function checkDay(best, { day, lifts }) {
+    const out = [];
+    for (const { name, sets } of lifts) {
+      const b = best.get(name);
+      if (!b) continue;
+      const top = {};
+      sets.forEach((s, i) => {
+        if (!s || s.kg == null) return;
+        const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
+        const cands = [];
+        if (s.kg > b.kg) cands.push(["weight", s.kg]);
+        if (e != null && b.e1rm != null && e > b.e1rm + 1e-9) cands.push(["e1rm", e]);
+        if (s.reps != null) {
+          let most = -Infinity; // most reps in any earlier set at this weight or heavier
+          for (const [kg, reps] of b.repsAt) if (kg >= s.kg && reps > most) most = reps;
+          if (s.reps > most && most > -Infinity) cands.push(["reps", s.reps * 1000 + s.kg]);
         }
-        best.set(name, b);
-      }
+        for (const [kind, v] of cands) if (!top[kind] || v > top[kind].v) top[kind] = { v, i };
+      });
+      const bySet = new Map();
+      for (const [kind, { i }] of Object.entries(top)) bySet.set(i, [...(bySet.get(i) || []), kind]);
+      for (const [i, kinds] of bySet) out.push({ day, name, set: i, kg: sets[i].kg, reps: sets[i].reps, e1rm: e1rm(sets[i].kg, sets[i].reps), kinds });
     }
     return out;
   }
 
-  window.GymStats = { dayNum, keyOfNum, daysBetween, weightTrend, slope, weeklyRate, trendChange, goalDate, e1rm, repRange, readyToAdd, records };
+  // Adds a day's sets to `best`. Done only after the day is checked, so sets on one day don't compete.
+  // Per exercise it keeps the heaviest weight, the best estimated 1RM and the most reps done at each
+  // weight (a few distinct weights, so checking a set doesn't mean scanning every earlier set).
+  function foldDay(best, { lifts }) {
+    for (const { name, sets } of lifts) {
+      const good = sets.filter((s) => s && s.kg != null);
+      if (!good.length) continue;
+      const b = best.get(name) || { kg: -Infinity, e1rm: null, repsAt: new Map() };
+      for (const s of good) {
+        b.kg = Math.max(b.kg, s.kg);
+        const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
+        if (e != null) b.e1rm = Math.max(b.e1rm ?? 0, e);
+        if (s.reps != null && !(b.repsAt.get(s.kg) >= s.reps)) b.repsAt.set(s.kg, s.reps);
+      }
+      best.set(name, b);
+    }
+  }
+
+  window.GymStats = { dayNum, keyOfNum, daysBetween, weightTrend, slope, weeklyRate, trendChange, goalDate, e1rm, repRange, readyToAdd, records, checkDay, foldDay };
 })();

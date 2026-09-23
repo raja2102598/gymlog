@@ -24,6 +24,7 @@
   const PLAN_KEY = "gymlog.plan.v1";
   const EXTRA = ["waist", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"];
   const G = window.GymStats;
+  const GROWS = !!window.CSS?.supports?.("field-sizing", "content"); // text boxes can size to their content
 
   let DEFAULT_PLAN = null;  // plan.json
   let PLAN = null;          // the signed-in user's plan (a copy of DEFAULT_PLAN until they edit it)
@@ -37,6 +38,10 @@
   let view = "day";         // "day", "dash" (dashboard) or "plan" (the plan editor)
   let editDay = 0;          // weekday open in the plan editor
   let acts = null;          // open lift menu: { day, name, mode: "menu" | "swap" }
+  let warmOpen = null;      // day whose warm-up list is unfolded (it starts folded)
+  let kneeEdit = { day: null, fields: new Set() }; // knee scales reopened with "Change" on that day
+  let recBefore = null;     // { upTo, best }: the records fold of every logged day before `upTo`
+  let syncTrouble = false;  // the last save to Supabase failed
 
   /* ---------- small helpers ---------- */
   function pad(n) { return String(n).padStart(2, "0"); }
@@ -51,11 +56,19 @@
   function planFor(k) { return PLAN.days[slotFor(k)]; }
   function mondayOf(k) { return addDays(k, -wdIndex(k)); }
   function dayMonth(k) { return k.slice(8) + "/" + k.slice(5, 7); }
-  function fmt(n) { return n == null || n === "" ? "–" : Number(n).toLocaleString("en-IN"); }
+  function fmt(n) { return n == null || n === "" ? "-" : Number(n).toLocaleString("en-IN"); }
   function num(v) { return v === "" || v == null || isNaN(+v) ? null : +v; }
   function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
   function setStatus(t) { $("status").textContent = t; }
   function setPlanMsg(t) { $("planMsg").textContent = t; }
+  // A bar that stays in view while edits wait on a failed save or on the phone being offline.
+  function renderSyncBar() {
+    const n = Object.keys(pending).length, off = !navigator.onLine, on = !!user && n > 0 && (syncTrouble || off);
+    $("syncBar").hidden = !on;
+    if (!on) return;
+    $("syncMsg").textContent = `${n} day${n === 1 ? "" : "s"} not synced yet. Saved on this phone; ${off ? "they'll sync when you're back online" : "retrying every 15 seconds"}.`;
+    $("syncRetry").hidden = off;
+  }
   function lsGet(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } }
   function copy(v) { return JSON.parse(JSON.stringify(v)); }
@@ -75,9 +88,6 @@
     return out;
   }
   function clone(k) { return copy(entry(k)); }
-  function hasData(e) {
-    return Object.keys(e.exercises).length || e.warmup.length || e.cardio || e.steps != null || e.weight != null || e.note || EXTRA.some((f) => e[f] != null);
-  }
 
   /* ---------- lifts: sets, skips and swaps ---------- */
   function minSets(x) { const n = parseInt(x.sets, 10); return n > 0 ? Math.min(n, 10) : 1; }
@@ -121,7 +131,7 @@
   function placeholders(x, L, j, next) {
     if (next && !next.held) return [G.repRange(x.reps)[0], next.to];
     const ls = L ? setsOf(L.r) : [], s = ls[j] || ls[ls.length - 1] || {};
-    return [s.reps ?? (parseInt(x.reps, 10) || "–"), s.kg ?? "–"];
+    return [s.reps ?? (parseInt(x.reps, 10) || "-"), s.kg ?? "-"];
   }
   function worked(k) { return Object.values(entry(k).exercises).some((r) => r.done || setsOf(r).some((s) => s.reps != null)); }
   // Gym sessions planned for days before today in k's week that no day of that week has done,
@@ -156,11 +166,26 @@
   function liftSets(d) {
     return Object.entries(logs[d]?.exercises || {}).filter(([, r]) => r && !r.skipped).map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r) }));
   }
-  function allRecords(upTo) {
-    return G.records(Object.keys(logs).filter((d) => d <= upTo).sort().map((d) => ({ day: d, lifts: liftSets(d) })));
+  // Records set in the `n` days up to and including k. Earlier days are only folded in, not checked.
+  function recentRecords(k, n) {
+    const from = addDays(k, -n), best = new Map(), out = [];
+    for (const d of Object.keys(logs).filter((d) => d <= k).sort()) {
+      const day = { day: d, lifts: liftSets(d) };
+      if (d > from) out.push(...G.checkDay(best, day));
+      G.foldDay(best, day);
+    }
+    return out;
   }
-  // Records set on day k, as "exercise|set index" -> kinds.
-  function recordsOn(k) { return new Map(allRecords(k).filter((r) => r.day === k).map((r) => [`${r.name}|${r.set}`, r.kinds])); }
+  // Records set on day k, as "exercise|set index" -> kinds. The fold of the days before k is kept, so
+  // typing a set re-checks only that day; saving an earlier day, or loading new logs, drops it.
+  function recordsOn(k) {
+    if (!recBefore || recBefore.upTo !== k) {
+      const best = new Map();
+      for (const d of Object.keys(logs).filter((d) => d < k).sort()) G.foldDay(best, { day: d, lifts: liftSets(d) });
+      recBefore = { upTo: k, best };
+    }
+    return new Map(G.checkDay(recBefore.best, { day: k, lifts: liftSets(k) }).map((r) => [`${r.name}|${r.set}`, r.kinds]));
+  }
   const PR_WORDS = { weight: "heaviest yet", e1rm: "best estimated 1RM", reps: "most reps at this weight" };
   function prTitle(kinds) { return kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : ""; }
 
@@ -206,8 +231,9 @@
 
   /* ---------- views ---------- */
   function show(v) {
-    for (const id of ["setupView", "loginView", "appView", "planView", "dashView"]) $(id).hidden = id !== v;
+    for (const id of ["bootView", "setupView", "loginView", "appView", "planView", "dashView"]) $(id).hidden = id !== v;
     const inApp = v === "appView" || v === "dashView";
+    $("tagline").hidden = inApp || v === "planView";
     $("menuBtn").hidden = !inApp;
     $("dashBtn").hidden = !inApp;
     $("dashBtn").textContent = v === "dashView" ? "Today" : "Dashboard";
@@ -216,26 +242,30 @@
   }
 
   /* ---------- rendering ---------- */
-  function dayState(k) {
-    if (!logs[k]) return "";
-    const p = planFor(k), e = entry(k);
-    const need = p.exercises.length + 2;
-    const got = p.exercises.filter((x) => e.exercises[x.name]?.done).length + (e.cardio ? 1 : 0) + ((e.steps || 0) >= PLAN.stepGoal ? 1 : 0);
-    if (got >= need) return "done";
-    return got > 0 || hasData(e) ? "part" : "";
+  // Workout status of a day, the same as the dashboard calendar: every planned lift done, some, or missed.
+  // Steps and cardio have their own counts, so they don't colour the day.
+  function dayState(k, start = firstDay()) {
+    const p = planFor(k);
+    if (!p.exercises.length || k < start) return "";
+    const n = p.exercises.filter((x) => entry(k).exercises[x.name]?.done).length;
+    if (n === p.exercises.length) return "done";
+    if (n || worked(k)) return "part";
+    return k < todayKey() ? "miss" : "";
   }
+  const DAY_WORDS = { done: "done", part: "partly done", miss: "missed" };
 
   function renderWeek() {
-    const mon = mondayOf(sel), t = todayKey(), w = $("week");
+    const mon = mondayOf(sel), t = todayKey(), w = $("week"), start = firstDay();
     w.innerHTML = "";
-    const f = (k) => parseKey(k).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-    $("weekLabel").textContent = f(mon) + " – " + f(addDays(mon, 6));
+    const a = parseKey(mon), z = parseKey(addDays(mon, 6)), mo = (d) => d.toLocaleDateString("en-IN", { month: "short" });
+    $("weekLabel").textContent = mo(a) === mo(z) ? `${a.getDate()}-${z.getDate()} ${mo(z)}` : `${a.getDate()} ${mo(a)} - ${z.getDate()} ${mo(z)}`;
     for (let i = 0; i < 7; i++) {
-      const k = addDays(mon, i), p = planFor(k), b = document.createElement("button");
-      b.className = "dchip " + dayState(k) + (k === sel ? " sel" : "") + (k === t ? " today" : "");
+      const k = addDays(mon, i), p = planFor(k), b = document.createElement("button"), st = dayState(k, start);
+      b.className = "dchip " + st + (k === sel ? " sel" : "") + (k === t ? " today" : "");
       b.innerHTML = `<span class="dw">${DOW[i]}</span><span class="dn">${parseKey(k).getDate()}</span><span class="dp"></span>`;
       b.querySelector(".dp").textContent = p.name;
-      b.setAttribute("aria-label", `${DOW[i]} ${k}, ${p.name}`);
+      b.setAttribute("aria-label", `${DOW[i]} ${k}, ${p.name}${st ? ", " + DAY_WORDS[st] : ""}`);
+      if (k === t) b.setAttribute("aria-current", "date");
       b.onclick = () => { sel = k; acts = null; render(); };
       w.appendChild(b);
     }
@@ -245,13 +275,19 @@
     if (!p.exercises.length) return `<span class="pill">Rest day</span>`;
     const done = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
     const skipped = p.exercises.filter((x) => e.exercises[x.name]?.skipped).length;
-    const cls = done === p.exercises.length ? "good" : done ? "warn" : "";
+    const cls = done === p.exercises.length ? "good" : done ? "part" : "";
     return `<span class="pill ${cls}">${done}/${p.exercises.length} lifts${skipped ? ` &middot; ${skipped} skipped` : ""}</span>`;
   }
 
+  // A 0-10 knee pain scale in two rows of big buttons. Once scored it folds to one line with a Change button.
   function kneeBlock(e, field, title, sub, msg) {
-    const lim = PLAN.kneeLimit, v = e[field];
-    return `<div class="knee"><div class="kn-head"><b>${title}</b>${sub ? ` <span class="sub">${sub}</span>` : ""}<span class="kn-lim">0 none &middot; 10 worst &middot; your limit ${lim}</span></div>
+    const lim = PLAN.kneeLimit, v = e[field], head = `<b>${title}</b>${sub ? ` <span class="sub">${sub}</span>` : ""}`;
+    if (v != null && !(kneeEdit.day === sel && kneeEdit.fields.has(field))) {
+      return `<div class="knee scored"><div class="kn-head">${head} <span class="kn-val num${v > lim ? " hi" : ""}">${v}/10</span>
+        <button type="button" class="ghost tiny" data-kneeedit="${field}" aria-label="Change ${title.toLowerCase()}">Change</button></div>
+        ${msg ? `<p class="kn-msg">${msg}</p>` : ""}</div>`;
+    }
+    return `<div class="knee"><div class="kn-head">${head}<span class="kn-lim">0 = none, 10 = worst &middot; limit ${lim}</span></div>
       <div class="kn-scale" role="group" aria-label="${title}, 0 to 10">${Array.from({ length: 11 }, (_, n) =>
         `<button type="button" class="kn${v === n ? " on" : ""}${n > lim ? " hi" : ""}" data-knee="${field}:${n}" aria-pressed="${v === n}">${n}</button>`).join("")}</div>
       ${msg ? `<p class="kn-msg">${msg}</p>` : ""}</div>`;
@@ -287,7 +323,7 @@
           : `Go up to <b>${next.to} kg</b>: every set hit ${next.top} reps last time.`}</div>` : ""}
         <div class="sets">${Array.from({ length: rows }, (_, j) => {
           const s = sets[j] || {}, [phR, phK] = placeholders(x, L, j, next), pr = marks.get(`${did}|${j}`);
-          return `<div class="set${pr ? " pr" : ""}"><span class="sn">${j + 1}</span>
+          return `<div class="set${pr ? " pr" : ""}${s.reps > 0 ? " logged" : ""}"><span class="sn">${j + 1}</span>
             <input id="s${i}_${j}_r" data-set="${i}:${j}:reps" type="number" inputmode="numeric" min="0" step="1" placeholder="${esc(phR)}" value="${s.reps ?? ""}" aria-label="${esc(did)}, set ${j + 1}, reps">
             <span class="x">&times;</span>
             <input id="s${i}_${j}_k" data-set="${i}:${j}:kg" type="number" inputmode="decimal" min="0" step="0.5" placeholder="${esc(phK)}" value="${s.kg ?? ""}" aria-label="${esc(did)}, set ${j + 1}, weight in kg">
@@ -320,7 +356,7 @@
     const afterMsg = e.kneeAfter != null && e.kneeAfter > PLAN.kneeLimit ? "Above your limit: knee lifts will hold their weight next time." : "";
     el.innerHTML = `
       <div class="sess-head">
-        <div><h2>${esc(p.name)}</h2><div class="sub">${esc(p.focus)} &middot; ${d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</div>
+        <div><h2>${esc(p.name)}</h2><div class="sub">${esc(p.focus)} &middot; ${d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
           <div class="sess-pick">
             <select id="sessionSel" class="ghost tiny" aria-label="Workout for this day">${PLAN.days.map((x, i) =>
               `<option value="${i}" ${i === slot ? "selected" : ""}>${esc(x.name)} (${DOW[i]}${i === own ? ", usual" : ""})</option>`).join("")}</select>
@@ -333,9 +369,11 @@
         <div class="catchup-btns">${missed.map((i) => `<button class="ghost" data-catch="${i}">Do ${esc(PLAN.days[i].name)}</button>`).join("")}</div>
       </div>` : ""}
       ${wake ? kneeBlock(e, "kneeWake", "Knee on waking", `after ${esc(planFor(yest).name)} yesterday`, wakeMsg) : ""}
-      <div class="wu"><h3>Warm-up <span style="text-transform:none;letter-spacing:0;font-weight:400">&middot; ${e.warmup.length} done</span></h3>
-        <div class="chips">${wus.map((w, i) => `<label class="chip" for="wu${i}"><input type="checkbox" id="wu${i}" data-w="${esc(w)}" ${e.warmup.includes(w) ? "checked" : ""}><span>${esc(w)}</span></label>`).join("")}</div>
-      </div>
+      ${p.exercises.length || e.warmup.length ? `<div class="wu">
+        <button type="button" class="wu-toggle" id="wuToggle" aria-expanded="${warmOpen === sel}" aria-controls="wuChips">
+          <b>Warm-up</b> <span class="sub">${e.warmup.length} of ${wus.length} done</span> <span class="wu-act">${warmOpen === sel ? "Hide" : "Show"}</span></button>
+        <div class="chips" id="wuChips" ${warmOpen === sel ? "" : "hidden"}>${wus.map((w, i) => `<label class="chip" for="wu${i}"><input type="checkbox" id="wu${i}" data-w="${esc(w)}" ${e.warmup.includes(w) ? "checked" : ""}><span>${esc(w)}</span></label>`).join("")}</div>
+      </div>` : ""}
       ${kneeHere ? kneeBlock(e, "kneeBefore", "Knee pain before you start", "", "") : ""}
       <ul class="ex">${items.map((it, i) => liftHtml(it, i, e, marks)).join("")}</ul>
       ${kneeHere ? kneeBlock(e, "kneeAfter", "Knee pain after the session", "", afterMsg) : ""}
@@ -344,9 +382,9 @@
         <span><div class="nm">${esc(p.cardio.name || "Cardio")}</div><div class="nt">${esc(p.cardio.detail)}</div></span><span class="sr">cardio</span>
       </label>
       <div class="cardio-log">
-        <label for="cMin"><input id="cMin" data-num="cardioMin" type="number" inputmode="numeric" min="0" step="1" placeholder="–" value="${e.cardioMin ?? ""}"><span>min</span></label>
-        <label for="cKmh"><input id="cKmh" data-num="cardioKmh" type="number" inputmode="decimal" min="0" step="0.1" placeholder="–" value="${e.cardioKmh ?? ""}"><span>km/h</span></label>
-        <label for="cInc"><input id="cInc" data-num="cardioIncline" type="number" inputmode="decimal" min="0" step="0.5" placeholder="–" value="${e.cardioIncline ?? ""}"><span>% incline</span></label>
+        <label for="cMin"><input id="cMin" data-num="cardioMin" type="number" inputmode="numeric" min="0" step="1" placeholder="-" value="${e.cardioMin ?? ""}"><span>min</span></label>
+        <label for="cKmh"><input id="cKmh" data-num="cardioKmh" type="number" inputmode="decimal" min="0" step="0.1" placeholder="-" value="${e.cardioKmh ?? ""}"><span>km/h</span></label>
+        <label for="cInc"><input id="cInc" data-num="cardioIncline" type="number" inputmode="decimal" min="0" step="0.5" placeholder="-" value="${e.cardioIncline ?? ""}"><span>% incline</span></label>
       </div></li></ul>
       <div class="inputs">
         <label class="field" for="steps"><span>Steps</span>
@@ -357,7 +395,7 @@
           <input id="weight" type="number" inputmode="decimal" min="0" step="0.1" placeholder="optional" value="${e.weight ?? ""}">
         </label>
         <label class="field" for="waist"><span>Waist (cm)</span>
-          <input id="waist" data-num="waist" type="number" inputmode="decimal" min="0" step="0.5" placeholder="once a week" value="${e.waist ?? ""}">
+          <input id="waist" data-num="waist" type="number" inputmode="decimal" min="0" step="0.5" placeholder="weekly" value="${e.waist ?? ""}">
         </label>
         <label class="field wide" for="note"><span>Notes / extra exercise</span>
           <textarea id="note" placeholder="e.g. 65 jumping jacks, knee felt fine">${esc(e.note)}</textarea>
@@ -380,6 +418,13 @@
       save(sel, n, true);
     };
     $("sessionSel").onchange = (ev) => useSlot(+ev.target.value);
+    $("wuToggle")?.addEventListener("click", () => {
+      warmOpen = warmOpen === sel ? null : sel;
+      const open = warmOpen === sel;
+      $("wuChips").hidden = !open;
+      $("wuToggle").setAttribute("aria-expanded", String(open));
+      $("wuToggle").querySelector(".wu-act").textContent = open ? "Hide" : "Show";
+    });
     el.querySelectorAll("button[data-catch]").forEach((b) => b.onclick = () => useSlot(+b.dataset.catch));
     el.querySelectorAll("input[data-w]").forEach((c) => c.onchange = () => {
       const n = clone(sel), w = c.dataset.w;
@@ -412,9 +457,11 @@
       }, false);
       const did = performed(it.name, r), now = recordsOn(sel);
       c.closest("li").querySelector(".hint").innerHTML = lastHint(did, sel, r.kg);
+      const logged = setsOf(r);
       c.closest("li").querySelectorAll(".set").forEach((row, n) => {
         const kinds = now.get(`${did}|${n}`);
         row.classList.toggle("pr", !!kinds);
+        row.classList.toggle("logged", logged[n]?.reps > 0);
         row.querySelector(".prb").title = prTitle(kinds);
       });
       $("liftPill").innerHTML = liftPill(p, entry(sel));
@@ -469,7 +516,15 @@
     el.querySelectorAll("button[data-knee]").forEach((b) => b.onclick = () => {
       const [f, v] = b.dataset.knee.split(":"), n = clone(sel);
       if (n[f] === +v) delete n[f]; else n[f] = +v;
+      kneeEdit.fields.delete(f);
       save(sel, n, true);
+    });
+    el.querySelectorAll("button[data-kneeedit]").forEach((b) => b.onclick = () => {
+      const f = b.dataset.kneeedit;
+      if (kneeEdit.day !== sel) kneeEdit = { day: sel, fields: new Set() };
+      kneeEdit.fields.add(f);
+      renderSession();
+      el.querySelector(`button[data-knee^="${f}:"]`)?.focus();
     });
     el.querySelectorAll("input[data-num]").forEach((c) => c.oninput = () => {
       const n = clone(sel), f = c.dataset.num, v = num(c.value);
@@ -486,7 +541,11 @@
       save(sel, n, false);
     };
     $("weight").oninput = () => { const n = clone(sel), v = $("weight").value; n.weight = v === "" ? null : Math.round(+v * 10) / 10; save(sel, n, false); };
-    $("note").oninput = () => { const n = clone(sel); n.note = $("note").value; save(sel, n, false); };
+    // The note grows with its text instead of scrolling inside a small box: CSS does it where the browser
+    // supports field-sizing (Chrome), this does it elsewhere.
+    const grow = () => { const ta = $("note"); if (GROWS || !ta.offsetParent) return; ta.style.height = "auto"; ta.style.height = ta.scrollHeight + 2 + "px"; };
+    grow();
+    $("note").oninput = () => { grow(); const n = clone(sel); n.note = $("note").value; save(sel, n, false); };
   }
 
   // Planned gym sessions done in the week starting `mon`: each counts once, on whichever day it was done.
@@ -526,7 +585,7 @@
     const s = weightSeries(), el = $("chart");
     if (!s.length) { el.innerHTML = `<p class="empty">Log your weight to start the trend.</p>`; return; }
     const last = s[s.length - 1], rate = G.weeklyRate(s), lastIn = s.filter((p) => p.measured).pop().day;
-    el.innerHTML = `<p class="sub"><span class="num">${last.trend.toFixed(1)} kg</span> trend${rate != null ? ` &middot; <span class="num">${signed(rate, 2)} kg</span> a week` : ""} &middot; weighed ${ago(G.daysBetween(lastIn, todayKey()))}</p>
+    el.innerHTML = `<p class="sub"><span class="num">${last.trend.toFixed(1)} kg</span> trend${rate != null ? `, <span class="num">${signed(rate, 2)} kg</span> a week` : ""} &middot; weighed ${ago(G.daysBetween(lastIn, todayKey()))}</p>
       <button class="ghost tiny" id="toDash">Open dashboard</button>`;
     $("toDash").onclick = openDash;
   }
@@ -539,6 +598,12 @@
     const t = todayKey(), flags = [];
     $("dashAsOf").textContent = parseKey(t).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
     $("dashWeight").innerHTML = dashWeight(t, flags);
+    $("dashWeight").querySelector("[data-goto]")?.addEventListener("click", (ev) => {
+      const id = ev.currentTarget.dataset.goto;
+      openPlan();
+      $(id).scrollIntoView({ block: "center" });
+      $(id).focus({ preventScroll: true });
+    });
     $("dashPlan").innerHTML = dashPlan(t);
     $("dashSteps").innerHTML = dashSteps(t);
     $("dashStrength").innerHTML = dashStrength(t, flags);
@@ -561,22 +626,22 @@
       else if (loss > target * 1.5) flags.push({ pri: 3, warn: true, text: `Losing ${loss.toFixed(2)}% a week, faster than your ${target}% target.` });
     }
     let goalKpi;
-    if (goal == null) goalKpi = `<div class="v">–</div><div class="l">set a goal weight in Edit plan</div>`;
+    if (goal == null) goalKpi = `<div class="v">-</div><div class="l">no goal weight yet</div><button class="ghost tiny" data-goto="pe_goalw">Set a goal</button>`;
     else if ((last.trend - goal) * (first.trend - goal) <= 0) goalKpi = `<div class="v">Reached</div><div class="l">goal ${goal} kg</div>`;
     else {
       const gd = G.goalDate(s, rate, goal);
       goalKpi = gd ? `<div class="v num">${dm(gd)}</div><div class="l">goal ${goal} kg at this pace</div>`
-        : `<div class="v">–</div><div class="l">goal ${goal} kg: ${rate == null ? "needs 2 weeks of weigh-ins" : "not heading there yet"}</div>`;
+        : `<div class="v">-</div><div class="l">goal ${goal} kg: ${rate == null ? "needs 2 weeks of weigh-ins" : "not heading there yet"}</div>`;
     }
     const changes = [7, 14, 28].map((d) => [d / 7, G.trendChange(s, d)]).filter(([, v]) => v != null);
     const wd = Object.keys(logs).filter((k) => logs[k].waist != null).sort(), wl = wd[wd.length - 1];
     const w4 = wl && wd.filter((k) => G.daysBetween(k, wl) >= 28).pop();
     return head + `<div class="kpis">
         <div class="kpi"><div class="v num">${last.trend.toFixed(1)} kg</div><div class="l">trend weight &middot; weighed ${ago(since)}</div></div>
-        <div class="kpi"><div class="v num">${rate != null ? signed(rate, 2) + " kg" : "–"}</div><div class="l">${rate != null ? `a week (${signed(pct, 2)}% of body weight)` : "a week: needs 6 weigh-ins over 2 weeks"}</div></div>
+        <div class="kpi"><div class="v num">${rate != null ? signed(rate, 2) + " kg" : "-"}</div><div class="l">${rate != null ? `a week (${signed(pct, 2)}% of body weight)` : "a week: needs 6 weigh-ins over 2 weeks"}</div></div>
         <div class="kpi">${goalKpi}</div>
       </div>
-      ${changes.length ? `<p class="sub">Change: ${changes.map(([w, v]) => `${w} wk <span class="num">${signed(v)} kg</span>`).join(" &middot; ")}</p>` : ""}
+      ${changes.length ? `<p class="sub">Change over ${changes.map(([w, v]) => `${w} wk <span class="num">${signed(v)} kg</span>`).join(", ")}</p>` : ""}
       ${s.length >= 2 ? lineChart(s.map((p) => [p.day, p.trend]), s.filter((p) => p.measured).map((p) => [p.day, p.weight]), goal != null && Math.abs(goal - last.trend) <= 8 ? goal : null, chartWidth("dashWeight"))
         : `<p class="empty">One weigh-in so far. The trend line starts after a few more.</p>`}
       ${wl ? `<p class="sub">Waist <span class="num">${logs[wl].waist} cm</span> on ${dm(wl)}${w4 ? ` &middot; <span class="num">${signed(logs[wl].waist - logs[w4].waist)} cm</span> since ${dm(w4)}` : ""}</p>` : ""}`;
@@ -651,7 +716,7 @@
     const bars = weeks.slice(-12).map((m) => [m, avg(DOW.map((_, i) => entry(addDays(m, i)).steps).filter((v) => v != null))]);
     return `<h2>Steps</h2>
       <div class="kpis">
-        <div class="kpi"><div class="v num">${a7 != null ? fmt(Math.round(a7)) : "–"}</div><div class="l">7-day average (goal ${fmt(goal)})</div></div>
+        <div class="kpi"><div class="v num">${a7 != null ? fmt(Math.round(a7)) : "-"}</div><div class="l">7-day average (goal ${fmt(goal)})</div></div>
         <div class="kpi"><div class="v num">${atGoal}/${wk.length}</div><div class="l">days at goal this week</div></div>
       </div>
       ${bars.some(([, v]) => v != null) ? barChart(bars, [[goal, fmt(goal)], [7000, "7,000"]], chartWidth("dashSteps")) : `<p class="empty">Log your daily steps on the Today screen to see weekly averages.</p>`}
@@ -659,12 +724,12 @@
   }
 
   function barChart(bars, lines, W) {
-    const H = 150, L = 48, R = 8, T = 10, B = 22;
+    const H = 150, L = 54, R = 8, T = 10, B = 22;
     const hi = Math.max(...bars.map(([, v]) => v || 0), ...lines.map(([v]) => v)) * 1.1;
     const bw = Math.min((W - L - R) / bars.length, 44), y = (v) => (T + ((hi - v) * (H - T - B)) / hi).toFixed(1);
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Average daily steps by week">
       ${lines.map(([v, lab]) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="ref"/><text x="${L - 6}" y="${+y(v) + 4}" text-anchor="end">${lab}</text>`).join("")}
-      ${bars.map(([m, v], i) => (v == null ? "" : `<rect x="${(L + i * bw + bw * 0.15).toFixed(1)}" y="${y(v)}" width="${(bw * 0.7).toFixed(1)}" height="${(H - B - y(v)).toFixed(1)}" rx="3" class="wbar${v >= lines[0][0] ? " met" : ""}"><title>Week of ${dm(m)}: ${fmt(Math.round(v))} a day</title></rect>`)).join("")}
+      ${bars.map(([m, v], i) => (v == null ? "" : `<rect x="${(L + i * bw + bw * 0.15).toFixed(1)}" y="${y(v)}" width="${(bw * 0.7).toFixed(1)}" height="${(H - B - y(v)).toFixed(1)}" rx="4" class="wbar${v >= lines[0][0] ? " met" : ""}"><title>Week of ${dm(m)}: ${fmt(Math.round(v))} a day</title></rect>`)).join("")}
       <text x="${L}" y="${H - 6}">wk of ${dm(bars[0][0])}</text>${bars.length > 1 ? `<text x="${W - R}" y="${H - 6}" text-anchor="end">${dm(bars[bars.length - 1][0])}</text>` : ""}
     </svg>`;
   }
@@ -686,8 +751,9 @@
         const [lk, lv] = pts[pts.length - 1], base = pts.filter(([k]) => G.daysBetween(k, lk) >= 28).pop() || pts[0], pc = ((lv - base[1]) / base[1]) * 100;
         change = Math.abs(pc) < 2.5 ? `holding since ${dm(base[0])}` : `${signed(pc, 0)}% since ${dm(base[0])}`;
       }
+      const logged = pts.length || Object.keys(logs).some((k) => k <= t && liftSets(k).some((l) => l.name === x.name));
       return `<li><span class="ln">${esc(x.name)} <span class="sub">${esc(d.name)}</span></span>${sparkline(pts.map((p) => p[1]))}
-        <span class="lv num">${pts.length ? Math.round(pts[pts.length - 1][1]) + " kg" : "–"}</span><span class="lc">${pts.length ? change || "first session" : "no sets with ≤12 reps yet"}</span></li>`;
+        <span class="lv num">${pts.length ? Math.round(pts[pts.length - 1][1]) + " kg" : "-"}</span> <span class="lc">${pts.length ? change || "first session" : logged ? "no estimate yet: needs a set with weight and 1-12 reps" : "not logged yet"}</span></li>`;
     });
     const tomorrow = addDays(t, 1), seen = new Set(), ready = [], held = [];
     PLAN.days.forEach((d) => d.exercises.forEach((x) => {
@@ -697,10 +763,10 @@
       if (nw) (nw.held ? held : ready).push(`<li><b>${esc(x.name)}</b> <span class="sub">${esc(d.name)}</span>: ${nw.held ? `hold ${nw.from} kg (knee)` : `${nw.from} → <b>${nw.to} kg</b>`}</li>`);
     }));
     if (ready.length) flags.push({ pri: 4, text: `${ready.length} lift${ready.length === 1 ? " is" : "s are"} ready for more weight. See Strength.` });
-    const recs = allRecords(t).filter((r) => r.day > addDays(t, -30)).reverse().slice(0, 8);
+    const recs = recentRecords(t, 30).reverse().slice(0, 8);
     return `<h2>Strength</h2>
       <p class="note">Estimated 1RM of each day's first lift, from sets of 12 reps or fewer. Holding steady is a win during a cut.</p>
-      <ul class="lifts">${rows.join("")}</ul>
+      ${Object.keys(logs).some((k) => k <= t && liftSets(k).length) ? `<ul class="lifts">${rows.join("")}</ul>` : `<p class="empty">Log a session to start tracking strength.</p>`}
       <h3 class="dh">Ready to add weight</h3>
       ${ready.length || held.length ? `<ul class="plain">${ready.join("")}${held.join("")}</ul>` : `<p class="empty">Nothing yet. A lift is ready once every set reaches the top of its rep range.</p>`}
       <h3 class="dh">Records in the last 30 days</h3>
@@ -715,7 +781,7 @@
     const scored = (k) => entry(k).kneeBefore != null || entry(k).kneeAfter != null || entry(addDays(k, 1)).kneeWake != null;
     const sess = Object.keys(logs).filter((k) => k <= t && kneeDay(k) && (worked(k) || scored(k))).sort().slice(-10);
     if (!sess.some(scored)) {
-      return head + `<p class="empty">Tap your knee pain (0–10) before and after ${[...new Set(kneeDays.map((d) => esc(d.name)))].join(" and ")} sessions, and on waking the next morning. Scores above ${lim} are flagged, and knee lifts hold their weight after a bad day.</p>`;
+      return head + `<p class="empty">Tap your knee pain (0 to 10) before and after ${[...new Set(kneeDays.map((d) => esc(d.name)))].join(" and ")} sessions, and on waking the next morning. Scores above ${lim} are flagged, and knee lifts hold their weight after a bad day.</p>`;
     }
     const last = sess[sess.length - 1];
     if (kneeBad(last)) flags.push({ pri: 1, warn: true, text: `Knee was above your limit after ${esc(planFor(last).name)} on ${dm(last)}. Knee lifts hold their weight until a better session.` });
@@ -729,7 +795,7 @@
         const e = entry(k), w = entry(addDays(k, 1)).kneeWake;
         const loads = kneeLifts(planFor(k)).map((x) => { const r = e.exercises[x.name], top = r && !r.skipped ? topKg(setsOf(r)) : null; return top != null ? `${esc(r.swap || x.name)} ${top} kg` : ""; }).filter(Boolean);
         return `<tr><td>${dm(k)} ${esc(planFor(k).name)}${loads.length ? `<div class="loads">${loads.join(" &middot; ")}</div>` : ""}</td>
-          <td class="r num">${e.kneeBefore ?? "–"}</td><td class="r num${hi(e.kneeAfter)}">${e.kneeAfter ?? "–"}</td><td class="r num${hi(w, w != null && e.kneeBefore != null && w > e.kneeBefore)}">${w ?? "–"}</td></tr>`;
+          <td class="r num">${e.kneeBefore ?? "-"}</td><td class="r num${hi(e.kneeAfter)}">${e.kneeAfter ?? "-"}</td><td class="r num${hi(w, w != null && e.kneeBefore != null && w > e.kneeBefore)}">${w ?? "-"}</td></tr>`;
       }).join("")}</tbody></table>
       <p class="note">Your limit is ${lim}/10 (change it in Edit plan). Pain above it, or not settled by the next morning, holds the weight on knee lifts. Worth agreeing the limit with a physio.</p>`;
   }
@@ -740,17 +806,17 @@
       const k = addDays(t, -i), p = planFor(k), e = entry(k);
       if (k < start) break;
       const exDone = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
-      rows.push(`<tr><td class="num">${k.slice(5)} ${DOW[wdIndex(k)]}</td><td>${esc(p.name)}</td>
-        <td class="r num">${p.exercises.length ? exDone + "/" + p.exercises.length : "–"}</td><td>${e.cardio ? "&check;" : "–"}</td>
-        <td class="r num">${fmt(e.steps)}</td><td class="r num">${e.weight ?? "–"}</td></tr>`);
+      rows.push(`<tr><td><span class="num">${DOW[wdIndex(k)]} ${+k.slice(8)}</span><div class="hs">${esc(p.name)}</div></td>
+        <td class="r num">${p.exercises.length ? exDone + "/" + p.exercises.length : "-"}</td><td class="c">${e.cardio ? "&check;" : "-"}</td>
+        <td class="r num">${fmt(e.steps)}</td><td class="r num">${e.weight ?? "-"}</td></tr>`);
     }
     $("histTitle").textContent = rows.length === 1 ? "Today" : `Last ${rows.length} days`;
-    $("hist").innerHTML = `<table><thead><tr><th>Date</th><th>Session</th><th class="r">Lifts</th><th>Cardio</th><th class="r">Steps</th><th class="r">kg</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
+    $("hist").innerHTML = `<table><thead><tr><th>Day</th><th class="r">Lifts</th><th class="c">Cardio</th><th class="r">Steps</th><th class="r">kg</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
   }
 
   function renderTempo() {
     $("tempoNote").textContent = PLAN.tempo
-      ? `Tempo on every lift: ${PLAN.tempo} (seconds down, pause, up, pause). Warm up at 60–75% of working weight before the first main lift.`
+      ? `Tempo on every lift: ${PLAN.tempo} (seconds down, pause, up, pause). Warm up at 60 to 75% of working weight before the first main lift.`
       : "";
   }
 
@@ -826,7 +892,7 @@
             <label class="field" for="pe_x${j}_reps"><span>Reps</span><input id="pe_x${j}_reps" data-px="${j}:reps" value="${esc(x.reps)}" placeholder="8-10" autocomplete="off"></label>
           </div>
           <label class="field" for="pe_x${j}_cue"><span>How to do it</span><textarea id="pe_x${j}_cue" data-px="${j}:cue" rows="2">${esc(x.cue)}</textarea></label>
-          <label class="field" for="pe_x${j}_flag"><span>Note shown in orange (optional)</span><input id="pe_x${j}_flag" data-px="${j}:flag" value="${esc(x.flag)}" placeholder="e.g. KNEE NOTE: pain-free range only" autocomplete="off"></label>
+          <label class="field" for="pe_x${j}_flag"><span>Warning note (optional)</span><input id="pe_x${j}_flag" data-px="${j}:flag" value="${esc(x.flag)}" placeholder="e.g. KNEE NOTE: pain-free range only" autocomplete="off"></label>
           <div class="pe-row2">
             <label class="field" for="pe_x${j}_step"><span>Add per increase (kg)</span><input id="pe_x${j}_step" data-px="${j}:step" inputmode="decimal" value="${esc(x.step)}" placeholder="2.5" autocomplete="off"></label>
             <label class="pe-check" for="pe_x${j}_knee"><input type="checkbox" id="pe_x${j}_knee" data-pknee="${j}" ${x.knee ? "checked" : ""}> Knee-sensitive</label>
@@ -853,7 +919,7 @@
       <div class="pe-grid">
         <label class="field" for="pe_goalw"><span>Goal weight (kg)</span><input id="pe_goalw" type="number" inputmode="decimal" min="0" step="0.1" value="${PLAN.goalWeight ?? ""}" placeholder="optional"></label>
         <label class="field" for="pe_rate"><span>Target loss a week (% of body weight)</span><input id="pe_rate" type="number" inputmode="decimal" min="0" step="0.1" value="${PLAN.weeklyRatePct ?? ""}" placeholder="optional, e.g. 0.7"></label>
-        <label class="field" for="pe_klim"><span>Knee pain limit (0–10)</span><input id="pe_klim" type="number" inputmode="numeric" min="0" max="10" step="1" value="${PLAN.kneeLimit}"></label>
+        <label class="field" for="pe_klim"><span>Knee pain limit (0 to 10)</span><input id="pe_klim" type="number" inputmode="numeric" min="0" max="10" step="1" value="${PLAN.kneeLimit}"></label>
       </div>
       <label class="field" for="pe_warm"><span>Warm-ups, one per line</span><textarea id="pe_warm" rows="7">${esc(PLAN.warmups.join("\n"))}</textarea></label>
       <p class="note">Your history follows each lift by its name, so renaming a lift starts a fresh history for it. Days you've already logged keep what you logged.</p>
@@ -905,9 +971,11 @@
   function persistPlan() { lsSet(PLAN_KEY, { user: user?.id, plan: PLAN, dirty: planDirty }); }
 
   function save(day, data, immediate) {
+    if (recBefore && day < recBefore.upTo) recBefore = null;
     logs[day] = data;
     pending[day] = data;
     persistLocal();
+    renderSyncBar();
     immediate ? render() : renderLight();
     clearTimeout(flushTimer);
     flushTimer = setTimeout(flush, immediate ? 200 : 900);
@@ -917,26 +985,29 @@
     if (flushing) { flushTimer = setTimeout(flush, 400); return; }
     const days = Object.keys(pending);
     if (!days.length || !user) return;
-    if (!navigator.onLine) { setStatus("Offline — saved on this phone, will sync"); return; }
+    if (!navigator.onLine) { setStatus("Offline. Saved on this phone, will sync"); renderSyncBar(); return; }
     flushing = true;
     setStatus("Saving…");
     const batch = days.map((d) => ({ user_id: user.id, day: d, data: pending[d] }));
     const { error } = await sb.from("logs").upsert(batch, { onConflict: "user_id,day" });
     flushing = false;
-    if (error) { setStatus("Not synced yet — will retry"); console.warn(error); flushTimer = setTimeout(flush, 15000); return; }
+    if (error) { syncTrouble = true; setStatus("Not synced yet. Will retry"); renderSyncBar(); console.warn(error); flushTimer = setTimeout(flush, 15000); return; }
+    syncTrouble = false;
     for (const b of batch) if (pending[b.day] === b.data) delete pending[b.day];
     persistLocal();
+    renderSyncBar();
     setStatus(Object.keys(pending).length ? "Saving…" : "Saved");
   }
 
   async function pull() {
     if (!user || !navigator.onLine) return;
     const { data, error } = await sb.from("logs").select("day,data").order("day", { ascending: true }).limit(5000);
-    if (error) { setStatus("Couldn't load — showing saved copy"); console.warn(error); return; }
+    if (error) { setStatus("Couldn't load. Showing saved copy"); console.warn(error); return; }
     const next = {};
     for (const r of data) next[r.day] = r.data;
     for (const d of Object.keys(pending)) next[d] = pending[d]; // local unsaved edits win
     logs = next;
+    recBefore = null;
     persistLocal();
     if (view === "day") editing() ? renderLight() : render();
     else if (view === "dash") renderDash();
@@ -945,13 +1016,13 @@
 
   async function flushPlan() {
     if (!planDirty || !user || planFlushing) return;
-    if (!navigator.onLine) { setPlanMsg("Offline — saved on this phone, will sync"); return; }
+    if (!navigator.onLine) { setPlanMsg("Offline. Saved on this phone, will sync"); return; }
     planFlushing = true;
     const rev = planRev;
     const { error } = await sb.from("plans").upsert({ user_id: user.id, plan: normalizePlan(PLAN) }, { onConflict: "user_id" });
     planFlushing = false;
     clearTimeout(planTimer);
-    if (error) { setPlanMsg("Not synced yet — will retry"); console.warn(error); planTimer = setTimeout(flushPlan, 15000); return; }
+    if (error) { setPlanMsg("Not synced yet. Will retry"); console.warn(error); planTimer = setTimeout(flushPlan, 15000); return; }
     if (rev !== planRev) { planTimer = setTimeout(flushPlan, 400); return; } // edited while saving
     planDirty = false;
     persistPlan();
@@ -990,7 +1061,7 @@
         if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(r.day) || typeof r.data !== "object") continue;
         logs[r.day] = r.data; pending[r.day] = r.data; n++;
       }
-      persistLocal(); render(); await flush();
+      recBefore = null; persistLocal(); render(); await flush();
       $("menuMsg").textContent = `Imported ${n} day${n === 1 ? "" : "s"}.`;
     } catch (err) {
       $("menuMsg").textContent = "That file couldn't be imported: " + err.message;
@@ -1004,12 +1075,14 @@
     const cache = lsGet(CACHE_KEY, null), pend = lsGet(PENDING_KEY, null), pc = lsGet(PLAN_KEY, null);
     logs = cache && cache.user === u.id ? cache.logs || {} : {};
     pending = pend && pend.user === u.id ? pend.pending || {} : {};
+    recBefore = null; syncTrouble = false;
     const mine = pc && pc.user === u.id && pc.plan;
     PLAN = mine ? normalizePlan(pc.plan) : copy(DEFAULT_PLAN);
     planDirty = !!(mine && pc.dirty);
     view = "day";
     show("appView");
     render();
+    renderSyncBar();
     openShortcut();
     // Ask Chrome to keep this site's storage, so edits waiting to sync can't be evicted.
     if (navigator.storage?.persist) navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {});
@@ -1031,7 +1104,8 @@
   }
 
   function onSignedOut() {
-    user = null; logs = {}; pending = {};
+    user = null; logs = {}; pending = {}; recBefore = null; syncTrouble = false;
+    renderSyncBar();
     PLAN = copy(DEFAULT_PLAN); planDirty = false;
     view = "day"; acts = null;
     show("loginView");
@@ -1043,6 +1117,7 @@
     try {
       DEFAULT_PLAN = normalizePlan(await (await fetch("plan.json", { cache: "no-cache" })).json());
     } catch {
+      $("bootView").hidden = true;
       document.body.insertAdjacentHTML("afterbegin", `<p class="panel">Couldn't load plan.json. Check your connection and reload.</p>`);
       return;
     }
@@ -1071,7 +1146,9 @@
     $("dashBtn").onclick = () => (view === "dash" ? closeDash() : openDash());
     $("planDone").onclick = closePlan;
     $("exportBtn").onclick = exportData;
+    $("importBtn").onclick = () => $("importFile").click();
     $("importFile").onchange = (ev) => { const f = ev.target.files[0]; if (f) importData(f); ev.target.value = ""; };
+    $("syncRetry").onclick = () => { clearTimeout(flushTimer); flush(); };
     $("signOutBtn").onclick = async () => { await Promise.all([flush(), flushPlan()]); await sb.auth.signOut(); };
     $("prevW").onclick = () => { sel = addDays(sel, -7); acts = null; render(); };
     $("nextW").onclick = () => { sel = addDays(sel, 7); acts = null; render(); };
@@ -1088,8 +1165,8 @@
     // keep in sync: when the app comes back to the foreground or the phone reconnects
     const sync = () => { flush().then(pull); flushPlan().then(pullPlan); };
     document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
-    window.addEventListener("online", () => { setStatus("Back online — syncing…"); sync(); });
-    window.addEventListener("offline", () => setStatus("Offline — changes stay on this phone"));
+    window.addEventListener("online", () => { setStatus("Back online. Syncing…"); renderSyncBar(); sync(); });
+    window.addEventListener("offline", () => { setStatus("Offline. Changes stay on this phone"); renderSyncBar(); });
     // roll the date over if the app stays open past midnight
     setInterval(() => { const t = todayKey(); if (view === "day" && sel !== t && sel === addDays(t, -1) && !editing()) { sel = t; acts = null; render(); } }, 60000);
   }
