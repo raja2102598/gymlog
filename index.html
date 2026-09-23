@@ -30,6 +30,7 @@
   <div class="menu panel" id="menu" hidden>
     <div class="menu-row"><span id="whoami" class="sub"></span></div>
     <div class="menu-row">
+      <button class="ghost" id="planBtn">Edit plan</button>
       <button class="ghost" id="exportBtn">Export my data (.json)</button>
       <label class="ghost filebtn" for="importFile">Import data (.json)</label>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
@@ -88,6 +89,19 @@
       <div class="hist" id="hist"></div>
     </section>
     <p class="note" id="tempoNote"></p>
+  </div>
+
+  <!-- Plan editor -->
+  <div id="planView" class="pe" hidden>
+    <section class="panel">
+      <div class="sess-head">
+        <div><h2>Edit plan</h2><div class="sub" id="planMsg" aria-live="polite">Changes save as you type.</div></div>
+        <button class="primary" id="planDone">Done</button>
+      </div>
+      <div class="week" id="planDays"></div>
+      <div id="planDay"></div>
+    </section>
+    <section class="panel" id="planGeneral"></section>
   </div>
 </div>
 
