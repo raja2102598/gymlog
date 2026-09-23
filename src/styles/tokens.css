@@ -1,0 +1,19 @@
+/* Colour: --good means done; --accent means it needs attention (a warning, a missed day, pain over the
+   limit, a destructive button). Suggestions and focus rings stay neutral. --edge outlines form fields.
+   Corners: cards and boxes 12px, controls 8px, chips and pills fully round, small marks 4px.
+   Fonts are served from this site (src/fonts, SIL Open Font License; loaded in src/app/fonts.ts), so
+   they work offline from the app cache. */
+:root{
+  --ground:#eef0f2; --surface:#ffffff; --ink:#15171b; --muted:#5b6270; --line:#d8dce2; --edge:#8a919c;
+  --accent:#c4531c; --accent-soft:#f7e3d8; --good:#287346; --good-soft:#dcefe3; --chip:#e3e6ea;
+  --r-card:12px; --r-ctl:8px; --r-mark:4px;
+  --display:var(--font-oswald),"Arial Narrow",Arial,sans-serif;
+  --body:var(--font-plex-sans),system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:var(--font-plex-mono),ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark;--ground:#121417;--surface:#1b1e23;--ink:#eceef1;--muted:#9aa2ae;--line:#2c3139;--edge:#6b7380;
+  --accent:#e9773f;--accent-soft:#3a251a;--good:#5cc488;--good-soft:#17301f;--chip:#262a31;}}
+:root[data-theme="dark"]{
+  color-scheme:dark;--ground:#121417;--surface:#1b1e23;--ink:#eceef1;--muted:#9aa2ae;--line:#2c3139;--edge:#6b7380;
+  --accent:#e9773f;--accent-soft:#3a251a;--good:#5cc488;--good-soft:#17301f;--chip:#262a31;}
