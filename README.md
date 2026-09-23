@@ -1,6 +1,8 @@
 # Gym Log
 
-A small installable web app for tracking a 5-day gym split: lifts (with the weight used), warm-ups, a cardio finisher, daily steps, body weight and notes. Your data lives in your own free Supabase database, and only your account can read it.
+A small installable web app for tracking a 5-day gym split: every set you lift (reps × weight), warm-ups, a cardio finisher, daily steps, body weight and notes. Your data lives in your own free Supabase database, and only your account can read it.
+
+**Live app:** https://gym-log-omega-seven.vercel.app
 
 
 ## What's in here
@@ -8,47 +10,41 @@ A small installable web app for tracking a 5-day gym split: lifts (with the weig
 | File | What it does |
 |---|---|
 | `index.html`, `styles.css`, `app.js` | The app itself (plain HTML/JS, no build step) |
-| `plan.json` | The workout plan: days, exercises, sets/reps, cues, cardio, warm-up list. Edit this to change the plan. |
+| `plan.json` | The default workout plan: days, exercises, sets/reps, cues, cardio, warm-ups. Used until you edit your plan in the app. |
 | `config.js` | Supabase project URL and publishable key (safe to publish; RLS protects the data) |
-| `supabase/schema.sql` | The database table and security rules |
+| `supabase/schema.sql` | The database tables (`logs`, `plans`) and their security rules. Safe to re-run. |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Offline support and "Add to Home screen" |
 | `vendor/supabase.js` | Supabase JS client v2.117.1, bundled so the app needs no CDN |
+| `.vercelignore` | Keeps the README, schema and other repo-only files off the website |
 
-## Setup
 
-The Supabase side is already done: project **Personal** (ap-south-1) has the `logs` table with row-level security, and `config.js` points at it.
+## How it's set up
 
-### 1. Push to GitHub (private repo is fine)
-```bash
-git remote add origin https://github.com/raja2102598/gym-log.git
-git push -u origin main
-```
+- **Code:** private GitHub repo `raja2102598/gymlog`.
+- **Hosting:** Vercel project `gym-log` (Framework: Other, no build or install command, output directory `.`). Every push to `main` deploys to the live app; other branches get preview deployments that need a Vercel login to open.
+- **Database and sign-in:** Supabase project **Personal** (ap-south-1). Tables `logs` (one row per day) and `plans` (your edited plan) use row-level security, so each account sees only its own rows. Authentication → URL Configuration has the live app as the Site URL and `https://gym-log-omega-seven.vercel.app/**` as a redirect URL.
 
-### 2. Host it for free
-GitHub Pages doesn't host **private** repos on the free plan, so use one of these instead. All three are free and deploy straight from a private repo:
-- **Netlify:** Add new site → Import from Git → pick `gym-log`. Build command: *(empty)*. Publish directory: `.`
-- **Vercel:** Add New → Project → import `gym-log`. Framework: *Other*. No build command, output directory `.`
-- **Cloudflare Pages:** Workers & Pages → Create → Pages → Connect to Git. No build command, output directory `/`
+### Setting it up again from scratch
+1. In a Supabase project, run `supabase/schema.sql` (SQL Editor → New query → paste → Run), then put the project URL and publishable key in `config.js`.
+2. On Vercel: Add New → Project → import the repo. Framework: *Other*, no build or install command, output directory `.`.
+3. In Supabase → Authentication → URL Configuration, set the Site URL to the new site address and add the same address followed by `/**` as a redirect URL.
 
-Every push to `main` redeploys automatically. Note the site address you get (e.g. `https://gym-log-raja.netlify.app/`).
 
-### 3. Let sign-in links come back to the app
-Supabase dashboard → **Authentication → URL Configuration**:
-- **Site URL:** your site address from step 2
-- **Redirect URLs:** add the same address followed by `**` (e.g. `https://gym-log-raja.netlify.app/**`)
-
-### 4. Install on your phone
-1. Open the site in Chrome on your phone and sign in with your email. Tap the link in the email **on the same phone**.
+## Install on your phone
+1. Open the live app in Chrome on your phone and sign in with your email. Tap the link in the email **on the same phone**.
 2. Chrome menu **⋮ → Add to Home screen → Install**. It then opens like a normal app.
 
-### 5. Bring over your old log
-**Menu → Import data (.json)** and pick the export file.
 
 ## Everyday use
 - The app opens on today. Tap a day in the week strip to look at or fill in another day.
+- **Sets:** each lift has a row per planned set. Enter reps and kg; the next set copies the weight you just used, and the grey numbers show what you did last time. Logging the planned number of sets ticks the lift off. Use **+ Set** for extra sets.
+- **Skip or swap:** tap **···** on a lift. *Skip today* (with an optional reason, e.g. machine busy) or *Swap for another lift* to log a different exercise in its place. The same menu undoes either.
+- **Edit your plan:** **Menu → Edit plan**. Change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back `plan.json`.
 - Changes save automatically. With poor gym signal they're kept on the phone and sync when you're back online.
-- **Menu → Export my data** downloads everything as JSON for your own backup.
+- **Menu → Export my data** downloads every day as JSON; **Import data** brings a file like that back in.
+
 
 ## Notes
+- Your history follows each lift by name. Renaming a lift in the plan starts a fresh history for it; days you've already logged keep what you logged.
 - Supabase's free plan pauses a project after about a week with no activity. Logging every day keeps it awake. If it does pause, click **Restore** in the Supabase dashboard; no data is lost.
 - After changing app files, bump `VERSION` in `sw.js` so installed copies pick up the update.

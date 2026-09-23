@@ -1,0 +1,6 @@
+# The site is the repo root, so keep repo-only files off it.
+/README.md
+/supabase
+/.nojekyll
+/.gitignore
+/.vercelignore
