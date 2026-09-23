@@ -5,7 +5,8 @@
  *       sets?: [{ reps: number|null, kg: number|null }],
  *       skipped?: bool, reason?: string,        // skipped that day, e.g. machine busy
  *       swap?: string } },                      // did this exercise instead that day
- *     warmup: [names], cardio: bool, steps: number|null, weight: number|null, note: string }
+ *     warmup: [names], cardio: bool, steps: number|null, weight: number|null, note: string,
+ *     session?: 0-6 }                           // did another weekday's workout that day (e.g. a missed one)
  * Exercises are keyed by their planned name, so editing the plan never scrambles old logs.
  * The plan itself is one row per user in table `plans`; plan.json is the default until it's edited.
  */
@@ -38,7 +39,10 @@
   function parseKey(k) { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); }
   function addDays(k, n) { const d = parseKey(k); d.setDate(d.getDate() + n); return keyOf(d); }
   function wdIndex(k) { return (parseKey(k).getDay() + 6) % 7; }
-  function planFor(k) { return PLAN.days[wdIndex(k)]; }
+  function isSlot(v) { return Number.isInteger(v) && v >= 0 && v < 7; }
+  // Which weekday's workout day k uses: its own, unless the day was switched to another one.
+  function slotFor(k) { const s = logs[k]?.session; return isSlot(s) ? s : wdIndex(k); }
+  function planFor(k) { return PLAN.days[slotFor(k)]; }
   function mondayOf(k) { return addDays(k, -wdIndex(k)); }
   function dayMonth(k) { return k.slice(8) + "/" + k.slice(5, 7); }
   function fmt(n) { return n == null || n === "" ? "–" : Number(n).toLocaleString("en-IN"); }
@@ -52,7 +56,7 @@
 
   function entry(k) {
     const e = logs[k] || {};
-    return {
+    const out = {
       exercises: e.exercises || {},
       warmup: Array.isArray(e.warmup) ? e.warmup : [],
       cardio: !!e.cardio,
@@ -60,6 +64,8 @@
       weight: e.weight ?? null,
       note: e.note || ""
     };
+    if (isSlot(e.session)) out.session = e.session;
+    return out;
   }
   function clone(k) { return copy(entry(k)); }
   function hasData(e) {
@@ -107,6 +113,19 @@
   function placeholders(x, L, j) {
     const ls = L ? setsOf(L.r) : [], s = ls[j] || ls[ls.length - 1] || {};
     return [s.reps ?? (parseInt(x.reps, 10) || "–"), s.kg ?? "–"];
+  }
+  function worked(k) { return Object.values(entry(k).exercises).some((r) => r.done || setsOf(r).some((s) => s.reps != null)); }
+  // Gym sessions planned for days before today in k's week that no day of that week has done,
+  // or taken over for today or later.
+  function missedThisWeek(k) {
+    const mon = mondayOf(k), t = todayKey(), days = DOW.map((_, i) => addDays(mon, i));
+    const covered = (s) => days.some((d) => slotFor(d) === s && (worked(d) || (d >= t && logs[d]?.session === s)));
+    return days.map((d, i) => (d < t && d < k && PLAN.days[i].exercises.length && !covered(i) ? i : -1)).filter((i) => i >= 0);
+  }
+  // First day worth showing in history: the earliest log or the day the account was created.
+  function firstDay() {
+    const created = user?.created_at ? keyOf(new Date(user.created_at)) : null;
+    return [Object.keys(logs).sort()[0], created, todayKey()].filter(Boolean).sort()[0];
   }
   function swapSuggestions(exclude) {
     const s = new Set();
@@ -164,7 +183,7 @@
     const f = (k) => parseKey(k).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
     $("weekLabel").textContent = f(mon) + " – " + f(addDays(mon, 6));
     for (let i = 0; i < 7; i++) {
-      const k = addDays(mon, i), p = PLAN.days[i], b = document.createElement("button");
+      const k = addDays(mon, i), p = planFor(k), b = document.createElement("button");
       b.className = "dchip " + dayState(k) + (k === sel ? " sel" : "") + (k === t ? " today" : "");
       b.innerHTML = `<span class="dw">${DOW[i]}</span><span class="dn">${parseKey(k).getDate()}</span><span class="dp"></span>`;
       b.querySelector(".dp").textContent = p.name;
@@ -222,7 +241,7 @@
         <span><div class="nm">${esc(did)}${r.swap ? ` <span class="was">instead of ${esc(name)}</span>` : ""}</div>
           ${r.skipped || r.swap || !x.cue ? "" : `<div class="nt">${esc(x.cue)}</div>`}
           ${x.flag && !r.skipped && !r.swap ? `<div class="ch">${esc(x.flag)}</div>` : ""}
-          ${extra ? `<div class="ch">Not in your current plan</div>` : ""}</span>
+          ${extra ? `<div class="ch">Not in this workout</div>` : ""}</span>
       </label>
       <div class="load">
         ${x.sets || x.reps ? `<span class="sr">${esc(x.sets)} &times; ${esc(x.reps)}</span>` : ""}
@@ -234,11 +253,22 @@
   function renderSession() {
     const p = planFor(sel), e = entry(sel), el = $("session"), d = parseKey(sel), items = liftsFor(sel);
     const wus = PLAN.warmups.concat(e.warmup.filter((w) => !PLAN.warmups.includes(w)));
+    const slot = slotFor(sel), own = wdIndex(sel), t = todayKey();
+    const missed = !p.exercises.length && sel >= t ? missedThisWeek(sel) : [];
     el.innerHTML = `
       <div class="sess-head">
-        <div><h2>${esc(p.name)}</h2><div class="sub">${esc(p.focus)} &middot; ${d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</div></div>
+        <div><h2>${esc(p.name)}</h2><div class="sub">${esc(p.focus)} &middot; ${d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</div>
+          <div class="sess-pick">
+            <select id="sessionSel" class="ghost tiny" aria-label="Workout for this day">${PLAN.days.map((x, i) =>
+              `<option value="${i}" ${i === slot ? "selected" : ""}>${esc(x.name)} (${DOW[i]}${i === own ? ", usual" : ""})</option>`).join("")}</select>
+            ${slot !== own ? `<span class="moved">Usually ${esc(PLAN.days[own].name)} &middot; changed for this day</span>` : ""}
+          </div></div>
         <span id="liftPill">${liftPill(p, e)}</span>
       </div>
+      ${missed.length ? `<div class="catchup">
+        <p>Missed this week: ${missed.map((i) => `<b>${esc(PLAN.days[i].name)}</b> (${DOW[i]})`).join(", ")}. Do ${missed.length > 1 ? "one" : "it"} ${sel === t ? "today" : "on " + DOW[own]}?</p>
+        <div class="catchup-btns">${missed.map((i) => `<button class="ghost" data-catch="${i}">Do ${esc(PLAN.days[i].name)}</button>`).join("")}</div>
+      </div>` : ""}
       <div class="wu"><h3>Warm-up <span style="text-transform:none;letter-spacing:0;font-weight:400">&middot; ${e.warmup.length} done</span></h3>
         <div class="chips">${wus.map((w, i) => `<label class="chip" for="wu${i}"><input type="checkbox" id="wu${i}" data-w="${esc(w)}" ${e.warmup.includes(w) ? "checked" : ""}><span>${esc(w)}</span></label>`).join("")}</div>
       </div>
@@ -269,6 +299,14 @@
       return r;
     };
 
+    const useSlot = (v) => {
+      const n = clone(sel);
+      if (v === own) delete n.session; else n.session = v;
+      acts = null;
+      save(sel, n, true);
+    };
+    $("sessionSel").onchange = (ev) => useSlot(+ev.target.value);
+    el.querySelectorAll("button[data-catch]").forEach((b) => b.onclick = () => useSlot(+b.dataset.catch));
     el.querySelectorAll("input[data-w]").forEach((c) => c.onchange = () => {
       const n = clone(sel), w = c.dataset.w;
       n.warmup = n.warmup.filter((x) => x !== w);
@@ -360,17 +398,19 @@
   }
 
   function renderStats() {
-    const mon = mondayOf(sel);
-    let sess = 0, gymDays = 0, cardio = 0, steps = 0, stepDays = 0;
-    for (let i = 0; i < 7; i++) {
-      const k = addDays(mon, i), p = PLAN.days[i], e = entry(k);
-      if (p.exercises.length) { gymDays++; if (p.exercises.every((x) => e.exercises[x.name]?.done)) sess++; }
+    const mon = mondayOf(sel), days = DOW.map((_, i) => addDays(mon, i));
+    // Each planned session counts once, on whichever day of the week it was done.
+    const gym = PLAN.days.map((p, s) => (p.exercises.length ? s : -1)).filter((s) => s >= 0);
+    const sess = gym.filter((s) => days.some((k) => slotFor(k) === s && PLAN.days[s].exercises.every((x) => entry(k).exercises[x.name]?.done))).length;
+    let cardio = 0, steps = 0, stepDays = 0;
+    for (const k of days) {
+      const e = entry(k);
       if (e.cardio) cardio++;
       if (e.steps != null) { steps += e.steps; stepDays++; }
     }
     const avg = stepDays ? Math.round(steps / stepDays) : null;
     $("stats").innerHTML = [
-      [sess + "/" + gymDays, "gym sessions complete"],
+      [sess + "/" + gym.length, "gym sessions complete"],
       [cardio + "/7", "cardio finishers"],
       [fmt(avg), "avg steps / logged day"],
       [fmt(steps), "total steps"]
@@ -403,14 +443,16 @@
   }
 
   function renderHist() {
-    const rows = [], t = todayKey();
+    const rows = [], t = todayKey(), start = firstDay();
     for (let i = 0; i < 14; i++) {
       const k = addDays(t, -i), p = planFor(k), e = entry(k);
+      if (k < start) break;
       const exDone = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
       rows.push(`<tr><td class="num">${k.slice(5)} ${DOW[wdIndex(k)]}</td><td>${esc(p.name)}</td>
         <td class="r num">${p.exercises.length ? exDone + "/" + p.exercises.length : "–"}</td><td>${e.cardio ? "&check;" : "–"}</td>
         <td class="r num">${fmt(e.steps)}</td><td class="r num">${e.weight ?? "–"}</td></tr>`);
     }
+    $("histTitle").textContent = rows.length === 1 ? "Today" : `Last ${rows.length} days`;
     $("hist").innerHTML = `<table><thead><tr><th>Date</th><th>Session</th><th class="r">Lifts</th><th>Cardio</th><th class="r">Steps</th><th class="r">kg</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
   }
 
