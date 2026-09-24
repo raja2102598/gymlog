@@ -5,9 +5,11 @@ import { Segmented } from "@/components/health/parts";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
+import { useVoicePref } from "@/hooks/useVoice";
 import { todayKey } from "@/lib/dates";
 import { plural, syncedWhen } from "@/lib/format";
 import { isNative } from "@/lib/native";
+import { setVoicePref, speechSupported } from "@/lib/speech";
 import { savedTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Plan } from "@/lib/types";
 import type { SyncStatus } from "@/native/sync";
@@ -27,6 +29,7 @@ export function SettingsView({ onEditPlan }: { onEditPlan: () => void }) {
           <CaretRight className="pref-go" size={18} aria-hidden="true" />
         </ViewLink>
       </Group>
+      <Voice />
       <Appearance />
       <Account />
       <Data />
@@ -246,6 +249,26 @@ function Goals() {
           The rings and charts in Health measure against these. {store.planMsg}
         </p>
       </div>
+    </Group>
+  );
+}
+
+/* ---------- voice ---------- */
+
+/** Log sets by voice: off until switched on, kept on this device like the theme, and only where the browser can listen. */
+function Voice() {
+  const on = useVoicePref();
+  if (!speechSupported()) return null;
+  return (
+    <Group title="Voice" id="setVoice">
+      <button type="button" className="pref-row pref-tap" role="switch" id="voiceLog" aria-checked={on} aria-labelledby="voiceT" aria-describedby="voiceD" onClick={() => setVoicePref(!on)}>
+        <Text
+          id="voice"
+          title="Log sets by voice"
+          sub="Uses your browser’s speech recognition. In Chrome, what you say is sent to Google to be turned into text; Gym Log keeps only the numbers."
+        />
+        <span className="switch" aria-hidden="true" />
+      </button>
     </Group>
   );
 }

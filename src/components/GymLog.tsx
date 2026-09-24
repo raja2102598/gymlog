@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { useKeyboardUp } from "@/hooks/useKeyboardUp";
+import { stopListening } from "@/hooks/useVoice";
 import { addDays, parseKey, todayKey, wdIndex } from "@/lib/dates";
 import { METRIC_TITLE } from "@/lib/healthView";
 import { isNative } from "@/lib/native";
@@ -82,6 +83,10 @@ export default function GymLog() {
   }
 
   useEffect(() => store.start(), [store]);
+
+  // Today stays mounted behind the other tabs, so a lift still listening there would log what's said on another
+  // screen, or into a day no longer on show: leaving Today, or picking another day, stops it.
+  useEffect(() => stopListening(), [route.view, sel]);
 
   // Inside the Android app: sign-in links and Health Connect (src/native/, loaded only there).
   useEffect(() => {

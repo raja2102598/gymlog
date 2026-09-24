@@ -1,15 +1,18 @@
 "use client";
-import { CaretDown, DotsThree } from "@phosphor-icons/react";
+import { CaretDown, DotsThree, Microphone } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
+import { useVoice, useVoicePref } from "@/hooks/useVoice";
 import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
 import { num, setsSummary } from "@/lib/format";
+import { speechSupported } from "@/lib/speech";
 import type { RecordKind } from "@/lib/stats";
 import { minSets, performed, prTitle, setsOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
+import type { VoiceResult } from "@/lib/voice";
 import type { LiftMenu } from "./types";
 
 interface Props {
@@ -65,8 +68,82 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
       r.sets = sets;
       r.kg = topKg(sets);
       // Logging the planned number of sets ticks the lift off.
-      if (!r.done && !r.skipped && sets.filter((s) => (s.reps ?? 0) > 0).length >= min) r.done = true;
+      if (!r.done && !r.skipped && sets.filter((s) => (s.reps ?? 0) > 0).length >= min) {
+        r.done = true;
+        r.autoDone = true;
+      }
     }, false);
+  const addSet = () =>
+    edit((r) => {
+      const sets = setsOf(r).map((s) => ({ ...s }));
+      while (sets.length < min) sets.push({ reps: null, kg: null });
+      sets.push({ reps: null, kg: null });
+      r.sets = sets;
+    }, true);
+  const skipToday = () =>
+    edit((r) => {
+      r.skipped = true;
+      r.done = false;
+      delete r.autoDone;
+    }, true);
+
+  // Voice (Settings, Log sets by voice): a phrase heard for this lift, done through the same changes as typing, + Set,
+  // the tick and Skip today, so the carried-over weight, PR badge, tick and sync all follow as they would. It reads the
+  // lift as saved now, since the answer comes after this render, and returns the line to show under the sets.
+  const voiceOn = useVoicePref() && speechSupported();
+  const hear = (said: VoiceResult, heard: string): string => {
+    const now = () => setsOf(store.entry(sel).exercises[name]);
+    const lastLogged = () => now().findLastIndex((s) => (s.reps ?? 0) > 0);
+    const at = `Heard “${heard}”`, logged = (j: number) => `${at}: set\u00a0${j + 1}, ${setsSummary([now()[j]])}.`;
+    if (store.entry(sel).exercises[name]?.skipped) return "";
+    if (said.kind === "unknown") return `${at}. Say it like “10\u00a0at\u00a045”.`;
+    if (said.kind === "set") {
+      // The first row with no reps, after adding one when every row is filled.
+      const sets = now(), rows = Math.max(min, sets.length);
+      let j = 0;
+      while (j < rows && (sets[j]?.reps ?? 0) > 0) j++;
+      if (j === rows) addSet();
+      setField(j, "reps", String(said.reps));
+      if (said.kg != null) setField(j, "kg", String(said.kg));
+      return logged(j);
+    }
+    if (said.command === "again") {
+      const sets = now(), last = lastLogged();
+      if (last < 0) return `${at}. There’s no set to repeat yet.`;
+      const j = last + 1, s = sets[last];
+      if (j >= Math.max(min, sets.length)) addSet();
+      setField(j, "reps", String(s.reps));
+      setField(j, "kg", s.kg == null ? "" : String(s.kg));
+      return logged(j);
+    }
+    if (said.command === "undo") {
+      const last = lastLogged();
+      if (last < 0) return `${at}. There’s no set to undo.`;
+      setField(last, "reps", "");
+      setField(last, "kg", "");
+      // Logging the planned sets ticked the lift off (autoDone, saved with the day), so with fewer the tick goes
+      // too. A tick given by hand, with the box or "done", stays.
+      edit((r) => {
+        if (r.done && r.autoDone && setsOf(r).filter((s) => (s.reps ?? 0) > 0).length < min) {
+          r.done = false;
+          delete r.autoDone;
+        }
+      }, false);
+      return `${at}: set\u00a0${last + 1} cleared.`;
+    }
+    if (said.command === "done") {
+      edit((r) => {
+        delete r.autoDone;
+        r.done = true;
+      }, true);
+      return `${at}: marked done.`;
+    }
+    skipToday();
+    // A skipped lift has no microphone: if it had focus, focus moves to ···, which holds Undo skip.
+    if ((document.activeElement as HTMLElement | null)?.dataset.voice === String(i)) focusNext(`[data-more="${i}"]`);
+    return `${at}: skipped today.`;
+  };
+  const voice = useVoice(voiceOn && !r.skipped, hear);
 
   const swap = (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault();
@@ -133,10 +210,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
               className="ghost tiny"
               data-skip={i}
               onClick={() => {
-                edit((r) => {
-                  r.skipped = true;
-                  r.done = false;
-                }, true);
+                skipToday();
                 // The reason is optional, so a phone keeps its keyboard closed: focus stays by the change.
                 focusNext(matchMedia("(pointer: fine)").matches ? `#reason${i}` : `[data-unskip="${i}"]`);
               }}
@@ -235,18 +309,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
           );
         })}
         <div className="setbtns">
-          <button
-            className="ghost tiny"
-            data-addset={i}
-            onClick={() =>
-              edit((r) => {
-                const sets = setsOf(r).map((s) => ({ ...s }));
-                while (sets.length < min) sets.push({ reps: null, kg: null });
-                sets.push({ reps: null, kg: null });
-                r.sets = sets;
-              }, true)
-            }
-          >
+          <button className="ghost tiny" data-addset={i} onClick={addSet}>
             + Set
           </button>
           {sets.length > min ? (
@@ -295,6 +358,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
             onChange={(ev) => {
               const on = ev.target.checked;
               edit((r) => {
+                delete r.autoDone;
                 r.done = on;
               }, true);
             }}
@@ -309,6 +373,18 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
             ) : null}
           </span>
         </label>
+        {voiceOn && !r.skipped ? (
+          <button
+            type="button"
+            className="ghost icon mic"
+            data-voice={i}
+            aria-pressed={voice.listening}
+            aria-label={`Log a set of ${did} by voice`}
+            onClick={() => void voice.listen()}
+          >
+            <Microphone size={22} weight={voice.listening ? "fill" : "bold"} aria-hidden="true" />
+          </button>
+        ) : null}
         <button
           className="ghost icon more"
           data-more={i}
@@ -335,6 +411,11 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
       {extra ? <div className="ch">Not in this workout</div> : null}
       {actions}
       {body}
+      {voiceOn ? (
+        <p className="said" aria-live="polite">
+          {voice.line}
+        </p>
+      ) : null}
     </li>
   );
 }

@@ -39,6 +39,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 
 **Today: the workout, set by set**
 - The day's session from your plan, one card per lift: the target (3 × 8-10), what you did last time, and a row per set for reps and kg. The next set copies the weight you just used.
+- Log a set by voice: tap a lift's microphone and say *10 at 45*, or *again*, *undo*, *done* or *skip*. On the website and the installed web app, once switched on in Settings.
 - Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
 - Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.
 - Knee pain scores before, after and the next morning. After a bad session, knee-sensitive lifts hold their weight instead of going up.
