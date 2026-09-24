@@ -125,7 +125,8 @@ export default async function firstRun({ browser, base, check }) {
     const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null), page.click("#chooseRestore")]);
     check("it opens the file picker for .json files, as Settings' Import does", !!chooser && (await chooser.element().getAttribute("accept")) === "application/json,.json");
     await chooser?.setFiles(jsonFile({ hello: "world" }));
-    await until(async () => (await flat(page.locator("#chooseMsg"))) !== "");
+    // "Restoring…" shows while the file is read; wait for what the picker says once it's done with it.
+    await until(async () => !["", "Restoring…"].includes(await flat(page.locator("#chooseMsg"))));
     check(
       "a file that isn't a backup: the picker says why, in its own status line, and stays up",
       (await flat(page.locator("#chooseMsg"))) === "That file couldn’t be imported: it isn’t a Gym Log export. Choose a .json file exported from Gym Log." &&
