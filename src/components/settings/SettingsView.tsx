@@ -282,10 +282,20 @@ function Appearance() {
 
 function Account() {
   const store = useGym();
+  // The ways this account signs in, as Supabase records them: "email" (a link or password), "google".
+  const google = ((store.user?.app_metadata?.providers as string[] | undefined) ?? []).includes("google");
   return (
     <Group title="Account" id="setAccount">
       <div className="pref-row">
-        <Text title="Signed in as" sub={<span id="whoami">{store.user?.email || "you"}</span>} />
+        <Text
+          title="Signed in as"
+          sub={
+            <>
+              <span id="whoami">{store.user?.email || "you"}</span>
+              {google ? " · Google account linked" : ""}
+            </>
+          }
+        />
       </div>
       <Password />
       <button type="button" className="pref-row pref-tap danger" id="signOutBtn" onClick={() => void store.signOut()}>

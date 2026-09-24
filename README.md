@@ -27,7 +27,7 @@ A [Next.js](https://nextjs.org) app (App Router, TypeScript) exported as a stati
 | `src/lib/health.ts` | Health Connect's readings turned into one entry a day, and the words the screens use for them |
 | `src/lib/healthView.ts`, `src/lib/scale.ts` | What the Health tab shows: a day's numbers, a metric across days, averages and goals, and the charts' axes |
 | `src/lib/route.ts`, `src/lib/theme.ts` | Each screen's address (`#health/sleep`) and where Back goes; the light or dark theme |
-| `src/native/`, `src/lib/native.ts` | Code that only runs in the Android app: reading Health Connect, background sync, and signing in from the email link |
+| `src/native/`, `src/lib/native.ts` | Code that only runs in the Android app: reading Health Connect, background sync, Continue with Google, and signing in from the email link |
 | `src/lib/stats.ts`, `src/lib/dashboard.ts` | The calculations behind Progress, add-weight hints and records (weight trend, weekly rate, estimated 1RM, personal records) |
 | `src/lib/config.ts` | Supabase project URL and publishable key (safe to publish; RLS protects the data) |
 | `src/data/plan.json` | The default workout plan: days, exercises, sets/reps, cues, cardio, warm-ups. Used until you edit your plan in the app. |
@@ -36,7 +36,7 @@ A [Next.js](https://nextjs.org) app (App Router, TypeScript) exported as a stati
 | `src/service-worker.js`, `scripts/build-sw.mjs` | Offline support: after each build the script writes `out/sw.js`, which keeps every file of the site on the phone |
 | `public/` | `manifest.webmanifest` and icons, for "Add to Home screen"; `privacypolicy.html`, which Health Connect shows when you give the Android app access; `app-login.html`, where sign-in links asked for in the Android app land before opening the app |
 | `supabase/schema.sql` | The database tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their security rules, and the two functions background sync uses. Safe to re-run. |
-| `android/`, `capacitor.config.ts` | The Android app ([Capacitor](https://capacitorjs.com)): the site in a native shell, with the Health Connect permissions it asks for, and the background sync (`GymSyncPlugin.kt`, `HealthSync.kt`: an hourly job that reads Health Connect and saves the last 3 days; `HealthDays.kt` turns readings into days exactly as `src/lib/health.ts` does, checked against the same test file, `tests/fixtures/health-days.json`) |
+| `android/`, `capacitor.config.ts` | The Android app ([Capacitor](https://capacitorjs.com)): the site in a native shell, with the Health Connect permissions it asks for, Continue with Google (`GoogleSignInPlugin.kt`), and the background sync (`GymSyncPlugin.kt`, `HealthSync.kt`: an hourly job that reads Health Connect and saves the last 3 days; `HealthDays.kt` turns readings into days exactly as `src/lib/health.ts` does, checked against the same test file, `tests/fixtures/health-days.json`) |
 | `.github/workflows/android.yml` | Builds the Android app for every pull request and push to `main`, and publishes it from `main` |
 | `tests/unit/`, `tests/e2e/` | Tests: the calculations (Vitest), and the whole app in Chrome with Supabase mocked. The Kotlin has its own, in `android/app/src/test/` (`./gradlew testDebugUnitTest`) |
 | `vercel.json` | How Vercel builds and serves the site |
@@ -62,7 +62,7 @@ The development server uses the same Supabase project as the live app. Sign-in l
 
 - **Code:** private GitHub repo `raja2102598/gymlog`.
 - **Hosting:** Vercel project `gym-log`. `vercel.json` has the settings: it runs `npm ci` and `npm run build` and serves `out/`, and it tells browsers they can keep the fingerprinted files in `/_next/static` for good. Every push to `main` deploys to the live app; other branches get preview deployments that need a Vercel login to open.
-- **Database and sign-in:** Supabase project **Personal** (ap-south-1). Tables `logs` (one row per day), `plans` (your edited plan) and `health_days` (Health Connect's numbers, one row per day, written by the Android app) use row-level security, so each account sees only its own rows. `health_sync_keys` holds a fingerprint (SHA-256) of each phone's background-sync key, never the key: `create_health_sync_key` makes one for a signed-in account, and `sync_health_days` is the only thing a key can do, save that account's recent days. Authentication → URL Configuration has the live app as the Site URL and `https://gym-log-omega-seven.vercel.app/**` as a redirect URL. That entry also covers `app-login.html`, where the Android app's sign-in links land, and the `sb_flow_id` each link carries. (`io.github.raja2102598.gymlog://login` is listed too; only version 1.0.1 of the app used it.)
+- **Database and sign-in:** Supabase project **Personal** (ap-south-1). Tables `logs` (one row per day), `plans` (your edited plan) and `health_days` (Health Connect's numbers, one row per day, written by the Android app) use row-level security, so each account sees only its own rows. `health_sync_keys` holds a fingerprint (SHA-256) of each phone's background-sync key, never the key: `create_health_sync_key` makes one for a signed-in account, and `sync_health_days` is the only thing a key can do, save that account's recent days. Sign-in is by email (a link or a password) or [Google](#continue-with-google). Authentication → URL Configuration has the live app as the Site URL and `https://gym-log-omega-seven.vercel.app/**` as a redirect URL. That entry also covers `app-login.html`, where the Android app's sign-in links land, and the `sb_flow_id` each link carries. (`io.github.raja2102598.gymlog://login` is listed too; only version 1.0.1 of the app used it.)
 - **Android app:** GitHub Actions (`.github/workflows/android.yml`) builds it. Its signing key is in two repository secrets, `GYMLOG_KEYSTORE_BASE64` and `GYMLOG_KEYSTORE_PASSWORD` (see [Updates](#updates-and-the-signing-key)).
 
 ### Setting it up again from scratch
@@ -71,8 +71,25 @@ The development server uses the same Supabase project as the live app. Sign-in l
 3. In Supabase → Authentication → URL Configuration, set the Site URL to the new site address and add the same address followed by `/**` as a redirect URL. For the Android app, point `APP_LOGIN_PAGE` in `src/lib/native.ts` at the new address's `app-login.html`.
 
 
+## Continue with Google
+The sign-in screen offers **Continue with Google** once Google is switched on in Supabase; until then the button stays hidden. On the website it goes to Google's page and back. In the Android app it opens Android's own account sheet (Credential Manager, `GoogleSignInPlugin.kt`), since Google doesn't allow signing in inside an app's web view, and hands Google's token to Supabase. A Google account with the same email as an account made with an email link is the same account, with the same data.
+
+### Setting it up
+1. **Google Cloud** ([console.cloud.google.com](https://console.cloud.google.com)), signed in with your Google account:
+   1. Create a project, e.g. *Gym Log*.
+   2. **Google Auth Platform → Get started**: app name *Gym Log*, your email as the support and contact email, audience **External**.
+   3. **Branding**: home page `https://gym-log-omega-seven.vercel.app`, privacy policy `https://gym-log-omega-seven.vercel.app/privacypolicy.html`, authorized domains `gym-log-omega-seven.vercel.app` and `dtudesmwddtlcekhqees.supabase.co`.
+   4. **Audience → Publish app**, so anyone can sign in, not only listed test users. With just the basic scopes (email, profile) Google doesn't need to verify the app.
+   5. **Clients → Create client → Web application**, *Gym Log web*: authorized JavaScript origin `https://gym-log-omega-seven.vercel.app`, authorized redirect URI `https://dtudesmwddtlcekhqees.supabase.co/auth/v1/callback`. Keep its **client ID** and **client secret**.
+   6. **Clients → Create client → Android**, *Gym Log Android*: package name `io.github.raja2102598.gymlog`, and the **SHA-1** of the app's signing certificate, which each *Android app* build prints (GitHub → Actions → *Android app* → a run → Summary, *Signing certificate*). If Google Play signs the app with a key of its own, add that key's SHA-1 too, as a second Android client (Play Console → App integrity → App signing).
+2. **Supabase** → Authentication → Sign In / Providers → **Google**: turn it on, paste the web **client ID** into *Client IDs* and the **client secret** into *Client Secret*, and save. Leave *Skip nonce checks* off.
+3. **The app:** put the web client ID in `GOOGLE_WEB_CLIENT_ID` in `src/lib/native.ts` (it isn't secret: it's in every Google sign-in link; the secret stays in Supabase) and build a new version. The website needs nothing more.
+
+Google's page on the website names `dtudesmwddtlcekhqees.supabase.co` as where you're signing in; the app's account sheet names Gym Log.
+
+
 ## Install on your phone
-1. Open the live app in Chrome on your phone and sign in with your email. Tap the link in the email **on the same phone**. Or, once you've set a password (**Settings → Set a password**), tap **Use a password instead**.
+1. Open the live app in Chrome on your phone and sign in: **Continue with Google**, or your email. With email, tap the link in the email **on the same phone**, or, once you've set a password (**Settings → Set a password**), tap **Use a password instead**.
 2. Chrome menu **⋮ → Add to Home screen → Install**. It then opens like a normal app.
 
 
@@ -111,7 +128,7 @@ The Android app is the same Gym Log, installed from a file instead of Chrome, an
 ### Install
 1. On the phone, sign in to GitHub in Chrome (the repo is private), open the repo's **Releases** and the latest **Gym Log for Android**, and download `gym-log.apk`.
 2. Open the downloaded file. Android asks once to allow installs from Chrome (or your Files app): allow it, go back and tap **Install**. Google Play Protect may say it doesn't know the developer: tap **More details → Install anyway**.
-3. Sign in. Easiest is a password: set one on the website first (**Settings → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
+3. Sign in. Easiest is **Continue with Google**, once [it's set up](#continue-with-google), or a password: set one on the website first (**Settings → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
 4. **Settings → Health Connect → Connect**, then allow what Gym Log asks for, including past data. The first sync reads back to when your log started (30 to 90 days). Only some kinds allowed? **Allow** under it asks for the rest; each newly allowed kind is read back that far too.
 5. For syncing while the app is closed, turn on **Sync in the background** in the same place, and allow Health Connect's *access data in the background* when it asks.
 

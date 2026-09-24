@@ -55,6 +55,14 @@ jobs:
             printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gymlog.p12"
             export GYMLOG_KEYSTORE="$RUNNER_TEMP/gymlog.p12"
             echo "signed=true" >> "$GITHUB_OUTPUT"
+            # The signing certificate's fingerprints (public: anyone can read them from the APK). Google Cloud needs
+            # the SHA-1 for Continue with Google in the app; see README.md.
+            {
+              echo "### Signing certificate"
+              echo '```'
+              keytool -list -v -storetype PKCS12 -keystore "$GYMLOG_KEYSTORE" -storepass:env GYMLOG_KEYSTORE_PASSWORD | grep -E "^\s*SHA(1|256):" | sed 's/^\s*//' || echo "(couldn't read them)"
+              echo '```'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::No GYMLOG_KEYSTORE_BASE64 secret, so this APK is signed with a throwaway debug key and won't install over the app on your phone. See README.md, Android app."
             echo "signed=false" >> "$GITHUB_OUTPUT"

@@ -8,6 +8,7 @@ import type { GymStore } from "@/lib/store";
 import { syncHealth } from "./health";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
 
+export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
 export { backgroundStatus, runBackgroundNow, turnOffBackground, turnOnBackground, type SyncStatus } from "./sync";
 

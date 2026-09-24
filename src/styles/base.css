@@ -41,6 +41,13 @@ p .num,.sub .num,.plain .num{font-family:var(--body);font-weight:600;color:var(-
 .status:empty{display:none}
 .pw-form{display:grid;gap:10px;max-width:420px}
 .login{display:grid;gap:12px;max-width:420px;margin-top:16px}
+/* Continue with Google, drawn as Google's guidelines ask: its "G" on white with a grey edge, or on near-black in the
+   dark theme (--gbtn-* in tokens.css) */
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:420px;min-height:48px;margin-top:16px;padding:10px 16px;border:1px solid var(--gbtn-edge);border-radius:var(--r-ctl);background:var(--gbtn-bg);color:var(--gbtn-ink);font:500 15px/1.25 var(--body);cursor:pointer}
+.gbtn:disabled{opacity:.6;cursor:default}
+.gbtn svg{flex:none}
+.or{display:flex;align-items:center;gap:12px;max-width:420px;margin:16px 0 0;font-size:var(--t-sm);color:var(--muted)}
+.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--line)}
 
 /* cards */
 .panel{background:var(--surface);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow)}
@@ -122,6 +129,7 @@ td.c,th.c{text-align:center}
   .ghost:hover:not(:disabled){background-color:var(--chip)}
   .top .ghost:hover:not(:disabled),.syncbar .ghost:hover:not(:disabled){background-color:var(--sunken)}
   button.primary:hover:not(:disabled),a.primary:hover{background-color:color-mix(in srgb,var(--ink) 85%,var(--ground))}
+  .gbtn:hover:not(:disabled){background-color:var(--gbtn-hover)}
   .dchip:not(.done):hover{background-color:var(--sunken)}
   .dchip.done:hover{background-color:color-mix(in srgb,var(--good) 88%,var(--ink))}
 }
@@ -131,8 +139,8 @@ td.c,th.c{text-align:center}
 /* motion: feedback only */
 @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:no-preference){
-  .ghost,button.primary,a.primary,.dchip,.kn,.tick,.chip span,.wu-toggle,.tile,.set-tap,.act-row,.seg-b{transition:background-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease),color var(--fast) var(--ease),transform var(--fast) var(--ease)}
-  .ghost:active:not(:disabled),button.primary:active:not(:disabled),a.primary:active,.dchip:active,.kn:active,.tile:active{transform:scale(.97)}
+  .ghost,button.primary,a.primary,.dchip,.kn,.tick,.chip span,.wu-toggle,.tile,.pref-tap,.act-row,.seg-b,.gbtn{transition:background-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease),color var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  .ghost:active:not(:disabled),button.primary:active:not(:disabled),a.primary:active,.gbtn:active:not(:disabled),.dchip:active,.kn:active,.tile:active{transform:scale(.97)}
   #appView:not([hidden]),#dashView:not([hidden]),#planView:not([hidden]){animation:rise var(--med) var(--ease)}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}

@@ -40,6 +40,11 @@
   --st-awake: #e36f9b;
   --tint: 16%;
   --dim: 0.5;
+  /* Continue with Google: Google's own button colours for each theme */
+  --gbtn-bg: #ffffff;
+  --gbtn-edge: #747775;
+  --gbtn-ink: #1f1f1f;
+  --gbtn-hover: #f8f8f8;
 
   --r-card: 20px;
   --r-ctl: 10px;
@@ -90,6 +95,10 @@
     --st-awake: #d06091;
     --tint: 24%;
     --dim: 0.72;
+    --gbtn-bg: #131314;
+    --gbtn-edge: #8e918f;
+    --gbtn-ink: #e3e3e3;
+    --gbtn-hover: #1f1f20;
   }
 }
 :root[data-theme="dark"] {
@@ -121,4 +130,8 @@
   --st-awake: #d06091;
   --tint: 24%;
   --dim: 0.72;
+  --gbtn-bg: #131314;
+  --gbtn-edge: #8e918f;
+  --gbtn-ink: #e3e3e3;
+  --gbtn-hover: #1f1f20;
 }

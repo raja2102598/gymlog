@@ -2,6 +2,8 @@
 // pinned to Wednesday 23 September 2026. Supabase is mocked inside the browser: every request to the
 // project is answered from an in-memory `db`, so no real data is read or written. Anything else
 // off-site is refused and recorded (the app shouldn't need it).
+import { createHash } from "node:crypto";
+
 export const HOST = "https://dtudesmwddtlcekhqees.supabase.co";
 export const AUTH_KEY = "sb-dtudesmwddtlcekhqees-auth-token";
 export const NOW = new Date("2026-09-23T12:00:00");
@@ -26,8 +28,9 @@ export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@exa
 /**
  * The `logs`, `plans` and `health_days` tables, answered from `db` ({ logs, plan, health, healthAt, failWrites, writes,
  * unexpected }), and Supabase Auth: sign-in links (recorded in `db.otp`, refused with `db.otpError`), passwords
- * (`db.passwords`: { email: password }), password changes (the new one in `db.passwordSet`) and the account's
- * metadata (`db.metadata`).
+ * (`db.passwords`: { email: password }), password changes (the new one in `db.passwordSet`), the account's
+ * metadata (`db.metadata`), and Continue with Google (switched on with `db.google`; Google's page is skipped: the
+ * authorize request goes straight back with a code, or with an error when `db.oauthError`, recorded in `db.oauth`).
  */
 export function mockSupabase(db) {
   db.writes ??= { logs: 0, plans: 0 };
@@ -80,6 +83,26 @@ export function mockSupabase(db) {
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: who.sub, aud: "authenticated", role: "authenticated", email: who.email, app_metadata: {}, user_metadata: db.metadata ?? {}, created_at: "2026-09-01T00:00:00Z" }) });
     }
     if (url.pathname === "/auth/v1/logout" && m === "POST") return route.fulfill({ status: 204, body: "" });
+    if (url.pathname === "/auth/v1/settings" && m === "GET")
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ external: { email: true, google: !!db.google }, disable_signup: false }) });
+    if (url.pathname === "/auth/v1/authorize" && m === "GET") {
+      const q = url.searchParams, back = new URL(q.get("redirect_to"));
+      db.oauth = { provider: q.get("provider"), redirectTo: q.get("redirect_to"), challenge: q.get("code_challenge"), method: q.get("code_challenge_method") };
+      if (db.oauthError) {
+        back.searchParams.set("error", "access_denied");
+        back.searchParams.set("error_description", "The user denied the request");
+      } else back.searchParams.set("code", "google-code");
+      return route.fulfill({ status: 302, headers: { location: back.href } });
+    }
+    if (url.pathname === "/auth/v1/token" && m === "POST" && url.searchParams.get("grant_type") === "pkce") {
+      const { auth_code, code_verifier } = JSON.parse(req.postData());
+      // PKCE: the verifier this page kept must be the one whose hash went to the authorize request.
+      db.pkceOk = auth_code === "google-code" && createHash("sha256").update(code_verifier).digest("base64url") === db.oauth?.challenge;
+      if (!db.pkceOk) return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: 400, error_code: "bad_code_verifier", msg: "code challenge does not match previously saved code verifier" }) });
+      const s = session(db.uid || "00000000-0000-4000-8000-0000000000bb", "2026-09-01T00:00:00Z", "g@example.com", "oauth");
+      s.user.app_metadata = { provider: "google", providers: ["email", "google"] };
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(s) });
+    }
     db.unexpected.push(`${m} ${url.pathname}`);
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   };

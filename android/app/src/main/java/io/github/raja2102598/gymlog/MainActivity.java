@@ -6,8 +6,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // The app's own plugin, for background sync (see GymSyncPlugin); plugins from npm register themselves.
+        // The app's own plugins, for background sync and Continue with Google; plugins from npm register themselves.
         registerPlugin(GymSyncPlugin.class);
+        registerPlugin(GoogleSignInPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
