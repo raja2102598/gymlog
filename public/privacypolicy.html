@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Gym Log and your health data</title>
+    <title>Gym Log and your data</title>
     <style>
       :root { color-scheme: light dark; }
       body { margin: 0 auto; max-width: 42rem; padding: 24px 16px 48px; font: 16px/1.55 system-ui, sans-serif; color: #15171b; background: #eef0f2; }
@@ -14,24 +14,34 @@
     </style>
   </head>
   <body>
-    <h1>Gym Log and your health data</h1>
-    <p>Gym Log is a personal workout log. Its Android app can read data from Health Connect on your phone, only after you allow it there.</p>
+    <h1>Gym Log and your data</h1>
+    <p>Gym Log is a workout log. You sign in to it, log your training, and its Android app can also read data from Health Connect on your phone, only after you allow it there.</p>
 
-    <h2>What it reads</h2>
+    <h2>Signing in</h2>
+    <p>You sign in with your email address (by an emailed link or a password), or with your Google account. With Google, Google shares your email address, name and profile picture with Gym Log’s sign-in service; Gym Log uses only the email address, to know which account is yours.</p>
+
+    <h2>What you log</h2>
+    <p>Your workouts (sets, reps and weights), warm-ups, cardio, steps, body weight, waist, knee pain scores, notes and your plan, as you enter them.</p>
+
+    <h2>What it reads from Health Connect</h2>
     <ul>
-      <li>Steps, distance and active calories</li>
-      <li>Heart rate and resting heart rate</li>
-      <li>Weight</li>
-      <li>Sleep</li>
+      <li>Steps (by the day and by the hour), distance and floors climbed</li>
+      <li>Active, resting and total calories burned, and calories eaten</li>
+      <li>Water</li>
+      <li>Heart rate, resting heart rate and heart rate variability</li>
+      <li>Blood oxygen, breathing rate, VO₂ max and blood pressure</li>
+      <li>Weight, body fat and height</li>
+      <li>Sleep, with its stages and times</li>
       <li>Exercise sessions</li>
     </ul>
-    <p>It never writes to Health Connect.</p>
+    <p>Each is read only if you allow it in Health Connect, and each is shown to you in the app. Gym Log never writes to Health Connect.</p>
+    <p>If you turn on <em>Sync in the background</em>, the app reads the last few days about once an hour while it’s closed, so the numbers stay current. It stops when you turn that off or sign out.</p>
 
-    <h2>What it does with it</h2>
-    <p>It adds the numbers up by day and saves them to the Gym Log database of the account you’re signed in with, so they show in the app on this phone and on the web. Only you can read them: the database lets each account see its own rows and nobody else’s.</p>
-    <p>Nothing is shared with anyone else, sold, or used for advertising.</p>
+    <h2>Where it goes</h2>
+    <p>The app adds the numbers up by day and saves them, with everything you log, to your account in Gym Log’s database (Supabase, in Mumbai, India), so they show in the app and on the website. The connection is encrypted. Only you can read your data: the database lets each account see its own rows and nobody else’s.</p>
+    <p>Nothing is shared with anyone else, sold, or used for advertising, credit, insurance or employment decisions.</p>
 
     <h2>Stopping it</h2>
-    <p>Remove Gym Log’s access in Health Connect at any time. Data already saved stays in your Gym Log account until you delete it there.</p>
+    <p>Turn off <em>Sync in the background</em> in Settings, and remove Gym Log’s access in Health Connect at any time. Data already saved stays in your Gym Log account until you delete it.</p>
   </body>
 </html>

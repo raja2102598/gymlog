@@ -1,5 +1,5 @@
 // Signing in: an emailed link that carries its own flow id, a wait before another, Supabase's hourly email
-// limit, a password instead, and setting or changing a password in Settings.
+// limit, a password instead, setting or changing a password in Settings, and Continue with Google.
 import { flat, open, openTab, ready, session, until } from "./harness.mjs";
 
 export default async function signinSuite({ browser, base, check }) {
@@ -22,10 +22,44 @@ export default async function signinSuite({ browser, base, check }) {
       "says where the link went, and to use the newest email",
       (await flat(page.locator("#loginMsg"))) === "Check t@example.com for a sign-in link and open it on this device. If you ask for another, use the newest email.",
     );
+    check("no Google button while Supabase has Google switched off", (await page.locator("#googleBtn").count()) === 0);
     const btn = await page.$eval("#loginBtn", (b) => ({ disabled: b.disabled, text: b.textContent.replace(/\s+/g, " ") }));
     check("no second link for a minute: a new one would replace the first", btn.disabled && /^Send another link in (59|60) s$/.test(btn.text), JSON.stringify(btn));
     check("only one link was asked for", db.otp.length === 1);
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
+    await ctx.close();
+  }
+
+  // Continue with Google on the website: off to Google (skipped here) and back with a code, exchanged with this
+  // page's PKCE verifier for a session
+  {
+    const db = { logs: {}, plan: null, google: true };
+    const { ctx, page } = await open(browser, base, { auth: null, db });
+    await page.waitForSelector("#googleBtn");
+    check("Continue with Google, above the email ways in", (await flat(page.locator("#googleBtn"))) === "Continue with Google" && (await page.locator("#loginView .or").isVisible()));
+    await page.click("#googleBtn");
+    await ready(page);
+    check(
+      "Google's sign-in comes back to this page with its own flow id",
+      db.oauth?.provider === "google" && db.oauth.redirectTo.startsWith(base + "?sb_flow_id=") && db.oauth.method === "s256",
+      JSON.stringify(db.oauth),
+    );
+    check("the code is exchanged with the verifier this page kept (PKCE)", db.pkceOk === true);
+    check("signed in, and the code is gone from the address", (await page.locator("#appView").isVisible()) && !/code=|sb_flow_id/.test(page.url()), page.url());
+    await openTab(page, "settings");
+    check("Settings says the Google account is linked", /^g@example\.com · Google account linked$/.test(await flat(page.locator("#setAccount .pref-row").first().locator(".sub"))));
+    check("no console errors", page.errors.length === 0, page.errors.join(" | "));
+    await ctx.close();
+  }
+  {
+    const db = { logs: {}, plan: null, google: true, oauthError: true };
+    const { ctx, page } = await open(browser, base, { auth: null, db });
+    await page.waitForSelector("#googleBtn");
+    await page.click("#googleBtn");
+    await page.waitForURL((u) => !u.href.includes("error="), { timeout: 10000 }).catch(() => {});
+    await until(async () => /cancelled/.test(await flat(page.locator("#loginMsg"))));
+    check("Google cancelled: says so, back on the sign-in screen", (await page.locator("#loginView").isVisible()) && (await flat(page.locator("#loginMsg"))) === "Sign-in was cancelled. Try again, or use another way below.");
+    check("and the error is taken out of the address", !/error|sb_flow_id/.test(page.url()), page.url());
     await ctx.close();
   }
 

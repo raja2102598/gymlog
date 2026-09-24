@@ -30,12 +30,20 @@ const gymSync = vi.hoisted(() => ({
 }));
 vi.mock("@capgo/capacitor-health", () => ({ Health: health }));
 vi.mock("@capacitor/app", () => ({ App: app }));
-vi.mock("@capacitor/core", () => ({ registerPlugin: () => gymSync, SystemBars: { setStyle: vi.fn() }, SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" } }));
+// The app's own GoogleSignIn plugin: Android's account sheet, answering with Google's ID token.
+const googleSignIn = vi.hoisted(() => ({ signIn: vi.fn() }));
+vi.mock("@capacitor/core", () => ({
+  registerPlugin: (name: string) => (name === "GoogleSignIn" ? googleSignIn : gymSync),
+  SystemBars: { setStyle: vi.fn() },
+  SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" },
+}));
 
 import { APP_LOGIN_PAGE, NATIVE_SIGN_IN } from "@/lib/native";
 import { GymStore } from "@/lib/store";
 import { connectHealth, healthAccess, READ, syncHealth } from "@/native/health";
+import { signInWithGoogle } from "@/native/google";
 import { checkBackgroundOwner, deviceName, turnOffBackground, turnOnBackground } from "@/native/sync";
+import { createHash } from "node:crypto";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 
 const mid = (m: number, d: number) => new Date(2026, m - 1, d).toISOString();
@@ -384,6 +392,60 @@ describe("background sync", () => {
     s.user = { id: "someone-else" } as GymStore["user"];
     await checkBackgroundOwner(s);
     expect(gymSync.disable).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Continue with Google in the app", () => {
+  /** A signed-out store whose Supabase client records ID-token sign-ins and answers with `error`. */
+  function withIdToken(error: unknown = null) {
+    const s = new GymStore(), calls: unknown[] = [];
+    s.sb = { auth: { signInWithIdToken: async (o: unknown) => (calls.push(o), { error }) } } as unknown as GymStore["sb"];
+    return { s, calls };
+  }
+  beforeEach(() => googleSignIn.signIn.mockReset());
+
+  it("hashes the nonce for Google, and gives Supabase the nonce itself with Google's token", async () => {
+    const { s, calls } = withIdToken();
+    googleSignIn.signIn.mockResolvedValue({ idToken: "google-id-token", email: "g@example.com" });
+    expect(await signInWithGoogle(s)).toBe("");
+    const asked = googleSignIn.signIn.mock.calls[0][0] as { webClientId: string; nonce: string };
+    const sent = calls[0] as { provider: string; token: string; nonce: string };
+    expect(sent.provider).toBe("google");
+    expect(sent.token).toBe("google-id-token");
+    expect(sent.nonce).toMatch(/^[0-9a-f]{64}$/);
+    expect(asked.nonce).toBe(createHash("sha256").update(sent.nonce).digest("hex"));
+    // A new nonce each time.
+    await signInWithGoogle(s);
+    expect((calls[1] as { nonce: string }).nonce).not.toBe(sent.nonce);
+  });
+
+  it("says nothing when you cancel, and what to do with no Google account on the phone", async () => {
+    const { s, calls } = withIdToken();
+    googleSignIn.signIn.mockRejectedValueOnce(Object.assign(new Error("Cancelled"), { code: "cancelled" }));
+    expect(await signInWithGoogle(s)).toBe("");
+    googleSignIn.signIn.mockRejectedValueOnce(Object.assign(new Error("No Google account on this phone"), { code: "no_account" }));
+    expect(await signInWithGoogle(s)).toBe("There’s no Google account on this phone. Add one in the phone’s Settings → Accounts, or sign in with your email.");
+    googleSignIn.signIn.mockRejectedValueOnce(Object.assign(new Error("Network error."), { code: "failed" }));
+    expect(await signInWithGoogle(s)).toBe("Couldn’t sign in with Google: Network error. Try again, or sign in with your email.");
+    expect(calls).toEqual([]);
+  });
+
+  it("explains when Supabase refuses the token", async () => {
+    googleSignIn.signIn.mockResolvedValue({ idToken: "t", email: "g@example.com" });
+    const off = withIdToken(Object.assign(new Error("Provider (issuer \"https://accounts.google.com\") is not enabled"), { code: "provider_disabled" }));
+    expect(await signInWithGoogle(off.s)).toBe("Google sign-in isn’t switched on yet. Sign in with your email for now.");
+    const bad = withIdToken(Object.assign(new Error("Nonces mismatch."), { code: "bad_oauth_callback" }));
+    expect(await signInWithGoogle(bad.s)).toBe("Couldn’t sign in with Google: Nonces mismatch. Try again, or sign in with your email.");
+  });
+});
+
+describe("Continue with Google on the website", () => {
+  it("goes to Google's page and back to this page", async () => {
+    vi.stubGlobal("location", { origin: "https://gym-log-omega-seven.vercel.app", pathname: "/" });
+    const s = new GymStore(), calls: unknown[] = [];
+    s.sb = { auth: { signInWithOAuth: async (o: unknown) => (calls.push(o), { error: null }) } } as unknown as GymStore["sb"];
+    expect(await s.signInWithGoogle()).toBe("");
+    expect(calls).toEqual([{ provider: "google", options: { redirectTo: "https://gym-log-omega-seven.vercel.app/" } }]);
   });
 });
 

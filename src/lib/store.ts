@@ -9,7 +9,7 @@ import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { DEFAULT_PLAN, normalizePlan } from "./plan";
 import { canon } from "./health";
 import * as S from "./stats";
-import { APP_LOGIN_PAGE, isNative } from "./native";
+import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
 import { EXTRA_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
@@ -64,6 +64,20 @@ function linkTrouble(e: { message: string; code?: string }): string {
   return `That sign-in link didn’t work (${e.message.replace(/\.$/, "")}). Send a new one from this app, and open it on this phone.`;
 }
 
+/** Why Continue with Google didn't work, and what to do instead. */
+function googleTrouble(e: { message: string; code?: string }): string {
+  if (e.code === "provider_disabled" || /not enabled/i.test(e.message)) return "Google sign-in isn’t switched on yet. Sign in with your email for now.";
+  return `Couldn’t sign in with Google: ${e.message.replace(/\.$/, "")}. Try again, or sign in with your email.`;
+}
+
+/** A sign-in that came back to this page with an error instead of a code (Google cancelled, a link expired, …). */
+function returnedTrouble(q: URLSearchParams): string {
+  const code = q.get("error_code") ?? undefined, desc = q.get("error_description") || q.get("error") || "";
+  if (code === "otp_expired") return linkTrouble({ message: desc, code });
+  if (q.get("error") === "access_denied") return "Sign-in was cancelled. Try again, or use another way below.";
+  return `That sign-in didn’t work (${desc.replace(/\.$/, "")}). Try again.`;
+}
+
 /** How a session signed in ("password", "otp", …), from its access token's amr claim. */
 export function signInMethods(accessToken: string): string[] {
   try {
@@ -89,6 +103,8 @@ export class GymStore {
   user: User | null = null;
   /** The account has a password: one was set here (flagged in its metadata), or this session signed in with it. */
   hasPassword = false;
+  /** Continue with Google is set up (Supabase has it on and, in the Android app, the client ID is set). */
+  googleSignIn = false;
   auth: AuthState = "starting";
   status = "";
   planMsg = "Changes save as you type.";
@@ -148,6 +164,7 @@ export class GymStore {
       this.changed();
       return;
     }
+    this.readReturnedError();
     const sb = (this.sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       // Each emailed link carries the id of its own request (sb_flow_id), so asking for a second link, or one
       // that fails, can't leave the first without the key it needs. The redirect URLs allow the extra parameter.
@@ -164,6 +181,7 @@ export class GymStore {
       } else if (!this.user) {
         this.auth = "signedOut";
         this.changed();
+        void this.loadSignInOptions();
       }
     });
     // Keep in sync when the app comes back to the foreground or the phone reconnects.
@@ -187,6 +205,33 @@ export class GymStore {
   }
 
   /* ---------- auth ---------- */
+  /** On the website, a sign-in (Google, an email link) can come back with an error in the address instead of a code:
+   *  say why on the sign-in screen, and take it out of the address. */
+  private readReturnedError() {
+    if (isNative()) return;
+    const u = new URL(location.href), q = u.searchParams, h = new URLSearchParams(u.hash.slice(1));
+    const from = q.has("error_description") || q.has("error") ? q : h.has("error_description") || h.has("error") ? h : null;
+    if (!from || from.has("code")) return;
+    this.authMsg = returnedTrouble(from);
+    for (const k of ["error", "error_code", "error_description", "sb_flow_id"]) q.delete(k);
+    const rest = q.toString();
+    history.replaceState(history.state, "", u.pathname + (rest ? `?${rest}` : "") + (from === h ? "" : u.hash));
+  }
+
+  /** Whether to offer Continue with Google: Supabase says which ways in are switched on. Asked on the sign-in screen. */
+  private async loadSignInOptions() {
+    if (!this.sb || (isNative() && !GOOGLE_WEB_CLIENT_ID)) return;
+    try {
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } });
+      const on = r.ok && (await r.json()).external?.google === true;
+      if (on === this.googleSignIn) return;
+      this.googleSignIn = on;
+      this.changed();
+    } catch {
+      /* offline: no Google button until next time */
+    }
+  }
+
   /** Settings offers "Change password" once the account has one. A sign-in with the password proves it; the flag
    *  in the account's metadata remembers it for sign-ins with a link. Returns whether it just became known. */
   private notePassword(session: Session): boolean {
@@ -227,6 +272,7 @@ export class GymStore {
   }
 
   private onSignedOut() {
+    void this.loadSignInOptions();
     this.user = null;
     this.hasPassword = false;
     this.logs = {};
@@ -271,6 +317,22 @@ export class GymStore {
       this.authMsg = linkTrouble(error);
       this.changed();
     }
+  }
+
+  /** Continue with Google on the website: off to Google's page, and back here signed in (as with an email link, the
+   *  code in the address is exchanged for a session). Returns what to show if it can't start. */
+  async signInWithGoogle(): Promise<string> {
+    this.authMsg = "";
+    const { error } = await this.sb!.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
+    return error ? googleTrouble(error) : "";
+  }
+
+  /** Finishes Continue with Google in the Android app, with the ID token from the phone's account sheet and the nonce
+   *  its hash was made from. Returns what to show; empty once signed in. */
+  async signInWithIdToken(token: string, nonce: string): Promise<string> {
+    this.authMsg = "";
+    const { error } = await this.sb!.auth.signInWithIdToken({ provider: "google", token, nonce });
+    return error ? googleTrouble(error) : "";
   }
 
   /** Signs in with a password set in Settings. Returns what to show; empty once signed in. */
