@@ -28,7 +28,7 @@ A [Next.js](https://nextjs.org) app (App Router, TypeScript) exported as a stati
 | `src/styles/` | The look: colours and type (`tokens.css`), shared controls, then one file per screen |
 | `src/fonts/` | Oswald and IBM Plex (SIL Open Font License), served from the site so they work offline |
 | `src/service-worker.js`, `scripts/build-sw.mjs` | Offline support: after each build the script writes `out/sw.js`, which keeps every file of the site on the phone |
-| `public/` | `manifest.webmanifest` and icons, for "Add to Home screen"; `privacypolicy.html`, which Health Connect shows when you give the Android app access |
+| `public/` | `manifest.webmanifest` and icons, for "Add to Home screen"; `privacypolicy.html`, which Health Connect shows when you give the Android app access; `app-login.html`, where sign-in links asked for in the Android app land before opening the app |
 | `supabase/schema.sql` | The database tables (`logs`, `plans`, `health_days`) and their security rules. Safe to re-run. |
 | `android/`, `capacitor.config.ts` | The Android app ([Capacitor](https://capacitorjs.com)): the site in a native shell, with the Health Connect permissions it asks for |
 | `.github/workflows/android.yml` | Builds the Android app for every pull request and push to `main`, and publishes it from `main` |
@@ -56,17 +56,17 @@ The development server uses the same Supabase project as the live app. Sign-in l
 
 - **Code:** private GitHub repo `raja2102598/gymlog`.
 - **Hosting:** Vercel project `gym-log`. `vercel.json` has the settings: it runs `npm ci` and `npm run build` and serves `out/`, and it tells browsers they can keep the fingerprinted files in `/_next/static` for good. Every push to `main` deploys to the live app; other branches get preview deployments that need a Vercel login to open.
-- **Database and sign-in:** Supabase project **Personal** (ap-south-1). Tables `logs` (one row per day), `plans` (your edited plan) and `health_days` (Health Connect's numbers, one row per day, written by the Android app) use row-level security, so each account sees only its own rows. Authentication → URL Configuration has the live app as the Site URL, and two redirect URLs: `https://gym-log-omega-seven.vercel.app/**` for the site and `io.github.raja2102598.gymlog://login` for the Android app.
+- **Database and sign-in:** Supabase project **Personal** (ap-south-1). Tables `logs` (one row per day), `plans` (your edited plan) and `health_days` (Health Connect's numbers, one row per day, written by the Android app) use row-level security, so each account sees only its own rows. Authentication → URL Configuration has the live app as the Site URL and `https://gym-log-omega-seven.vercel.app/**` as a redirect URL. That entry also covers `app-login.html`, where the Android app's sign-in links land, and the `sb_flow_id` each link carries. (`io.github.raja2102598.gymlog://login` is listed too; only version 1.0.1 of the app used it.)
 - **Android app:** GitHub Actions (`.github/workflows/android.yml`) builds it. Its signing key is in two repository secrets, `GYMLOG_KEYSTORE_BASE64` and `GYMLOG_KEYSTORE_PASSWORD` (see [Updates](#updates-and-the-signing-key)).
 
 ### Setting it up again from scratch
 1. In a Supabase project, run `supabase/schema.sql` (SQL Editor → New query → paste → Run), then put the project URL and publishable key in `src/lib/config.ts`.
 2. On Vercel: Add New → Project → import the repo. `vercel.json` sets the build, so the defaults are fine.
-3. In Supabase → Authentication → URL Configuration, set the Site URL to the new site address and add the same address followed by `/**` as a redirect URL. For the Android app, add `io.github.raja2102598.gymlog://login` too.
+3. In Supabase → Authentication → URL Configuration, set the Site URL to the new site address and add the same address followed by `/**` as a redirect URL. For the Android app, point `APP_LOGIN_PAGE` in `src/lib/native.ts` at the new address's `app-login.html`.
 
 
 ## Install on your phone
-1. Open the live app in Chrome on your phone and sign in with your email. Tap the link in the email **on the same phone**.
+1. Open the live app in Chrome on your phone and sign in with your email. Tap the link in the email **on the same phone**. Or, once you've set a password (**Menu → Set a password**), tap **Use a password instead**.
 2. Chrome menu **⋮ → Add to Home screen → Install**. It then opens like a normal app.
 
 
@@ -102,7 +102,7 @@ The Android app is the same Gym Log, installed from a file instead of Chrome, an
 ### Install
 1. On the phone, sign in to GitHub in Chrome (the repo is private), open the repo's **Releases** and the latest **Gym Log for Android**, and download `gym-log.apk`.
 2. Open the downloaded file. Android asks once to allow installs from Chrome (or your Files app): allow it, go back and tap **Install**. Google Play Protect may say it doesn't know the developer: tap **More details → Install anyway**.
-3. Open Gym Log, enter your email and tap the link in the email **on the same phone**. It opens the app, signed in. (The sign-in link only comes back to the app if Supabase lists `io.github.raja2102598.gymlog://login` as a redirect URL; see [How it's set up](#how-its-set-up).)
+3. Sign in. Easiest is a password: set one on the website first (**Menu → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
 4. **Menu → Connect Health Connect**, then allow what Gym Log asks for, including past data. The first sync reads back to when your log started (30 to 90 days).
 
 After that it syncs the last 10 days (other apps' data can arrive late) each time you open the app or come back to it, at most every 5 minutes, and **Menu → Sync now** syncs straight away. The menu says when it last synced and what changed.
@@ -135,6 +135,7 @@ Or open `android/` in Android Studio and press Run with the phone plugged in. Fo
 
 
 ## Notes
+- Supabase's built-in email service sends only a few sign-in emails an hour for the whole project (about 2). If you hit the limit, the sign-in screen says so: wait an hour, or sign in with your password. The Send button also waits a minute after each link, since a new link replaces the last one.
 - Your history follows each lift by name. Renaming a lift in the plan starts a fresh history for it; days you've already logged keep what you logged.
 - Supabase's free plan pauses a project after about a week with no activity. Logging every day keeps it awake. If it does pause, click **Restore** in the Supabase dashboard; no data is lost.
 - The installed app loads its files from the phone's cache first, so it opens straight away even on weak signal. Each build gives `sw.js` a new version (a fingerprint of the site's files), so there's nothing to bump by hand: installed copies download the new files in the background and use them from the next launch.

@@ -22,7 +22,11 @@ export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@exa
   };
 }
 
-/** The `logs`, `plans` and `health_days` tables, answered from `db` ({ logs, plan, health, healthAt, failWrites, writes, unexpected }). */
+/**
+ * The `logs`, `plans` and `health_days` tables, answered from `db` ({ logs, plan, health, healthAt, failWrites, writes,
+ * unexpected }), and Supabase Auth: sign-in links (recorded in `db.otp`, refused with `db.otpError`), passwords
+ * (`db.passwords`: { email: password }) and password changes (the new one in `db.passwordSet`).
+ */
 export function mockSupabase(db) {
   db.writes ??= { logs: 0, plans: 0 };
   db.unexpected ??= [];
@@ -55,6 +59,23 @@ export function mockSupabase(db) {
         return route.fulfill({ status: 201, body: "" });
       }
     }
+    if (url.pathname === "/auth/v1/otp" && m === "POST") {
+      (db.otp ??= []).push({ body: JSON.parse(req.postData()), redirect: url.searchParams.get("redirect_to") });
+      if (db.otpError) return route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify(db.otpError) });
+      return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    }
+    if (url.pathname === "/auth/v1/token" && m === "POST" && url.searchParams.get("grant_type") === "password") {
+      const { email, password } = JSON.parse(req.postData());
+      if (db.passwords?.[email] !== password)
+        return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" }) });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session(db.uid || "00000000-0000-4000-8000-0000000000aa", "2026-09-01T00:00:00Z", email)) });
+    }
+    if (url.pathname === "/auth/v1/user" && m === "PUT") {
+      db.passwordSet = JSON.parse(req.postData()).password;
+      const who = JSON.parse(Buffer.from(req.headers()["authorization"].split(".")[1], "base64url").toString());
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: who.sub, aud: "authenticated", role: "authenticated", email: who.email, app_metadata: {}, user_metadata: {}, created_at: "2026-09-01T00:00:00Z" }) });
+    }
+    if (url.pathname === "/auth/v1/logout" && m === "POST") return route.fulfill({ status: 204, body: "" });
     db.unexpected.push(`${m} ${url.pathname}`);
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   };

@@ -7,7 +7,7 @@ import { chromium } from "playwright-core";
 import { serve } from "../../scripts/serve.mjs";
 import { checker } from "./harness.mjs";
 
-const SUITES = ["today", "dashboard", "layout", "pace", "offline", "guidelines", "health"];
+const SUITES = ["today", "dashboard", "layout", "pace", "offline", "guidelines", "health", "signin"];
 const only = process.argv.slice(2).filter((a) => !a.startsWith("-"));
 const OUT = path.resolve("out");
 if (!fs.existsSync(path.join(OUT, "sw.js"))) {
