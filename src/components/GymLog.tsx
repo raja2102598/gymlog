@@ -114,12 +114,13 @@ export default function GymLog() {
   // its files on the phone already.
   useEffect(() => {
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator) || isNative()) return;
-    // A new sw.js installs and takes over in the background (it calls skipWaiting and clients.claim); if this tab
-    // already had a controller when it loaded, that's a swap under it, not the first install, so only a reload
-    // runs the new code.
-    const hadController = !!navigator.serviceWorker.controller;
+    // A new sw.js installs and takes over in the background (it calls skipWaiting and clients.claim). A tab's first
+    // controller is the first install, not a new version; every change after that is a swap under this tab's code,
+    // so only a reload runs the new code. That holds for a first visit left open until the next deploy too.
+    let controlled = !!navigator.serviceWorker.controller;
     const onControllerChange = () => {
-      if (hadController) setSwUpdated(true);
+      if (controlled) setSwUpdated(true);
+      controlled = true;
     };
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
     const register = () => void navigator.serviceWorker.register("/sw.js").catch(() => {});
