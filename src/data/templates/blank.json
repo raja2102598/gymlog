@@ -1,0 +1,93 @@
+{
+  "tempo": "",
+  "stepGoal": 10000,
+  "sleepGoalH": 7,
+  "exerciseGoalMin": 30,
+  "activeGoalKcal": 500,
+  "waterGoalMl": 2500,
+  "goalWeight": null,
+  "weeklyRatePct": null,
+  "kneeLimit": 5,
+  "warmups": [
+    "Treadmill walk 5 min",
+    "Cycling 5 min",
+    "Arm circles",
+    "Band pull-aparts",
+    "Leg swings",
+    "Hip circles",
+    "Bodyweight squats",
+    "Light warm-up sets"
+  ],
+  "days": [
+    {
+      "weekday": "Mon",
+      "name": "Rest",
+      "focus": "",
+      "exercises": [],
+      "cardio": {
+        "name": "",
+        "detail": ""
+      }
+    },
+    {
+      "weekday": "Tue",
+      "name": "Rest",
+      "focus": "",
+      "exercises": [],
+      "cardio": {
+        "name": "",
+        "detail": ""
+      }
+    },
+    {
+      "weekday": "Wed",
+      "name": "Rest",
+      "focus": "",
+      "exercises": [],
+      "cardio": {
+        "name": "",
+        "detail": ""
+      }
+    },
+    {
+      "weekday": "Thu",
+      "name": "Rest",
+      "focus": "",
+      "exercises": [],
+      "cardio": {
+        "name": "",
+        "detail": ""
+      }
+    },
+    {
+      "weekday": "Fri",
+      "name": "Rest",
+      "focus": "",
+      "exercises": [],
+      "cardio": {
+        "name": "",
+        "detail": ""
+      }
+    },
+    {
+      "weekday": "Sat",
+      "name": "Rest",
+      "focus": "",
+      "exercises": [],
+      "cardio": {
+        "name": "",
+        "detail": ""
+      }
+    },
+    {
+      "weekday": "Sun",
+      "name": "Rest",
+      "focus": "",
+      "exercises": [],
+      "cardio": {
+        "name": "",
+        "detail": ""
+      }
+    }
+  ]
+}

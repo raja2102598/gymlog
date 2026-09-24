@@ -1,7 +1,7 @@
 // Health Connect data as the website shows it, once the Android app has synced it to health_days:
 // steps and weight fill in until you type your own, the day's sleep, heart and workouts, the Health tab and its
 // pages, and the flags in Progress.
-import { K, flat, open, openTab, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
 function data() {
   const logs = {}, health = {};
@@ -136,7 +136,8 @@ export default async function healthSuite({ browser, base, check }) {
 
   // No Health Connect data at all: Health and Settings say where it would come from
   {
-    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: null } });
+    // Nothing logged, but a saved plan: an existing account, so Today rather than the plan picker.
+    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: savedPlan() } });
     await ready(page);
     await openTab(page, "health");
     check("Health with no data: points to the Android app", /It comes from Health Connect, through the Gym Log Android app/.test(await flat(page.locator("#healthEmpty"))));

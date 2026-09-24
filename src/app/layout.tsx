@@ -15,7 +15,7 @@ import "@/styles/settings.css";
 
 export const metadata: Metadata = {
   title: "Gym Log",
-  description: "Daily tracker for a 5-day gym split, cardio, steps and body weight.",
+  description: "Daily tracker for your gym plan, cardio, steps and body weight.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: { url: "/icons/icon-192.png", type: "image/png" },

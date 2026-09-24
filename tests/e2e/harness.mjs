@@ -26,6 +26,10 @@ export const NOW = new Date("2026-09-23T12:00:00");
 /** Day n counted from Wednesday 26 August 2026 (n = 28 is today). */
 export const K = (n) => new Date(Date.UTC(2026, 7, 26 + n)).toISOString().slice(0, 10);
 
+/** The default plan (src/data/plan.json), as `db.plan` for an account that has saved its plan. With nothing logged and
+ *  no plan saved, an account is new and chooses a plan before Today (firstrun.e2e.mjs). */
+export const savedPlan = () => JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
+
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 /** A signed-in Supabase session for a made-up user, signed in with an emailed link ("otp") or a password. */
 export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@example.com", method = "otp") {

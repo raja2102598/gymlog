@@ -1,11 +1,12 @@
 "use client";
-import type { InputHTMLAttributes } from "react";
+import { useState, type InputHTMLAttributes } from "react";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
 import type { Plan, PlanExercise } from "@/lib/types";
+import { TemplateList } from "./TemplateList";
 
 type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step";
 
@@ -21,6 +22,7 @@ interface Props {
 export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   const store = useGym();
   const focusNext = useFocusNext();
+  const [templates, setTemplates] = useState(false);
   const plan = store.plan, d = plan.days[editDay], last = d.exercises.length - 1, wd = DOW[editDay];
   const edit = (fn: (p: Plan) => void, shape = false) => store.editPlan(fn, shape);
   const setLift = (j: number, f: LiftText, v: string) =>
@@ -324,6 +326,9 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           Your history follows each lift by its name, so renaming a lift starts a fresh history for it. Days you’ve already logged keep what you logged.
         </p>
         <div className="pe-btns">
+          <button className="ghost" id="pe_tpl" aria-expanded={templates} aria-controls="peTemplates" onClick={() => setTemplates(!templates)}>
+            Start from a template
+          </button>
           <button
             className="ghost danger"
             id="pe_reset"
@@ -334,6 +339,15 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
             Reset to the default plan
           </button>
         </div>
+        <TemplateList
+          id="peTemplates"
+          hidden={!templates}
+          onPick={(t) => {
+            if (!confirm(`Replace your sessions, lifts, warm-ups and tempo with “${t.name}”? Your goals and the days you’ve already logged are kept.`)) return;
+            setTemplates(false);
+            store.startFrom(t.plan);
+          }}
+        />
       </section>
     </>
   );

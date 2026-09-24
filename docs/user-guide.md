@@ -12,6 +12,10 @@ Gym Log opens on today and works like a phone app: four tabs along the bottom, *
 
 **Continue with Google**, or your email. With email, tap the link in the email **on the same phone**, or, once you've set a password (**Settings → Set a password**), tap **Use a password instead**. A Google account with the same email as an account made with an email link is the same account, with the same data.
 
+### First run
+
+A new account starts by choosing a plan: a **Blank plan** (seven rest days to fill with your own sessions), **Full body, 3 days**, **Upper and lower, 4 days**, or the **Five-day split**. It's saved as your plan and synced, and everything in it can be changed later in **Settings → Edit plan**. Only the five-day split marks lifts as knee-sensitive; with the others, knee tracking stays off until you mark a lift in the plan. An account that already has logged days skips this step and keeps its plan.
+
 ## Today
 
 - The app opens on today. Tap a day in the week strip to look at or fill in another day. A day is green when every lift is done, pale green with a green edge when some are, and has an orange edge when a workout day was missed.
@@ -52,7 +56,7 @@ Weight trend and weekly rate, with a goal date and your pace against the target 
 
 ## Settings
 
-- **Edit plan:** change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Each lift can have its own weight step and be marked knee-sensitive; the plan also holds your goal weight, target loss a week (% of body weight) and knee pain limit. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back the plan the app ships with.
+- **Edit plan:** change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Each lift can have its own weight step and be marked knee-sensitive; the plan also holds your goal weight, target loss a week (% of body weight) and knee pain limit. Changes save as you type and sync to your other devices. *Start from a template* swaps in the sessions, lifts, warm-ups and tempo of one of the first-run plans and keeps your goals; *Reset to the default plan* brings back the five-day split the app ships with, goals included.
 - **Daily goals:** steps, sleep, exercise minutes, active calories, water. The Health tab's rings and charts use them.
 - **Theme:** the phone's, or always light or dark.
 - **Password:** sign in without waiting for an email. Once the account has a password, it offers **Change password** instead.

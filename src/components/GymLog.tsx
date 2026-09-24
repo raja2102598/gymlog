@@ -17,6 +17,7 @@ import { PlanEditor } from "./plan/PlanEditor";
 import { SettingsView } from "./settings/SettingsView";
 import { AppBar } from "./shell/AppBar";
 import { BootView } from "./shell/BootView";
+import { ChoosePlanView } from "./shell/ChoosePlanView";
 import { LoginView } from "./shell/LoginView";
 import { SetupView } from "./shell/SetupView";
 import { SyncBar } from "./shell/SyncBar";
@@ -201,7 +202,10 @@ export default function GymLog() {
     if (focus) focusNext(focus, true);
   };
 
-  const screen = store.auth === "starting" ? "boot" : store.auth === "setup" ? "setup" : store.auth === "signedOut" ? "login" : "app";
+  // A new account chooses a plan before Today; until the first load says whether it's new, the loading placeholder.
+  const step = store.planStep();
+  const screen =
+    store.auth === "starting" || step === "wait" ? "boot" : store.auth === "setup" ? "setup" : store.auth === "signedOut" ? "login" : step === "choose" ? "choose" : "app";
   const inApp = screen === "app";
   const sub = depthOf(route) === 2;
   const title =
@@ -241,7 +245,7 @@ export default function GymLog() {
           <div className="appbar-t">
             <h1 translate="no">Gym Log</h1>
             <p className="sub" id="tagline">
-              5-day split + cardio + 10,000 steps.
+              Lifts + cardio + 10,000 steps.
             </p>
           </div>
           <div className="status" id="status" aria-live="polite">
@@ -255,6 +259,13 @@ export default function GymLog() {
         <BootView hidden={screen !== "boot"} />
         <SetupView hidden={screen !== "setup"} />
         <LoginView hidden={screen !== "login"} />
+        <ChoosePlanView
+          hidden={screen !== "choose"}
+          onChosen={() => {
+            navigate(TODAY);
+            window.scrollTo(0, 0);
+          }}
+        />
 
         <div id="appView" hidden={!inApp || route.view !== "today"}>
           {inApp ? (

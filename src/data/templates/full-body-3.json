@@ -1,0 +1,231 @@
+{
+  "tempo": "",
+  "stepGoal": 10000,
+  "sleepGoalH": 7,
+  "exerciseGoalMin": 30,
+  "activeGoalKcal": 500,
+  "waterGoalMl": 2500,
+  "goalWeight": null,
+  "weeklyRatePct": null,
+  "kneeLimit": 5,
+  "warmups": [
+    "Treadmill walk 5 min",
+    "Cycling 5 min",
+    "Arm circles",
+    "Band pull-aparts",
+    "Leg swings",
+    "Hip circles",
+    "Bodyweight squats",
+    "Light warm-up sets"
+  ],
+  "days": [
+    {
+      "weekday": "Mon",
+      "name": "Full body A",
+      "focus": "Legs / Chest / Back",
+      "exercises": [
+        {
+          "name": "Goblet Squat",
+          "sets": "3",
+          "reps": "8-12",
+          "cue": "Hold a dumbbell at your chest, sit down between your heels, stand up through your whole foot.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Flat DB Press",
+          "sets": "3",
+          "reps": "8-12",
+          "cue": "Shoulder blades back, lower to chest level, press up evenly.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Lat Pulldown",
+          "sets": "3",
+          "reps": "10-12",
+          "cue": "Pull the bar to your upper chest, elbows down to your sides, no swinging.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Romanian Deadlift",
+          "sets": "3",
+          "reps": "8-10",
+          "cue": "Weights close to your legs, push your hips back with a flat back, then stand tall.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Dumbbell Curls",
+          "sets": "3",
+          "reps": "10-12",
+          "cue": "Elbows by your sides, curl up slowly, lower all the way.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        }
+      ],
+      "cardio": {
+        "name": "Easy cardio - 10 min",
+        "detail": "Bike, cross-trainer or incline walk, at a pace where you can still talk."
+      }
+    },
+    {
+      "weekday": "Tue",
+      "name": "Rest",
+      "focus": "Recovery",
+      "exercises": [],
+      "cardio": {
+        "name": "Walk",
+        "detail": "No gym today. An easy walk toward your step goal, and light stretching if you feel stiff."
+      }
+    },
+    {
+      "weekday": "Wed",
+      "name": "Full body B",
+      "focus": "Legs / Shoulders / Back",
+      "exercises": [
+        {
+          "name": "Leg Press",
+          "sets": "3",
+          "reps": "10-12",
+          "cue": "Feet shoulder-width on the platform, lower under control, stop short of locking out.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Machine Shoulder Press",
+          "sets": "3",
+          "reps": "8-12",
+          "cue": "Core braced, lower to chin height, press up without arching your back.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Seated Row",
+          "sets": "3",
+          "reps": "10-12",
+          "cue": "Sit tall, pull the handle to your stomach, squeeze your shoulder blades together.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Hamstring Curl",
+          "sets": "3",
+          "reps": "10-12",
+          "cue": "Hips down on the pad, curl smoothly, lower slowly.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Cable Triceps Pushdown",
+          "sets": "3",
+          "reps": "12-15",
+          "cue": "Elbows at your sides, push down to straight arms, control the way back.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        }
+      ],
+      "cardio": {
+        "name": "Easy cardio - 10 min",
+        "detail": "Bike, cross-trainer or incline walk, at a pace where you can still talk."
+      }
+    },
+    {
+      "weekday": "Thu",
+      "name": "Rest",
+      "focus": "Recovery",
+      "exercises": [],
+      "cardio": {
+        "name": "Walk",
+        "detail": "No gym today. An easy walk toward your step goal, and light stretching if you feel stiff."
+      }
+    },
+    {
+      "weekday": "Fri",
+      "name": "Full body C",
+      "focus": "Glutes / Chest / Back",
+      "exercises": [
+        {
+          "name": "Hip Thrust",
+          "sets": "3",
+          "reps": "8-12",
+          "cue": "Upper back on a bench, drive through your heels, squeeze your glutes at the top.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Chest Press Machine",
+          "sets": "3",
+          "reps": "10-12",
+          "cue": "Handles at chest height, press out smoothly, slow on the way back.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Chest-Supported Row",
+          "sets": "3",
+          "reps": "10-12",
+          "cue": "Chest on the pad, pull your elbows back, squeeze your shoulder blades.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "Leg Extension",
+          "sets": "3",
+          "reps": "12-15",
+          "cue": "Sit back in the seat, straighten your legs smoothly, lower slowly.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        },
+        {
+          "name": "DB Lateral Raises",
+          "sets": "3",
+          "reps": "12-15",
+          "cue": "Lead with your elbows, lift to shoulder height, lower slowly.",
+          "flag": "",
+          "step": "",
+          "knee": false
+        }
+      ],
+      "cardio": {
+        "name": "Easy cardio - 10 min",
+        "detail": "Bike, cross-trainer or incline walk, at a pace where you can still talk."
+      }
+    },
+    {
+      "weekday": "Sat",
+      "name": "Rest",
+      "focus": "Recovery",
+      "exercises": [],
+      "cardio": {
+        "name": "Walk",
+        "detail": "No gym today. An easy walk toward your step goal, and light stretching if you feel stiff."
+      }
+    },
+    {
+      "weekday": "Sun",
+      "name": "Rest",
+      "focus": "Recovery",
+      "exercises": [],
+      "cardio": {
+        "name": "Walk",
+        "detail": "No gym today. An easy walk toward your step goal, and light stretching if you feel stiff."
+      }
+    }
+  ]
+}
