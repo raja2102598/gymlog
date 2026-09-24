@@ -1,5 +1,6 @@
 # The Android app (android/, built with Capacitor around the same static site): builds the APK for every
-# pull request and push to main, and on main publishes it as the "android-latest" release.
+# pull request and push to main, and on main publishes it as the "android-latest" release. A pushed tag such as
+# v1.2.0 also builds, and publishes a permanent release for that tag.
 #
 # Signing: with the GYMLOG_KEYSTORE_BASE64 and GYMLOG_KEYSTORE_PASSWORD repository secrets, the APK is signed
 # with the app's own key, so each one installs over the last. Without them it's signed with a throwaway debug
@@ -9,6 +10,7 @@ name: Android app
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -84,6 +86,8 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.GYMLOG_KEYSTORE_BASE64 }}
           GYMLOG_KEYSTORE_PASSWORD: ${{ secrets.GYMLOG_KEYSTORE_PASSWORD }}
         run: |
+          # A tag such as v1.2.0 names the build 1.2.0; anything else is 1.0.<run number>.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export GYMLOG_VERSION_NAME="${GITHUB_REF_NAME#v}"; fi
           if [ -n "$KEYSTORE_BASE64" ]; then
             trap 'rm -f "$RUNNER_TEMP/gymlog.p12"' EXIT
             printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gymlog.p12"
@@ -103,7 +107,7 @@ jobs:
           fi
           ./gradlew testReleaseUnitTest assembleRelease --no-daemon --console=plain
           mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/gym-log.apk"
-          echo "version=1.0.$GYMLOG_VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "version=${GYMLOG_VERSION_NAME:-1.0.$GYMLOG_VERSION_CODE}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: gym-log-apk
@@ -132,3 +136,31 @@ jobs:
           gh release create android-latest gym-log.apk --target "$GITHUB_SHA" --latest \
             --title "Gym Log for Android $VERSION" \
             --notes "Open this page on your phone, download gym-log.apk and open it to install or update. Built from $GITHUB_SHA."
+
+  # A tag's release stays, unlike android-latest, so a build people installed can always be found again. It isn't
+  # marked Latest: android-latest stays the newest build.
+  release-tag:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.signed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: gym-log-apk
+      - name: Publish a release for the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" gym-log.apk --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" gym-log.apk --verify-tag --latest=false \
+              --title "Gym Log for Android $VERSION" \
+              --notes "Open this page on your phone, download gym-log.apk and open it to install or update. Built from $GITHUB_SHA. The build's summary lists the signing certificate's fingerprints: $RUN_URL"
+          fi
