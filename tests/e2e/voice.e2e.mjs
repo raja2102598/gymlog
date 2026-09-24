@@ -236,6 +236,16 @@ export default async function voice({ browser, base, check }) {
   await tap(le, /set.2/);
   const e2 = await rowOf(le, 1);
   check("reps alone take the weight carried over from the set before, as typing reps does", (await heard(le.locator(".said"))) === `Heard “8 reps”: set${NB}2, 8${NB}×${NB}45${NB}kg.` && e2.reps === "8" && e2.kg === "45", JSON.stringify([await heard(le.locator(".said")), e2]));
+  // Set 3 of 3 ticks the lift off, as typing it would; "undo" takes the set and the tick back.
+  const leTicked = async () => (await le.locator("input.tick").isChecked()) && db.logs[TODAY]?.exercises["Leg Extension"]?.done === true;
+  await say("8 reps");
+  await tap(le, /set.3/);
+  await until(leTicked);
+  check("the last planned set ticks the lift off", await leTicked());
+  await say("undo");
+  await tap(le, /set.3 cleared/);
+  await until(async () => db.logs[TODAY]?.exercises["Leg Extension"]?.done === false);
+  check("“undo” of that set takes the tick back too", !(await le.locator("input.tick").isChecked()) && db.logs[TODAY].exercises["Leg Extension"].done === false, JSON.stringify(db.logs[TODAY].exercises["Leg Extension"]));
   const hc = liftEl(page, "Hamstring Curl");
   await say("twelve reps");
   await tap(hc, /set.1/);
