@@ -5,12 +5,12 @@ import { Segmented } from "@/components/health/parts";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
-import { useVoicePref } from "@/hooks/useVoice";
+import { useSpeechSupported, useVoicePref } from "@/hooks/useVoice";
 import { backupWords, CSV_COLUMNS, toCsv } from "@/lib/backup";
 import { todayKey } from "@/lib/dates";
 import { plural, syncedWhen } from "@/lib/format";
 import { isNative } from "@/lib/native";
-import { setVoicePref, speechSupported } from "@/lib/speech";
+import { switchVoice } from "@/lib/speech";
 import type { Replacing } from "@/lib/store";
 import { savedTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Plan } from "@/lib/types";
@@ -258,18 +258,30 @@ function Goals() {
 
 /* ---------- voice ---------- */
 
-/** Log sets by voice: off until switched on, kept on this device like the theme, and only where the browser can listen. */
+/** Log sets by voice: off until switched on, kept on this device like the theme, and only where the browser (or in the
+ *  Android app, the phone) can listen. In the app, switching it on asks for the microphone first. */
 function Voice() {
-  const on = useVoicePref();
-  if (!speechSupported()) return null;
+  const on = useVoicePref(), can = useSpeechSupported();
+  const [refused, setRefused] = useState(false);
+  if (!can) return null;
+  const sub = refused
+    ? "Gym Log needs the microphone to log by voice. Allow it in Android’s settings for Gym Log."
+    : isNative()
+      ? "Uses Android’s speech recognition, on the phone where it can. Gym Log keeps only the numbers."
+      : "Uses your browser’s speech recognition. In Chrome, what you say is sent to Google to be turned into text; Gym Log keeps only the numbers.";
   return (
     <Group title="Voice" id="setVoice">
-      <button type="button" className="pref-row pref-tap" role="switch" id="voiceLog" aria-checked={on} aria-labelledby="voiceT" aria-describedby="voiceD" onClick={() => setVoicePref(!on)}>
-        <Text
-          id="voice"
-          title="Log sets by voice"
-          sub="Uses your browser’s speech recognition. In Chrome, what you say is sent to Google to be turned into text; Gym Log keeps only the numbers."
-        />
+      <button
+        type="button"
+        className="pref-row pref-tap"
+        role="switch"
+        id="voiceLog"
+        aria-checked={on}
+        aria-labelledby="voiceT"
+        aria-describedby="voiceD"
+        onClick={() => void switchVoice(!on).then((done) => setRefused(!done))}
+      >
+        <Text id="voice" title="Log sets by voice" sub={sub} />
         <span className="switch" aria-hidden="true" />
       </button>
     </Group>

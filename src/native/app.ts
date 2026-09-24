@@ -1,9 +1,11 @@
 /* The Android app's extras, loaded only inside the app (see GymLog): sign-in links that open the app, and
  * Health Connect, read once you're signed in, whenever the app comes back to the front, and every 15 minutes while
- * it's open. Background sync (sync.ts) covers the time it's closed. */
+ * it's open. Background sync (sync.ts) covers the time it's closed. Voice logging asks the phone, once, whether it
+ * can listen (speech.ts). */
 import { App } from "@capacitor/app";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
 import { NATIVE_SIGN_IN } from "@/lib/native";
+import { checkPhoneSpeech } from "@/lib/speech";
 import type { GymStore } from "@/lib/store";
 import { syncHealth } from "./health";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
@@ -27,6 +29,8 @@ let started = false;
 export async function startNative(store: GymStore): Promise<void> {
   if (started) return;
   started = true;
+  // Voice logging: Settings and Today offer it once the phone says it can turn speech into text.
+  void checkPhoneSpeech();
   // A sign-in link opens the app with ...://login?code=…, either starting it or bringing it back.
   const open = (url?: string | null) => {
     if (url?.startsWith(NATIVE_SIGN_IN)) void store.finishSignIn(url);

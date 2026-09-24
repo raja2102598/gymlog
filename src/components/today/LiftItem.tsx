@@ -4,11 +4,10 @@ import { useState, type FormEvent } from "react";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
-import { useVoice, useVoicePref } from "@/hooks/useVoice";
+import { useVoice, useVoiceOn } from "@/hooks/useVoice";
 import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
 import { num, setsSummary } from "@/lib/format";
-import { speechSupported } from "@/lib/speech";
 import type { RecordKind } from "@/lib/stats";
 import { minSets, performed, prTitle, setsOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
@@ -90,7 +89,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
   // Voice (Settings, Log sets by voice): a phrase heard for this lift, done through the same changes as typing, + Set,
   // the tick and Skip today, so the carried-over weight, PR badge, tick and sync all follow as they would. It reads the
   // lift as saved now, since the answer comes after this render, and returns the line to show under the sets.
-  const voiceOn = useVoicePref() && speechSupported();
+  const voiceOn = useVoiceOn();
   const hear = (said: VoiceResult, heard: string): string => {
     const now = () => setsOf(store.entry(sel).exercises[name]);
     const lastLogged = () => now().findLastIndex((s) => (s.reps ?? 0) > 0);

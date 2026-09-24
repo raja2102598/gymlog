@@ -27,6 +27,14 @@ With **Sync in the background** on, Android runs a small job about every hour, e
 - A number you type always wins: Health Connect's steps or weight only show on days you left the box empty, and history, the week so far, Health and Progress use them the same way.
 - To stop: turn off **Sync in the background**, then open Health Connect → **App permissions → Gym Log** (or **Settings → Manage in Health Connect** in the app) and turn its access off, or uninstall the app. Days already synced stay in `health_days`; delete them in Supabase (Table Editor → `health_days`) if you want them gone.
 
+## Voice logging
+
+With **Settings → Log sets by voice** on, each lift on Today gets a microphone: tap it and say the set, such as *10 at 45*, or *again*, *undo*, *done* or *skip* (the [user guide](user-guide.md#today) has the rest). The app's web view has no speech recognition of its own, so the app's own plugin (`SpeechPlugin.kt`) uses Android's. It listens in English, the language it reads: the phone's own English (English (India), say) when the phone's languages include one, and otherwise US English. Settings shows the switch once the phone says it can turn speech into text, which needs a speech service such as Google's; most phones have one.
+
+- **The microphone:** switching it on asks for Android's microphone permission. Refuse it and the switch stays off and says why; to allow it later, open Android's **Settings → Apps → Gym Log → Permissions → Microphone**, then switch it on again. Allowed *only this time*, it asks again when you next tap a lift's microphone. The app listens only after you tap a lift's microphone, for one phrase, and stops if you leave Today or the app.
+- **On the phone:** on Android 12 and later, where the phone has on-device speech recognition for that English, what you say is turned into text on the phone itself. Otherwise the phone's speech service does it, with its offline model where it has one, or else on its servers (Google's, on most phones). Gym Log gets only the words, and keeps only the numbers.
+- **To turn it off:** switch off **Log sets by voice**, and the microphones go. To take back the permission too, turn off **Microphone** on that same Android settings page.
+
 ## Updates and the signing key
 
 The app carries its own copy of the site, so changes to the site only reach it in a new APK. Every push to `main` builds one and publishes it as the **android-latest** release (GitHub → Actions → *Android app* shows each build; pull requests get an APK under the run's *Artifacts*). Install it over the old one the same way; you stay signed in.
