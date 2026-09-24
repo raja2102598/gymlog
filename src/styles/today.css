@@ -40,7 +40,14 @@
 .lift-meta .last.up{color:var(--good);font-weight:600}
 .lift .ch{font-size:var(--t-xs);font-weight:600;color:var(--warn);padding-left:40px}
 .lift .nt{margin:0;font-size:14px;color:var(--muted);padding-left:40px}
-.lift .more{flex:none}
+.lift .more,.lift .mic{flex:none}
+
+/* voice: the microphone fills while it listens (and pulses, where motion is on); what it heard shows under the sets.
+   The line's live region stays on the page while empty, so it's announced, but takes no room. */
+.lift .mic[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.lift .said{margin:0;padding-left:40px;font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+.lift .said:empty{position:absolute}
+@keyframes listen{from{box-shadow:0 0 0 0 color-mix(in srgb,var(--ink) 35%,transparent)}to{box-shadow:0 0 0 10px transparent}}
 
 /* the done tick: a round checkbox, filled when the lift is done */
 .tick{appearance:none;-webkit-appearance:none;flex:none;width:28px;height:28px;margin:0;border-radius:50%;border:2px solid var(--edge);background:var(--surface);display:grid;place-items:center;cursor:pointer}
@@ -152,4 +159,5 @@
 @media (prefers-reduced-motion:no-preference){
   .wu .chips:not([hidden]),.acts,.lift .cue{animation:rise var(--med) var(--ease)}
   .set .sn{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
+  .lift .mic[aria-pressed="true"]{animation:listen 1.4s var(--ease) infinite}
 }
