@@ -1,7 +1,7 @@
 {
   "name": "Gym Log",
   "short_name": "Gym Log",
-  "description": "Daily tracker for a 5-day gym split, cardio, steps and body weight.",
+  "description": "Daily tracker for your gym plan, cardio, steps and body weight.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

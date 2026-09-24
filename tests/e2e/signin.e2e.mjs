@@ -1,6 +1,6 @@
 // Signing in: an emailed link that carries its own flow id, a wait before another, Supabase's hourly email
 // limit, a password instead, setting or changing a password in Settings, and Continue with Google.
-import { flat, open, openTab, ready, session, until } from "./harness.mjs";
+import { flat, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
 export default async function signinSuite({ browser, base, check }) {
   // A link, then the wait before another
@@ -33,7 +33,8 @@ export default async function signinSuite({ browser, base, check }) {
   // Continue with Google on the website: off to Google (skipped here) and back with a code, exchanged with this
   // page's PKCE verifier for a session
   {
-    const db = { logs: {}, plan: null, google: true };
+    // An account that has saved its plan, so sign-in lands on Today (a new one chooses a plan first: firstrun.e2e.mjs).
+    const db = { logs: {}, plan: savedPlan(), google: true };
     const { ctx, page } = await open(browser, base, { auth: null, db });
     await page.waitForSelector("#googleBtn");
     check("Continue with Google, above the email ways in", (await flat(page.locator("#googleBtn"))) === "Continue with Google" && (await page.locator("#loginView .or").isVisible()));
@@ -81,7 +82,7 @@ export default async function signinSuite({ browser, base, check }) {
 
   // A password instead
   {
-    const db = { logs: {}, plan: null, passwords: { "t@example.com": "right-password-1" } };
+    const db = { logs: {}, plan: savedPlan(), passwords: { "t@example.com": "right-password-1" } };
     const { ctx, page } = await open(browser, base, { auth: null, db });
     await page.waitForSelector("#loginView:not([hidden])");
     check("no password box until you ask for one", (await page.locator("#password").count()) === 0);
@@ -119,7 +120,7 @@ export default async function signinSuite({ browser, base, check }) {
 
   // Setting a password from Settings
   {
-    const db = { logs: {}, plan: null };
+    const db = { logs: {}, plan: savedPlan() };
     const auth = session("00000000-0000-4000-8000-000000000061", "2026-08-26T05:00:00Z", "me@example.com");
     const { ctx, page } = await open(browser, base, { auth, db });
     await ready(page);

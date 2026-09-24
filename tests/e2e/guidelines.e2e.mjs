@@ -267,19 +267,20 @@ export default async function guidelines({ browser, base, check }) {
       await ctx.close();
     }
     {
+      // A new account (nothing logged, no plan saved) starts on the plan picker, which restores a backup too.
       const db = { logs: {}, plan: null, health: { "2026-09-22": { steps: 7100 } } };
       const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000042", "2026-09-01T00:00:00Z", "new@example.com"), db });
-      await ready(page);
-      check("a new account: no Health Connect card on Today", (await page.locator("#healthToday").count()) === 0);
-      await openTab(page, "settings");
+      await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
+      check("a new account: the plan picker, with Restore a backup, and no Health Connect card", (await page.locator("#chooseRestore").isVisible()) && (await page.locator("#healthToday").count()) === 0);
       page.removeAllListeners("dialog");
       let asked = "";
-      page.once("dialog", (d) => ((asked = d.message()), d.accept()));
+      page.on("dialog", (d) => ((asked = d.message()), d.accept()));
       const logWrites = db.writes.logs;
-      await page.setInputFiles("#importFile", jsonFile(backupText));
+      await page.setInputFiles("#restoreFile", jsonFile(backupText));
+      await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
       await until(async () => /^Imported/.test(await page.textContent("#dataMsg")));
       await until(() => Object.keys(db.logs).length === 29 && db.plan?.tempo === "4:0:1:0");
-      check("import: asks before replacing the new account's default plan", asked === "The file has a different plan. Replace yours with the file’s version?", asked);
+      check("import: the picker's restore doesn't ask: a new account has nothing to replace", asked === "", asked);
       check(
         "import: the days and the plan are restored, and synced",
         Object.keys(db.logs).length === 29 && db.logs[K(26)].exercises["Incline Machine Press"].swap === "Incline DB Press" && db.plan?.tempo === "4:0:1:0" && db.plan.days[0].name === "Chest, shoulders",
@@ -291,7 +292,6 @@ export default async function guidelines({ browser, base, check }) {
         db.writes.health === 1 && db.health["2026-09-23"]?.sleepMin === 432 && db.health["2026-09-22"].steps === 7100,
         JSON.stringify(db.health),
       );
-      page.on("dialog", (d) => d.accept());
       await openTab(page, "today");
       check("the restored plan and Health Connect day show on Today", /4:0:1:0/.test(await page.textContent("#tempoNote")) && (await page.locator("#healthToday").count()) === 1 && /7 h 12 min ?asleep/.test(await flat(page.locator("#healthToday"))));
       // It comes back from the database, with this device's copy cleared

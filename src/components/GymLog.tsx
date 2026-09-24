@@ -17,6 +17,7 @@ import { PlanEditor } from "./plan/PlanEditor";
 import { SettingsView } from "./settings/SettingsView";
 import { AppBar } from "./shell/AppBar";
 import { BootView } from "./shell/BootView";
+import { ChoosePlanView } from "./shell/ChoosePlanView";
 import { LoginView } from "./shell/LoginView";
 import { SetupView } from "./shell/SetupView";
 import { SyncBar } from "./shell/SyncBar";
@@ -56,6 +57,9 @@ export default function GymLog() {
   const [editDay, setEditDay] = useState(() => wdIndex(todayKey()));
   const [, setToday] = useState(todayKey);
   const [go] = useState(shortcut);
+  // A backup restored on the first-run screen: under way, and then what it brought in, for Settings → Your data.
+  const [restoring, setRestoring] = useState(false);
+  const [restored, setRestored] = useState("");
   const shown = useRef(route);
   const backing = useRef(false); // a Back this app started that hasn't landed yet
   useLayoutEffect(() => {
@@ -76,6 +80,8 @@ export default function GymLog() {
   const [uiFor, setUiFor] = useState<string | null>(null);
   if (uid !== uiFor) {
     setUiFor(uid);
+    setRestoring(false);
+    setRestored("");
     if (uiFor !== null) {
       setRoute(TODAY);
       setMenu(null);
@@ -133,13 +139,14 @@ export default function GymLog() {
     return () => clearInterval(id);
   }, [route, sel]);
 
-  // Leaving the plan editor tidies the plan and saves it straight away.
+  // Leaving the plan editor tidies the plan and saves it straight away. Leaving Settings drops what a restore said there.
   const leave = useCallback(
     (from: Route, to: Route) => {
       if (from.view === "plan" && to.view !== "plan") {
         if (store.user) store.closePlan();
         setMenu(null);
       }
+      if (from.view === "settings" && to.view !== "settings") setRestored("");
     },
     [store],
   );
@@ -201,8 +208,25 @@ export default function GymLog() {
     if (focus) focusNext(focus, true);
   };
 
-  const screen = store.auth === "starting" ? "boot" : store.auth === "setup" ? "setup" : store.auth === "signedOut" ? "login" : "app";
+  // A new account chooses a plan before Today; until the first load says whether it's new, the loading placeholder.
+  // A backup restored there keeps the picker up until it's in, then opens Settings at Your data to say what came in.
+  const step = store.planStep();
+  const screen =
+    store.auth === "starting" || step === "wait"
+      ? "boot"
+      : store.auth === "setup"
+        ? "setup"
+        : store.auth === "signedOut"
+          ? "login"
+          : step === "choose" || restoring
+            ? "choose"
+            : "app";
   const inApp = screen === "app";
+  useEffect(() => {
+    if (!restored || !inApp || route.view !== "settings") return;
+    document.getElementById("setData")?.scrollIntoView({ block: "start" });
+    document.getElementById("dataMsg")?.focus({ preventScroll: true });
+  }, [restored, inApp, route]);
   const sub = depthOf(route) === 2;
   const title =
     route.view === "today"
@@ -241,7 +265,7 @@ export default function GymLog() {
           <div className="appbar-t">
             <h1 translate="no">Gym Log</h1>
             <p className="sub" id="tagline">
-              5-day split + cardio + 10,000 steps.
+              Lifts + cardio + 10,000 steps.
             </p>
           </div>
           <div className="status" id="status" aria-live="polite">
@@ -255,6 +279,19 @@ export default function GymLog() {
         <BootView hidden={screen !== "boot"} />
         <SetupView hidden={screen !== "setup"} />
         <LoginView hidden={screen !== "login"} />
+        <ChoosePlanView
+          key={uid ?? ""}
+          hidden={screen !== "choose"}
+          onChosen={() => {
+            navigate(TODAY);
+            window.scrollTo(0, 0);
+          }}
+          onRestoring={setRestoring}
+          onRestored={(msg) => {
+            setRestored(msg);
+            navigate({ view: "settings" });
+          }}
+        />
 
         <div id="appView" hidden={!inApp || route.view !== "today"}>
           {inApp ? (
@@ -293,7 +330,7 @@ export default function GymLog() {
         </div>
 
         <div id="settingsView" hidden={!inApp || route.view !== "settings"}>
-          {inApp && route.view === "settings" ? <SettingsView onEditPlan={() => openPlan()} /> : null}
+          {inApp && route.view === "settings" ? <SettingsView onEditPlan={() => openPlan()} dataMsg={restored} /> : null}
         </div>
 
         <div id="planView" className="pe" hidden={!inApp || route.view !== "plan"}>

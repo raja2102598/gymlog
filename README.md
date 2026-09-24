@@ -58,7 +58,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Installable as a PWA from Chrome, or as an Android app. It opens instantly from the phone's cache and works offline; edits queue and sync when you're back online.
 - Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
 - Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.
-- An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. A 5-day split comes as the default.
+- An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. Start from a blank week or a 3, 4 or 5-day template.
 
 ## How it works
 

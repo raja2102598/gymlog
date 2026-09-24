@@ -19,8 +19,9 @@ import type { SyncStatus } from "@/native/sync";
 // Loaded only in the Android app, so the website doesn't carry the Health Connect plugin.
 const native = () => import("@/native/app");
 
-/** Settings: Health Connect and background sync, daily goals, the plan, the theme, the account and your data. */
-export function SettingsView({ onEditPlan }: { onEditPlan: () => void }) {
+/** Settings: Health Connect and background sync, daily goals, the plan, the theme, the account and your data.
+ *  `dataMsg` is what Your data says as it opens: what a backup restored on the first-run screen brought in. */
+export function SettingsView({ onEditPlan, dataMsg = "" }: { onEditPlan: () => void; dataMsg?: string }) {
   return (
     <>
       {isNative() ? <HealthNative /> : <HealthWeb />}
@@ -34,7 +35,7 @@ export function SettingsView({ onEditPlan }: { onEditPlan: () => void }) {
       <Voice />
       <Appearance />
       <Account />
-      <Data />
+      <Data first={dataMsg} />
       <About />
     </>
   );
@@ -409,10 +410,10 @@ function download(name: string, type: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-function Data() {
+function Data({ first }: { first: string }) {
   const store = useGym();
   const file = useRef<HTMLInputElement>(null);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState(first);
   const exportData = () => {
     const b = store.exportBackup();
     download(`gym-log-${todayKey()}.json`, "application/json", JSON.stringify(b, null, 1));
@@ -453,7 +454,8 @@ function Data() {
         <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
       </button>
       <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />
-      <p className="note pref-msg" id="dataMsg" role="status">
+      {/* Focusable, so the app can put you here after a restore on the first-run screen, reading what came in. */}
+      <p className="note pref-msg" id="dataMsg" role="status" tabIndex={-1}>
         {msg}
       </p>
     </Group>

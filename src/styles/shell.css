@@ -45,3 +45,9 @@
   .tab-pill{transition:background-color var(--fast) var(--ease)}
   #healthView:not([hidden]),#settingsView:not([hidden]){animation:rise var(--med) var(--ease)}
 }
+
+/* a new account's first screen: the plan templates, a backup to restore instead, then who's signed in, with a way out */
+#chooseView .tpl-list{margin-top:16px}
+.choose-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-top:16px}
+.choose-row .sub{margin:0;font-size:var(--t-sm);overflow-wrap:anywhere}
+#chooseMsg{overflow-wrap:anywhere}

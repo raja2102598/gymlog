@@ -15,6 +15,9 @@ import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from
 import { EXTRA_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
+/** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
+ *  default, because the account has none ("default"); or not known yet ("unknown": not loaded, or the load failed). */
+export type PlanSource = "server" | "default" | "unknown";
 /** Health Connect in the Android app: not there (the website), not set up, working, or what went wrong. */
 export interface HealthLink {
   state: "web" | "unavailable" | "off" | "syncing" | "ok" | "error";
@@ -162,6 +165,9 @@ export class GymStore {
   status = "";
   planMsg = "Changes save as you type.";
   planDirty = false;
+  planSource: PlanSource = "unknown";
+  /** Signed in, and the first load from Supabase since then hasn't finished. */
+  firstLoad = false;
   /** The last save to Supabase failed. */
   syncTrouble = false;
   /** The phone wouldn't keep its copy of the days, plan or Health Connect data (storage full or blocked), so
@@ -173,6 +179,8 @@ export class GymStore {
   sb: SupabaseClient | null = null;
 
   private planRev = 0;
+  /** The logged days have been loaded from Supabase since signing in, not only read from this phone's copy. */
+  private logsLoaded = false;
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
   private flushing = false;
   private planTimer: ReturnType<typeof setTimeout> | undefined;
@@ -329,13 +337,23 @@ export class GymStore {
     this.planBase = mine ? pc!.base ?? null : null;
     this.planConflict = null;
     this.planShape++;
+    this.planSource = mine ? "server" : "unknown";
+    this.logsLoaded = false;
+    this.firstLoad = true;
     this.auth = "signedIn";
     this.status = Object.keys(this.pending).length ? "Syncing…" : "Loading…";
     this.changed();
     // Ask Chrome to keep this site's storage, so edits waiting to sync can't be evicted.
     if (navigator.storage?.persist) navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {});
-    await Promise.all([this.flush(), this.flushPlan()]);
-    await Promise.all([this.pull(), this.pullPlan(), this.pullHealth()]);
+    try {
+      await Promise.all([this.flush(), this.flushPlan()]);
+      await Promise.all([this.pull(), this.pullPlan(), this.pullHealth()]);
+    } finally {
+      if (this.user === u) {
+        this.firstLoad = false;
+        this.changed();
+      }
+    }
   }
 
   private onSignedOut() {
@@ -357,6 +375,9 @@ export class GymStore {
     this.planBase = null;
     this.planConflict = null;
     this.planShape++;
+    this.planSource = "unknown";
+    this.logsLoaded = false;
+    this.firstLoad = false;
     this.auth = "signedOut";
     this.status = "";
     this.authMsg = "";
@@ -816,6 +837,7 @@ export class GymStore {
     }
     this.logs = next;
     this.bases = bases;
+    this.logsLoaded = true;
     this.logsChanged();
     this.persistLocal();
     if (!Object.keys(this.pending).length) this.status = "Synced";
@@ -841,6 +863,21 @@ export class GymStore {
   resetPlan() {
     this.plan = copy(DEFAULT_PLAN);
     this.planChanged(true);
+  }
+  /** Starts the plan over from a template (src/data/templates): its sessions, lifts, warm-ups and tempo. The goals
+   *  stay as they are. Saved like any edit. */
+  startFrom(t: Plan) {
+    const { tempo, warmups, days } = copy(t);
+    this.plan = { ...this.plan, tempo, warmups, days };
+    this.planChanged(true);
+  }
+  /** A new account (no plan saved in Supabase, nothing logged) chooses a plan before anything else: "choose". "wait"
+   *  while that can't be told yet: this phone has nothing for the account and the first load isn't back. Otherwise
+   *  null, and an account without a plan of its own uses the default one, as it always has. */
+  planStep(): "choose" | "wait" | null {
+    if (this.auth !== "signedIn" || this.planSource === "server" || this.planDirty || this.days().length) return null;
+    if (this.planSource === "default" && this.logsLoaded) return "choose";
+    return this.firstLoad ? "wait" : null;
   }
   /** Leaving the plan editor: tidy the plan and save it now. */
   closePlan() {
@@ -881,6 +918,7 @@ export class GymStore {
       return;
     }
     this.planBase = r.at;
+    this.planSource = "server";
     if (rev !== this.planRev) {
       this.persistPlan();
       this.planTimer = setTimeout(() => void this.flushPlan(), 400); // edited while saving
@@ -922,6 +960,7 @@ export class GymStore {
     if (!c) return;
     this.planConflict = null;
     this.planBase = c.at;
+    this.planSource = "server";
     if (which === "theirs") {
       this.plan = c.plan;
       this.planDirty = false;
@@ -944,6 +983,11 @@ export class GymStore {
       return;
     }
     if (this.planDirty || rev !== this.planRev) return; // edited while loading
+    const source = data?.plan ? "server" : "default";
+    if (source !== this.planSource) {
+      this.planSource = source;
+      this.changed();
+    }
     const next = data?.plan ? normalizePlan(data.plan, DEFAULT_PLAN) : copy(DEFAULT_PLAN), base: string | null = data?.updated_at ?? null;
     // Unchanged (the usual case): leave the plan editor's fields alone, in case one is being typed in.
     if (JSON.stringify(next) === JSON.stringify(this.plan)) {
