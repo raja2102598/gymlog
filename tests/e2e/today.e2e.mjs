@@ -40,9 +40,17 @@ export default async function today({ browser, base, check }) {
   const lp = lift("Leg Press");
   check("legacy weight shows as set 1 kg", (await lp.locator('input[data-set$=":0:kg"]').inputValue()) === "50");
   check("3 set rows for a 3-set lift", (await lp.locator(".set").count()) === 3);
-  check("hint compares with last week (45 kg, up)", /last 45 kg · 16\/09 ↑/.test(await lp.locator(".hint").textContent()), await lp.locator(".hint").textContent());
+  check("hint shows last week's sets, and that today is heavier", /Last 10, 10, 8 × 45 kg · 16\/09 ↑/.test(await lp.locator(".hint").textContent()), await lp.locator(".hint").textContent());
   check("reps placeholder from last week", (await lp.locator('input[data-set$=":1:reps"]').getAttribute("placeholder")) === "10");
   check("pill counts today's lifts", /5\/5 lifts/.test(await page.locator("#liftPill").textContent()));
+  check("progress bar: one segment per planned lift, filled when done", (await page.locator("#session .segs i").count()) === 5 && (await page.locator("#session .segs i.done").count()) === 5);
+  // How to do a lift is folded until asked for; its warning note always shows.
+  const how = lp.locator("button.howto");
+  check("how-to note starts folded", (await lp.locator(".nt").count()) === 0 && (await how.getAttribute("aria-expanded")) === "false" && /KNEE NOTE/.test(await lp.locator(".ch").textContent()));
+  await how.click();
+  check("How to opens the note", /Feet high on the platform/.test(await lp.locator(".nt").textContent()) && (await how.getAttribute("aria-expanded")) === "true");
+  await how.click();
+  check("and folds it again", (await lp.locator(".nt").count()) === 0);
   await shot(page, "1-today-legs", { fullPage: true });
 
   // --- log sets on today's Leg Press
@@ -96,7 +104,7 @@ export default async function today({ browser, base, check }) {
   await page.locator('form[data-swapform] button[type="submit"]').click();
   const sw = lift("DB Shoulder Press");
   check("swapped lift shows replacement name", /DB Shoulder Press instead of Machine Shoulder Press/.test(await sw.locator(".nm").textContent()));
-  check("swapped lift hint is its own history", /first time/.test(await sw.locator(".hint").textContent()));
+  check("swapped lift hint is its own history", /First time/.test(await sw.locator(".hint").textContent()));
   await until(() => db.logs["2026-09-21"].exercises["Machine Shoulder Press"]?.swap === "DB Shoulder Press");
   check("swap saved under the planned lift", db.logs["2026-09-21"].exercises["Machine Shoulder Press"].swap === "DB Shoulder Press");
   await shot(page, "3-monday-swap", { fullPage: true });
@@ -111,7 +119,7 @@ export default async function today({ browser, base, check }) {
   await lift("Hack Squat").locator("button[data-swapopen]").click();
   await page.locator("form[data-swapform] input").fill("Smith Squat");
   await page.locator("form[data-swapform] input").press("Enter");
-  check("swap hint uses that exercise's past sets", /last 20 kg · 16\/09/.test(await lift("Smith Squat").locator(".hint").textContent()), await lift("Smith Squat").locator(".hint").textContent());
+  check("swap hint uses that exercise's past sets", /Last 10 × 20 kg · 16\/09/.test(await lift("Smith Squat").locator(".hint").textContent()), await lift("Smith Squat").locator(".hint").textContent());
   await lift("Smith Squat").locator("button[data-more]").click();
   await lift("Smith Squat").locator("button[data-unswap]").click();
 
@@ -185,6 +193,7 @@ export default async function today({ browser, base, check }) {
   // --- a rest day renders, and no stray requests or errors
   await page.locator("#week .dchip").nth(3).click();
   check("rest day renders", /Rest day/.test(await page.locator("#liftPill").textContent()));
+  check("rest day: no empty lift list or progress bar", (await page.locator("#session ul.ex:not(.cardio)").count()) === 0 && (await page.locator("#session .segs").count()) === 0);
   check("only logs/plans endpoints were called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("no console errors or warnings", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();

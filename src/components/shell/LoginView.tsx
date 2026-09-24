@@ -18,7 +18,7 @@ export function LoginView({ hidden }: { hidden: boolean }) {
   };
   return (
     <section className="panel" id="loginView" hidden={hidden}>
-      <h2>Sign in</h2>
+      <h2 className="display">Sign in</h2>
       <p className="sub">Enter your email and we&apos;ll send you a sign-in link. No password needed.</p>
       <form id="loginForm" className="login" onSubmit={send}>
         <label className="field" htmlFor="email">

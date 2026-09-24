@@ -66,7 +66,12 @@ The development server uses the same Supabase project as the live app. Sign-in l
 ## Everyday use
 - The app opens on today. Tap a day in the week strip to look at or fill in another day. A day is green when every lift is done, pale green with a green edge when some are, and has an orange edge when a workout day was missed.
 - **Warm-up:** tap **Warm-up** to show the list and tick what you did. It starts folded so the lifts come first, and rest days don't show it.
-- **Sets:** each lift has a row per planned set. Enter reps and kg; the next set copies the weight you just used. Grey numbers in empty boxes are what you did last time (or the next weight to try), and a set's number turns green once its reps are logged. Logging the planned number of sets ticks the lift off. Use **+ Set** for extra sets.
+- **Lifts and sets:** each lift is a card.
+  - Under its name you see the plan (e.g. 3 × 8-10) and what you did last time, set by set. An arrow shows when today's heaviest set is already heavier.
+  - Each planned set has a row: enter reps and kg, and the next set copies the weight you just used. Grey numbers in empty boxes are suggestions: last time's numbers, or the next weight to try.
+  - A set's number turns green once its reps are logged, and logging the planned number of sets fills the round tick. Tap the tick to set it by hand.
+  - **+ Set** adds a set. **How to** opens the lift's form notes; warnings such as a KNEE NOTE always show.
+  - The bar under the day's title fills as lifts are done.
 - **Change a day's workout:** the picker under the day's title lets any day use another day's workout, e.g. do a missed Push on a rest day. Rest days list the sessions you missed earlier that week, with a button to do one. The weekly count still counts each planned session once.
 - **Skip or swap:** tap **···** on a lift. *Skip today* (with an optional reason, e.g. machine busy) or *Swap for another lift* to log a different exercise in its place. The same menu undoes either.
 - **Adding weight:** when every set of a lift reached the top of its rep range last time, the lift says *Go up to … kg* and the grey numbers switch to the new weight at the bottom of the range. Each lift adds 2.5 kg unless you set its own step in the plan.

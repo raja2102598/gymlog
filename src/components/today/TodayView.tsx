@@ -18,7 +18,7 @@ export function TodayView({ onSelect, onOpenDash, ...session }: Props) {
   return (
     <>
       <WeekStrip sel={session.sel} onSelect={onSelect} />
-      <section className="panel" id="session">
+      <section className="session" id="session">
         <SessionCard key={session.sel} {...session} />
       </section>
       <WeekStats sel={session.sel} />

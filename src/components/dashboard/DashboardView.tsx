@@ -18,7 +18,7 @@ export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
   return (
     <>
       <div className="top">
-        <h2>Dashboard</h2>
+        <h2 className="display">Dashboard</h2>
         <span className="sub" id="dashAsOf">
           {parseKey(t).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
         </span>

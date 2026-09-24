@@ -1,10 +1,15 @@
 /* The plan editor. */
-#planDays{margin-top:14px}
+.pe-head{align-items:flex-start;margin-bottom:14px}
+@media (max-width:380px){#planDays{margin-inline:-6px;gap:4px}}
+.pe-head .sub{margin-top:4px}
+#planDays{margin-top:4px}
 .pe .field input,.pe .field textarea{font:15px/1.4 var(--body)}
 .pe-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
-.pe-h{font:600 14px var(--body);color:var(--ink);margin:20px 0 8px}
+.pe-h{font:600 var(--t-base) var(--body);color:var(--ink);margin:22px 0 10px}
 .pe-list{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}
-.pe-ex{border:1px solid var(--line);border-radius:var(--r-card);padding:12px;display:grid;gap:8px}
+.pe-ex{background:var(--sunken);border-radius:var(--r-card);padding:12px;display:grid;gap:10px}
+.pe-ex .field input,.pe-ex .field textarea{background:var(--surface)}
+.pe-ex .ghost{background:var(--surface)}
 .pe-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 76px;gap:8px}
 .pe-row2{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
 .pe-row2 .field{flex:0 1 160px}
@@ -12,5 +17,5 @@
 .pe-check input{width:20px;height:20px;accent-color:var(--good)}
 .pe-stack{display:grid;gap:8px}
 .pe-btns{display:flex;flex-wrap:wrap;gap:6px}
-.pe .warn{color:var(--accent);font-size:13px;margin:0 0 8px}
+.pe .warn{color:var(--ink);font-size:var(--t-sm);margin:0 0 10px;padding:10px 12px;border-radius:var(--r-ctl);background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn)}
 @media (max-width:560px){.pe-grid{grid-template-columns:1fr}.pe-row{grid-template-columns:1fr 1fr}.pe-row .field:first-child{grid-column:1/-1}}

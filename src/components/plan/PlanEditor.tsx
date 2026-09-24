@@ -62,9 +62,9 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   return (
     <>
       <section className="panel">
-        <div className="sess-head">
+        <div className="top pe-head">
           <div>
-            <h2>Edit plan</h2>
+            <h2 className="display">Edit plan</h2>
             <div className="sub" id="planMsg" aria-live="polite">
               {store.planMsg}
             </div>

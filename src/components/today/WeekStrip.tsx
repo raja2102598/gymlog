@@ -1,4 +1,5 @@
 "use client";
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
 import { addDays, DOW, mondayOf, parseKey, todayKey, weekLabel } from "@/lib/dates";
@@ -16,13 +17,13 @@ export function WeekStrip({ sel, onSelect }: { sel: DayKey; onSelect: (k: DayKey
         <h2 id="weekLabel">{weekLabel(mon)}</h2>
         <div className="nav">
           <button className="ghost icon" id="prevW" aria-label="Previous week" onClick={() => onSelect(addDays(sel, -7))}>
-            ‹
+            <CaretLeft size={18} weight="bold" aria-hidden="true" />
           </button>
           <button className="ghost" id="todayB" onClick={() => onSelect(todayKey())}>
             Today
           </button>
           <button className="ghost icon" id="nextW" aria-label="Next week" onClick={() => onSelect(addDays(sel, 7))}>
-            ›
+            <CaretRight size={18} weight="bold" aria-hidden="true" />
           </button>
         </div>
       </div>

@@ -104,8 +104,8 @@ export default async function layout({ browser, base, check }) {
     const knee = await box(page, 'button[data-knee="kneeBefore:0"]');
     check("knee buttons at 360px: two rows, at least 38 x 44", knee.width >= 38 && knee.height >= 44, `${Math.round(knee.width)}x${Math.round(knee.height)}`);
     await page.locator("#week .dchip").nth(3).click(); // Thursday: rest, with Push and Pull missed this week
-    const cu = await page.$eval(".catchup", (e) => getComputedStyle(e).backgroundColor);
-    check("catch-up suggestion is neutral, not warning orange", cu === "rgb(227, 230, 234)", cu);
+    const cu = await page.$eval(".catchup", (e) => ({ bg: getComputedStyle(e).backgroundColor, c: getComputedStyle(e).color }));
+    check("catch-up suggestion is neutral, not warning orange", cu.bg === "rgb(255, 255, 255)" && cu.c === "rgb(21, 23, 27)", JSON.stringify(cu));
     await page.click("#dashBtn");
     const warn = await page.$eval("#dashFlags li.warn", (e) => ({ c: getComputedStyle(e).color, m: getComputedStyle(e).marginBottom }));
     check("dashboard warnings: dark text on the tint (was orange, 3.68:1)", warn.c === "rgb(21, 23, 27)" && warn.m === "0px", JSON.stringify(warn));

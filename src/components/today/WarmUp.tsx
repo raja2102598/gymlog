@@ -1,4 +1,5 @@
 "use client";
+import { CaretDown } from "@phosphor-icons/react";
 
 interface Props {
   /** The plan's warm-ups, then any others ticked that day. */
@@ -14,7 +15,10 @@ export function WarmUp({ all, done, open, onToggle, onTick }: Props) {
   return (
     <div className="wu">
       <button type="button" className="wu-toggle" id="wuToggle" aria-expanded={open} aria-controls="wuChips" onClick={onToggle}>
-        <b>Warm-up</b> <span className="sub">{done.length} of {all.length} done</span> <span className="wu-act">{open ? "Hide" : "Show"}</span>
+        <b>Warm-up</b> <span className="sub">{done.length} of {all.length} done</span> <span className="wu-act">
+          {open ? "Hide" : "Show"}
+          <CaretDown size={14} weight="bold" aria-hidden="true" />
+        </span>
       </button>
       <div className="chips" id="wuChips" hidden={!open}>
         {all.map((w, i) => (

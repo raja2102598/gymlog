@@ -9,6 +9,10 @@ export function BootView({ hidden }: { hidden: boolean }) {
           <i key={i} />
         ))}
       </div>
+      <div className="sk-title" aria-hidden="true">
+        <i />
+        <i />
+      </div>
       <section className="panel sk-panel" aria-hidden="true">
         <i />
         <i />
