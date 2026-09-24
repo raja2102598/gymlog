@@ -1,7 +1,8 @@
 "use client";
 import { useGym } from "@/hooks/useGym";
-import { kneeModel, planModel, stepsModel, strengthModel, weightModel } from "@/lib/dashboard";
+import { healthModel, kneeModel, planModel, stepsModel, strengthModel, weightModel } from "@/lib/dashboard";
 import { parseKey, todayKey } from "@/lib/dates";
+import { HealthCard } from "./HealthCard";
 import { KneeCard } from "./KneeCard";
 import { PlanCard } from "./PlanCard";
 import { StepsCard } from "./StepsCard";
@@ -13,8 +14,8 @@ import { WeightCard } from "./WeightCard";
 export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
   const store = useGym();
   const t = todayKey();
-  const weight = weightModel(store, t), strength = strengthModel(store, t), knee = kneeModel(store, t);
-  const flags = [...weight.flags, ...strength.flags, ...knee.flags].sort((a, b) => a.pri - b.pri);
+  const weight = weightModel(store, t), strength = strengthModel(store, t), knee = kneeModel(store, t), health = healthModel(store, t);
+  const flags = [...weight.flags, ...strength.flags, ...knee.flags, ...health.flags].sort((a, b) => a.pri - b.pri);
   return (
     <>
       <div className="top">
@@ -35,6 +36,7 @@ export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
       <WeightCard m={weight} onSetGoal={onSetGoal} />
       <PlanCard m={planModel(store, t)} today={t} />
       <StepsCard m={stepsModel(store, t)} />
+      <HealthCard m={health} />
       <StrengthCard m={strength} />
       <KneeCard m={knee} />
     </>

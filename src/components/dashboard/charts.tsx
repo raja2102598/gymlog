@@ -48,13 +48,31 @@ export function LineChart({ line, dots, goal, width: W }: { line: [DayKey, numbe
   );
 }
 
-/** Average daily steps by week, with reference lines ([value, label], the goal first). */
-export function BarChart({ bars, lines, width: W }: { bars: [DayKey, number | null][]; lines: [number, string][]; width: number }) {
+interface BarProps {
+  bars: [DayKey, number | null][];
+  /** Reference lines as [value, label]; bars at or above the first are green. */
+  lines: [number, string][];
+  width: number;
+  label?: string;
+  /** Each bar's tooltip, and the first bar's date label. Default: weekly step averages. */
+  tip?: (day: DayKey, v: number) => string;
+  from?: (day: DayKey) => string;
+}
+
+/** Bars by date with reference lines: weekly step averages by default, or e.g. hours of sleep a night. */
+export function BarChart({
+  bars,
+  lines,
+  width: W,
+  label = "Average daily steps by week",
+  tip = (m, v) => `Week of ${dm(m)}: ${fmt(Math.round(v))} a day`,
+  from = (m) => `wk of ${dm(m)}`,
+}: BarProps) {
   const H = 150, L = 54, R = 8, T = 10, B = 22;
   const hi = Math.max(...bars.map(([, v]) => v || 0), ...lines.map(([v]) => v)) * 1.1;
   const bw = Math.min((W - L - R) / bars.length, 44), y = (v: number) => (T + ((hi - v) * (H - T - B)) / hi).toFixed(1);
   return (
-    <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Average daily steps by week">
+    <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
       {lines.map(([v, lab], i) => (
         <Fragment key={i}>
           <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="ref" />
@@ -66,12 +84,12 @@ export function BarChart({ bars, lines, width: W }: { bars: [DayKey, number | nu
       {bars.map(([m, v], i) =>
         v == null ? null : (
           <rect key={m} x={(L + i * bw + bw * 0.15).toFixed(1)} y={y(v)} width={(bw * 0.7).toFixed(1)} height={(H - B - +y(v)).toFixed(1)} rx="4" className={cx("wbar", v >= lines[0][0] && "met")}>
-            <title>{`Week of ${dm(m)}: ${fmt(Math.round(v))} a day`}</title>
+            <title>{tip(m, v)}</title>
           </rect>
         ),
       )}
       <text x={L} y={H - 6}>
-        wk of {dm(bars[0][0])}
+        {from(bars[0][0])}
       </text>
       {bars.length > 1 ? (
         <text x={W - R} y={H - 6} textAnchor="end">

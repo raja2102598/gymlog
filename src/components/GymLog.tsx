@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { addDays, todayKey, wdIndex } from "@/lib/dates";
+import { isNative } from "@/lib/native";
 import type { DayKey } from "@/lib/types";
 import { DashboardView } from "./dashboard/DashboardView";
 import { PlanEditor } from "./plan/PlanEditor";
@@ -66,9 +67,15 @@ export default function GymLog() {
 
   useEffect(() => store.start(), [store]);
 
-  // The offline copy: out/sw.js, written by scripts/build-sw.mjs after each build.
+  // Inside the Android app: sign-in links and Health Connect (src/native/, loaded only there).
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+    if (isNative()) void import("@/native/app").then((m) => m.startNative(store));
+  }, [store]);
+
+  // The offline copy: out/sw.js, written by scripts/build-sw.mjs after each build. The Android app has
+  // its files on the phone already.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator) || isNative()) return;
     const register = () => void navigator.serviceWorker.register("/sw.js").catch(() => {});
     if (document.readyState === "complete") register();
     else window.addEventListener("load", register, { once: true });

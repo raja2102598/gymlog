@@ -176,7 +176,7 @@ export default async function guidelines({ browser, base, check }) {
     page.removeAllListeners("dialog");
     page.once("dialog", (d) => ((removeAsk = d.message()), d.dismiss()));
     await page.click('[data-rmset="0"]');
-    check("− Set on a set with numbers asks first, and No keeps it", removeAsk === "Remove set 4 (10 × 20 kg)?" && (await page.locator("#s0_3_r").count()) === 1, removeAsk);
+    check("− Set on a set with numbers asks first, and No keeps it", removeAsk === "Remove set 4 (10\u00a0×\u00a020\u00a0kg)?" && (await page.locator("#s0_3_r").count()) === 1, removeAsk);
     page.on("dialog", (d) => d.accept());
     await ctx.close();
   }

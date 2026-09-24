@@ -30,7 +30,7 @@ export function LoginView({ hidden }: { hidden: boolean }) {
         </button>
       </form>
       <p className="note" id="loginMsg" aria-live="polite">
-        {msg}
+        {msg || store.authMsg}
       </p>
     </section>
   );

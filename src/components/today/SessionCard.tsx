@@ -8,6 +8,7 @@ import { num } from "@/lib/format";
 import type { DayKey, DayLog, KneeField, NumField, PlanDay } from "@/lib/types";
 import { CardioFinisher } from "./CardioFinisher";
 import { DayFields } from "./DayFields";
+import { HealthToday } from "./HealthToday";
 import { KneeScale } from "./KneeScale";
 import { LiftItem } from "./LiftItem";
 import type { LiftMenu } from "./types";
@@ -179,6 +180,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
       />
       <DayFields
         entry={e}
+        health={store.healthOf(sel)}
         stepGoal={plan.stepGoal}
         onSteps={(v) =>
           editDay((n) => {
@@ -197,6 +199,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
           }, false)
         }
       />
+      <HealthToday sel={sel} />
     </>
   );
 }

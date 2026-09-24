@@ -3,9 +3,10 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { todayKey } from "@/lib/dates";
-import { plural } from "@/lib/format";
+import { plural, syncedWhen } from "@/lib/format";
+import { isNative } from "@/lib/native";
 
-/** The menu: edit the plan, export or import data, sign out. */
+/** The menu: edit the plan, Health Connect, export or import data, sign out. */
 export function AppMenu({ open, onEditPlan }: { open: boolean; onEditPlan: () => void }) {
   const store = useGym();
   const file = useRef<HTMLInputElement>(null);
@@ -51,9 +52,46 @@ export function AppMenu({ open, onEditPlan }: { open: boolean; onEditPlan: () =>
           Sign out
         </button>
       </div>
+      <HealthRow />
       <p className="note" id="menuMsg" role="status">
         {msg}
       </p>
     </nav>
+  );
+}
+
+/** Health Connect: in the Android app, its status and Connect or Sync now; on the web, when it last synced. */
+function HealthRow() {
+  const store = useGym();
+  const link = store.healthLink, at = store.healthSyncedAt;
+  if (!isNative()) {
+    return at ? (
+      <div className="menu-row">
+        <span className="sub" id="hcStatus">
+          Health Connect data comes from the Gym Log Android app, last synced {syncedWhen(at)}.
+        </span>
+      </div>
+    ) : null;
+  }
+  // Loaded only here, so the website doesn't carry the Health Connect plugin.
+  const connect = () => void import("@/native/app").then((m) => m.connectHealth(store));
+  const sync = () => void import("@/native/app").then((m) => m.syncHealth(store, true));
+  const status =
+    link.state === "web" ? "Checking Health Connect…" : link.state === "ok" && at ? `Synced ${syncedWhen(at)}. ${link.msg}` : link.msg;
+  return (
+    <div className="menu-row">
+      <span className="sub" id="hcStatus" role="status">
+        <b>Health Connect</b> {status}
+      </span>
+      {link.state === "off" ? (
+        <button className="ghost" id="hcConnect" onClick={connect}>
+          Connect Health Connect
+        </button>
+      ) : link.state !== "unavailable" && link.state !== "web" ? (
+        <button className="ghost" id="hcSync" onClick={sync} disabled={link.state === "syncing"}>
+          Sync now
+        </button>
+      ) : null}
+    </div>
   );
 }

@@ -8,10 +8,16 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { DEFAULT_PLAN, normalizePlan } from "./plan";
 import * as S from "./stats";
-import { CACHE_KEY, copy, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
-import { EXTRA_FIELDS, type DayKey, type DayLog, type LiftLog, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
+import { isNative, NATIVE_SIGN_IN } from "./native";
+import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
+import { EXTRA_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
+/** Health Connect in the Android app: not there (the website), not set up, working, or what went wrong. */
+export interface HealthLink {
+  state: "web" | "unavailable" | "off" | "syncing" | "ok" | "error";
+  msg: string;
+}
 export type DayState = "" | "done" | "part" | "miss";
 export interface LiftItem {
   x: PlanExercise;
@@ -54,6 +60,13 @@ export class GymStore {
   logs: Record<DayKey, DayLog> = {};
   /** Days changed on this phone and not yet saved to Supabase. */
   pending: Record<DayKey, DayLog> = {};
+  /** Health Connect data by day, saved by the Android app. Apart from `logs`, so neither overwrites the other. */
+  health: Record<DayKey, HealthDay> = {};
+  /** When the Android app last saved Health Connect data (ISO), or null. */
+  healthSyncedAt: string | null = null;
+  healthLink: HealthLink = { state: "web", msg: "" };
+  /** Why the last sign-in link didn't work, for the sign-in screen. */
+  authMsg = "";
   user: User | null = null;
   auth: AuthState = "starting";
   status = "";
@@ -132,6 +145,7 @@ export class GymStore {
     const sync = () => {
       void this.flush().then(() => this.pull());
       void this.flushPlan().then(() => this.pullPlan());
+      void this.pullHealth();
     };
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) sync();
@@ -153,7 +167,11 @@ export class GymStore {
     const cache = lsGet<{ user?: string; logs?: Record<DayKey, DayLog> } | null>(CACHE_KEY, null);
     const pend = lsGet<{ user?: string; pending?: Record<DayKey, DayLog> } | null>(PENDING_KEY, null);
     const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean } | null>(PLAN_KEY, null);
+    const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null } | null>(HEALTH_KEY, null);
     this.logs = cache && cache.user === u.id ? cache.logs || {} : {};
+    this.health = hc && hc.user === u.id ? hc.health || {} : {};
+    this.healthSyncedAt = hc && hc.user === u.id ? hc.at ?? null : null;
+    this.authMsg = "";
     this.pending = pend && pend.user === u.id ? pend.pending || {} : {};
     this.logsChanged();
     this.syncTrouble = false;
@@ -167,13 +185,15 @@ export class GymStore {
     // Ask Chrome to keep this site's storage, so edits waiting to sync can't be evicted.
     if (navigator.storage?.persist) navigator.storage.persisted().then((p) => p || navigator.storage.persist()).catch(() => {});
     await Promise.all([this.flush(), this.flushPlan()]);
-    await Promise.all([this.pull(), this.pullPlan()]);
+    await Promise.all([this.pull(), this.pullPlan(), this.pullHealth()]);
   }
 
   private onSignedOut() {
     this.user = null;
     this.logs = {};
     this.pending = {};
+    this.health = {};
+    this.healthSyncedAt = null;
     this.logsChanged();
     this.syncTrouble = false;
     this.plan = copy(DEFAULT_PLAN);
@@ -185,10 +205,25 @@ export class GymStore {
   }
 
   async sendLink(email: string): Promise<string> {
-    const { error } = await this.sb!.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+    // In the Android app the link opens the app again (see src/native/app.ts); on the web, this page.
+    const redirect = isNative() ? NATIVE_SIGN_IN : location.origin + location.pathname;
+    this.authMsg = "";
+    const { error } = await this.sb!.auth.signInWithOtp({ email, options: { emailRedirectTo: redirect } });
     return error
       ? `Couldn’t send the link: ${error.message.replace(/\.$/, "")}. Check the address and your connection, then try again.`
       : `Check ${email} for a sign-in link. Open it on this device.`;
+  }
+
+  /** Finishes sign-in from a link that opened the Android app: ...://login?code=… */
+  async finishSignIn(url: string): Promise<void> {
+    if (!this.sb) return;
+    const q = new URL(url).searchParams, code = q.get("code");
+    const why = q.get("error_description") || new URLSearchParams(new URL(url).hash.slice(1)).get("error_description");
+    const { error } = code ? await this.sb.auth.exchangeCodeForSession(code) : { error: new Error(why || "the link had no sign-in code") };
+    if (error) {
+      this.authMsg = `That sign-in link didn’t work (${error.message.replace(/\.$/, "")}). Send a new one from this app, and open it on this phone.`;
+      this.changed();
+    }
   }
 
   async signOut() {
@@ -288,8 +323,21 @@ export class GymStore {
     const done = gym.filter((s) => days.some((k) => this.slotFor(k) === s && this.plan.days[s].exercises.every((x) => this.entry(k).exercises[x.name]?.done))).length;
     return { days, done, planned: gym.length };
   }
+  /** Health Connect's data for a day, or null. */
+  healthOf(k: DayKey): HealthDay | null {
+    return this.health[k] ?? null;
+  }
+  /** The day's steps: what you typed, or else Health Connect's count. */
+  stepsOf(k: DayKey): number | null {
+    return this.logs[k]?.steps ?? this.health[k]?.steps ?? null;
+  }
+  /** The day's weight: what you typed, or else Health Connect's first weigh-in. */
+  weightOf(k: DayKey): number | null {
+    return this.logs[k]?.weight ?? this.health[k]?.weight ?? null;
+  }
   weightSeries(): S.TrendPoint[] {
-    return S.weightTrend(this.days().filter((k) => this.logs[k].weight != null).map((k) => [k, +(this.logs[k].weight as number)]));
+    const days = [...new Set([...this.days(), ...Object.keys(this.health)])].sort();
+    return S.weightTrend(days.filter((k) => this.weightOf(k) != null).map((k) => [k, +(this.weightOf(k) as number)]));
   }
   swapSuggestions(exclude: string): string[] {
     const s = new Set<string>();
@@ -379,6 +427,9 @@ export class GymStore {
   private persistLocal() {
     lsSet(CACHE_KEY, { user: this.user?.id, logs: this.logs });
     lsSet(PENDING_KEY, { user: this.user?.id, pending: this.pending });
+  }
+  private persistHealth() {
+    lsSet(HEALTH_KEY, { user: this.user?.id, health: this.health, at: this.healthSyncedAt });
   }
   private persistPlan() {
     lsSet(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty });
@@ -510,6 +561,48 @@ export class GymStore {
     this.plan = next;
     this.planShape++;
     this.persistPlan();
+    this.changed();
+  }
+
+  /* ---------- Health Connect ---------- */
+  async pullHealth(): Promise<void> {
+    if (!this.user || !navigator.onLine || !this.sb) return;
+    const { data, error } = await this.sb.from("health_days").select("day,data,updated_at").order("day", { ascending: true }).limit(5000);
+    if (error) {
+      console.warn(error);
+      return;
+    }
+    const next: Record<DayKey, HealthDay> = {};
+    let at: string | null = null;
+    for (const r of data as { day: DayKey; data: HealthDay; updated_at: string }[]) {
+      next[r.day] = r.data;
+      if (!at || r.updated_at > at) at = r.updated_at;
+    }
+    if (at === this.healthSyncedAt && JSON.stringify(next) === JSON.stringify(this.health)) return;
+    this.health = next;
+    this.healthSyncedAt = at;
+    this.persistHealth();
+    this.changed();
+  }
+  /** Saves days read from Health Connect on this phone; only days that changed are written. Returns how many. */
+  async saveHealth(days: Record<DayKey, HealthDay>): Promise<number> {
+    if (!this.user || !this.sb) return 0;
+    const changed = Object.entries(days).filter(([k, d]) => JSON.stringify(d) !== JSON.stringify(this.health[k]));
+    if (changed.length) {
+      const { error } = await this.sb.from("health_days").upsert(
+        changed.map(([day, data]) => ({ user_id: this.user!.id, day, data })),
+        { onConflict: "user_id,day" },
+      );
+      if (error) throw error;
+      for (const [k, d] of changed) this.health[k] = d;
+    }
+    this.healthSyncedAt = new Date().toISOString();
+    this.persistHealth();
+    this.changed();
+    return changed.length;
+  }
+  setHealthLink(link: HealthLink) {
+    this.healthLink = link;
     this.changed();
   }
 

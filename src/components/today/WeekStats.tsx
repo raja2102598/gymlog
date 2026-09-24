@@ -10,10 +10,10 @@ export function WeekStats({ sel }: { sel: DayKey }) {
   const { days, done, planned } = store.weekSessions(mondayOf(sel));
   let cardio = 0, steps = 0, stepDays = 0;
   for (const k of days) {
-    const e = store.entry(k);
-    if (e.cardio) cardio++;
-    if (e.steps != null) {
-      steps += e.steps;
+    if (store.entry(k).cardio) cardio++;
+    const s = store.stepsOf(k);
+    if (s != null) {
+      steps += s;
       stepDays++;
     }
   }

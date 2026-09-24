@@ -1,6 +1,8 @@
 /* The data model. One row per (user, day) in table `logs`, with a JSON `data` column shaped like DayLog.
  * Exercises are keyed by their planned name, so editing the plan never scrambles old logs. The plan is
- * one row per user in table `plans`; src/data/plan.json is the default until it's edited. */
+ * one row per user in table `plans`; src/data/plan.json is the default until it's edited. Health Connect
+ * data is one row per (user, day) in table `health_days`, shaped like HealthDay, kept apart from what you
+ * type so neither overwrites the other. */
 
 /** "YYYY-MM-DD" in the phone's local time. */
 export type DayKey = string;
@@ -39,6 +41,37 @@ export interface DayLog {
   kneeBefore?: number;
   kneeAfter?: number;
   kneeWake?: number;
+}
+
+/** One day of Health Connect data, as the Android app saves it to table `health_days`. Only what the phone had. */
+export interface HealthDay {
+  /** Health Connect's total for the day: phone and watch counted once. */
+  steps?: number;
+  /** Active calories burned, kcal. */
+  activeKcal?: number;
+  /** kg: the day's first weigh-in. */
+  weight?: number;
+  /** bpm: resting heart rate, and the day's average and highest heart rate. */
+  restingHr?: number;
+  hrAvg?: number;
+  hrMax?: number;
+  /** Minutes asleep in the sleep that ended this day, and by stage when the tracker reports stages. */
+  sleepMin?: number;
+  sleepStages?: Partial<Record<"deep" | "rem" | "light" | "awake", number>>;
+  workouts?: HealthWorkout[];
+}
+
+export interface HealthWorkout {
+  /** Health Connect's exercise type, e.g. "strengthTraining", "walking". */
+  type: string;
+  /** ISO times. */
+  start: string;
+  end: string;
+  min: number;
+  kcal?: number;
+  km?: number;
+  /** The app that recorded it. */
+  source?: string;
 }
 
 export const EXTRA_FIELDS = ["waist", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"] as const;
