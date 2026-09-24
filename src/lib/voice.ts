@@ -142,6 +142,19 @@ function tokens(ws: string[]): Token[] {
   return out;
 }
 
+/* What words() would otherwise drop, and so could change what a number means, makes a phrase unknown instead. */
+/** A character the parser doesn't read: it reads letters a-z, digits, spaces, a sentence's punctuation (. , ' ’ ? !
+ *  and quotes), × and @, and the dashes, which MINUS places. So "45%", "$45", "4/5" or a word in another script is
+ *  refused rather than read without its symbol. */
+const UNREAD = /[^a-z0-9\s.,'’`?!"“”×@\-\u2010-\u2015\u2212\ufe63\uff0d]/i;
+/** A minus sign, which could make a number negative ("-45", "at-45", "-.5", "-,5", "- forty"): the one place a hyphen
+ *  belongs is inside a number word, between two letters ("forty-five"). Hyphen-minus, the hyphens and figure dash, the
+ *  en dash, the minus sign, and their small and full-width forms all count; an em dash, a separator, doesn't. */
+const MINUS = /(^|[^\p{L}])[-\u2010-\u2013\u2212\ufe63\uff0d]|[-\u2010-\u2013\u2212\ufe63\uff0d](?!\p{L})/u;
+/** A comma right before a number but not after a digit (",5"): a comma is read in a number only between digits
+ *  ("22,5", "1,000"), and dropping this one would read ",5" as 5. */
+const LEADING_COMMA = /(^|\D),\d/;
+
 const SHAPE: Record<Token["t"], string> = { n: "n", reps: "r", kg: "k", lb: "l", repsFirst: "a", kgFirst: "f", word: "w" };
 
 /**
@@ -153,11 +166,7 @@ const SHAPE: Record<Token["t"], string> = { n: "n", reps: "r", kg: "k", lb: "l",
  * any word it doesn't know.
  */
 export function parseSetPhrase(text: string): VoiceResult {
-  // A minus sign could make a number negative ("-45", "at-45", "-.5", "-,5", "- forty"), and the punctuation clean-up
-  // would drop it, so a phrase with one is refused. The one place a hyphen belongs is inside a number word, between
-  // two letters ("forty-five"). Hyphen-minus, the hyphens and figure dash, the en dash, the minus sign, and their
-  // small and full-width forms all count; an em dash doesn't.
-  if (/(^|[^\p{L}])[-\u2010-\u2013\u2212\ufe63\uff0d]|[-\u2010-\u2013\u2212\ufe63\uff0d](?!\p{L})/u.test(text)) return unknown();
+  if (UNREAD.test(text) || MINUS.test(text) || LEADING_COMMA.test(text)) return unknown();
   const ws = words(text);
   const command = COMMANDS[ws.filter((w) => !FILLER.has(w)).join(" ")];
   if (command) return { kind: "command", command };

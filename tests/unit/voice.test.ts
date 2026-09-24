@@ -90,6 +90,16 @@ describe("parseSetPhrase: numbers", () => {
     expect(parseSetPhrase("10 at \uff0d45")).toEqual(unknown);
     expect(parseSetPhrase("10 at twenty-two point five")).toEqual(set(10, 22.5));
     expect(parseSetPhrase("10 reps — 45 kg")).toEqual(set(10, 45));
+  });
+
+  it("refuses what it doesn't read, rather than dropping it and reading the number without it", () => {
+    each(["10 at ,5", "10 at,5", ",5 for 10", "10 at 45%", "10 at $45", "10 at 4/5", "10 at 45 °", "10 at (45)", "10 at 45 पाउंड", "10 at ٤٥", "10 * 45"], unknown);
+  });
+
+  it("still reads a sentence's punctuation around a set", () => {
+    each(["10 at 45.", "10 at 45!", "10 at 45?", "Okay, 10 at 45", "10 reps, 45 kg", '"10 at 45"', "“10 at 45”"], set(10, 45));
+    expect(parseSetPhrase("8 at 22,5")).toEqual(set(8, 22.5));
+    expect(parseSetPhrase("10 at .5")).toEqual(set(10, 0.5));
     expect(parseSetPhrase("10 at forty-five")).toEqual(set(10, 45));
   });
 
