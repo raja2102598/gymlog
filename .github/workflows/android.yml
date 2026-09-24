@@ -38,7 +38,14 @@ jobs:
           java-version: 21
           cache: gradle
       - run: npm ci
+      # A fork points the build at its own project with repository variables (see .env.example); unset, the build
+      # uses the live app's settings from src/lib/config.ts.
       - name: Build the site and copy it into the app
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
         run: npm run android
       # The Kotlin tests include the background sync's check against tests/fixtures/health-days.json, which the
       # website's unit tests check too, so both turn Health Connect's readings into the same days.

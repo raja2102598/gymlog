@@ -4,8 +4,10 @@
 // off-site is refused and recorded (the app shouldn't need it).
 import { createHash } from "node:crypto";
 
-export const HOST = "https://dtudesmwddtlcekhqees.supabase.co";
-export const AUTH_KEY = "sb-dtudesmwddtlcekhqees-auth-token";
+// The Supabase project the build talks to (src/lib/config.ts): the live app's, unless NEXT_PUBLIC_SUPABASE_URL was
+// set for the build. Set it for the tests too, then, so they intercept the right address.
+export const HOST = (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dtudesmwddtlcekhqees.supabase.co").replace(/\/+$/, "");
+export const AUTH_KEY = `sb-${new URL(HOST).hostname.split(".")[0]}-auth-token`;
 export const NOW = new Date("2026-09-23T12:00:00");
 
 /** Day n counted from Wednesday 26 August 2026 (n = 28 is today). */
