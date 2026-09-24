@@ -36,12 +36,30 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-          cache: gradle
+      # Gradle's downloads and its build cache (android/gradle.properties turns it on). A run saves them when the
+      # Android side has changed (android/, or the Capacitor plugins in package-lock.json), and every run starts from
+      # the newest it can see, its own branch's or else main's. So a change to the site alone compiles nothing again,
+      # and one to the app itself still starts from everything else.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**', 'package-lock.json') }}
+          restore-keys: gradle-${{ runner.os }}-
       - run: npm ci
+      # Next.js's build cache (its compiler's and TypeScript's work, in .next/cache), which Next.js asks CI to keep:
+      # a run starts from the newest one for the same packages and only redoes what changed.
+      - uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts', 'tsconfig.json') }}
+          restore-keys: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
       - name: Build the site and copy it into the app
         run: npm run android
       # The Kotlin tests include the background sync's check against tests/fixtures/health-days.json, which the
-      # website's unit tests check too, so both turn Health Connect's readings into the same days.
+      # website's unit tests check too, so both turn Health Connect's readings into the same days. They run against
+      # the release build, which the APK needs anyway, so nothing is compiled twice.
       - name: Test the Kotlin and build the APK
         id: apk
         working-directory: android
@@ -67,7 +85,7 @@ jobs:
             echo "::warning::No GYMLOG_KEYSTORE_BASE64 secret, so this APK is signed with a throwaway debug key and won't install over the app on your phone. See README.md, Android app."
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
-          ./gradlew testDebugUnitTest assembleRelease --no-daemon --console=plain
+          ./gradlew testReleaseUnitTest assembleRelease --no-daemon --console=plain
           mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/gym-log.apk"
           echo "version=1.0.$GYMLOG_VERSION_CODE" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7

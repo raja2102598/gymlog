@@ -35,8 +35,13 @@ android {
         jvmTarget = JavaVersion.VERSION_21.toString()
     }
     testOptions {
-        // HealthDaysTest reads the fixture shared with the web app's tests.
-        unitTests.all { it.systemProperty "fixtures", rootProject.file("../tests/fixtures").absolutePath }
+        // HealthDaysTest reads the fixture shared with the web app's tests, so the tests run again when it changes
+        // (the build cache would otherwise reuse the last result, as if only the Kotlin mattered).
+        unitTests.all {
+            def fixtures = rootProject.file("../tests/fixtures")
+            it.systemProperty "fixtures", fixtures.absolutePath
+            it.inputs.dir(fixtures).withPropertyName("fixtures").withPathSensitivity(PathSensitivity.RELATIVE)
+        }
     }
     buildTypes {
         release {
