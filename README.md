@@ -143,6 +143,7 @@ scripts/           The service-worker generator, a static server, the screenshot
 - [User guide](docs/user-guide.md): every screen, and how the numbers are worked out
 - [Android app and Health Connect](docs/android.md): install, background sync, what happens to the data, building and signing
 - [Continue with Google](docs/google-sign-in.md): the Google Cloud and Supabase set-up
+- [Roadmap](docs/roadmap.md): what's planned, in order, and what needs new pieces
 - [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md)
 
 ## Contributing
