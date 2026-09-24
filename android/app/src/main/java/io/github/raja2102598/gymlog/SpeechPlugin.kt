@@ -147,8 +147,10 @@ class SpeechPlugin : Plugin() {
 /**
  * SpeechRecognizer's errors as the reasons the browser's speech recognition gives (src/lib/speech.ts), so the app
  * says the same as the website: silence is "no-speech", words it couldn't make out "no-match", no microphone
- * permission "not-allowed", no connection (or a language the phone would first have to download) "network", a
- * cancel "aborted", and anything else "failed". Pure, for SpeechErrorsTest.
+ * permission "not-allowed", no connection (or a language the phone would first have to download) "network", and
+ * anything else "failed", which asks you to try again. None of them is "aborted", which says nothing: only the
+ * plugin's own stops are (end()), and it lets go of the recognizer before any error of that listen could arrive, so
+ * an ERROR_CLIENT that does arrive is a real failure. Pure, for SpeechErrorsTest.
  */
 object SpeechErrors {
     const val NO_SPEECH = "no-speech"
@@ -168,7 +170,6 @@ object SpeechErrors {
         SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
         SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE,
         -> NETWORK
-        SpeechRecognizer.ERROR_CLIENT -> ABORTED
         else -> FAILED
     }
 

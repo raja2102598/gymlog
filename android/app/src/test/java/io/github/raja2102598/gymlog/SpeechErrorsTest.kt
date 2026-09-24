@@ -3,6 +3,7 @@ package io.github.raja2102598.gymlog
 import android.speech.SpeechRecognizer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,15 +36,18 @@ class SpeechErrorsTest {
         }
     }
 
+    // "aborted" shows no message, and the plugin's own stops never come through reason(), so a client error from the
+    // recognizer must ask you to try again instead of leaving the microphone off without a word.
     @Test
-    fun aCancelIsAborted() {
-        assertEquals("aborted", SpeechErrors.reason(SpeechRecognizer.ERROR_CLIENT))
+    fun noRecognizerErrorIsAborted() {
+        for (error in 0..20) assertNotEquals("error $error", "aborted", SpeechErrors.reason(error))
     }
 
     @Test
     fun anythingElseFailed() {
         for (error in listOf(
             SpeechRecognizer.ERROR_AUDIO,
+            SpeechRecognizer.ERROR_CLIENT,
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
             SpeechRecognizer.ERROR_TOO_MANY_REQUESTS,
             SpeechRecognizer.ERROR_SERVER_DISCONNECTED,
