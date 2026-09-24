@@ -1,0 +1,41 @@
+# The site: lint, types, the unit tests, the build and the browser tests, for every pull request and push to main.
+# The Android app has its own workflow, android.yml.
+name: Site
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The build needs a Supabase project to point at, and the browser tests intercept every request to it, so no
+    # real project is called and any address will do.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example-project.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_example
+      NEXT_PUBLIC_SITE_URL: https://gym-log.example
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Install Chromium for the browser tests
+        run: npx playwright-core install --with-deps chromium
+      - run: npm run test:e2e

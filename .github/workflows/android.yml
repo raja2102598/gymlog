@@ -55,8 +55,24 @@ jobs:
           path: .next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts', 'tsconfig.json') }}
           restore-keys: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      # Where the APK points (see .env.example): the repository's variables, never the source. A pull request may lack
+      # them (a fork's does), which only makes an APK that shows the setup screen; a build for publishing must have them.
       - name: Build the site and copy it into the app
-        run: npm run android
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ]; then
+            if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+              echo "::warning::No NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY repository variables, so this APK has no Supabase project and shows the setup screen. Fine for checking the build; see .env.example."
+            else
+              echo "::error::Add the NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY repository variables (Settings → Secrets and variables → Actions → Variables) before publishing; see .env.example."
+              exit 1
+            fi
+          fi
+          npm run android
       # The Kotlin tests include the background sync's check against tests/fixtures/health-days.json, which the
       # website's unit tests check too, so both turn Health Connect's readings into the same days. They run against
       # the release build, which the APK needs anyway, so nothing is compiled twice.

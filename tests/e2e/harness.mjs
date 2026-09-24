@@ -3,9 +3,24 @@
 // project is answered from an in-memory `db`, so no real data is read or written. Anything else
 // off-site is refused and recorded (the app shouldn't need it).
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 
-export const HOST = "https://dtudesmwddtlcekhqees.supabase.co";
-export const AUTH_KEY = "sb-dtudesmwddtlcekhqees-auth-token";
+// The Supabase project the built site talks to: NEXT_PUBLIC_SUPABASE_URL, read from the environment or from
+// .env.local / .env as Next.js reads it for the build (src/lib/config.ts). The tests intercept that address, so it
+// has to be the one out/ was built with; any project will do, since nothing real is called.
+function fromEnv(name) {
+  if (process.env[name]) return process.env[name];
+  for (const file of [".env.local", ".env"]) {
+    let text;
+    try { text = fs.readFileSync(file, "utf8"); } catch { continue; }
+    const m = text.match(new RegExp(`^\\s*${name}\\s*=\\s*(.*?)\\s*$`, "m"));
+    if (m) return m[1].replace(/^(["'])(.*)\1$/, "$2");
+  }
+  return "";
+}
+export const HOST = fromEnv("NEXT_PUBLIC_SUPABASE_URL").trim().replace(/\/+$/, "");
+if (!HOST) throw new Error("Set NEXT_PUBLIC_SUPABASE_URL, in the environment or in .env.local, to the address the site was built with (see .env.example).");
+export const AUTH_KEY = `sb-${new URL(HOST).hostname.split(".")[0]}-auth-token`;
 export const NOW = new Date("2026-09-23T12:00:00");
 
 /** Day n counted from Wednesday 26 August 2026 (n = 28 is today). */
