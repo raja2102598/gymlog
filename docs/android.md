@@ -31,6 +31,8 @@ With **Sync in the background** on, Android runs a small job about every hour, e
 
 The app carries its own copy of the site, so changes to the site only reach it in a new APK. Every push to `main` builds one and publishes it as the **android-latest** release (GitHub → Actions → *Android app* shows each build; pull requests get an APK under the run's *Artifacts*). Install it over the old one the same way; you stay signed in.
 
+`android-latest` is replaced by each push. For a build that stays, push a tag: `git tag v1.2.0 && git push origin v1.2.0` builds the APK with that version name and publishes it as a permanent release for the tag; its notes name the commit and link to the build, whose summary shows the signing certificate's fingerprints. Use tags for the builds you want people to install, and `android-latest` for the newest.
+
 An update only installs over the app if it's signed with the same key. The key is a `.p12` file kept outside the repo, and GitHub Actions gets it from two repository secrets (Settings → Secrets and variables → Actions): `GYMLOG_KEYSTORE_BASE64` (the file, base64-encoded) and `GYMLOG_KEYSTORE_PASSWORD`. Without them, builds are signed with a throwaway key and nothing is published. Keep a copy of the key and its password somewhere safe: if they're lost, make a new key, update the secrets, and uninstall the app before installing the next build (your data is in Supabase, so you only sign in again and reconnect Health Connect).
 
 The build also reads the same `NEXT_PUBLIC_*` variables as the site, from repository variables on the same settings page (see `.env.example`). Without them the workflow builds an APK that shows the setup screen, and refuses to publish it.

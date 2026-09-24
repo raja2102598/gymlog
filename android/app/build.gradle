@@ -10,7 +10,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI numbers each build, so a newer APK installs over an older one.
         versionCode = (System.getenv("GYMLOG_VERSION_CODE") ?: "1").toInteger()
-        versionName = "1.0." + (System.getenv("GYMLOG_VERSION_CODE") ?: "0")
+        // A tagged build (v1.2.0) is named after its tag; see .github/workflows/android.yml.
+        versionName = System.getenv("GYMLOG_VERSION_NAME") ?: ("1.0." + (System.getenv("GYMLOG_VERSION_CODE") ?: "0"))
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

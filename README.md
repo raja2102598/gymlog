@@ -106,11 +106,16 @@ The build and the browser tests read `.env.local` too, so one file covers everyt
 
 ## Deploy your own
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fraja2102598%2Fgymlog&project-name=gym-log&repository-name=gym-log&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY&envDescription=Your%20Supabase%20project%27s%20URL%20and%20publishable%20key%20%28Project%20Settings%20%E2%86%92%20API%29.%20Run%20supabase%2Fschema.sql%20in%20its%20SQL%20Editor%20first.&envLink=https%3A%2F%2Fgithub.com%2Fraja2102598%2Fgymlog%2Fblob%2Fmain%2F.env.example)
+
+The button copies the repo into your GitHub account, deploys it on Vercel and asks for the two Supabase values. Run `supabase/schema.sql` in your project first (step 1 below), and add the site's address and the Google client ID afterwards (steps 2 and 5). Or by hand:
+
 Nothing about a deployment lives in the source. A build reads four `NEXT_PUBLIC_*` variables, listed in `.env.example`, and all four are public values: they end up in the site's JavaScript anyway.
 
 1. **Supabase:** create a project and run `supabase/schema.sql` in the SQL Editor. It creates the tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their row-level security and the two functions background sync uses, and is safe to re-run. The project URL and publishable key are under Project Settings → API.
 2. **Vercel:** Add New → Project → import your fork; `vercel.json` sets the build. Under Settings → Environment Variables add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` (the site's address) once you know it, then deploy again. Every push to `main` deploys.
 3. **Sign-in links:** in Supabase → Authentication → URL Configuration, set the Site URL to the site's address and add the address followed by `/**` as a redirect URL.
+   **Privacy page:** `public/privacypolicy.html` is what Health Connect and Google's consent screen show. It describes the app; add who runs your copy, where its database is hosted and how to reach you.
 4. **Android build, optional:** add the same variables as repository variables on GitHub (Settings → Secrets and variables → Actions → Variables) and the signing key as the two secrets in [docs/android.md](docs/android.md#updates-and-the-signing-key). Every push to `main` then publishes an APK as the `android-latest` release.
 5. **Google sign-in, optional:** [docs/google-sign-in.md](docs/google-sign-in.md).
 
@@ -138,6 +143,7 @@ scripts/           The service-worker generator, a static server, the screenshot
 - [User guide](docs/user-guide.md): every screen, and how the numbers are worked out
 - [Android app and Health Connect](docs/android.md): install, background sync, what happens to the data, building and signing
 - [Continue with Google](docs/google-sign-in.md): the Google Cloud and Supabase set-up
+- [Roadmap](docs/roadmap.md): what's planned, in order, and what needs new pieces
 - [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md)
 
 ## Contributing
