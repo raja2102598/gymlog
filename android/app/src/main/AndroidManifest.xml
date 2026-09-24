@@ -49,6 +49,16 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Voice logging (SpeechPlugin): the microphone, asked for when Log sets by voice is switched on. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Android 11 and later only let an app see the services it names here: without this, the phone's speech
+         recognition looks missing. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <!-- Health Connect: Gym Log only reads. What it reads is READ in src/native/health.ts; older history too. -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_DISTANCE" />

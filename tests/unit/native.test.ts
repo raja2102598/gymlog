@@ -32,13 +32,16 @@ vi.mock("@capgo/capacitor-health", () => ({ Health: health }));
 vi.mock("@capacitor/app", () => ({ App: app }));
 // The app's own GoogleSignIn plugin: Android's account sheet, answering with Google's ID token.
 const googleSignIn = vi.hoisted(() => ({ signIn: vi.fn() }));
+// The app's own Speech plugin, for voice logging: this phone can listen.
+const speech = vi.hoisted(() => ({ available: vi.fn(async () => ({ available: true })) }));
 vi.mock("@capacitor/core", () => ({
-  registerPlugin: (name: string) => (name === "GoogleSignIn" ? googleSignIn : gymSync),
+  registerPlugin: (name: string) => (name === "GoogleSignIn" ? googleSignIn : name === "Speech" ? speech : gymSync),
   SystemBars: { setStyle: vi.fn() },
   SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" },
 }));
 
 import { APP_LOGIN_PAGE, NATIVE_SIGN_IN } from "@/lib/native";
+import { speechSupported } from "@/lib/speech";
 import { GymStore } from "@/lib/store";
 import { connectHealth, healthAccess, READ, syncHealth } from "@/native/health";
 import { signInWithGoogle } from "@/native/google";
@@ -240,6 +243,11 @@ describe("startNative", () => {
     await flush();
     expect(health.isAvailable).toHaveBeenCalledTimes(1);
     expect(app.listeners.resume).toBeTypeOf("function");
+    // Voice logging: the phone was asked, once, whether it can listen, and Settings and Today follow its answer.
+    vi.stubGlobal("window", { Capacitor: { isNativePlatform: () => true } });
+    await vi.waitFor(() => expect(speechSupported()).toBe(true));
+    await startNative(s);
+    expect(speech.available).toHaveBeenCalledTimes(1);
   });
 });
 

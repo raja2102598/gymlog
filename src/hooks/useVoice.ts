@@ -1,17 +1,26 @@
 "use client";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { listenOnce, onVoicePref, SpeechError, voicePref } from "@/lib/speech";
+import { isNative } from "@/lib/native";
+import { listenOnce, onVoicePref, SpeechError, speechSupported, voicePref } from "@/lib/speech";
 import { bestAlternative, type VoiceResult } from "@/lib/voice";
 
 /** Whether "Log sets by voice" is on, on this device. Follows the switch in Settings as it changes. */
 export const useVoicePref = (): boolean => useSyncExternalStore(onVoicePref, voicePref, () => false);
+
+/** Whether this device can listen. In the Android app that's known once the phone answers, just after the app starts. */
+export const useSpeechSupported = (): boolean => useSyncExternalStore(onVoicePref, speechSupported, () => false);
+
+const voiceOn = () => voicePref() && speechSupported();
+/** Voice logging is on here: switched on, and this device can listen. Follows both as they change. */
+export const useVoiceOn = (): boolean => useSyncExternalStore(onVoicePref, voiceOn, () => false);
 
 /** What to say when listening brought back no words; nothing when it was stopped. */
 function trouble(reason: string): string {
   if (reason === "aborted") return "";
   if (reason === "no-speech") return "Didn’t hear anything. Try again.";
   if (reason === "no-match") return "Didn’t catch that. Say it like “10\u00a0at\u00a045”.";
-  if (reason === "not-allowed" || reason === "service-not-allowed") return "Allow the microphone for this site to log by voice.";
+  if (reason === "not-allowed" || reason === "service-not-allowed")
+    return isNative() ? "Allow the microphone for Gym Log in Android’s settings to log by voice." : "Allow the microphone for this site to log by voice.";
   if (reason === "network") return "Couldn’t reach speech recognition. Check your connection, then try again.";
   return "Couldn’t listen just now. Try again, or type the set.";
 }
