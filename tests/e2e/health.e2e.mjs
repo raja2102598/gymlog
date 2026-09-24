@@ -1,6 +1,7 @@
 // Health Connect data as the website shows it, once the Android app has synced it to health_days:
-// steps and weight fill in until you type your own, the day's sleep, heart and workouts, and the dashboard.
-import { K, flat, open, ready, session, until } from "./harness.mjs";
+// steps and weight fill in until you type your own, the day's sleep, heart and workouts, the Health tab and its
+// pages, and the flags in Progress.
+import { K, flat, open, openTab, ready, session, until } from "./harness.mjs";
 
 function data() {
   const logs = {}, health = {};
@@ -70,23 +71,61 @@ export default async function healthSuite({ browser, base, check }) {
   await page.locator("#week .dchip").nth(3).click();
   check("a day with no data: no card or note, the usual placeholders", (await page.locator("#healthToday, #hcNote").count()) === 0 && (await page.$eval("#steps", (e) => e.placeholder)) === "0");
 
-  // Menu on the website: where the data comes from
+  // Settings on the website: where the data comes from
   await page.locator("#week .dchip").nth(2).click();
-  await page.click("#menuBtn");
+  await openTab(page, "settings");
   const hcStatus = await flat(page.locator("#hcStatus"));
-  check("menu: says the data comes from the Android app, and when it synced", /^Health Connect data comes from the Gym Log Android app, last synced at \d{1,2}:\d\d (am|pm)\.$/i.test(hcStatus), hcStatus);
-  check("menu: no Connect button on the website", (await page.locator("#hcConnect, #hcSync").count()) === 0);
-  await page.click("#menuBtn");
+  check("Settings: says the data comes from the Android app, and when it synced", /^Health Connect data comes from the Gym Log Android app, last synced at \d{1,2}:\d\d (am|pm)\.$/i.test(hcStatus), hcStatus);
+  check("Settings: no Connect or background sync on the website", (await page.locator("#hcConnect, #hcSync, #bgSync").count()) === 0);
 
-  // Dashboard
-  await page.click("#dashBtn");
-  const d = await flat(page.locator("#dashHealth"));
-  // Last 7 nights: six of 5.5 h and 7 h 12 min; the 7 before, 7 h each. Resting: six of 68 and 61 (67), against 61.
-  check("dashboard: sleep and resting heart rate, this week and the week before", /5 h 45 min ?asleep a night, last 7 days \(week before 7 h\)/.test(d) && /67 ?resting heart rate, bpm \(week before 61\)/.test(d), d);
-  check("dashboard: workouts and active calories this week", /1 ?workout this week, 52 min/.test(d) && /1,065 ?active kcal this week/.test(d), d);
-  check("dashboard: a bar for each of 14 nights, green from 7 hours", (await page.locator("#dashHealth svg rect.wbar").count()) === 14 && (await page.locator("#dashHealth svg rect.wbar.met").count()) === 8);
+  // The Health tab: the day's rings and a tile for each kind of data
+  await openTab(page, "health");
+  const rings = (await page.getAttribute("#activity svg.rings", "aria-label")).replace(/\s+/g, " ");
+  check("rings: steps (the 9,000 you typed), exercise and active calories against their goals", rings === "Steps 9,000 of 10,000, Exercise 52 of 30 min, Active 412 of 500 kcal", JSON.stringify(rings));
+  // Text as laid out, so the lines of a tile read as separate words.
+  const text = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
+  const tile = text;
+  check("sleep tile: hours asleep, and the stages for screen readers", /^Sleep 7 h 12 min asleep the night before Deep 80 min, Light 257 min, REM 95 min, Awake 12 min$/.test(await tile("#tileSleep")), await tile("#tileSleep"));
+  check("heart tile: resting and average", /^Heart 61 bpm resting · avg 78$/.test(await tile("#tileHeart")), await tile("#tileHeart"));
+  check("calories tile: what was burned moving", /^Calories 412 kcal burned moving$/.test(await tile("#tileEnergy")), await tile("#tileEnergy"));
+  check("body tile: Health Connect's weigh-in", /^Body 81\.2 kg body weight$/.test(await tile("#tileBody")), await tile("#tileBody"));
+  check("water tile: no data, and where it would come from", /^Water No data From a water-tracking app$/.test(await tile("#tileWater")), await tile("#tileWater"));
+  check("exercise tile: minutes and the kind of workout", /^Exercise 52 min Strength training$/.test(await tile("#tileExercise")), await tile("#tileExercise"));
+  check("where it comes from, and when", /^From Health Connect, synced at \d{1,2}:\d\d (am|pm)\.$/i.test(await flat(page.locator("#healthNote"))), await flat(page.locator("#healthNote")));
+  await page.click("#hPrev");
+  check("the day switch moves to yesterday", (await flat(page.locator(".dayswitch-l"))) === "Yesterday" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000"));
+  await page.click("#hNext");
+  check("and back to today, no further", (await flat(page.locator(".dayswitch-l"))) === "Today" && (await page.locator("#hNext").isDisabled()));
+
+  // Sleep's page: the week as bars against the goal, then one night
+  await page.click("#tileSleep");
+  await page.waitForSelector("#hChart");
+  check("Sleep opens as a page with its own address", page.url().endsWith("/#health/sleep") && (await page.textContent("#screenTitle")) === "Sleep");
+  check("a bar for each night of the week", (await page.locator("#hChart path.col").count()) === 7);
+  check("the average and the nights at the goal", /^5 h 45 min a night on average/.test(await text(".hstat")) && (await text("#hGoalDays .v")) === "1", await text("#healthView > .hstats"));
+  check("the goal and average lines are named in a key", (await flat(page.locator("#hChart .refkey"))) === "Goal 7 h Average 5 h 45 min", await flat(page.locator("#hChart .refkey")));
+  check("the picked night is read out: the last one first", (await flat(page.locator("#hChart .readout"))) === "Wed, 23 Sept: 7 h 12 min", await flat(page.locator("#hChart .readout")));
+  await page.locator("#hChart rect.hit").nth(6).focus();
+  await page.keyboard.press("ArrowLeft");
+  check("arrow keys move along the nights", (await flat(page.locator("#hChart .readout"))) === "Tue, 22 Sept: 5 h 30 min" && (await page.evaluate(() => document.activeElement.getAttribute("aria-label").replace(/\s+/g, " "))) === "Tue, 22 Sept: 5 h 30 min");
+  await page.click(".seg-b >> text=Day");
+  check("one night: hours, the stages with their minutes, and the goal", /^7 h 12 min asleep/.test(await text("#hHero")) && (await text("#hHero .stagekey")) === "Deep 80 min Light 257 min REM 95 min Awake 12 min" && (await text("#hGoal")) === "12 min over your 7 h goal.", await text("#hHero"));
+  await page.click("#backBtn");
+  await page.waitForSelector("#activity");
+  check("the back arrow returns to Health", page.url().endsWith("/#health"), page.url());
+
+  // Heart's page: resting heart rate as a line
+  await page.click("#tileHeart");
+  await page.waitForSelector("#hChart");
+  check("heart: a dot for each day, and the week's average and lowest", (await page.locator("#hChart circle.dot").count()) === 7 && (await text("#healthView > .hstats")) === "67 resting bpm on average 61 lowest resting bpm", await text("#healthView > .hstats"));
+  await page.click("#backBtn");
+  await page.waitForSelector("#activity");
+
+  // Progress: sleep and resting heart rate still raise flags there
+  await openTab(page, "progress");
+  check("Progress has no health card now: its charts are in Health", (await page.locator("#dashHealth").count()) === 0);
   const flags = await flat(page.locator("#dashFlags"));
-  check("dashboard: short sleep and a higher resting heart rate are pointed out", /Sleeping 5 h 45 min a night on average this week/.test(flags) && /Resting heart rate is 6 bpm higher than last week/.test(flags), flags);
+  check("Progress: short sleep and a higher resting heart rate are pointed out", /Sleeping 5 h 45 min a night on average this week/.test(flags) && /Resting heart rate is 6 bpm higher than last week/.test(flags), flags);
   const w = await flat(page.locator("#dashWeight"));
   check("weight trend uses Health Connect's weigh-ins", /kg ?trend weight/.test(w) && (await page.locator("#dashWeight svg circle.dot").count()) === 15, w.slice(0, 120));
   const s = await flat(page.locator("#dashSteps"));
@@ -95,15 +134,14 @@ export default async function healthSuite({ browser, base, check }) {
   check("no console errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();
 
-  // No Health Connect data at all: the dashboard says where it would come from
+  // No Health Connect data at all: Health and Settings say where it would come from
   {
     const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: null } });
     await ready(page);
-    await page.click("#dashBtn");
-    check("dashboard with no data: points to the Android app", /come from Health Connect, through the Gym Log Android app/.test(await flat(page.locator("#dashHealth"))));
-    await page.click("#dashBtn");
-    await page.click("#menuBtn");
-    check("menu with no data: no Health Connect line", (await page.locator("#hcStatus").count()) === 0);
+    await openTab(page, "health");
+    check("Health with no data: points to the Android app", /It comes from Health Connect, through the Gym Log Android app/.test(await flat(page.locator("#healthEmpty"))));
+    await openTab(page, "settings");
+    check("Settings with no data: says where it would come from", (await flat(page.locator("#hcStatus"))) === "Health Connect data comes from the Gym Log Android app. Connect it there, and it shows here too.");
     await ctx.close();
   }
 }

@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     namespace = "io.github.raja2102598.gymlog"
@@ -30,6 +31,13 @@ android {
             }
         }
     }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_21.toString()
+    }
+    testOptions {
+        // HealthDaysTest reads the fixture shared with the web app's tests.
+        unitTests.all { it.systemProperty "fixtures", rootProject.file("../tests/fixtures").absolutePath }
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -51,7 +59,13 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Background sync: WorkManager runs HealthSyncWorker; it reads through the Health plugin's HealthManager.
+    implementation "androidx.work:work-runtime-ktx:2.12.0"
+    implementation "androidx.health.connect:connect-client:1.1.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
     testImplementation "junit:junit:$junitVersion"
+    // The real org.json for unit tests (Android's is only stubs off a device).
+    testImplementation "org.json:json:20260814"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

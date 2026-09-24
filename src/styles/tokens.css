@@ -2,11 +2,14 @@
    Colour: --good is done and progress, the one accent. --warn is a warning: pain over the limit, a missed
    day, a failed sync, a destructive action. Everything else is neutral, including suggestions and the
    focus ring. --edge outlines form fields (3:1 against every surface); --line is for hairlines only.
-   Shape: cards 16px, controls 10px, chips and pills fully round, small marks 4px.
+   Shape: cards 20px, controls 10px, chips and pills fully round, small marks 4px.
    Type: Oswald capitals only for the app name, page and session titles and big numbers; IBM Plex Sans in
    sentence case for everything else; IBM Plex Mono for numbers you type or compare. The fonts are served
    from this site (src/fonts, SIL Open Font License; loaded in src/app/fonts.ts), so they work offline.
-   Motion: feedback only, and none at all under prefers-reduced-motion. */
+   Motion: feedback only, and none at all under prefers-reduced-motion.
+   Health data: one colour per kind (steps, exercise, calories, sleep, heart, body, water), the same in every
+   chart, ring and tile, and never on text. Each theme has its own steps, checked against its card colour with
+   the dataviz skill's validator. None is orange, which is --warn's. */
 :root {
   --ground: #eef0f2;
   --surface: #ffffff;
@@ -23,7 +26,22 @@
   --shadow: 0 1px 2px rgb(21 23 27 / 0.06), 0 0 0 1px rgb(21 23 27 / 0.05);
   --shadow-up: 0 6px 20px rgb(21 23 27 / 0.1), 0 0 0 1px rgb(21 23 27 / 0.05);
 
-  --r-card: 16px;
+  --c-steps: #008300;
+  --c-exercise: #1baf7a;
+  --c-energy: #eda100;
+  --c-sleep: #4a3aa7;
+  --c-heart: #e34948;
+  --c-body: #e87ba4;
+  --c-water: #2a78d6;
+  /* sleep stages: deep, light, REM, awake (validated as a set, in that order along the bar) */
+  --st-deep: #4a3aa7;
+  --st-light: #8a7cf0;
+  --st-rem: #34b6d6;
+  --st-awake: #e36f9b;
+  --tint: 16%;
+  --dim: 0.5;
+
+  --r-card: 20px;
   --r-ctl: 10px;
   --r-mark: 4px;
 
@@ -59,6 +77,19 @@
     --chip: #262a31;
     --shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
     --shadow-up: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.08);
+    --c-steps: #008300;
+    --c-exercise: #199e70;
+    --c-energy: #c98500;
+    --c-sleep: #9085e9;
+    --c-heart: #e66767;
+    --c-body: #d55181;
+    --c-water: #3987e5;
+    --st-deep: #5846c6;
+    --st-light: #9a7de3;
+    --st-rem: #138db1;
+    --st-awake: #d06091;
+    --tint: 24%;
+    --dim: 0.72;
   }
 }
 :root[data-theme="dark"] {
@@ -77,4 +108,17 @@
   --chip: #262a31;
   --shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
   --shadow-up: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.08);
+  --c-steps: #008300;
+  --c-exercise: #199e70;
+  --c-energy: #c98500;
+  --c-sleep: #9085e9;
+  --c-heart: #e66767;
+  --c-body: #d55181;
+  --c-water: #3987e5;
+  --st-deep: #5846c6;
+  --st-light: #9a7de3;
+  --st-rem: #138db1;
+  --st-awake: #d06091;
+  --tint: 24%;
+  --dim: 0.72;
 }

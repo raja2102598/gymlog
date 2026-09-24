@@ -5,7 +5,7 @@ import { useGym } from "@/hooks/useGym";
 // Seconds before another link can be sent: Supabase refuses sooner, and a new link replaces the last one.
 const WAIT = 60;
 
-/** Sign-in by emailed link, or with a password set from the menu. */
+/** Sign-in by emailed link, or with a password set in Settings. */
 export function LoginView({ hidden }: { hidden: boolean }) {
   const store = useGym();
   const [mode, setMode] = useState<"link" | "password">("link");
@@ -45,7 +45,7 @@ export function LoginView({ hidden }: { hidden: boolean }) {
       <p className="sub">
         {mode === "link"
           ? "Enter your email to get a sign-in link. No password needed."
-          : "Use the password you set from the menu. No password yet? Sign in with an email link, then Menu → Set a password."}
+          : "Use the password you set in Settings. No password yet? Sign in with an email link, then Settings → Set a password."}
       </p>
       <form id="loginForm" className="login" onSubmit={submit}>
         <label className="field" htmlFor="email">

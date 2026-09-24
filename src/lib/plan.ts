@@ -5,6 +5,8 @@ import type { Plan } from "./types";
 type Loose = Record<string, unknown> | null | undefined;
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
 const pos = (v: unknown) => (v != null && v !== "" && +(v as number) > 0 ? +(v as number) : null);
+/** A number from lo to hi, or null (missing, not a number, out of range). */
+const within = (v: unknown, lo: number, hi: number) => (v != null && v !== "" && +(v as number) >= lo && +(v as number) <= hi ? +(v as number) : null);
 
 // Fills gaps and drops unnamed lifts so a hand-edited or partial plan can't break rendering. `d` is the
 // default plan to fall back on (none while the default itself is being read).
@@ -15,6 +17,10 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
   return {
     tempo: typeof q.tempo === "string" ? q.tempo : d ? d.tempo : "",
     stepGoal: goal > 0 ? goal : d ? d.stepGoal : 10000,
+    sleepGoalH: within(q.sleepGoalH, 3, 12) ?? d?.sleepGoalH ?? 7,
+    exerciseGoalMin: within(q.exerciseGoalMin, 5, 300) ?? d?.exerciseGoalMin ?? 30,
+    activeGoalKcal: within(q.activeGoalKcal, 50, 3000) ?? d?.activeGoalKcal ?? 500,
+    waterGoalMl: within(q.waterGoalMl, 250, 8000) ?? d?.waterGoalMl ?? 2500,
     goalWeight: pos(q.goalWeight),
     weeklyRatePct: pos(q.weeklyRatePct),
     kneeLimit: lim != null && lim !== "" && Number.isInteger(+lim) && +lim >= 0 && +lim <= 10 ? +lim : d ? d.kneeLimit : 5,

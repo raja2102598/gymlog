@@ -40,7 +40,9 @@ jobs:
       - run: npm ci
       - name: Build the site and copy it into the app
         run: npm run android
-      - name: Build the APK
+      # The Kotlin tests include the background sync's check against tests/fixtures/health-days.json, which the
+      # website's unit tests check too, so both turn Health Connect's readings into the same days.
+      - name: Test the Kotlin and build the APK
         id: apk
         working-directory: android
         env:
@@ -57,7 +59,7 @@ jobs:
             echo "::warning::No GYMLOG_KEYSTORE_BASE64 secret, so this APK is signed with a throwaway debug key and won't install over the app on your phone. See README.md, Android app."
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
-          ./gradlew assembleRelease --no-daemon --console=plain
+          ./gradlew testDebugUnitTest assembleRelease --no-daemon --console=plain
           mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/gym-log.apk"
           echo "version=1.0.$GYMLOG_VERSION_CODE" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7

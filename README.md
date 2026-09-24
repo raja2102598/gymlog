@@ -1,8 +1,10 @@
 # Gym Log
 
-A small installable web app for tracking a 5-day gym split: every set you lift (reps × weight), warm-ups, a cardio finisher, daily steps, body weight, waist, knee pain and notes, with a dashboard that shows how it's going. Your data lives in your own free Supabase database, and only your account can read it.
+A small installable web app for tracking a 5-day gym split: every set you lift (reps × weight), warm-ups, a cardio finisher, daily steps, body weight, waist, knee pain and notes, with charts that show how it's going. Your data lives in your own free Supabase database, and only your account can read it.
 
-There's also an [Android app](#android-app-and-health-connect): the same app, which can also read steps, weight, sleep, heart rate and workouts from Health Connect.
+It works like a phone app, with four tabs along the bottom: **Today** (the day's workout), **Health** (Health Connect's data with charts), **Progress** (how the plan is going) and **Settings**.
+
+There's also an [Android app](#android-app-and-health-connect): the same app, which can also read Health Connect (steps, sleep, heart rate, calories, workouts, weight, water and more), and keep it synced in the background.
 
 **Live app:** https://gym-log-omega-seven.vercel.app
 
@@ -14,25 +16,29 @@ A [Next.js](https://nextjs.org) app (App Router, TypeScript) exported as a stati
 | Path | What it does |
 |---|---|
 | `src/app/` | The page, its `<head>` (title, icons, theme colour) and the fonts |
-| `src/components/GymLog.tsx` | The app's frame: header, menu, sign-in, and which screen is showing |
+| `src/components/GymLog.tsx` | The app's frame: sign-in, the tabs and the pages under them, and the phone's Back button |
 | `src/components/today/` | The Today screen: week strip, the day's lifts and sets, knee scores, warm-up, cardio, steps and weight, history |
-| `src/components/dashboard/` | The dashboard cards and their charts |
+| `src/components/health/` | The Health tab: activity rings and a tile per kind of data, then a page per kind with charts by day, week and month |
+| `src/components/dashboard/` | The Progress tab's cards and their charts |
+| `src/components/settings/` | Settings: Health Connect and background sync, daily goals, the plan, theme, password, export and import |
 | `src/components/plan/` | The plan editor |
-| `src/components/shell/`, `src/components/ui/` | Sign-in, loading placeholder, sync bar, menu; text boxes that keep what you type |
+| `src/components/shell/`, `src/components/ui/` | Sign-in, the top bar and the tab bar, loading placeholder, sync bar; text boxes that keep what you type |
 | `src/lib/store.ts` | The data: the copy kept on the phone, saving to Supabase in the background, and everything worked out from your days (last time, next weight, records, missed sessions) |
 | `src/lib/health.ts` | Health Connect's readings turned into one entry a day, and the words the screens use for them |
-| `src/native/`, `src/lib/native.ts` | Code that only runs in the Android app: reading Health Connect, and signing in from the email link |
-| `src/lib/stats.ts`, `src/lib/dashboard.ts` | The calculations behind the dashboard, add-weight hints and records (weight trend, weekly rate, estimated 1RM, personal records) |
+| `src/lib/healthView.ts`, `src/lib/scale.ts` | What the Health tab shows: a day's numbers, a metric across days, averages and goals, and the charts' axes |
+| `src/lib/route.ts`, `src/lib/theme.ts` | Each screen's address (`#health/sleep`) and where Back goes; the light or dark theme |
+| `src/native/`, `src/lib/native.ts` | Code that only runs in the Android app: reading Health Connect, background sync, and signing in from the email link |
+| `src/lib/stats.ts`, `src/lib/dashboard.ts` | The calculations behind Progress, add-weight hints and records (weight trend, weekly rate, estimated 1RM, personal records) |
 | `src/lib/config.ts` | Supabase project URL and publishable key (safe to publish; RLS protects the data) |
 | `src/data/plan.json` | The default workout plan: days, exercises, sets/reps, cues, cardio, warm-ups. Used until you edit your plan in the app. |
 | `src/styles/` | The look: colours and type (`tokens.css`), shared controls, then one file per screen |
 | `src/fonts/` | Oswald and IBM Plex (SIL Open Font License), served from the site so they work offline |
 | `src/service-worker.js`, `scripts/build-sw.mjs` | Offline support: after each build the script writes `out/sw.js`, which keeps every file of the site on the phone |
 | `public/` | `manifest.webmanifest` and icons, for "Add to Home screen"; `privacypolicy.html`, which Health Connect shows when you give the Android app access; `app-login.html`, where sign-in links asked for in the Android app land before opening the app |
-| `supabase/schema.sql` | The database tables (`logs`, `plans`, `health_days`) and their security rules. Safe to re-run. |
-| `android/`, `capacitor.config.ts` | The Android app ([Capacitor](https://capacitorjs.com)): the site in a native shell, with the Health Connect permissions it asks for |
+| `supabase/schema.sql` | The database tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their security rules, and the two functions background sync uses. Safe to re-run. |
+| `android/`, `capacitor.config.ts` | The Android app ([Capacitor](https://capacitorjs.com)): the site in a native shell, with the Health Connect permissions it asks for, and the background sync (`GymSyncPlugin.kt`, `HealthSync.kt`: an hourly job that reads Health Connect and saves the last 3 days; `HealthDays.kt` turns readings into days exactly as `src/lib/health.ts` does, checked against the same test file, `tests/fixtures/health-days.json`) |
 | `.github/workflows/android.yml` | Builds the Android app for every pull request and push to `main`, and publishes it from `main` |
-| `tests/unit/`, `tests/e2e/` | Tests: the calculations (Vitest), and the whole app in Chrome with Supabase mocked |
+| `tests/unit/`, `tests/e2e/` | Tests: the calculations (Vitest), and the whole app in Chrome with Supabase mocked. The Kotlin has its own, in `android/app/src/test/` (`./gradlew testDebugUnitTest`) |
 | `vercel.json` | How Vercel builds and serves the site |
 
 
@@ -56,7 +62,7 @@ The development server uses the same Supabase project as the live app. Sign-in l
 
 - **Code:** private GitHub repo `raja2102598/gymlog`.
 - **Hosting:** Vercel project `gym-log`. `vercel.json` has the settings: it runs `npm ci` and `npm run build` and serves `out/`, and it tells browsers they can keep the fingerprinted files in `/_next/static` for good. Every push to `main` deploys to the live app; other branches get preview deployments that need a Vercel login to open.
-- **Database and sign-in:** Supabase project **Personal** (ap-south-1). Tables `logs` (one row per day), `plans` (your edited plan) and `health_days` (Health Connect's numbers, one row per day, written by the Android app) use row-level security, so each account sees only its own rows. Authentication → URL Configuration has the live app as the Site URL and `https://gym-log-omega-seven.vercel.app/**` as a redirect URL. That entry also covers `app-login.html`, where the Android app's sign-in links land, and the `sb_flow_id` each link carries. (`io.github.raja2102598.gymlog://login` is listed too; only version 1.0.1 of the app used it.)
+- **Database and sign-in:** Supabase project **Personal** (ap-south-1). Tables `logs` (one row per day), `plans` (your edited plan) and `health_days` (Health Connect's numbers, one row per day, written by the Android app) use row-level security, so each account sees only its own rows. `health_sync_keys` holds a fingerprint (SHA-256) of each phone's background-sync key, never the key: `create_health_sync_key` makes one for a signed-in account, and `sync_health_days` is the only thing a key can do, save that account's recent days. Authentication → URL Configuration has the live app as the Site URL and `https://gym-log-omega-seven.vercel.app/**` as a redirect URL. That entry also covers `app-login.html`, where the Android app's sign-in links land, and the `sb_flow_id` each link carries. (`io.github.raja2102598.gymlog://login` is listed too; only version 1.0.1 of the app used it.)
 - **Android app:** GitHub Actions (`.github/workflows/android.yml`) builds it. Its signing key is in two repository secrets, `GYMLOG_KEYSTORE_BASE64` and `GYMLOG_KEYSTORE_PASSWORD` (see [Updates](#updates-and-the-signing-key)).
 
 ### Setting it up again from scratch
@@ -66,7 +72,7 @@ The development server uses the same Supabase project as the live app. Sign-in l
 
 
 ## Install on your phone
-1. Open the live app in Chrome on your phone and sign in with your email. Tap the link in the email **on the same phone**. Or, once you've set a password (**Menu → Set a password**), tap **Use a password instead**.
+1. Open the live app in Chrome on your phone and sign in with your email. Tap the link in the email **on the same phone**. Or, once you've set a password (**Settings → Set a password**), tap **Use a password instead**.
 2. Chrome menu **⋮ → Add to Home screen → Install**. It then opens like a normal app.
 
 
@@ -85,32 +91,42 @@ The development server uses the same Supabase project as the live app. Sign-in l
 - **Records:** a set that beats every earlier session of that lift (heaviest weight, best estimated 1RM, or most reps at that weight or more) gets a **PR** badge as you type it.
 - **Knee:** on days with knee-sensitive lifts, tap your knee pain from 0 to 10 before and after the session, and on waking the next morning. Once scored, the scale folds to one line; **Change** opens it again. If pain goes above your limit (5 unless you change it), or hasn't settled by the morning, knee-sensitive lifts say *Hold … kg* instead of going up next time.
 - **Cardio and waist:** under the cardio finisher, log minutes, speed and incline (entering minutes ticks the finisher). The waist field sits next to body weight; once a week is enough.
-- **Dashboard:** the **Dashboard** button at the top. Weight trend and weekly rate, with a goal date and your pace against the target once you set them in the plan; sessions kept, full weeks in a row and a calendar; steps by week; strength (estimated 1RM of each day's first lift, lifts ready for more weight, recent records); knee scores by session. Notes at the top point out anything that needs attention, such as no weigh-in for a while. The phone's Back button returns to Today, from here and from the plan editor, and `/#dashboard` opens the dashboard directly.
+- **Progress:** the **Progress** tab. Weight trend and weekly rate, with a goal date and your pace against the target once you set them in the plan; sessions kept, full weeks in a row and a calendar; steps by week; strength (estimated 1RM of each day's first lift, lifts ready for more weight, recent records); knee scores by session. Notes at the top point out anything that needs attention, such as no weigh-in for a while, short sleep, or a resting heart rate higher than last week.
+- **Moving around:** the tabs along the bottom switch screens; pages under a tab (a Health chart, the plan editor) have a back arrow. The phone's Back button walks back the way you came: a page to its tab, a tab to Today. Each screen has an address, so `/#progress`, `/#health/sleep` or `/#settings` open it directly (`/#dashboard` still opens Progress).
 - **Home-screen shortcuts:** once installed, long-press the app icon for *Today*, *Log weight* or *Log steps*.
-- **Edit your plan:** **Menu → Edit plan**. Change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Each lift can have its own weight step and be marked knee-sensitive; the plan also holds your goal weight, target loss a week (% of body weight) and knee pain limit. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back `src/data/plan.json`.
+- **Edit your plan:** **Settings → Edit plan**. Change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Each lift can have its own weight step and be marked knee-sensitive; the plan also holds your goal weight, target loss a week (% of body weight) and knee pain limit. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back `src/data/plan.json`.
 - Changes save automatically. With poor gym signal they're kept on the phone and sync when you're back online. If a save fails, or you're offline with days waiting, a bar at the top says how many days haven't synced yet, with **Retry now**. The app asks the browser to keep its storage, so edits waiting to sync aren't cleared to free space.
-- **Menu → Export data** downloads every day as JSON; **Import data** brings a file like that back in. If the file has different entries for days you've already logged, it asks before replacing them.
+- **Settings → Export data** downloads every day as JSON; **Import data** brings a file like that back in. If the file has different entries for days you've already logged, it asks before replacing them.
+- **Settings** also holds your daily goals (steps, sleep, exercise minutes, active calories, water), the theme (the phone's, or always light or dark), and a password for signing in without an email. Once the account has a password, it offers **Change password** instead.
 
-- **Health Connect:** in the [Android app](#android-app-and-health-connect), steps and body weight from Health Connect show in grey in their boxes until you type your own, and a card under them shows the night's sleep, resting heart rate, active calories and any workouts other apps recorded. The dashboard's *Sleep, heart and workouts* card compares this week with the week before. The website shows the same numbers once the app has synced them.
+- **Health Connect on Today:** in the [Android app](#android-app-and-health-connect), steps and body weight from Health Connect show in grey in their boxes until you type your own, and a card under them shows the night's sleep, resting heart rate, active calories and any workouts other apps recorded, with **More in Health** to open the Health tab at that day. The website shows the same numbers once the app has synced them.
+- **Health:** the day's activity as three rings (steps, exercise minutes and active calories against your goals), then a tile for each kind of data: sleep with its stages, heart, calories burned and eaten, body (weight, body fat, BMI), water and exercise. ‹ › moves between days. Tap a ring or a tile for its page: the day in detail (steps by the hour, the night's stages and times, heart rate range and vitals, workouts), or a week or a month as a chart with your goal and average, and the numbers that matter (average, days at the goal, average bedtime, change in weight). Tap a bar or a point, or use the arrow keys, to read its value.
 
 
 ## Android app and Health Connect
-The Android app is the same Gym Log, installed from a file instead of Chrome, and it can read [Health Connect](https://support.google.com/android/answer/12201227), where Samsung Health, Google Fit, Fitbit, most watches and many scales keep their data. It reads steps, body weight, sleep, heart rate and resting heart rate, active calories, and workouts with their calories and distance. It never writes to Health Connect.
+The Android app is the same Gym Log, installed from a file instead of Chrome, and it can read [Health Connect](https://support.google.com/android/answer/12201227), where Samsung Health, Google Fit, Fitbit, most watches and many scales keep their data. It reads 20 kinds of data: steps (by the day and the hour), distance, floors, active, total and resting calories, calories eaten, water, heart rate, resting heart rate, heart rate variability, blood oxygen, breathing rate, VO₂ max, blood pressure, weight, body fat, height, sleep with its stages, and workouts. It never writes to Health Connect.
 
 **Needs:** Android 8 or later, and Health Connect: built into Settings on Android 14 and later (search Settings for *Health Connect*), or the **Health Connect** app from Google Play on Android 8 to 13. In the app that records your data (Samsung Health, Fit, your watch's app), turn on sharing with Health Connect.
 
 ### Install
 1. On the phone, sign in to GitHub in Chrome (the repo is private), open the repo's **Releases** and the latest **Gym Log for Android**, and download `gym-log.apk`.
 2. Open the downloaded file. Android asks once to allow installs from Chrome (or your Files app): allow it, go back and tap **Install**. Google Play Protect may say it doesn't know the developer: tap **More details → Install anyway**.
-3. Sign in. Easiest is a password: set one on the website first (**Menu → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
-4. **Menu → Connect Health Connect**, then allow what Gym Log asks for, including past data. The first sync reads back to when your log started (30 to 90 days).
+3. Sign in. Easiest is a password: set one on the website first (**Settings → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
+4. **Settings → Health Connect → Connect**, then allow what Gym Log asks for, including past data. The first sync reads back to when your log started (30 to 90 days). Only some kinds allowed? **Allow** under it asks for the rest; each newly allowed kind is read back that far too.
+5. For syncing while the app is closed, turn on **Sync in the background** in the same place, and allow Health Connect's *access data in the background* when it asks.
 
-After that it syncs the last 10 days (other apps' data can arrive late) each time you open the app or come back to it, at most every 5 minutes, and **Menu → Sync now** syncs straight away. The menu says when it last synced and what changed.
+While the app is open it syncs the last 10 days (other apps' data can arrive late) when you open it or come back to it, and every 15 minutes, and **Sync now** syncs straight away. Settings says when it last synced and what changed.
+
+### Background sync
+With **Sync in the background** on, Android runs a small job about every hour, even with the app closed: it reads the last 3 days from Health Connect and saves any that changed. It only runs with a network connection, and Android may delay it to save battery. Settings shows when it last ran and what happened.
+
+- It needs Health Connect's background reading, which some phones don't have yet (it comes with Health Connect updates from Google Play). Settings says so when it's missing, and Gym Log then syncs whenever you open it.
+- The job can't use your sign-in, which expires. Turning it on makes a random key for this phone that can do one thing, save this account's recent Health Connect days. Supabase keeps only its fingerprint. Turning it off, or signing out, removes it from the phone; turning it off also deletes it from Supabase. If the key stops working, background sync turns itself off and Settings says why.
 
 ### What it does with the data
 - Each day's numbers go to your Supabase database, in `health_days`, one row per day, behind the same row-level security as your log. Nothing is sent anywhere else. The website reads them to show the same cards, but only the app writes them.
-- A number you type always wins: Health Connect's steps or weight only show on days you left the box empty, and history, the week so far and the dashboard use them the same way.
-- To stop: open Health Connect → **App permissions → Gym Log** and turn its access off, or uninstall the app. Days already synced stay in `health_days`; delete them in Supabase (Table Editor → `health_days`) if you want them gone.
+- A number you type always wins: Health Connect's steps or weight only show on days you left the box empty, and history, the week so far, Health and Progress use them the same way.
+- To stop: turn off **Sync in the background**, then open Health Connect → **App permissions → Gym Log** (or **Settings → Manage in Health Connect** in the app) and turn its access off, or uninstall the app. Days already synced stay in `health_days`; delete them in Supabase (Table Editor → `health_days`) if you want them gone.
 
 ### Updates and the signing key
 The app carries its own copy of the site, so changes to the site only reach it in a new APK. Every push to `main` builds one and publishes it as the **android-latest** release (GitHub → Actions → *Android app* shows each build; pull requests get an APK under the run's *Artifacts*). Install it over the old one the same way; you stay signed in.

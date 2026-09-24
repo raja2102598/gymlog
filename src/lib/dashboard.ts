@@ -152,49 +152,20 @@ export function stepsModel(store: GymStore, t: DayKey): StepsModel {
   };
 }
 
-/* ---------- sleep, heart and workouts, from Health Connect ---------- */
+/* ---------- sleep and resting heart rate, from Health Connect ---------- */
 
-export interface HealthModel {
-  flags: Flag[];
-  /** Any Health Connect data at all. */
-  any: boolean;
-  /** Minutes asleep a night and resting heart rate: averages of the last 7 days with data, and the 7 before. */
-  sleep7: number | null;
-  sleepPrev: number | null;
-  rhr7: number | null;
-  rhrPrev: number | null;
-  /** Monday to today. */
-  kcalWeek: number | null;
-  workoutsWeek: number;
-  workoutMinWeek: number;
-  /** Hours asleep for each of the last 14 nights, by the day the night ended. */
-  nights: [DayKey, number | null][];
-}
-
-export function healthModel(store: GymStore, t: DayKey): HealthModel {
+/** Flags for Progress when recovery slips: the last 7 days' sleep, and resting heart rate against the 7 before.
+ *  (The charts are in the Health tab.) */
+export function healthModel(store: GymStore, t: DayKey): { flags: Flag[] } {
   const days = (n: number, skip = 0) => Array.from({ length: n }, (_, i) => addDays(t, -i - skip));
   const mean = (ks: DayKey[], f: (k: DayKey) => number | undefined) => avg(ks.map(f).filter((v): v is number => v != null && v > 0));
   const sleep = (k: DayKey) => store.healthOf(k)?.sleepMin, rhr = (k: DayKey) => store.healthOf(k)?.restingHr;
   const sleep7 = mean(days(7), sleep), rhr7 = mean(days(7), rhr), rhrPrev = mean(days(7, 7), rhr);
-  const mon = mondayOf(t), wk = DOW.map((_, i) => addDays(mon, i)).filter((k) => k <= t);
-  const kcals = wk.map((k) => store.healthOf(k)?.activeKcal).filter((v): v is number => v != null);
-  const workouts = wk.flatMap((k) => store.healthOf(k)?.workouts ?? []);
   const flags: Flag[] = [];
   if (sleep7 != null && sleep7 < 6 * 60) flags.push({ pri: 3, text: `Sleeping ${hoursMin(sleep7)} a night on average this week. Short sleep makes a cut harder on muscle and appetite.` });
   if (rhr7 != null && rhrPrev != null && rhr7 >= rhrPrev + 5)
     flags.push({ pri: 3, text: `Resting heart rate is ${Math.round(rhr7 - rhrPrev)} bpm higher than last week, which can mean too little sleep, stress or a cold coming on.` });
-  return {
-    flags,
-    any: Object.keys(store.health).length > 0,
-    sleep7,
-    sleepPrev: mean(days(7, 7), sleep),
-    rhr7,
-    rhrPrev,
-    kcalWeek: kcals.length ? sum(kcals) : null,
-    workoutsWeek: workouts.length,
-    workoutMinWeek: sum(workouts.map((w) => w.min)),
-    nights: days(14).reverse().map((k) => [k, sleep(k) != null ? (sleep(k) as number) / 60 : null]),
-  };
+  return { flags };
 }
 
 /* ---------- strength: is it holding during the cut? ---------- */

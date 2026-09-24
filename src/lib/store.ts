@@ -3,10 +3,11 @@
  *
  * Everything is kept on the phone first (localStorage) and saved to Supabase in the background: `pending`
  * holds days not yet saved, and a failed save retries every 15 seconds. */
-import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { DEFAULT_PLAN, normalizePlan } from "./plan";
+import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
@@ -63,6 +64,16 @@ function linkTrouble(e: { message: string; code?: string }): string {
   return `That sign-in link didn’t work (${e.message.replace(/\.$/, "")}). Send a new one from this app, and open it on this phone.`;
 }
 
+/** How a session signed in ("password", "otp", …), from its access token's amr claim. */
+export function signInMethods(accessToken: string): string[] {
+  try {
+    const body = JSON.parse(atob(accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { amr?: { method?: string }[] };
+    return (body.amr ?? []).map((a) => a.method ?? "");
+  } catch {
+    return [];
+  }
+}
+
 export class GymStore {
   plan: Plan = copy(DEFAULT_PLAN);
   logs: Record<DayKey, DayLog> = {};
@@ -76,6 +87,8 @@ export class GymStore {
   /** Why the last sign-in link didn't work, for the sign-in screen. */
   authMsg = "";
   user: User | null = null;
+  /** The account has a password: one was set here (flagged in its metadata), or this session signed in with it. */
+  hasPassword = false;
   auth: AuthState = "starting";
   status = "";
   planMsg = "Changes save as you type.";
@@ -98,6 +111,7 @@ export class GymStore {
   private version = 0;
   private listeners = new Set<() => void>();
   private started = false;
+  private beforeSignOut: (() => Promise<unknown>)[] = [];
 
   /* ---------- subscription (for useSyncExternalStore) ---------- */
   subscribe = (fn: () => void) => {
@@ -140,12 +154,13 @@ export class GymStore {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce", experimental: { appendPkceFlowIdToRedirects: true } },
     }));
     sb.auth.onAuthStateChange((_event, session) => {
-      if (session?.user && session.user.id !== this.user?.id) void this.onSignedIn(session.user);
+      if (session?.user && session.user.id !== this.user?.id) void this.onSignedIn(session.user, session);
+      else if (session?.user && this.user && this.notePassword(session)) this.changed();
       else if (!session && this.user) this.onSignedOut();
     });
     void sb.auth.getSession().then(({ data }) => {
       if (data.session?.user) {
-        if (!this.user) void this.onSignedIn(data.session.user);
+        if (!this.user) void this.onSignedIn(data.session.user, data.session);
       } else if (!this.user) {
         this.auth = "signedOut";
         this.changed();
@@ -172,8 +187,21 @@ export class GymStore {
   }
 
   /* ---------- auth ---------- */
-  private async onSignedIn(u: User) {
+  /** Settings offers "Change password" once the account has one. A sign-in with the password proves it; the flag
+   *  in the account's metadata remembers it for sign-ins with a link. Returns whether it just became known. */
+  private notePassword(session: Session): boolean {
+    const flagged = session.user.user_metadata?.has_password === true, used = signInMethods(session.access_token).includes("password");
+    // After this auth event is handled: Supabase calls made inside one wait for it to finish.
+    if (used && !flagged) setTimeout(() => void this.sb?.auth.updateUser({ data: { has_password: true } }), 0);
+    if (this.hasPassword || !(flagged || used)) return false;
+    this.hasPassword = true;
+    return true;
+  }
+
+  private async onSignedIn(u: User, session: Session) {
     this.user = u;
+    this.hasPassword = false;
+    this.notePassword(session);
     const cache = lsGet<{ user?: string; logs?: Record<DayKey, DayLog> } | null>(CACHE_KEY, null);
     const pend = lsGet<{ user?: string; pending?: Record<DayKey, DayLog> } | null>(PENDING_KEY, null);
     const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean } | null>(PLAN_KEY, null);
@@ -200,6 +228,7 @@ export class GymStore {
 
   private onSignedOut() {
     this.user = null;
+    this.hasPassword = false;
     this.logs = {};
     this.pending = {};
     this.health = {};
@@ -244,20 +273,26 @@ export class GymStore {
     }
   }
 
-  /** Signs in with a password set from the menu. Returns what to show; empty once signed in. */
+  /** Signs in with a password set in Settings. Returns what to show; empty once signed in. */
   async signInWithPassword(email: string, password: string): Promise<string> {
     this.authMsg = "";
     const { error } = await this.sb!.auth.signInWithPassword({ email, password });
     if (!error) return "";
     if (error.code === "invalid_credentials")
-      return "That email and password don’t match. No password yet? Sign in with an email link, then set one from the menu.";
+      return "That email and password don’t match. No password yet? Sign in with an email link, then set one in Settings.";
     return `Couldn’t sign in: ${error.message.replace(/\.$/, "")}. Check your connection, then try again.`;
   }
 
   /** Sets or changes the account's password, so you can sign in without waiting for an email. */
   async setPassword(password: string): Promise<{ ok: boolean; msg: string }> {
-    const { error } = await this.sb!.auth.updateUser({ password });
-    if (!error) return { ok: true, msg: "Password saved. Sign in with your email and this password, in the Android app too." };
+    const had = this.hasPassword;
+    const { error } = await this.sb!.auth.updateUser({ password, data: { has_password: true } });
+    if (!error || error.code === "same_password") {
+      if (error) void this.sb!.auth.updateUser({ data: { has_password: true } });
+      this.hasPassword = true;
+      this.changed();
+    }
+    if (!error) return { ok: true, msg: had ? "Password changed." : "Password saved. Sign in with your email and this password, in the Android app too." };
     if (error.code === "same_password") return { ok: true, msg: "That’s already your password." };
     if (error.code === "weak_password") return { ok: false, msg: `Choose a stronger password: ${error.message.replace(/\.$/, "")}.` };
     if (error.code === "reauthentication_needed")
@@ -265,8 +300,13 @@ export class GymStore {
     return { ok: false, msg: `Couldn’t save the password: ${error.message.replace(/\.$/, "")}. Check your connection, then try again.` };
   }
 
+  /** Runs `fn` on signing out, while the session still works. (The Android app turns background sync off.) */
+  onSignOut(fn: () => Promise<unknown>) {
+    this.beforeSignOut.push(fn);
+  }
+
   async signOut() {
-    await Promise.all([this.flush(), this.flushPlan()]);
+    await Promise.all([this.flush(), this.flushPlan(), ...this.beforeSignOut.map((fn) => fn().catch(() => {}))]);
     await this.sb?.auth.signOut();
   }
 
@@ -617,7 +657,7 @@ export class GymStore {
       next[r.day] = r.data;
       if (!at || r.updated_at > at) at = r.updated_at;
     }
-    if (at === this.healthSyncedAt && JSON.stringify(next) === JSON.stringify(this.health)) return;
+    if (at === this.healthSyncedAt && canon(next) === canon(this.health)) return;
     this.health = next;
     this.healthSyncedAt = at;
     this.persistHealth();
@@ -626,7 +666,8 @@ export class GymStore {
   /** Saves days read from Health Connect on this phone; only days that changed are written. Returns how many. */
   async saveHealth(days: Record<DayKey, HealthDay>): Promise<number> {
     if (!this.user || !this.sb) return 0;
-    const changed = Object.entries(days).filter(([k, d]) => JSON.stringify(d) !== JSON.stringify(this.health[k]));
+    // Compared key-order blind: rows read back from Supabase have jsonb's key order, not ours.
+    const changed = Object.entries(days).filter(([k, d]) => canon(d) !== canon(this.health[k]));
     if (changed.length) {
       const { error } = await this.sb.from("health_days").upsert(
         changed.map(([day, data]) => ({ user_id: this.user!.id, day, data })),

@@ -1,4 +1,6 @@
 "use client";
+import { CaretRight } from "@phosphor-icons/react";
+import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { hoursMin, workoutName } from "@/lib/health";
 import { syncedWhen } from "@/lib/format";
@@ -6,9 +8,10 @@ import type { DayKey } from "@/lib/types";
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 
-/** The day from Health Connect: sleep, resting heart rate, active calories and workouts. Steps and weight
- *  go in their own boxes below the lifts. Hidden when the Android app hasn't synced anything for the day. */
-export function HealthToday({ sel }: { sel: DayKey }) {
+/** The day from Health Connect: sleep, resting heart rate, active calories and workouts, and a way into the Health
+ *  tab for the rest. Steps and weight go in their own boxes below the lifts. Hidden when the Android app hasn't
+ *  synced anything for the day. */
+export function HealthToday({ sel, onOpenHealth }: { sel: DayKey; onOpenHealth: () => void }) {
   const store = useGym();
   const h = store.healthOf(sel);
   const workouts = h?.workouts ?? [];
@@ -44,6 +47,10 @@ export function HealthToday({ sel }: { sel: DayKey }) {
           ))}
         </ul>
       ) : null}
+      <ViewLink className="ghost tiny hc-more" id="toHealth" href="#health" onOpen={onOpenHealth}>
+        More in Health
+        <CaretRight size={16} aria-hidden="true" />
+      </ViewLink>
     </div>
   );
 }

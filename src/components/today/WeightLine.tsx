@@ -5,7 +5,7 @@ import { ago, todayKey } from "@/lib/dates";
 import { signed } from "@/lib/format";
 import { daysBetween, weeklyRate } from "@/lib/stats";
 
-/** Today keeps a one-line weight trend; the chart lives on the dashboard. */
+/** Today keeps a one-line weight trend; the chart lives in Progress. */
 export function WeightLine({ onOpenDash }: { onOpenDash: () => void }) {
   const store = useGym();
   const s = store.weightSeries();
@@ -24,8 +24,8 @@ export function WeightLine({ onOpenDash }: { onOpenDash: () => void }) {
           ) : null}{" "}
           · weighed {ago(daysBetween(lastIn, todayKey()))}
         </p>
-        <ViewLink className="ghost tiny" id="toDash" href="#dashboard" onOpen={onOpenDash}>
-          Open dashboard
+        <ViewLink className="ghost tiny" id="toDash" href="#progress" onOpen={onOpenDash}>
+          See it in Progress
         </ViewLink>
       </>
     );
