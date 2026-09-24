@@ -253,6 +253,15 @@ export default async function voice({ browser, base, check }) {
   await tap(le, /set.2 cleared/);
   await page.waitForTimeout(300);
   check("“undo” keeps a tick you gave before the planned sets were in", (await le.locator("input.tick").isChecked()) && (await rowOf(le, 1)).reps === "", JSON.stringify(await rowOf(le, 1)));
+  // Ticked by hand, then filled up to the planned sets: the last set didn't tick it, so "undo" leaves the tick.
+  await say("8 reps");
+  await tap(le, /set.2,/);
+  await say("8 reps");
+  await tap(le, /set.3,/);
+  await say("undo");
+  await tap(le, /set.3 cleared/);
+  await page.waitForTimeout(300);
+  check("“undo” of the last planned set keeps a tick given before it", (await le.locator("input.tick").isChecked()) && (await rowOf(le, 2)).reps === "", JSON.stringify(await rowOf(le, 2)));
   const hc = liftEl(page, "Hamstring Curl");
   await say("twelve reps");
   await tap(hc, /set.1/);

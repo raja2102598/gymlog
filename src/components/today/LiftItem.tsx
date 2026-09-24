@@ -1,6 +1,6 @@
 "use client";
 import { CaretDown, DotsThree, Microphone } from "@phosphor-icons/react";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
@@ -56,6 +56,9 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
   const cue = r.skipped || r.swap ? "" : x.cue;
   const [howOpen, setHowOpen] = useState(false);
   const edit = (fn: (r: LiftLog) => void, immediate: boolean) => store.editLift(sel, name, fn, immediate);
+  // The set whose logging ticked the lift off, on which day, so voice's "undo" of that set can take the tick back.
+  // Any tick given or taken by hand forgets it.
+  const autoTick = useRef<{ day: string; set: number } | null>(null);
 
   const setField = (j: number, f: keyof SetLog, value: string) =>
     edit((r) => {
@@ -68,7 +71,10 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
       r.sets = sets;
       r.kg = topKg(sets);
       // Logging the planned number of sets ticks the lift off.
-      if (!r.done && !r.skipped && sets.filter((s) => (s.reps ?? 0) > 0).length >= min) r.done = true;
+      if (!r.done && !r.skipped && sets.filter((s) => (s.reps ?? 0) > 0).length >= min) {
+        r.done = true;
+        autoTick.current = { day: sel, set: j };
+      }
     }, false);
   const addSet = () =>
     edit((r) => {
@@ -115,18 +121,20 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
     if (said.command === "undo") {
       const last = lastLogged();
       if (last < 0) return `${at}. There’s no set to undo.`;
-      const had = now().filter((s) => (s.reps ?? 0) > 0).length;
+      const ticked = autoTick.current;
       setField(last, "reps", "");
       setField(last, "kg", "");
-      // This set reached the planned count, which ticked the lift off: without it, the tick goes too. A lift ticked
-      // before its planned sets were in keeps its tick.
-      if (had === min)
+      // Logging this set is what ticked the lift off, so the tick goes with it. A tick given by hand stays.
+      if (ticked && ticked.day === sel && ticked.set === last) {
+        autoTick.current = null;
         edit((r) => {
           r.done = false;
         }, false);
+      }
       return `${at}: set\u00a0${last + 1} cleared.`;
     }
     if (said.command === "done") {
+      autoTick.current = null;
       edit((r) => {
         r.done = true;
       }, true);
@@ -351,6 +359,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
             disabled={!!r.skipped}
             onChange={(ev) => {
               const on = ev.target.checked;
+              autoTick.current = null;
               edit((r) => {
                 r.done = on;
               }, true);
