@@ -1,178 +1,149 @@
+<div align="center">
+
+<img src="public/icons/icon-192.png" width="96" height="96" alt="Gym Log icon">
+
 # Gym Log
 
-A small installable web app for tracking a 5-day gym split: every set you lift (reps × weight), warm-ups, a cardio finisher, daily steps, body weight, waist, knee pain and notes, with charts that show how it's going. Your data lives in your own free Supabase database, and only your account can read it.
+**A fast, offline-first workout log for your phone.**
 
-It works like a phone app, with four tabs along the bottom: **Today** (the day's workout), **Health** (Health Connect's data with charts), **Progress** (how the plan is going) and **Settings**.
+Every set you lift, your body's numbers, and what Health Connect knows, in one place, in your own database.
 
-There's also an [Android app](#android-app-and-health-connect): the same app, which can also read Health Connect (steps, sleep, heart rate, calories, workouts, weight, water and more), and keep it synced in the background.
+[![Site](https://github.com/raja2102598/gymlog/actions/workflows/site.yml/badge.svg)](https://github.com/raja2102598/gymlog/actions/workflows/site.yml)
+[![Android app](https://github.com/raja2102598/gymlog/actions/workflows/android.yml/badge.svg)](https://github.com/raja2102598/gymlog/actions/workflows/android.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2f7d4f.svg)](LICENSE)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ECF8E?logo=supabase&logoColor=white)
+![Capacitor](https://img.shields.io/badge/Android-Capacitor-119EFF?logo=capacitor&logoColor=white)
 
+[Features](#features) · [Screenshots](#screenshots) · [Install](#install-on-your-phone) · [Run it locally](#run-it-locally) · [Deploy your own](#deploy-your-own) · [Docs](#documentation) · [Contributing](#contributing)
 
-## What's in here
+</div>
 
-A [Next.js](https://nextjs.org) app (App Router, TypeScript) exported as a static site: everything runs in the browser against Supabase, so there's no server to keep running.
+## Screenshots
 
-| Path | What it does |
-|---|---|
-| `src/app/` | The page, its `<head>` (title, icons, theme colour) and the fonts |
-| `src/components/GymLog.tsx` | The app's frame: sign-in, the tabs and the pages under them, and the phone's Back button |
-| `src/components/today/` | The Today screen: week strip, the day's lifts and sets, knee scores, warm-up, cardio, steps and weight, history |
-| `src/components/health/` | The Health tab: activity rings and a tile per kind of data, then a page per kind with charts by day, week and month |
-| `src/components/dashboard/` | The Progress tab's cards and their charts |
-| `src/components/settings/` | Settings: Health Connect and background sync, daily goals, the plan, theme, password, export and import |
-| `src/components/plan/` | The plan editor |
-| `src/components/shell/`, `src/components/ui/` | Sign-in, the top bar and the tab bar, loading placeholder, sync bar; text boxes that keep what you type |
-| `src/lib/store.ts` | The data: the copy kept on the phone, saving to Supabase in the background, and everything worked out from your days (last time, next weight, records, missed sessions) |
-| `src/lib/health.ts` | Health Connect's readings turned into one entry a day, and the words the screens use for them |
-| `src/lib/healthView.ts`, `src/lib/scale.ts` | What the Health tab shows: a day's numbers, a metric across days, averages and goals, and the charts' axes |
-| `src/lib/route.ts`, `src/lib/theme.ts` | Each screen's address (`#health/sleep`) and where Back goes; the light or dark theme |
-| `src/native/`, `src/lib/native.ts` | Code that only runs in the Android app: reading Health Connect, background sync, Continue with Google, and signing in from the email link |
-| `src/lib/stats.ts`, `src/lib/dashboard.ts` | The calculations behind Progress, add-weight hints and records (weight trend, weekly rate, estimated 1RM, personal records) |
-| `src/lib/config.ts`, `.env.example` | Where a build points: the Supabase project URL and publishable key, the site's address and the Google web client ID, read from the `NEXT_PUBLIC_*` variables that `.env.example` lists. All public; RLS protects the data |
-| `src/data/plan.json` | The default workout plan: days, exercises, sets/reps, cues, cardio, warm-ups. Used until you edit your plan in the app. |
-| `src/styles/` | The look: colours and type (`tokens.css`), shared controls, then one file per screen |
-| `src/fonts/` | Oswald and IBM Plex (SIL Open Font License), served from the site so they work offline |
-| `src/service-worker.js`, `scripts/build-sw.mjs` | Offline support: after each build the script writes `out/sw.js`, which keeps every file of the site on the phone |
-| `public/` | `manifest.webmanifest` and icons, for "Add to Home screen"; `privacypolicy.html`, which Health Connect shows when you give the Android app access; `app-login.html`, where sign-in links asked for in the Android app land before opening the app |
-| `supabase/schema.sql` | The database tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their security rules, and the two functions background sync uses. Safe to re-run. |
-| `android/`, `capacitor.config.ts` | The Android app ([Capacitor](https://capacitorjs.com)): the site in a native shell, with the Health Connect permissions it asks for, Continue with Google (`GoogleSignInPlugin.kt`), and the background sync (`GymSyncPlugin.kt`, `HealthSync.kt`: an hourly job that reads Health Connect and saves the last 3 days; `HealthDays.kt` turns readings into days exactly as `src/lib/health.ts` does, checked against the same test file, `tests/fixtures/health-days.json`) |
-| `.github/workflows/site.yml`, `.github/workflows/android.yml` | CI: the site's lint, types, tests, build and browser tests for every pull request and push to `main`; and the Android app, built for each of those and published from `main` |
-| `tests/unit/`, `tests/e2e/` | Tests: the calculations (Vitest), and the whole app in Chrome with Supabase mocked. The Kotlin has its own, in `android/app/src/test/` (`./gradlew testDebugUnitTest`) |
-| `vercel.json` | How Vercel builds and serves the site |
+<p align="center">
+  <img src="docs/screenshots/today-light.png" width="190" alt="Today: the week strip, the day's session with a card per lift, a PR badge on a set, and the knee score">
+  <img src="docs/screenshots/health-light.png" width="190" alt="Health: activity rings against the daily goals, and tiles for sleep, heart, calories, body, water and exercise">
+  <img src="docs/screenshots/progress-light.png" width="190" alt="Progress: the weight trend with its weekly rate, a chart of four weeks of weigh-ins, and sessions kept">
+  <img src="docs/screenshots/sleep-light.png" width="190" alt="Sleep: a week of nights as bars against the goal and the average, with average bedtime and waking time">
+</p>
+<p align="center">
+  <img src="docs/screenshots/today-dark.png" width="190" alt="Today in the dark theme">
+  <img src="docs/screenshots/health-dark.png" width="190" alt="Health in the dark theme">
+  <img src="docs/screenshots/progress-dark.png" width="190" alt="Progress in the dark theme">
+  <img src="docs/screenshots/settings-dark.png" width="190" alt="Settings in the dark theme: Health Connect, daily goals, the plan and the theme">
+</p>
+<p align="center"><sub>Taken from the app itself with made-up data (<code>npm run screenshots</code>). Light or dark follows the phone, or pick one in Settings.</sub></p>
 
+## Features
 
-## Working on it
+**Today: the workout, set by set**
+- The day's session from your plan, one card per lift: the target (3 × 8-10), what you did last time, and a row per set for reps and kg. The next set copies the weight you just used.
+- Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
+- Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.
+- Knee pain scores before, after and the next morning. After a bad session, knee-sensitive lifts hold their weight instead of going up.
+- Warm-ups, a cardio finisher (minutes, speed, incline), steps, body weight, waist and notes.
 
-Needs Node.js 20 (20.19 or later), 22 (22.12 or later) or 24.
+**Health: what your phone knows, with the Android app**
+- Reads 20 kinds of data from [Health Connect](https://support.google.com/android/answer/12201227): steps by the hour, sleep with its stages, heart rate, HRV, SpO₂, calories burned and eaten, water, weight, body fat, workouts and more. It never writes.
+- Activity rings against your daily goals, a tile for each kind of data, and a page for each with the day in detail or a week or month as a chart.
+- Hourly background sync, even with the app closed, through a per-phone key that can do one thing only: save that account's recent days.
 
-```bash
-npm install
-npm run dev          # the app at http://localhost:3000, reloading as you edit
-npm run build        # the site in out/, plus out/sw.js
-npm run preview      # serves out/ at http://127.0.0.1:3000
-npm run lint && npm run typecheck && npm test
-npm run test:e2e     # after a build; needs Chrome for Playwright: npx playwright-core install chromium
+**Progress: is it working?**
+- Weight trend (Holt smoothing, as [TrendWeight](https://github.com/ervwalter/trendweight) does) and the weekly rate, with a goal date and your pace against the target.
+- Sessions kept and full weeks in a row, steps by week, estimated 1RM per session, lifts ready for more weight, recent records, and knee scores by session, with notes on anything that needs attention.
+
+**Everywhere**
+- Installable as a PWA from Chrome, or as an Android app. It opens instantly from the phone's cache and works offline; edits queue and sync when you're back online.
+- Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
+- Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.
+- An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. A 5-day split comes as the default.
+
+## How it works
+
+The site is a static export of a Next.js app: everything runs in the browser and talks straight to Supabase with the *publishable* key and your session. Row-level security in Postgres means an account can only ever read or write its own rows, so there's no server of your own to run or secure. The Android app is the same site in a Capacitor shell, plus Kotlin that reads Health Connect and syncs it in the background.
+
+```mermaid
+flowchart LR
+  pwa["Website or installed PWA"] -->|"publishable key + your session"| sb[("Supabase<br/>Postgres + Auth, row-level security")]
+  app["Android app<br/>(Capacitor)"] -->|"the same site, the same session"| sb
+  hc["Health Connect"] -->|"read only"| app
+  app -->|"hourly, with a per-phone sync key"| sb
 ```
 
-The app needs a Supabase project to talk to: copy `.env.example` to `.env.local` and fill it in ([Setting it up](#setting-it-up) has the steps); built without one, the app shows its setup screen. Sign-in links only come back to addresses listed in Supabase under Authentication → URL Configuration (anything else lands on the project's Site URL), so to sign in on `localhost`, add `http://localhost:3000/**` there.
-
-
-## Setting it up
-The site is a static export, so it needs no server of its own. This is the setup it's built for; `.env.example` lists the variables every build reads.
-
-- **Code:** this repository, under the [MIT License](#license). [CONTRIBUTING.md](CONTRIBUTING.md) has how to help and [SECURITY.md](SECURITY.md) how to report a security problem.
-- **Hosting:** a Vercel project imported from the repo. `vercel.json` has the settings: it runs `npm ci` and `npm run build` and serves `out/`, and it tells browsers they can keep the fingerprinted files in `/_next/static` for good. Every push to `main` deploys the site; other branches get preview deployments that need a Vercel login to open.
-- **Database and sign-in:** a Supabase project (the free plan is enough). Tables `logs` (one row per day), `plans` (your edited plan) and `health_days` (Health Connect's numbers, one row per day, written by the Android app) use row-level security, so each account sees only its own rows. `health_sync_keys` holds a fingerprint (SHA-256) of each phone's background-sync key, never the key: `create_health_sync_key` makes one for a signed-in account, and `sync_health_days` is the only thing a key can do, save that account's recent days. Sign-in is by email (a link or a password) or [Google](#continue-with-google).
-- **Android app:** GitHub Actions (`.github/workflows/android.yml`) builds it. Its signing key is in two repository secrets, `GYMLOG_KEYSTORE_BASE64` and `GYMLOG_KEYSTORE_PASSWORD` (see [Updates](#updates-and-the-signing-key)), and it reads the same `NEXT_PUBLIC_*` variables as the site from repository variables.
-
-### Step by step
-1. In a Supabase project, run `supabase/schema.sql` (SQL Editor → New query → paste → Run). Its URL and publishable key are under Project Settings → API.
-2. On Vercel: Add New → Project → import the repo. `vercel.json` sets the build, so the defaults are fine. Under Settings → Environment Variables add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` (the site's address) once you know it, then deploy again.
-3. In Supabase → Authentication → URL Configuration, set the Site URL to the site's address and add the same address followed by `/**` as a redirect URL. That entry also covers `app-login.html`, where the Android app's sign-in links land, and the `sb_flow_id` each link carries.
-4. For the Android app, add the same variables as repository variables on GitHub (Settings → Secrets and variables → Actions → Variables), so the APK the workflow builds points at the same project and site.
-
-
-## Continue with Google
-The sign-in screen offers **Continue with Google** once Google is switched on in Supabase; until then the button stays hidden. On the website it goes to Google's page and back. In the Android app it opens Android's own account sheet (Credential Manager, `GoogleSignInPlugin.kt`), since Google doesn't allow signing in inside an app's web view, and hands Google's token to Supabase. A Google account with the same email as an account made with an email link is the same account, with the same data.
-
-### Setting it up
-1. **Google Cloud** ([console.cloud.google.com](https://console.cloud.google.com)), signed in with your Google account:
-   1. Create a project, e.g. *Gym Log*.
-   2. **Google Auth Platform → Get started**: app name *Gym Log*, your email as the support and contact email, audience **External**.
-   3. **Branding**: home page: the site's address; privacy policy: the site's `/privacypolicy.html`; authorized domains: the site's domain and the Supabase project's, `<project-ref>.supabase.co`.
-   4. **Audience → Publish app**, so anyone can sign in, not only listed test users. With just the basic scopes (email, profile) Google doesn't need to verify the app.
-   5. **Clients → Create client → Web application**, *Gym Log web*: authorized JavaScript origin: the site's address; authorized redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`. Keep its **client ID** and **client secret**.
-   6. **Clients → Create client → Android**, *Gym Log Android*: package name `io.github.raja2102598.gymlog`, and the **SHA-1** of the app's signing certificate, which each *Android app* build prints (GitHub → Actions → *Android app* → a run → Summary, *Signing certificate*). If Google Play signs the app with a key of its own, add that key's SHA-1 too, as a second Android client (Play Console → App integrity → App signing).
-2. **Supabase** → Authentication → Sign In / Providers → **Google**: turn it on, paste the web **client ID** into *Client IDs* and the **client secret** into *Client Secret*, and save. Leave *Skip nonce checks* off.
-3. **The app:** set `NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID` to the web client ID (it isn't secret: it's in every Google sign-in link; the secret stays in Supabase), as a repository variable for the workflow and in `.env.local` for your own builds, and build a new version. The website needs nothing more.
-
-Google's page on the website names the Supabase project's domain as where you're signing in; the app's account sheet names Gym Log.
-
+Built with Next.js 16 (App Router, static export), React 19 and TypeScript; Supabase (Postgres, Auth, RLS); Capacitor 8 and Kotlin for Android; Vitest and Playwright for the tests.
 
 ## Install on your phone
-1. Open the site in Chrome on your phone and sign in: **Continue with Google**, or your email. With email, tap the link in the email **on the same phone**, or, once you've set a password (**Settings → Set a password**), tap **Use a password instead**.
-2. Chrome menu **⋮ → Add to Home screen → Install**. It then opens like a normal app.
 
+**Web app, any phone:** open the site in Chrome, sign in, then **⋮ → Add to Home screen → Install**. It opens like a normal app and works offline.
 
-## Everyday use
-- The app opens on today. Tap a day in the week strip to look at or fill in another day. A day is green when every lift is done, pale green with a green edge when some are, and has an orange edge when a workout day was missed.
-- **Warm-up:** tap **Warm-up** to show the list and tick what you did. It starts folded so the lifts come first, and rest days don't show it.
-- **Lifts and sets:** each lift is a card.
-  - Under its name you see the plan (e.g. 3 × 8-10) and what you did last time, set by set. An arrow shows when today's heaviest set is already heavier.
-  - Each planned set has a row: enter reps and kg, and the next set copies the weight you just used. Grey numbers in empty boxes are suggestions: last time's numbers, or the next weight to try.
-  - A set's number turns green once its reps are logged, and logging the planned number of sets fills the round tick. Tap the tick to set it by hand.
-  - **+ Set** adds a set and **− Set** removes the last one, asking first if it has numbers in it. **How to** opens the lift's form notes; warnings such as a KNEE NOTE always show.
-  - The bar under the day's title fills as lifts are done.
-- **Change a day's workout:** the picker under the day's title lets any day use another day's workout, e.g. do a missed Push on a rest day. Rest days list the sessions you missed earlier that week, with a button to do one. The weekly count still counts each planned session once.
-- **Skip or swap:** tap **···** on a lift. *Skip today* (with an optional reason, e.g. machine busy) or *Swap for another lift* to log a different exercise in its place. The same menu undoes either.
-- **Adding weight:** when every set of a lift reached the top of its rep range last time, the lift says *Go up to … kg* and the grey numbers switch to the new weight at the bottom of the range. Each lift adds 2.5 kg unless you set its own step in the plan.
-- **Records:** a set that beats every earlier session of that lift (heaviest weight, best estimated 1RM, or most reps at that weight or more) gets a **PR** badge as you type it.
-- **Knee:** on days with knee-sensitive lifts, tap your knee pain from 0 to 10 before and after the session, and on waking the next morning. Once scored, the scale folds to one line; **Change** opens it again. If pain goes above your limit (5 unless you change it), or hasn't settled by the morning, knee-sensitive lifts say *Hold … kg* instead of going up next time.
-- **Cardio and waist:** under the cardio finisher, log minutes, speed and incline (entering minutes ticks the finisher). The waist field sits next to body weight; once a week is enough.
-- **Progress:** the **Progress** tab. Weight trend and weekly rate, with a goal date and your pace against the target once you set them in the plan; sessions kept, full weeks in a row and a calendar; steps by week; strength (estimated 1RM of each day's first lift, lifts ready for more weight, recent records); knee scores by session. Notes at the top point out anything that needs attention, such as no weigh-in for a while, short sleep, or a resting heart rate higher than last week.
-- **Moving around:** the tabs along the bottom switch screens; pages under a tab (a Health chart, the plan editor) have a back arrow. The phone's Back button walks back the way you came: a page to its tab, a tab to Today. Each screen has an address, so `/#progress`, `/#health/sleep` or `/#settings` open it directly (`/#dashboard` still opens Progress).
-- **Home-screen shortcuts:** once installed, long-press the app icon for *Today*, *Log weight* or *Log steps*.
-- **Edit your plan:** **Settings → Edit plan**. Change session names, lifts, sets/reps, cues, cardio, warm-ups, the step goal and tempo. Each lift can have its own weight step and be marked knee-sensitive; the plan also holds your goal weight, target loss a week (% of body weight) and knee pain limit. Changes save as you type and sync to your other devices. *Reset to the default plan* brings back `src/data/plan.json`.
-- Changes save automatically. With poor gym signal they're kept on the phone and sync when you're back online. If a save fails, or you're offline with days waiting, a bar at the top says how many days haven't synced yet, with **Retry now**. The app asks the browser to keep its storage, so edits waiting to sync aren't cleared to free space.
-- **Settings → Export data** downloads every day as JSON; **Import data** brings a file like that back in. If the file has different entries for days you've already logged, it asks before replacing them.
-- **Settings** also holds your daily goals (steps, sleep, exercise minutes, active calories, water), the theme (the phone's, or always light or dark), and a password for signing in without an email. Once the account has a password, it offers **Change password** instead.
+**Android app, adds Health Connect:** download `gym-log.apk` from the latest release on the repo's **Releases** page, open it and allow the install. Then **Settings → Health Connect → Connect**. [Android app and Health Connect](docs/android.md) has the details: signing in, background sync, updates and what happens to the data.
 
-- **Health Connect on Today:** in the [Android app](#android-app-and-health-connect), steps and body weight from Health Connect show in grey in their boxes until you type your own, and a card under them shows the night's sleep, resting heart rate, active calories and any workouts other apps recorded, with **More in Health** to open the Health tab at that day. The website shows the same numbers once the app has synced them.
-- **Health:** the day's activity as three rings (steps, exercise minutes and active calories against your goals), then a tile for each kind of data: sleep with its stages, heart, calories burned and eaten, body (weight, body fat, BMI), water and exercise. ‹ › moves between days. Tap a ring or a tile for its page: the day in detail (steps by the hour, the night's stages and times, heart rate range and vitals, workouts), or a week or a month as a chart with your goal and average, and the numbers that matter (average, days at the goal, average bedtime, change in weight). Tap a bar or a point, or use the arrow keys, to read its value.
+## Run it locally
 
-
-## Android app and Health Connect
-The Android app is the same Gym Log, installed from a file instead of Chrome, and it can read [Health Connect](https://support.google.com/android/answer/12201227), where Samsung Health, Google Fit, Fitbit, most watches and many scales keep their data. It reads 20 kinds of data: steps (by the day and the hour), distance, floors, active, total and resting calories, calories eaten, water, heart rate, resting heart rate, heart rate variability, blood oxygen, breathing rate, VO₂ max, blood pressure, weight, body fat, height, sleep with its stages, and workouts. It never writes to Health Connect.
-
-**Needs:** Android 8 or later, and Health Connect: built into Settings on Android 14 and later (search Settings for *Health Connect*), or the **Health Connect** app from Google Play on Android 8 to 13. In the app that records your data (Samsung Health, Fit, your watch's app), turn on sharing with Health Connect.
-
-### Install
-1. On the phone, open the repo's **Releases** page on GitHub in Chrome, then the latest **Gym Log for Android**, and download `gym-log.apk`.
-2. Open the downloaded file. Android asks once to allow installs from Chrome (or your Files app): allow it, go back and tap **Install**. Google Play Protect may say it doesn't know the developer: tap **More details → Install anyway**.
-3. Sign in. Easiest is **Continue with Google**, once [it's set up](#continue-with-google), or a password: set one on the website first (**Settings → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
-4. **Settings → Health Connect → Connect**, then allow what Gym Log asks for, including past data. The first sync reads back to when your log started (30 to 90 days). Only some kinds allowed? **Allow** under it asks for the rest; each newly allowed kind is read back that far too.
-5. For syncing while the app is closed, turn on **Sync in the background** in the same place, and allow Health Connect's *access data in the background* when it asks.
-
-While the app is open it syncs the last 10 days (other apps' data can arrive late) when you open it or come back to it, and every 15 minutes, and **Sync now** syncs straight away. Settings says when it last synced and what changed.
-
-### Background sync
-With **Sync in the background** on, Android runs a small job about every hour, even with the app closed: it reads the last 3 days from Health Connect and saves any that changed. It only runs with a network connection, and Android may delay it to save battery. Settings shows when it last ran and what happened.
-
-- It needs Health Connect's background reading, which some phones don't have yet (it comes with Health Connect updates from Google Play). Settings says so when it's missing, and Gym Log then syncs whenever you open it.
-- The job can't use your sign-in, which expires. Turning it on makes a random key for this phone that can do one thing, save this account's recent Health Connect days. Supabase keeps only its fingerprint. Turning it off, or signing out, removes it from the phone; turning it off also deletes it from Supabase. If the key stops working, background sync turns itself off and Settings says why.
-
-### What it does with the data
-- Each day's numbers go to your Supabase database, in `health_days`, one row per day, behind the same row-level security as your log. Nothing is sent anywhere else. The website reads them to show the same cards, but only the app writes them.
-- A number you type always wins: Health Connect's steps or weight only show on days you left the box empty, and history, the week so far, Health and Progress use them the same way.
-- To stop: turn off **Sync in the background**, then open Health Connect → **App permissions → Gym Log** (or **Settings → Manage in Health Connect** in the app) and turn its access off, or uninstall the app. Days already synced stay in `health_days`; delete them in Supabase (Table Editor → `health_days`) if you want them gone.
-
-### Updates and the signing key
-The app carries its own copy of the site, so changes to the site only reach it in a new APK. Every push to `main` builds one and publishes it as the **android-latest** release (GitHub → Actions → *Android app* shows each build; pull requests get an APK under the run's *Artifacts*). Install it over the old one the same way; you stay signed in.
-
-An update only installs over the app if it's signed with the same key. The key is `gymlog-release.p12`, kept outside the repo, and GitHub Actions gets it from two repository secrets (Settings → Secrets and variables → Actions): `GYMLOG_KEYSTORE_BASE64` (the file, base64-encoded) and `GYMLOG_KEYSTORE_PASSWORD`. Without them, builds are signed with a throwaway key and nothing is published. Keep a copy of the key and its password somewhere safe: if they're lost, make a new key, update the secrets, and uninstall the app before installing the next build (your data is in Supabase, so you only sign in again and reconnect Health Connect).
-
-### Building it yourself
-Needs JDK 21 and the Android SDK (Android Studio installs both).
+Needs Node.js 20 (20.19 or later), 22 (22.12 or later) or 24, and a Supabase project (the free plan is enough; step 1 of [Deploy your own](#deploy-your-own) sets one up).
 
 ```bash
-npm run android                      # builds the site and copies it into android/
-cd android && ./gradlew assembleDebug  # android/app/build/outputs/apk/debug/app-debug.apk
+git clone https://github.com/raja2102598/gymlog.git && cd gymlog
+npm install
+cp .env.example .env.local   # fill in your Supabase project URL and publishable key
+npm run dev                  # http://localhost:3000
 ```
 
-Or open `android/` in Android Studio and press Run with the phone plugged in. For a release build signed with your key, set `GYMLOG_KEYSTORE` (the `.p12` file's path), `GYMLOG_KEYSTORE_PASSWORD` and `GYMLOG_VERSION_CODE` (a number higher than the installed build's), then run `./gradlew assembleRelease`.
+Sign-in links only come back to addresses listed in Supabase under Authentication → URL Configuration, so add `http://localhost:3000/**` there.
 
+| Command | What it does |
+|---|---|
+| `npm run dev` | The app at localhost:3000, reloading as you edit |
+| `npm run build` | The static site in `out/`, plus its service worker |
+| `npm run preview` | Serves `out/` at 127.0.0.1:3000 |
+| `npm run lint`, `npm run typecheck`, `npm test` | ESLint, TypeScript, and the unit tests (Vitest) |
+| `npm run test:e2e` | 300+ browser checks against `out/` in Chromium, with Supabase mocked. Needs Chromium once: `npx playwright-core install chromium` |
+| `npm run android` | Builds the site and copies it into `android/`, for Android Studio or Gradle ([building the app](docs/android.md#building-it-yourself)) |
+| `npm run screenshots` | Regenerates `docs/screenshots/` from `out/` |
 
-## How the numbers work
-- **Weight trend:** one value a day from your weigh-ins, with gaps filled by straight lines, smoothed with Holt's method as [TrendWeight](https://github.com/ervwalter/trendweight) does. It starts from a straight-line fit of your first two weeks, so it doesn't lag behind at the start.
-- **Weekly rate:** a straight-line fit of your weigh-ins over the last four weeks. It shows once you have six weigh-ins spread over two weeks; before that, water weight hides the real change.
-- **Estimated 1RM:** Brzycki's formula, only from sets of 12 reps or fewer.
+The build and the browser tests read `.env.local` too, so one file covers everything.
 
+## Deploy your own
 
-## Notes
-- Supabase's built-in email service sends only a few sign-in emails an hour for the whole project (about 2). If you hit the limit, the sign-in screen says so: wait an hour, or sign in with your password. The Send button also waits a minute after each link, since a new link replaces the last one.
-- Your history follows each lift by name. Renaming a lift in the plan starts a fresh history for it; days you've already logged keep what you logged.
-- Supabase's free plan pauses a project after about a week with no activity. Logging every day keeps it awake. If it does pause, click **Restore** in the Supabase dashboard; no data is lost.
-- The installed app loads its files from the phone's cache first, so it opens straight away even on weak signal. Each build gives `sw.js` a new version (a fingerprint of the site's files), so there's nothing to bump by hand: installed copies download the new files in the background and use them from the next launch.
+Nothing about a deployment lives in the source. A build reads four `NEXT_PUBLIC_*` variables, listed in `.env.example`, and all four are public values: they end up in the site's JavaScript anyway.
 
+1. **Supabase:** create a project and run `supabase/schema.sql` in the SQL Editor. It creates the tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their row-level security and the two functions background sync uses, and is safe to re-run. The project URL and publishable key are under Project Settings → API.
+2. **Vercel:** Add New → Project → import your fork; `vercel.json` sets the build. Under Settings → Environment Variables add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` (the site's address) once you know it, then deploy again. Every push to `main` deploys.
+3. **Sign-in links:** in Supabase → Authentication → URL Configuration, set the Site URL to the site's address and add the address followed by `/**` as a redirect URL.
+4. **Android build, optional:** add the same variables as repository variables on GitHub (Settings → Secrets and variables → Actions → Variables) and the signing key as the two secrets in [docs/android.md](docs/android.md#updates-and-the-signing-key). Every push to `main` then publishes an APK as the `android-latest` release.
+5. **Google sign-in, optional:** [docs/google-sign-in.md](docs/google-sign-in.md).
+
+The site is plain static files, so it can be hosted anywhere; Vercel is just what `vercel.json` is written for.
+
+## Project structure
+
+```
+src/
+  app/             The page, its <head> and the fonts
+  components/      One folder per screen: today/, health/, dashboard/ (Progress), settings/, plan/, shell/, ui/
+  lib/             store.ts (the data, offline queue and sync), health.ts, stats.ts, dashboard.ts, route.ts, config.ts
+  native/          Only runs in the Android app: Health Connect, background sync, Google sign-in
+  data/plan.json   The default plan
+  styles/          Design tokens, then one file per screen
+android/           The Capacitor project, with Kotlin for Health Connect, background sync and Google sign-in
+supabase/          schema.sql: tables, row-level security and functions
+tests/             unit/ (Vitest) and e2e/ (Playwright, Supabase mocked); fixtures shared with the Kotlin tests
+scripts/           The service-worker generator, a static server, the screenshot script
+.github/           CI: site.yml (lint, types, tests, build, browser tests) and android.yml (APK build and release)
+```
+
+## Documentation
+
+- [User guide](docs/user-guide.md): every screen, and how the numbers are worked out
+- [Android app and Health Connect](docs/android.md): install, background sync, what happens to the data, building and signing
+- [Continue with Google](docs/google-sign-in.md): the Google Cloud and Supabase set-up
+- [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md)
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the set-up, what CI runs and the conventions. For a security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
-The code is under the [MIT License](LICENSE). The fonts, Oswald and IBM Plex, are under the SIL Open Font License, with their licences in `src/fonts/`, and the icons are [Phosphor](https://phosphoricons.com) (MIT).
+
+[MIT](LICENSE). The fonts, Oswald and IBM Plex, are under the SIL Open Font License, with their licences in `src/fonts/`; the icons are [Phosphor](https://phosphoricons.com) (MIT).

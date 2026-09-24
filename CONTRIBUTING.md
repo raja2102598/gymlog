@@ -9,7 +9,7 @@ Issues and pull requests are welcome.
 
 ## Setting up
 
-The README's [Working on it](README.md#working-on-it) has the commands: `npm install`, then `npm run dev`. The app needs a Supabase project to talk to: copy `.env.example` to `.env.local` and fill it in with your own (a free project is enough; [Setting it up](README.md#setting-it-up) has the steps). The browser tests answer every request themselves, so for `npm run build && npm run test:e2e` any address in `.env.local` will do.
+The README's [Run it locally](README.md#run-it-locally) has the commands: `npm install`, then `npm run dev`. The app needs a Supabase project to talk to: copy `.env.example` to `.env.local` and fill it in with your own (a free project is enough; [Deploy your own](README.md#deploy-your-own) has the steps). The browser tests answer every request themselves, so for `npm run build && npm run test:e2e` any address in `.env.local` will do.
 
 ## Before you open a pull request
 
@@ -20,14 +20,14 @@ npm run lint && npm run typecheck && npm test
 npm run build && npm run test:e2e
 ```
 
-The browser tests need Chromium once: `npx playwright-core install chromium`. A change to the Android app should also pass `./gradlew testDebugUnitTest assembleDebug` in `android/` ([Building it yourself](README.md#building-it-yourself) has what that needs).
+The browser tests need Chromium once: `npx playwright-core install chromium`. A change to the Android app should also pass `./gradlew testReleaseUnitTest assembleDebug` in `android/` ([Building it yourself](docs/android.md#building-it-yourself) has what that needs).
 
 Pull requests from forks build the Android app signed with a throwaway key and don't publish anything. That's expected.
 
 ## Conventions
 
 - TypeScript, checked by the ESLint config in the repo. New dependencies need a good reason: the site is kept on phones for offline use, so size matters.
-- Tests go with the change: `tests/unit/` for the calculations and the store, `tests/e2e/` for the app in Chrome with Supabase mocked, and `android/app/src/test/` for the Kotlin.
+- Tests go with the change: `tests/unit/` for the calculations and the store, `tests/e2e/` for the app in Chrome with Supabase mocked, and `android/app/src/test/` for the Kotlin. A change to how a screen looks is worth a fresh `npm run screenshots` for the README.
 - Database changes go in `supabase/schema.sql`, kept safe to re-run, with row-level security on any new table.
 - Text in the app is in sentence case and plain words, and never uses an em dash.
 
