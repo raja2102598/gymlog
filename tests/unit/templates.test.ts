@@ -81,26 +81,49 @@ describe("first run", () => {
     vi.restoreAllMocks();
   });
 
-  /** A store just signed in to an account whose Supabase client answers from `db`: its logged days, and its row in
-   *  `plans` (null: none). As sign-in leaves it: this phone has nothing for the account, the first load on its way. */
-  function signedIn(db: { logs: Record<string, DayLog>; plan: Plan | null; down?: boolean }) {
+  type Db = { logs: Record<string, DayLog>; plan: Plan | null; down?: boolean };
+  /** Supabase for one account, answering from `db`: its logged days, and its row in `plans` (null: none), which gets a
+   *  new updated_at on every save, as the table's trigger does. Adding a row that's there already fails, and an update
+   *  over another version writes nothing, as in PostgREST. With `down`, every request fails, as with no connection. */
+  function supabase(db: Db) {
+    let clock = 0;
+    const stamp = () => `2026-09-23T06:00:00.${String(++clock).padStart(6, "0")}+00:00`;
+    let planAt = db.plan ? stamp() : null;
+    const from = (table: string) => {
+      let op: "select" | "insert" | "update" = "select", body: Record<string, unknown> = {};
+      const eq: Record<string, string> = {};
+      const run = () => {
+        if (db.down) return { data: null, error: new Error("Failed to fetch") };
+        if (table === "logs") return { data: Object.entries(db.logs).map(([day, data]) => ({ day, data, updated_at: "2026-09-23T04:12:00+00:00" })), error: null };
+        if (op === "select") return { data: db.plan ? { plan: db.plan, updated_at: planAt } : null, error: null };
+        if (op === "insert" && db.plan) return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } };
+        if (op === "update" && (!db.plan || eq.updated_at !== planAt)) return { data: [], error: null };
+        db.plan = body.plan as Plan;
+        planAt = stamp();
+        return { data: [{ updated_at: planAt }], error: null };
+      };
+      const q = {
+        select: () => q,
+        insert: (v: Record<string, unknown>) => ((op = "insert"), (body = v), q),
+        update: (v: Record<string, unknown>) => ((op = "update"), (body = v), q),
+        eq: (col: string, v: string) => ((eq[col] = v), q),
+        order: () => q,
+        limit: () => q,
+        maybeSingle: () => q,
+        then: (ok: (r: unknown) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve().then(run).then(ok, bad),
+      };
+      return q;
+    };
+    return { from } as unknown as GymStore["sb"];
+  }
+  /** A store just signed in to the account in `db`. As sign-in leaves it: this phone has nothing for the account, and
+   *  the first load is on its way. */
+  function signedIn(db: Db) {
     const s = new GymStore();
     s.user = { id: "u1", created_at: "2026-09-23T05:00:00Z" } as GymStore["user"];
     s.auth = "signedIn";
     s.firstLoad = true;
-    const error = db.down ? new Error("Failed to fetch") : null;
-    s.sb = {
-      from: (table: string) => ({
-        select: () =>
-          table === "logs"
-            ? { order: () => ({ limit: async () => ({ data: error ? null : Object.entries(db.logs).map(([day, data]) => ({ day, data })), error }) }) }
-            : { eq: () => ({ maybeSingle: async () => ({ data: error || !db.plan ? null : { plan: db.plan }, error }) }) },
-        upsert: async (row: { plan: Plan }) => {
-          db.plan = row.plan;
-          return { error: null };
-        },
-      }),
-    } as unknown as GymStore["sb"];
+    s.sb = supabase(db);
     return s;
   }
   /** The first load after signing in: the logged days and the plan, then the load is done. */
@@ -161,6 +184,37 @@ describe("first run", () => {
     expect(s.planSource).toBe("unknown");
     expect(s.planStep()).toBeNull();
     expect(s.plan).toEqual(DEFAULT_PLAN);
+  });
+
+  it("a backup restored on the picker ends the first run once it brings logged days or a plan, and not before", async () => {
+    const file = (text: string) => new File([text], "gym-log.json", { type: "application/json" });
+    const backup = (v: object) => file(JSON.stringify({ format: "gymlog-backup", version: 1, exportedAt: "2026-09-20T08:00:00.000Z", plan: null, logs: [], healthDays: {}, ...v }));
+    /** A new account on the picker, gone offline: what's restored stays on the phone to sync later, so nothing here
+     *  waits on Supabase. The picker's restore never asks: there's nothing of the account's own to replace. */
+    const onPicker = async () => {
+      vi.stubGlobal("navigator", { onLine: true });
+      const s = signedIn({ logs: {}, plan: null });
+      await load(s);
+      vi.stubGlobal("navigator", { onLine: false });
+      expect(s.planStep()).toBe("choose");
+      return s;
+    };
+    const s = await onPicker();
+    expect(await s.importFile(file('{"hello": "world"}'), () => true)).toBe("That file couldn’t be imported: it isn’t a Gym Log export. Choose a .json file exported from Gym Log.");
+    expect(await s.importFile(backup({ healthDays: { "2026-09-01": { steps: 5000 } } }), () => true)).toBe(
+      "Imported 0 days. The Health Connect days couldn’t be saved: import the file again when you’re online.",
+    );
+    expect([s.planStep(), s.planDirty, s.days()]).toEqual(["choose", false, []]);
+
+    // Logged days: an account with logs, on the default plan until it saves one, as ever
+    const days = await onPicker();
+    expect(await days.importFile(backup({ logs: [{ day: "2026-09-21", data: day({ steps: 8000 }) }] }), () => true)).toBe("Imported 1 day.");
+    expect([days.planStep(), days.planDirty, days.plan]).toEqual([null, false, DEFAULT_PLAN]);
+
+    // A plan and no days: the account's own plan, saved like an edit in the plan editor
+    const plan = await onPicker();
+    expect(await plan.importFile(backup({ plan: tpl("upper-lower-4").plan }), () => true)).toBe("Imported the plan.");
+    expect([plan.planStep(), plan.planDirty, plan.plan]).toEqual([null, true, tpl("upper-lower-4").plan]);
   });
 
   it("starting from a template in the plan editor keeps the goals and copies the template", () => {

@@ -110,6 +110,82 @@ export default async function firstRun({ browser, base, check }) {
     await ctx.close();
   }
 
+  // ---------- Moving from another copy of Gym Log: Restore a backup, on the picker ----------
+  const jsonFile = (v) => ({ name: "gym-log.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(v)) });
+  {
+    const db = { logs: {}, plan: null };
+    const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000075", "2026-09-23T06:00:00Z", "moving@example.com"), db });
+    await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
+    const row = page.locator("#chooseView .tpl-list ~ .choose-row").first();
+    const offer = `${await flat(row.locator(".sub"))} | ${await flat(row.locator("button"))}`;
+    check("under the templates: Moving from another copy of Gym Log? Restore a backup", offer === "Moving from another copy of Gym Log? | Restore a backup" && (await row.locator("#chooseRestore").count()) === 1, offer);
+    page.removeAllListeners("dialog");
+    let asked = "";
+    page.on("dialog", (d) => ((asked = d.message()), d.accept()));
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null), page.click("#chooseRestore")]);
+    check("it opens the file picker for .json files, as Settings' Import does", !!chooser && (await chooser.element().getAttribute("accept")) === "application/json,.json");
+    await chooser?.setFiles(jsonFile({ hello: "world" }));
+    await until(async () => (await flat(page.locator("#chooseMsg"))) !== "");
+    check(
+      "a file that isn't a backup: the picker says why, in its own status line, and stays up",
+      (await flat(page.locator("#chooseMsg"))) === "That file couldn’t be imported: it isn’t a Gym Log export. Choose a .json file exported from Gym Log." &&
+        (await page.getAttribute("#chooseMsg", "role")) === "status" &&
+        (await page.locator("#chooseView").isVisible()) &&
+        (await page.locator("#appView").isHidden()),
+      await flat(page.locator("#chooseMsg")),
+    );
+    check("nothing is saved to plans before a choice, and no days", db.writes.plans === 0 && db.plan === null && db.writes.logs === 0);
+
+    // The first exports, a list of days and no plan: the days come in, and the plan stays the default, unsaved
+    await page.setInputFiles("#restoreFile", jsonFile([{ day: "2026-09-21", data: day(9000) }]));
+    await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
+    await until(() => db.logs["2026-09-21"] != null);
+    check("an older export: its days restored, and Settings says so", (await page.textContent("#dataMsg")) === "Imported 1 day." && db.logs["2026-09-21"].steps === 9000, await page.textContent("#dataMsg"));
+    check("the picker's restore never asks, and a file without a plan saves none", asked === "" && db.writes.plans === 0 && db.plan === null, asked);
+    check("no console errors", page.errors.length === 0, page.errors.join(" | "));
+    await ctx.close();
+  }
+  {
+    const db = { logs: {}, plan: null };
+    const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000076", "2026-09-23T06:00:00Z", "backup@example.com"), db, url: null });
+    await watchScreens(page);
+    await page.goto(base);
+    await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
+    // Offline: the days and the plan go in and wait to sync, but the Health Connect days need a connection.
+    const backup = {
+      format: "gymlog-backup",
+      version: 1,
+      exportedAt: "2026-09-20T08:00:00.000Z",
+      plan: template("upper-lower-4"),
+      logs: [{ day: "2026-09-21", data: { ...day(8000), exercises: { "Flat DB Press": { done: true, kg: 30, sets: [{ reps: 10, kg: 30 }] } } } }],
+      healthDays: { "2026-09-22": { steps: 7000 } },
+    };
+    await ctx.setOffline(true);
+    await page.setInputFiles("#restoreFile", jsonFile(backup));
+    await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
+    const partial = "Imported 1 day and the plan. The Health Connect days couldn’t be saved: import the file again when you’re online.";
+    await until(async () => (await page.textContent("#dataMsg")) === partial);
+    const where = await page.evaluate(() => {
+      const d = document.getElementById("setData").getBoundingClientRect(), bar = document.querySelector(".appbar").getBoundingClientRect(), tabs = document.querySelector(".tabbar").getBoundingClientRect();
+      return { top: Math.round(d.top), bottom: Math.round(d.bottom), barBottom: Math.round(bar.bottom), tabsTop: Math.round(tabs.top), focused: document.activeElement?.id };
+    });
+    check(
+      "a backup leaves the picker for Settings, at Your data, in view and focused on what came in",
+      where.top >= where.barBottom && where.bottom <= where.tabsTop && where.focused === "dataMsg" && (await page.locator("#chooseView").isHidden()),
+      JSON.stringify(where),
+    );
+    check("the partial result says what came in and what to do about the rest", (await page.textContent("#dataMsg")) === partial, await page.textContent("#dataMsg"));
+    check("on the way, Today never showed, and the picker didn't come back", !(await page.evaluate(() => window.__shown.appView)) && (await page.locator("#chooseView").isHidden()));
+    await ctx.setOffline(false);
+    await until(() => db.logs["2026-09-21"] != null && db.plan?.days?.[0]?.name === "Upper A", 10000);
+    check("back online, the restored day and plan sync", db.logs["2026-09-21"]?.exercises["Flat DB Press"]?.kg === 30 && db.plan?.days?.[0]?.name === "Upper A", JSON.stringify(db.plan?.days?.map((d) => d.name)));
+    check("and the partial result is still there to read", (await page.textContent("#dataMsg")) === partial && (await page.locator("#dataMsg").isVisible()), await page.textContent("#dataMsg"));
+    await openTab(page, "today");
+    await openTab(page, "settings");
+    check("once read and left, Settings doesn't show it again", (await page.textContent("#dataMsg")) === "", await page.textContent("#dataMsg"));
+    await ctx.close();
+  }
+
   // ---------- An account with logs and no saved plan: Today on the default plan, as before ----------
   {
     const db = { logs: { "2026-09-22": day(6000) }, plan: null };
