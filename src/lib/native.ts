@@ -8,9 +8,9 @@ export const NATIVE_SIGN_IN = "io.github.raja2102598.gymlog://login";
 export const APP_LOGIN_PAGE = "https://gym-log-omega-seven.vercel.app/app-login.html";
 
 /** Continue with Google in the Android app: the OAuth *Web* client ID from Google Cloud (public, like the address of
- *  a sign-in page; its secret lives only in Supabase). Empty until set up, which keeps the app's Google button hidden.
- *  README.md, Continue with Google, has the steps. */
-export const GOOGLE_WEB_CLIENT_ID = "";
+ *  a sign-in page; its secret lives only in Supabase). Empty would keep the app's Google button hidden. README.md,
+ *  Continue with Google, has the steps. */
+export const GOOGLE_WEB_CLIENT_ID = "845137186862-fs9dnmeqb10h5bb3k99k6jjrsi1iskbl.apps.googleusercontent.com";
 
 type CapacitorGlobal = { Capacitor?: { isNativePlatform?: () => boolean } };
 export const isNative = (): boolean => typeof window !== "undefined" && !!(window as CapacitorGlobal).Capacitor?.isNativePlatform?.();
