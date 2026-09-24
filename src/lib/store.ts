@@ -8,7 +8,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { DEFAULT_PLAN, normalizePlan } from "./plan";
 import * as S from "./stats";
-import { isNative, NATIVE_SIGN_IN } from "./native";
+import { APP_LOGIN_PAGE, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
 import { EXTRA_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
@@ -54,6 +54,14 @@ export const stepOf = (x: PlanExercise) => {
 };
 export const PR_WORDS: Record<S.RecordKind, string> = { weight: "heaviest yet", e1rm: "best estimated 1RM", reps: "most reps at this weight" };
 export const prTitle = (kinds?: S.RecordKind[]) => (kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : "");
+
+/** Why a sign-in link didn't work, and what to do, from the error Supabase or the auth client gave. */
+function linkTrouble(e: { message: string; code?: string }): string {
+  if (e.code === "otp_expired") return "That sign-in link has expired or was already used. Send a new one from this app.";
+  if (e.code === "pkce_code_verifier_not_found" || e.code === "flow_state_not_found" || e.code === "flow_state_expired" || e.code === "bad_code_verifier")
+    return "That link belongs to an older request or another phone. Send a new one from this app, and open the newest email on this phone.";
+  return `That sign-in link didn’t work (${e.message.replace(/\.$/, "")}). Send a new one from this app, and open it on this phone.`;
+}
 
 export class GymStore {
   plan: Plan = copy(DEFAULT_PLAN);
@@ -127,7 +135,9 @@ export class GymStore {
       return;
     }
     const sb = (this.sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" },
+      // Each emailed link carries the id of its own request (sb_flow_id), so asking for a second link, or one
+      // that fails, can't leave the first without the key it needs. The redirect URLs allow the extra parameter.
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce", experimental: { appendPkceFlowIdToRedirects: true } },
     }));
     sb.auth.onAuthStateChange((_event, session) => {
       if (session?.user && session.user.id !== this.user?.id) void this.onSignedIn(session.user);
@@ -201,29 +211,58 @@ export class GymStore {
     this.planShape++;
     this.auth = "signedOut";
     this.status = "";
+    this.authMsg = "";
     this.changed();
   }
 
-  async sendLink(email: string): Promise<string> {
-    // In the Android app the link opens the app again (see src/native/app.ts); on the web, this page.
-    const redirect = isNative() ? NATIVE_SIGN_IN : location.origin + location.pathname;
+  /** Emails a sign-in link. On the web it comes back to this page; in the Android app, to the site's
+   *  app-login page, which hands it to the app (see src/native/app.ts). */
+  async sendLink(email: string): Promise<{ sent: boolean; msg: string }> {
+    const redirect = isNative() ? APP_LOGIN_PAGE : location.origin + location.pathname;
     this.authMsg = "";
     const { error } = await this.sb!.auth.signInWithOtp({ email, options: { emailRedirectTo: redirect } });
-    return error
-      ? `Couldn’t send the link: ${error.message.replace(/\.$/, "")}. Check the address and your connection, then try again.`
-      : `Check ${email} for a sign-in link. Open it on this device.`;
+    if (!error) return { sent: true, msg: `Check ${email} for a sign-in link and open it on this ${isNative() ? "phone" : "device"}. If you ask for another, use the newest email.` };
+    const wait = /after (\d+) seconds?/.exec(error.message)?.[1];
+    if (wait) return { sent: false, msg: `Wait ${wait} seconds before asking for another link. The one already sent still works.` };
+    if (error.code === "over_email_send_rate_limit" || error.status === 429)
+      return { sent: false, msg: "Supabase only sends a few sign-in emails an hour, and they’re used up. Try again in an hour, or sign in with a password." };
+    return { sent: false, msg: `Couldn’t send the link: ${error.message.replace(/\.$/, "")}. Check the address and your connection, then try again.` };
   }
 
-  /** Finishes sign-in from a link that opened the Android app: ...://login?code=… */
+  /** Finishes sign-in from a link that opened the Android app: ...://login?sb_flow_id=…&code=… */
   async finishSignIn(url: string): Promise<void> {
-    if (!this.sb) return;
-    const q = new URL(url).searchParams, code = q.get("code");
-    const why = q.get("error_description") || new URLSearchParams(new URL(url).hash.slice(1)).get("error_description");
-    const { error } = code ? await this.sb.auth.exchangeCodeForSession(code) : { error: new Error(why || "the link had no sign-in code") };
+    // Signed in already: the same link again (say, from the app-login page's button) has nothing left to do.
+    if (!this.sb || this.user) return;
+    const u = new URL(url), q = u.searchParams, h = new URLSearchParams(u.hash.slice(1));
+    const code = q.get("code"), flowId = q.get("sb_flow_id");
+    const { error } = code
+      ? await this.sb.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined)
+      : { error: { message: q.get("error_description") || h.get("error_description") || "the link had no sign-in code", code: q.get("error_code") || h.get("error_code") || undefined } };
     if (error) {
-      this.authMsg = `That sign-in link didn’t work (${error.message.replace(/\.$/, "")}). Send a new one from this app, and open it on this phone.`;
+      this.authMsg = linkTrouble(error);
       this.changed();
     }
+  }
+
+  /** Signs in with a password set from the menu. Returns what to show; empty once signed in. */
+  async signInWithPassword(email: string, password: string): Promise<string> {
+    this.authMsg = "";
+    const { error } = await this.sb!.auth.signInWithPassword({ email, password });
+    if (!error) return "";
+    if (error.code === "invalid_credentials")
+      return "That email and password don’t match. No password yet? Sign in with an email link, then set one from the menu.";
+    return `Couldn’t sign in: ${error.message.replace(/\.$/, "")}. Check your connection, then try again.`;
+  }
+
+  /** Sets or changes the account's password, so you can sign in without waiting for an email. */
+  async setPassword(password: string): Promise<{ ok: boolean; msg: string }> {
+    const { error } = await this.sb!.auth.updateUser({ password });
+    if (!error) return { ok: true, msg: "Password saved. Sign in with your email and this password, in the Android app too." };
+    if (error.code === "same_password") return { ok: true, msg: "That’s already your password." };
+    if (error.code === "weak_password") return { ok: false, msg: `Choose a stronger password: ${error.message.replace(/\.$/, "")}.` };
+    if (error.code === "reauthentication_needed")
+      return { ok: false, msg: "Supabase wants a fresh sign-in before a password change. Sign out, sign in again with an email link, then set it straight away." };
+    return { ok: false, msg: `Couldn’t save the password: ${error.message.replace(/\.$/, "")}. Check your connection, then try again.` };
   }
 
   async signOut() {

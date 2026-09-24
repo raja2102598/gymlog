@@ -45,6 +45,7 @@ header.top>div:first-child{flex:1 1 0;min-width:0}
 .menu .note{margin:12px 0 0}
 .menu .note:empty{margin:0}
 .menu-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pw-form{display:grid;gap:10px;flex:1 1 260px;max-width:420px}
 #hcStatus{flex:1 1 220px}
 .login{display:grid;gap:12px;max-width:420px;margin-top:16px}
 

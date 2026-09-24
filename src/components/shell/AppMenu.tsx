@@ -1,12 +1,12 @@
 "use client";
-import { useRef, useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { todayKey } from "@/lib/dates";
 import { plural, syncedWhen } from "@/lib/format";
 import { isNative } from "@/lib/native";
 
-/** The menu: edit the plan, Health Connect, export or import data, sign out. */
+/** The menu: edit the plan, export or import data, a password, Health Connect, sign out. */
 export function AppMenu({ open, onEditPlan }: { open: boolean; onEditPlan: () => void }) {
   const store = useGym();
   const file = useRef<HTMLInputElement>(null);
@@ -52,6 +52,7 @@ export function AppMenu({ open, onEditPlan }: { open: boolean; onEditPlan: () =>
           Sign out
         </button>
       </div>
+      <PasswordRow />
       <HealthRow />
       <p className="note" id="menuMsg" role="status">
         {msg}
@@ -91,6 +92,61 @@ function HealthRow() {
         <button className="ghost" id="hcSync" onClick={sync} disabled={link.state === "syncing"}>
           Sync now
         </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** A password, for signing in without waiting for an email (Supabase sends only a few an hour). */
+function PasswordRow() {
+  const store = useGym();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const save = async (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault();
+    const input = ev.currentTarget.elements.namedItem("newPassword") as HTMLInputElement;
+    setBusy(true);
+    const r = await store.setPassword(input.value);
+    setBusy(false);
+    setMsg(r.msg);
+    if (r.ok) setOpen(false);
+  };
+  return (
+    <div className="menu-row">
+      {open ? (
+        <form id="pwForm" className="pw-form" onSubmit={save}>
+          {/* Lets a password manager save the password under the right account. */}
+          <input type="email" name="username" autoComplete="username" value={store.user?.email ?? ""} readOnly hidden />
+          <label className="field" htmlFor="newPassword">
+            <span>New password, 8 or more characters</span>
+            <input id="newPassword" name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
+          </label>
+          <div className="menu-row">
+            <button className="primary" type="submit" id="pwSave" disabled={busy}>
+              {busy ? "Saving…" : "Save password"}
+            </button>
+            <button className="ghost" type="button" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button
+          className="ghost"
+          id="pwBtn"
+          onClick={() => {
+            setOpen(true);
+            setMsg("");
+          }}
+        >
+          Set a password
+        </button>
+      )}
+      {msg ? (
+        <span className="sub" id="pwMsg" role="status">
+          {msg}
+        </span>
       ) : null}
     </div>
   );
