@@ -6,10 +6,12 @@ import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { useVoicePref } from "@/hooks/useVoice";
+import { backupWords, CSV_COLUMNS, toCsv } from "@/lib/backup";
 import { todayKey } from "@/lib/dates";
 import { plural, syncedWhen } from "@/lib/format";
 import { isNative } from "@/lib/native";
 import { setVoicePref, speechSupported } from "@/lib/speech";
+import type { Replacing } from "@/lib/store";
 import { savedTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Plan } from "@/lib/types";
 import type { SyncStatus } from "@/native/sync";
@@ -396,36 +398,59 @@ function Password() {
 
 /* ---------- data ---------- */
 
+/** Hands `text` to the browser as a file to download. */
+function download(name: string, type: string, text: string) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
 function Data() {
   const store = useGym();
   const file = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
   const exportData = () => {
-    const rows = store.exportRows();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(rows, null, 1)], { type: "application/json" }));
-    a.download = `gym-log-${todayKey()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    setMsg(`Exported ${plural(rows.length, "day")}.`);
+    const b = store.exportBackup();
+    download(`gym-log-${todayKey()}.json`, "application/json", JSON.stringify(b, null, 1));
+    setMsg(`Exported ${backupWords(b.logs.length, !!b.plan, Object.keys(b.healthDays).length)}.`);
   };
+  const exportCsv = () => {
+    const rows = store.workoutRows();
+    download(`gym-log-workouts-${todayKey()}.csv`, "text/csv", toCsv([CSV_COLUMNS, ...rows]));
+    setMsg(`Exported ${plural(rows.length, "set")} as CSV.`);
+  };
+  // Days already logged, and the plan, are only replaced once you say so.
+  const ask = ({ days, plan }: Replacing) => {
+    const what = [days ? `different entries for ${plural(days, "day")} you’ve already logged` : "", plan ? "a different plan" : ""].filter(Boolean).join(", and ");
+    return confirm(`The file has ${what}. Replace ${days ? "them" : "yours"} with the file’s version?`);
+  };
+  // Only the latest import's result shows: an earlier one still saving mustn't overwrite it.
+  const imports = useRef(0);
   const importData = async (ev: ChangeEvent<HTMLInputElement>) => {
     const f = ev.currentTarget.files?.[0];
     ev.currentTarget.value = "";
-    // Days already logged are only replaced once you say so.
-    if (f) setMsg(await store.importFile(f, (n) => confirm(`The file has different entries for ${plural(n, "day")} you’ve already logged. Replace them with the file’s version?`)));
+    if (!f) return;
+    const n = ++imports.current;
+    const m = await store.importFile(f, ask);
+    if (n === imports.current) setMsg(m);
   };
   return (
     <Group title="Your data" id="setData">
       <button type="button" className="pref-row pref-tap" id="exportBtn" onClick={exportData}>
-        <Text title="Export data (.json)" sub="Every day you’ve logged, as one file" />
+        <Text title="Export data (.json)" sub="Every day you’ve logged, your plan and Health Connect data, as one file" />
         <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
       </button>
       <button type="button" className="pref-row pref-tap" id="importBtn" onClick={() => file.current?.click()}>
-        <Text title="Import data (.json)" sub="Reads an export back in. You’re asked before a logged day is replaced." />
+        <Text title="Import data (.json)" sub="Reads an export back in. You’re asked before a logged day or your plan is replaced." />
         <UploadSimple className="pref-go" size={18} aria-hidden="true" />
+      </button>
+      <button type="button" className="pref-row pref-tap" id="csvBtn" onClick={exportCsv}>
+        <Text title="Export workouts as CSV" sub="Every set you’ve logged, a row each, for a spreadsheet" />
+        <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
       </button>
       <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />
       <p className="note pref-msg" id="dataMsg" role="status">

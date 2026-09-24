@@ -5,6 +5,7 @@
  * holds days not yet saved, and a failed save retries every 15 seconds. */
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
+import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
 import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { DEFAULT_PLAN, normalizePlan } from "./plan";
 import { canon } from "./health";
@@ -34,6 +35,11 @@ export interface NextWeight extends S.NextStep {
   day: DayKey;
   /** Held back because the knee was sore after that session. */
   held: boolean;
+}
+/** What an import would replace: how many logged days the file has differently, and whether its plan differs. */
+export interface Replacing {
+  days: number;
+  plan: boolean;
 }
 
 const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 7;
@@ -749,32 +755,79 @@ export class GymStore {
   }
 
   /* ---------- import / export ---------- */
-  exportRows() {
-    return this.days().map((day) => ({ day, data: this.logs[day] }));
+  /** Export data: the plan, every logged day and the Health Connect days, as one versioned file (lib/backup.ts). */
+  exportBackup(): Backup {
+    const plan = normalizePlan(this.plan, DEFAULT_PLAN);
+    return {
+      format: BACKUP_FORMAT,
+      version: BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      // Null for the app's default plan, which is what an account that never saved one has.
+      plan: JSON.stringify(plan) === JSON.stringify(DEFAULT_PLAN) ? null : plan,
+      logs: this.days().map((day) => ({ day, data: this.logs[day] })),
+      healthDays: Object.fromEntries(Object.keys(this.health).sort().map((k) => [k, this.health[k]])),
+    };
   }
-  /** Reads an export back in. `replace` is asked first when the file would change days already logged. */
-  async importFile(file: File, replace: (days: number) => boolean): Promise<string> {
-    let rows: { day: DayKey; data: DayLog }[];
-    try {
-      const all = JSON.parse(await file.text()) as unknown;
-      if (!Array.isArray(all)) throw new Error("expected a list of days");
-      rows = (all as { day?: unknown; data?: unknown }[]).filter(
-        (r): r is { day: DayKey; data: DayLog } => !!r && typeof r.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.day) && typeof r.data === "object" && !!r.data,
-      );
-    } catch (err) {
-      return `That file couldn’t be imported: ${(err as Error).message.replace(/\.$/, "")}. Choose a .json file exported from Gym Log.`;
+  /** Export workouts as CSV: a row for each set with reps or weight, oldest day first and lifts in the plan's order,
+   *  under CSV_COLUMNS. A lift is its planned name; a swap names what was done instead. */
+  workoutRows(): CsvValue[][] {
+    const rows: CsvValue[][] = [];
+    for (const day of this.days()) {
+      const e = this.entry(day), session = this.planFor(day).name;
+      for (const name of new Set(this.liftsFor(day).map((it) => it.name))) {
+        const r = e.exercises[name];
+        setsOf(r).forEach((s, j) => {
+          if (s.reps != null || s.kg != null) rows.push([day, session, name, j + 1, s.reps, s.kg, !!r.skipped, r.swap ?? "", e.note]);
+        });
+      }
     }
-    const changes = rows.filter((r) => this.logs[r.day] && JSON.stringify(this.logs[r.day]) !== JSON.stringify(r.data)).length;
-    if (changes && !replace(changes)) return "Import cancelled. Nothing changed.";
-    for (const r of rows) {
+    return rows;
+  }
+  /** Reads an export back in: its logged days and, from a backup, the plan and the Health Connect days. `replace` is
+   *  asked first when the file would change days already logged or the plan. */
+  async importFile(file: File, replace: (what: Replacing) => boolean): Promise<string> {
+    let b: BackupContents;
+    try {
+      b = readBackup(await file.text());
+    } catch (err) {
+      const e = err instanceof ImportError ? err : new ImportError((err as Error).message);
+      return `That file couldn’t be imported: ${e.message.replace(/\.$/, "")}. ${e.hint}`;
+    }
+    const days = b.logs.filter((r) => this.logs[r.day] && JSON.stringify(this.logs[r.day]) !== JSON.stringify(r.data)).length;
+    const plan = b.plan ? normalizePlan(b.plan, DEFAULT_PLAN) : null;
+    const newPlan = plan !== null && JSON.stringify(plan) !== JSON.stringify(normalizePlan(this.plan, DEFAULT_PLAN));
+    if ((days || newPlan) && !replace({ days, plan: newPlan })) return "Import cancelled. Nothing changed.";
+    for (const r of b.logs) {
       this.logs[r.day] = r.data;
       this.pending[r.day] = r.data;
     }
     this.logsChanged();
     this.persistLocal();
+    // Saved the way the plan editor's Reset saves one, so it syncs.
+    if (newPlan) {
+      this.plan = plan;
+      this.planChanged(true);
+    }
     this.changed();
-    await this.flush();
-    return `Imported ${rows.length} day${rows.length === 1 ? "" : "s"}.`;
+    const health = Object.keys(b.healthDays).length;
+    const [saved] = await Promise.all([health ? this.restoreHealth(b.healthDays) : true, this.flush(), this.flushPlan()]);
+    const done = `Imported ${backupWords(b.logs.length, !!plan, saved ? health : 0)}.`;
+    return saved ? done : `${done} The Health Connect days couldn’t be saved: import the file again when you’re online.`;
+  }
+  /** Health Connect days from a backup, into Supabase: only the days it doesn't have, since the ones it has may be
+   *  newer. This device's copy then comes from Supabase, as always. Returns whether they were saved; unsaved, none are
+   *  kept here. */
+  private async restoreHealth(days: Record<DayKey, HealthDay>): Promise<boolean> {
+    if (!this.user || !this.sb || !navigator.onLine) return false;
+    const uid = this.user.id;
+    const rows = Object.entries(days).map(([day, data]) => ({ user_id: uid, day, data }));
+    const { error } = await this.sb.from("health_days").upsert(rows, { onConflict: "user_id,day", ignoreDuplicates: true });
+    if (error) {
+      console.warn(error);
+      return false;
+    }
+    await this.pullHealth();
+    return true;
   }
 }
 

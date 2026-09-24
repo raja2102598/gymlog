@@ -1,8 +1,8 @@
 // Vercel's Web Interface Guidelines: tabs and pages the Back button understands, landmarks and a skip link,
-// focus rings you can see, long names, empty states, asking before replacing data, and the sticky sync bar
-// keeping clear of a focused field.
+// focus rings you can see, long names, empty states, asking before replacing data, a backup that restores an
+// account, and the sticky sync bar keeping clear of a focused field.
 import fs from "node:fs";
-import { K, flat, open, openTab, ready, session, until } from "./harness.mjs";
+import { K, NOW, flat, open, openTab, ready, session, until } from "./harness.mjs";
 
 const PLAN = JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
 
@@ -207,6 +207,105 @@ export default async function guidelines({ browser, base, check }) {
     check("− Set on a set with numbers asks first, and No keeps it", removeAsk === "Remove set 4 (10\u00a0×\u00a020\u00a0kg)?" && (await page.locator("#s0_3_r").count()) === 1, removeAsk);
     page.on("dialog", (d) => d.accept());
     await ctx.close();
+  }
+
+  // ---------- A backup: the days, the plan and Health Connect days in one file, restored into a new account ----------
+  {
+    const jsonFile = (v) => ({ name: "gym-log.json", mimeType: "application/json", buffer: Buffer.from(typeof v === "string" ? v : JSON.stringify(v)) });
+    const plan = JSON.parse(JSON.stringify(PLAN));
+    plan.tempo = "4:0:1:0";
+    plan.days[0].name = "Chest, shoulders";
+    const l = logs();
+    // Mon 21: a swap, two sets and a set logged before a skip, under a note with a comma and quotes
+    Object.assign(l[K(26)], {
+      note: 'Busy, "leg day" crowd',
+      exercises: {
+        "Chest Press Machine": { done: true, kg: 42.5, sets: [{ reps: 12, kg: 40 }, { reps: 10, kg: 42.5 }] },
+        "Incline Machine Press": { done: true, kg: 30, swap: "Incline DB Press", sets: [{ reps: 10, kg: 30 }] },
+        "Machine Shoulder Press": { done: false, kg: 20, skipped: true, reason: "shoulder", sets: [{ reps: 8, kg: 20 }] },
+      },
+    });
+    let backupText = "";
+    {
+      const db = { logs: l, plan, health: { "2026-09-22": { steps: 6900 }, "2026-09-23": { steps: 8421, sleepMin: 432, restingHr: 61 } } };
+      const { ctx, page } = await open(browser, base, { auth, db });
+      await ready(page);
+      await openTab(page, "settings");
+      const [json] = await Promise.all([page.waitForEvent("download"), page.click("#exportBtn")]);
+      backupText = fs.readFileSync(await json.path(), "utf8");
+      const backup = JSON.parse(backupText);
+      check(
+        "export: one versioned file with the plan, every logged day and the Health Connect days",
+        backup.format === "gymlog-backup" && backup.version === 1 && backup.exportedAt === NOW.toISOString() && backup.plan?.tempo === "4:0:1:0" && backup.logs.length === 29 && backup.logs[26].day === K(26) && backup.healthDays["2026-09-23"]?.sleepMin === 432,
+        backupText.slice(0, 200),
+      );
+      check("export: named for the day, and says what it holds", json.suggestedFilename() === "gym-log-2026-09-23.json" && (await page.textContent("#dataMsg")) === "Exported 29 days, the plan and Health Connect data for 2 days.", await page.textContent("#dataMsg"));
+
+      const [csv] = await Promise.all([page.waitForEvent("download"), page.click("#csvBtn")]);
+      const text = fs.readFileSync(await csv.path(), "utf8"), note = '"Busy, ""leg day"" crowd"';
+      const rows = [
+        "day,session,lift,set,reps,kg,skipped,swapped_for,note",
+        ...[10, 10, 8].map((reps, j) => `${K(21)},Legs,Leg Press,${j + 1},${reps},45,false,,`),
+        `${K(26)},"Chest, shoulders",Incline Machine Press,1,10,30,false,Incline DB Press,${note}`,
+        `${K(26)},"Chest, shoulders",Chest Press Machine,1,12,40,false,,${note}`,
+        `${K(26)},"Chest, shoulders",Chest Press Machine,2,10,42.5,false,,${note}`,
+        `${K(26)},"Chest, shoulders",Machine Shoulder Press,1,8,20,true,,${note}`,
+      ];
+      check("CSV: a row for each set, quoted where needed, with the swap and the skip", csv.suggestedFilename() === "gym-log-workouts-2026-09-23.csv" && text === rows.map((r) => r + "\r\n").join(""), JSON.stringify(text.slice(0, 400)));
+      check("CSV: says how many sets", (await page.textContent("#dataMsg")) === "Exported 7 sets as CSV.", await page.textContent("#dataMsg"));
+
+      // A file with another plan: asked first, and Cancel keeps yours
+      page.removeAllListeners("dialog");
+      let asked = "";
+      page.once("dialog", (d) => ((asked = d.message()), d.dismiss()));
+      await page.setInputFiles("#importFile", jsonFile({ ...backup, plan: { ...backup.plan, tempo: "2:0:2:0" } }));
+      await until(async () => (await page.textContent("#dataMsg")) === "Import cancelled. Nothing changed.");
+      check("import: asks before replacing a plan that differs, and Cancel keeps yours", asked === "The file has a different plan. Replace yours with the file’s version?" && db.plan.tempo === "4:0:1:0" && !db.writes.plans, asked);
+      page.on("dialog", (d) => d.accept());
+      check("no console errors", page.errors.length === 0, page.errors.join(" | "));
+      await ctx.close();
+    }
+    {
+      const db = { logs: {}, plan: null, health: { "2026-09-22": { steps: 7100 } } };
+      const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000042", "2026-09-01T00:00:00Z", "new@example.com"), db });
+      await ready(page);
+      check("a new account: no Health Connect card on Today", (await page.locator("#healthToday").count()) === 0);
+      await openTab(page, "settings");
+      page.removeAllListeners("dialog");
+      let asked = "";
+      page.once("dialog", (d) => ((asked = d.message()), d.accept()));
+      await page.setInputFiles("#importFile", jsonFile(backupText));
+      await until(async () => /^Imported/.test(await page.textContent("#dataMsg")));
+      await until(() => Object.keys(db.logs).length === 29 && db.plan?.tempo === "4:0:1:0");
+      check("import: asks before replacing the new account's default plan", asked === "The file has a different plan. Replace yours with the file’s version?", asked);
+      check(
+        "import: the days and the plan are restored, and synced",
+        Object.keys(db.logs).length === 29 && db.logs[K(26)].exercises["Incline Machine Press"].swap === "Incline DB Press" && db.plan?.tempo === "4:0:1:0" && db.plan.days[0].name === "Chest, shoulders",
+      );
+      check("import: says what came in", (await page.textContent("#dataMsg")) === "Imported 29 days, the plan and Health Connect data for 2 days.", await page.textContent("#dataMsg"));
+      check(
+        "import: Health Connect days go to the database, filling in the day it didn't have and leaving the one it had",
+        db.writes.health === 1 && db.health["2026-09-23"]?.sleepMin === 432 && db.health["2026-09-22"].steps === 7100,
+        JSON.stringify(db.health),
+      );
+      page.on("dialog", (d) => d.accept());
+      await openTab(page, "today");
+      check("the restored plan and Health Connect day show on Today", /4:0:1:0/.test(await page.textContent("#tempoNote")) && (await page.locator("#healthToday").count()) === 1 && /7 h 12 min ?asleep/.test(await flat(page.locator("#healthToday"))));
+      // It comes back from the database, with this device's copy cleared
+      await page.evaluate(() => localStorage.removeItem("gymlog.health.v1"));
+      await page.reload();
+      await ready(page);
+      await until(async () => (await page.locator("#healthToday").count()) === 1);
+      check("the restored Health Connect day is still there after a reload, from the database", (await page.locator("#healthToday").count()) === 1 && /7 h 12 min ?asleep/.test(await flat(page.locator("#healthToday"))));
+
+      // The first exports, a bare list of days, still import, and leave the plan alone
+      await openTab(page, "settings");
+      await page.setInputFiles("#importFile", jsonFile([{ day: "2026-07-01", data: { exercises: {}, warmup: [], cardio: true, steps: 5000, weight: null, note: "" } }]));
+      await until(() => db.logs["2026-07-01"] != null);
+      check("import: an older export, a list of days, still imports", (await page.textContent("#dataMsg")) === "Imported 1 day." && db.logs["2026-07-01"].steps === 5000 && db.plan.tempo === "4:0:1:0", await page.textContent("#dataMsg"));
+      check("no console errors", page.errors.length === 0, page.errors.join(" | "));
+      await ctx.close();
+    }
   }
 
   // ---------- The sync bar keeps clear of the field you Tab to ----------

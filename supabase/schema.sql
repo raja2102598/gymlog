@@ -61,7 +61,7 @@ create policy "own plan: insert" on public.plans for insert to authenticated wit
 create policy "own plan: update" on public.plans for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 create policy "own plan: delete" on public.plans for delete to authenticated using (user_id = (select auth.uid()));
 
--- Health Connect data, written by the Android app and read by every copy of the app: one row per day.
+-- Health Connect data, written by the Android app (or restored from a backup) and read by every copy of the app: one row per day.
 create table if not exists public.health_days (
   user_id    uuid        not null default auth.uid() references auth.users (id) on delete cascade,
   day        date        not null,
