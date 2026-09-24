@@ -24,10 +24,13 @@ export interface Backup {
   healthDays: Record<DayKey, HealthDay>;
 }
 
-/** What a file holds. The plan is as the file has it, to be read with normalizePlan. */
+/** What a file holds. */
 export interface BackupContents {
   logs: LogRow[];
-  plan: Record<string, unknown> | null;
+  /** The plan as the file has it, to be read with normalizePlan; "default" when the account the file came from used
+   *  the app's default plan (a backup writes null for it); or null when the file says nothing about the plan, as the
+   *  older list of days doesn't. */
+  plan: Record<string, unknown> | "default" | null;
   healthDays: Record<DayKey, HealthDay>;
 }
 
@@ -60,7 +63,7 @@ export function readBackup(text: string): BackupContents {
   if (!isObject(healthDays)) throw new ImportError("its Health Connect days can’t be read");
   return {
     logs: rows(logs),
-    plan,
+    plan: plan === null ? "default" : plan,
     healthDays: Object.fromEntries(Object.entries(healthDays).filter(([k, d]) => isDay(k) && isObject(d))) as Record<DayKey, HealthDay>,
   };
 }
@@ -77,9 +80,13 @@ export type CsvValue = string | number | boolean | null | undefined;
 /** Export workouts as CSV: a row for each logged set. */
 export const CSV_COLUMNS = ["day", "session", "lift", "set", "reps", "kg", "skipped", "swapped_for", "note"];
 
-/** A field as CSV writes it: in quotes, with its quotes doubled, when it holds a quote, a comma or a line break. */
+/** A field as CSV writes it: in quotes, with its quotes doubled, when it holds a quote, a comma or a line break. Text
+ *  starting with =, +, -, @, a tab or a carriage return gets a ' in front first, so a spreadsheet shows it rather than
+ *  running it as a formula: a note like "+1 rep next week" would otherwise be an error, or a formula from an imported
+ *  file could run. Numbers are written as they are. */
 export function csvField(v: CsvValue): string {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

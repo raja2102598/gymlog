@@ -87,6 +87,33 @@ describe("backup", () => {
     expect(s.exportBackup()).toEqual({ format: "gymlog-backup", version: 1, exportedAt: new Date().toISOString(), plan: null, logs: [], healthDays: {} });
   });
 
+  it("brings the default plan back from a backup made on it, asking before it replaces another", async () => {
+    const s = storeWith({}), db = supabase();
+    s.sb = db.sb;
+    s.plan = myPlan();
+    const ask = vi.fn(() => true);
+    const backup = backupOf({ logs: [{ day: "2026-07-01", data: day({ cardio: true }) }] });
+    expect(await s.importFile(file(backup), ask)).toBe("Imported 1 day and the plan.");
+    expect(ask).toHaveBeenCalledWith({ days: 0, plan: true });
+    expect(s.plan).toEqual(DEFAULT_PLAN);
+    expect(db.upserts.find((u) => u.table === "plans")?.rows).toEqual([{ user_id: "u", plan: DEFAULT_PLAN }]);
+    // Saying no keeps the account's own plan.
+    const t = storeWith({}), db2 = supabase();
+    t.sb = db2.sb;
+    t.plan = myPlan();
+    expect(await t.importFile(file(backup), () => false)).toBe("Import cancelled. Nothing changed.");
+    expect([t.plan, db2.upserts]).toEqual([myPlan(), []]);
+  });
+
+  it("doesn't ask about or name the plan when a backup made on the default meets the default", async () => {
+    const s = storeWith({}), db = supabase();
+    s.sb = db.sb;
+    const ask = vi.fn(() => true);
+    expect(await s.importFile(file(backupOf({ logs: [{ day: "2026-07-01", data: day({ cardio: true }) }] })), ask)).toBe("Imported 1 day.");
+    expect(ask).not.toHaveBeenCalled();
+    expect([s.plan, s.planDirty, tables(db.upserts)]).toEqual([DEFAULT_PLAN, false, ["logs"]]);
+  });
+
   it("still imports the first exports, a bare list of days, leaving the plan and Health Connect days alone", async () => {
     const s = storeWith({ "2026-09-22": day({ steps: 8000 }) });
     s.plan = myPlan();
@@ -201,6 +228,18 @@ describe("workout CSV", () => {
       "false",
     ]);
     expect(toCsv([["a", "b,c"], [1, null]])).toBe('a,"b,c"\r\n1,\r\n');
+  });
+
+  it("puts a ' before text a spreadsheet would run as a formula, and leaves numbers alone", () => {
+    expect([csvField("+1 rep next week"), csvField("-2 kg, knee sore"), csvField("=HYPERLINK(\"http://x\")"), csvField("@home"), csvField("\tTab"), csvField(-5), csvField("Push")]).toEqual([
+      "'+1 rep next week",
+      '"\'-2 kg, knee sore"',
+      '"\'=HYPERLINK(""http://x"")"',
+      "'@home",
+      "'\tTab",
+      "-5",
+      "Push",
+    ]);
   });
 
   it("has a row for each set, marking skipped and swapped lifts; days without sets have none", () => {

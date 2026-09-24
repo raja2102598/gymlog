@@ -794,7 +794,8 @@ export class GymStore {
       return `That file couldn’t be imported: ${e.message.replace(/\.$/, "")}. ${e.hint}`;
     }
     const days = b.logs.filter((r) => this.logs[r.day] && JSON.stringify(this.logs[r.day]) !== JSON.stringify(r.data)).length;
-    const plan = b.plan ? normalizePlan(b.plan, DEFAULT_PLAN) : null;
+    // A backup made on the default plan brings the default back; an older list of days leaves the plan alone.
+    const plan = b.plan === "default" ? copy(DEFAULT_PLAN) : b.plan ? normalizePlan(b.plan, DEFAULT_PLAN) : null;
     const newPlan = plan !== null && JSON.stringify(plan) !== JSON.stringify(normalizePlan(this.plan, DEFAULT_PLAN));
     if ((days || newPlan) && !replace({ days, plan: newPlan })) return "Import cancelled. Nothing changed.";
     for (const r of b.logs) {
@@ -811,7 +812,8 @@ export class GymStore {
     this.changed();
     const health = Object.keys(b.healthDays).length;
     const [saved] = await Promise.all([health ? this.restoreHealth(b.healthDays) : true, this.flush(), this.flushPlan()]);
-    const done = `Imported ${backupWords(b.logs.length, !!plan, saved ? health : 0)}.`;
+    // The plan is named when the file has one of its own, or when its default replaced another.
+    const done = `Imported ${backupWords(b.logs.length, plan !== null && (newPlan || b.plan !== "default"), saved ? health : 0)}.`;
     return saved ? done : `${done} The Health Connect days couldn’t be saved: import the file again when you’re online.`;
   }
   /** Health Connect days from a backup, into Supabase: only the days it doesn't have, since the ones it has may be
