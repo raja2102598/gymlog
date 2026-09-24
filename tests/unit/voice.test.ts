@@ -83,6 +83,13 @@ describe("parseSetPhrase: numbers", () => {
     expect(parseSetPhrase("10x-45")).toEqual(unknown);
     expect(parseSetPhrase("10 at-45")).toEqual(unknown);
     expect(parseSetPhrase("45kg for-10")).toEqual(unknown);
+    expect(parseSetPhrase("10 at -,5")).toEqual(unknown);
+    expect(parseSetPhrase("10 at − ,5")).toEqual(unknown);
+    expect(parseSetPhrase("10 at -forty five")).toEqual(unknown);
+    expect(parseSetPhrase("10 at \u2010 45")).toEqual(unknown);
+    expect(parseSetPhrase("10 at \uff0d45")).toEqual(unknown);
+    expect(parseSetPhrase("10 at twenty-two point five")).toEqual(set(10, 22.5));
+    expect(parseSetPhrase("10 reps — 45 kg")).toEqual(set(10, 45));
     expect(parseSetPhrase("10 at forty-five")).toEqual(set(10, 45));
   });
 
