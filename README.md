@@ -106,6 +106,10 @@ The build and the browser tests read `.env.local` too, so one file covers everyt
 
 ## Deploy your own
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fraja2102598%2Fgymlog&project-name=gym-log&repository-name=gym-log&env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY&envDescription=Your%20Supabase%20project%27s%20URL%20and%20publishable%20key%20%28Project%20Settings%20%E2%86%92%20API%29.%20Run%20supabase%2Fschema.sql%20in%20its%20SQL%20Editor%20first.&envLink=https%3A%2F%2Fgithub.com%2Fraja2102598%2Fgymlog%2Fblob%2Fmain%2F.env.example)
+
+The button copies the repo into your GitHub account, deploys it on Vercel and asks for the two Supabase values. Run `supabase/schema.sql` in your project first (step 1 below), and add the site's address and the Google client ID afterwards (steps 2 and 5). Or by hand:
+
 Nothing about a deployment lives in the source. A build reads four `NEXT_PUBLIC_*` variables, listed in `.env.example`, and all four are public values: they end up in the site's JavaScript anyway.
 
 1. **Supabase:** create a project and run `supabase/schema.sql` in the SQL Editor. It creates the tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their row-level security and the two functions background sync uses, and is safe to re-run. The project URL and publishable key are under Project Settings → API.

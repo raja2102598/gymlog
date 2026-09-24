@@ -13,8 +13,9 @@
 /** The Supabase project's URL. */
 export const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim().replace(/\/+$/, "");
 
-/** The project's publishable (client) key. Never the service_role / secret key. */
-export const SUPABASE_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "").trim();
+/** The project's publishable (client) key. Never the service_role / secret key. Vercel's Supabase integration sets it
+ *  under the older name, NEXT_PUBLIC_SUPABASE_ANON_KEY, which is accepted too. */
+export const SUPABASE_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
 
 /** The site's address, without a trailing slash. Sign-in links asked for in the Android app land on its app-login.html. */
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/+$/, "");
