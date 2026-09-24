@@ -19,6 +19,11 @@ function trouble(reason: string): string {
 /** The card listening now. One at a time: tapping another card's microphone stops this one. */
 let active: AbortController | null = null;
 
+/** Stops the card that's listening, if one is: what's said next isn't for it. */
+export function stopListening() {
+  active?.abort();
+}
+
 /**
  * Voice on one lift card. `listen` hears one phrase (tapping again stops it) and hands the best reading of it to
  * `apply`, which acts on it and returns what to say; that line shows for about 4 seconds. Listening stops when

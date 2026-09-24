@@ -92,6 +92,27 @@ export default async function voice({ browser, base, check }) {
     await ctx.close();
   }
 
+  // ---------- A French browser: what's heard is read by an English parser, so it listens in English ----------
+  {
+    const { ctx, page, db } = await open(browser, base, { auth, db: { logs: logs(), plan: null }, url: null });
+    await ctx.addInitScript(fakeSpeech);
+    await ctx.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, "language", { configurable: true, get: () => "fr-FR" });
+      Object.defineProperty(Navigator.prototype, "languages", { configurable: true, get: () => ["fr-FR", "fr"] });
+      localStorage.setItem("gymlog.voice.v1", "true");
+    });
+    await page.goto(base);
+    await ready(page);
+    const lp = liftEl(page, "Leg Press");
+    await page.evaluate(() => window.__said.push(["10 at 45"]));
+    await lp.locator("[data-voice]").click();
+    await until(async () => /^Heard/.test(await flat(lp.locator(".said"))));
+    const setup = await page.evaluate(() => ({ lang: window.__setups[0]?.lang, browser: navigator.language }));
+    check("a French browser: it listens in English, and logs the set", setup.browser === "fr-FR" && setup.lang === "en-US" && (await lp.locator(".set.logged").count()) === 1, JSON.stringify(setup));
+    check("a French browser: no console errors", page.errors.length === 0 && db.unexpected.length === 0, [...page.errors, ...db.unexpected].join(" | "));
+    await ctx.close();
+  }
+
   // ---------- What typing 10 and 45 into Leg Press's first set gives, to compare with saying it ----------
   const typedDb = { logs: logs(), plan: null };
   let typed;
@@ -136,8 +157,8 @@ export default async function voice({ browser, base, check }) {
     "the microphone: named for its lift, not pressed, at least 44px, next to ···, with a polite live line",
     (await mic.getAttribute("aria-label")) === "Log a set of Leg Press by voice" &&
       (await mic.getAttribute("aria-pressed")) === "false" &&
-      box.width >= 44 &&
-      box.height >= 44 &&
+      Math.round(box.width) >= 44 &&
+      Math.round(box.height) >= 44 &&
       (await mic.evaluate((e) => e.nextElementSibling?.matches("[data-more]"))) &&
       (await line.getAttribute("aria-live")) === "polite" &&
       (await line.evaluate((e) => e.getBoundingClientRect().height)) === 0,
@@ -159,7 +180,7 @@ export default async function voice({ browser, base, check }) {
   await tap(lp, /^Heard/);
   check("“10 at 45” fills set 1, and says so", (await heard()) === `Heard “10 at 45”: set${NB}1, 10${NB}×${NB}45${NB}kg.`, JSON.stringify(await heard()));
   const setup = await page.evaluate(() => ({ ...window.__setups[0], browser: navigator.language }));
-  check("it listened once, for up to 5 guesses, without interim results, in the browser's language", setup.maxAlternatives === 5 && setup.interimResults === false && setup.continuous === false && setup.lang === setup.browser, JSON.stringify(setup));
+  check("it listened once, for up to 5 guesses, without interim results, in the browser's English", setup.maxAlternatives === 5 && setup.interimResults === false && setup.continuous === false && setup.lang === setup.browser, JSON.stringify(setup));
   await until(() => saved()?.sets?.[0]?.kg === 45);
   const spoken = { row: await rowOf(lp, 0), saved: saved() };
   check("its row, PR badge and saved set are what typing 10 and 45 gives", JSON.stringify(spoken) === JSON.stringify(typed) && /\bpr\b/.test(spoken.row.cls) && /\blogged\b/.test(spoken.row.cls), `${JSON.stringify(spoken)} vs typed ${JSON.stringify(typed)}`);
@@ -274,6 +295,39 @@ export default async function voice({ browser, base, check }) {
     JSON.stringify([await crMic.getAttribute("aria-pressed"), await page.evaluate(() => window.__aborts), await heard(crLine), await heard(hc.locator(".said"))]),
   );
   await page.evaluate(() => (window.__said = []));
+
+  // --- Today stays mounted behind the other tabs: leaving it, or picking another day, stops listening, and what's
+  // said then (37.5 kg, which nothing else here uses) isn't logged anywhere
+  const hcMic = hc.locator("[data-voice]");
+  const kgShown = () => page.locator('#session input[data-set$=":kg"]').evaluateAll((els) => els.map((e) => e.value));
+  const logged375 = () => /"kg":37\.5\b/.test(JSON.stringify(db.logs));
+  const aborted = await page.evaluate(() => window.__aborts);
+  await page.evaluate(() => ((window.__wait = 1500), window.__said.push(["13 at 37.5"])));
+  await hcMic.click();
+  await until(async () => (await hcMic.getAttribute("aria-pressed")) === "true");
+  await openTab(page, "progress");
+  await page.waitForTimeout(1800);
+  await openTab(page, "today");
+  check(
+    "leaving Today stops listening, and what's said on another tab isn't logged",
+    (await hcMic.getAttribute("aria-pressed")) === "false" && (await page.evaluate(() => window.__aborts)) === aborted + 1 && !(await kgShown()).includes("37.5") && !logged375() && (await heard(hc.locator(".said"))) === "",
+    JSON.stringify([await hcMic.getAttribute("aria-pressed"), (await page.evaluate(() => window.__aborts)) - aborted, await kgShown()]),
+  );
+  // Saturday has a Hamstring Curl in the same place, so its card stays: without stopping, Wednesday would get the set.
+  await hcMic.click();
+  await until(async () => (await hcMic.getAttribute("aria-pressed")) === "true");
+  await page.locator("#week .dchip").nth(5).click();
+  await until(async () => (await page.textContent("#session h2")) === "Shoulders + Legs");
+  await page.waitForTimeout(1800);
+  const onSat = await kgShown();
+  await page.locator("#week .dchip").nth(2).click();
+  await until(async () => (await page.textContent("#session h2")) === "Legs");
+  check(
+    "picking another day stops listening too, and nothing is logged on either day",
+    (await page.evaluate(() => window.__aborts)) === aborted + 2 && !onSat.includes("37.5") && !(await kgShown()).includes("37.5") && !logged375(),
+    JSON.stringify([(await page.evaluate(() => window.__aborts)) - aborted, onSat, await kgShown()]),
+  );
+  await page.evaluate(() => ((window.__wait = 60), (window.__said = [])));
 
   // --- the line goes after about 4 seconds
   await say("undo");

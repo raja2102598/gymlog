@@ -40,11 +40,18 @@ export class SpeechError extends Error {
   }
 }
 
+/** The language to listen in. What's heard is read by an English parser (src/lib/voice.ts), so it's English: the
+ *  browser's own English (en-IN, en-GB, …) when it lists one, as that knows the accent, and otherwise en-US. */
+export function recognitionLang(): string {
+  const listed = typeof navigator === "undefined" ? [] : [...(navigator.languages ?? []), navigator.language];
+  return listed.find((l) => /^en(-|$)/i.test(l ?? "")) ?? "en-US";
+}
+
 /**
  * Listens for one phrase and resolves with the recognizer's guesses at it, best first (up to 5). Rejects with a
  * SpeechError on an error or silence, and with "aborted" as soon as `signal` aborts.
  */
-export function listenOnce({ lang = navigator.language, signal }: { lang?: string; signal?: AbortSignal } = {}): Promise<string[]> {
+export function listenOnce({ lang = recognitionLang(), signal }: { lang?: string; signal?: AbortSignal } = {}): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const Recognition = recognizer();
     if (!Recognition || isNative()) return reject(new SpeechError("not-supported"));

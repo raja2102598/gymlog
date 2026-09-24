@@ -74,6 +74,14 @@ describe("parseSetPhrase: numbers", () => {
     expect(parseSetPhrase("12 at 1,000")).toEqual(set(12, 1000));
   });
 
+  it("reads every thousands group of a number, and refuses one grouped any other way", () => {
+    expect(parseSetPhrase("10 at 1,000,000")).toEqual(unknown);
+    expect(parseSetPhrase("10 at 1,000,000 kg")).toEqual(unknown);
+    expect(parseSetPhrase("10 at 1,00,000")).toEqual(unknown);
+    expect(parseSetPhrase("10 at 22,500")).toEqual(unknown);
+    expect(parseSetPhrase("10 at 1,2,5")).toEqual(unknown);
+  });
+
   it('reads "point five", "point two five" and "and a half"', () => {
     expect(parseSetPhrase("eight at twenty two point five")).toEqual(set(8, 22.5));
     expect(parseSetPhrase("eight at twenty two point two five")).toEqual(set(8, 22.25));

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listenOnce, onVoicePref, setVoicePref, SpeechError, speechSupported, VOICE_KEY, voicePref } from "@/lib/speech";
+import { listenOnce, onVoicePref, recognitionLang, setVoicePref, SpeechError, speechSupported, VOICE_KEY, voicePref } from "@/lib/speech";
 
 type Handler<E> = ((e: E) => void) | null;
 /** Chrome's recognizer, as far as the app uses it: records how it was set up, and answers when told to. */
@@ -65,10 +65,36 @@ describe("speechSupported", () => {
   });
 });
 
+describe("recognitionLang", () => {
+  it("is the browser's language when that's English", () => {
+    expect(recognitionLang()).toBe("en-GB");
+    vi.stubGlobal("navigator", { language: "en", languages: ["en"] });
+    expect(recognitionLang()).toBe("en");
+  });
+  it("is the first English the browser lists, when its own language isn't English", () => {
+    vi.stubGlobal("navigator", { language: "hi-IN", languages: ["hi-IN", "en-IN", "en-US"] });
+    expect(recognitionLang()).toBe("en-IN");
+  });
+  it("is en-US when the browser lists no English, as the parser reads only English", () => {
+    vi.stubGlobal("navigator", { language: "fr-FR", languages: ["fr-FR", "fr"] });
+    expect(recognitionLang()).toBe("en-US");
+    vi.stubGlobal("navigator", { language: "fr-FR" });
+    expect(recognitionLang()).toBe("en-US");
+  });
+  it("a listenOnce in a French browser listens in English", async () => {
+    vi.stubGlobal("window", { webkitSpeechRecognition: FakeRecognition });
+    vi.stubGlobal("navigator", { language: "fr-FR", languages: ["fr-FR"] });
+    const heard = listenOnce();
+    expect(rec().lang).toBe("en-US");
+    rec().hear("10 at 45");
+    await expect(heard).resolves.toEqual(["10 at 45"]);
+  });
+});
+
 describe("listenOnce", () => {
   beforeEach(() => vi.stubGlobal("window", { webkitSpeechRecognition: FakeRecognition }));
 
-  it("listens once, for up to 5 guesses, in the browser's language, and resolves with what it heard", async () => {
+  it("listens once, for up to 5 guesses, in the browser's English, and resolves with what it heard", async () => {
     const heard = listenOnce();
     expect(rec()).toMatchObject({ started: true, lang: "en-GB", continuous: false, interimResults: false, maxAlternatives: 5 });
     rec().hear(" ten at forty five", "10 at 45", "");

@@ -41,14 +41,18 @@ const ONES = table({ zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6
 const TEENS = table({ ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 });
 const TENS = table({ twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 });
 
+/** A number written with commas: thousands when every group after the first has three digits ("1,000",
+ *  "1,000,000"), or a decimal point when it has one comma ("22,5"). Any other grouping ("1,00,000") is left for
+ *  words() to split into several numbers, which makes the phrase unknown. */
+const commas = (n: string) => (/^\d{1,3}(,\d{3})+$/.test(n) ? n.replace(/,/g, "") : /^\d+,\d+$/.test(n) ? n.replace(",", ".") : n);
+
 /** Lower case, split into words, with a number's unit or "x" split off it ("45kg", "10x45") and "forty-five" as two
- *  words. A comma between digits is a decimal point ("22,5"), or a thousands separator before three ("1,000"). */
+ *  words. Commas in a number are read by commas(). */
 function words(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/['’`]/g, "")
-    .replace(/(\d),(\d{3})(?!\d)/g, "$1$2")
-    .replace(/(\d),(\d)/g, "$1.$2")
+    .replace(/\d+(?:,\d+)+/g, commas)
     .replace(/[×@]/g, " $& ")
     .replace(/(\d)([a-z])/g, "$1 $2")
     .replace(/([a-z])(\d)/g, "$1 $2")
