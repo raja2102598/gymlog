@@ -115,12 +115,15 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
     if (said.command === "undo") {
       const last = lastLogged();
       if (last < 0) return `${at}. There’s no set to undo.`;
+      const had = now().filter((s) => (s.reps ?? 0) > 0).length;
       setField(last, "reps", "");
       setField(last, "kg", "");
-      // Logging the planned sets ticked the lift off, so with one fewer it's no longer done.
-      edit((r) => {
-        if (r.done && setsOf(r).filter((s) => (s.reps ?? 0) > 0).length < min) r.done = false;
-      }, false);
+      // This set reached the planned count, which ticked the lift off: without it, the tick goes too. A lift ticked
+      // before its planned sets were in keeps its tick.
+      if (had === min)
+        edit((r) => {
+          r.done = false;
+        }, false);
       return `${at}: set\u00a0${last + 1} cleared.`;
     }
     if (said.command === "done") {

@@ -74,6 +74,13 @@ describe("parseSetPhrase: numbers", () => {
     expect(parseSetPhrase("12 at 1,000")).toEqual(set(12, 1000));
   });
 
+  it("refuses a number with a minus sign, rather than dropping the sign", () => {
+    expect(parseSetPhrase("10 at -45")).toEqual(unknown);
+    expect(parseSetPhrase("-10 at 45")).toEqual(unknown);
+    expect(parseSetPhrase("10 at − 45")).toEqual(unknown);
+    expect(parseSetPhrase("10 at forty-five")).toEqual(set(10, 45));
+  });
+
   it("reads every thousands group of a number, and refuses one grouped any other way", () => {
     expect(parseSetPhrase("10 at 1,000,000")).toEqual(unknown);
     expect(parseSetPhrase("10 at 1,000,000 kg")).toEqual(unknown);

@@ -246,6 +246,13 @@ export default async function voice({ browser, base, check }) {
   await tap(le, /set.3 cleared/);
   await until(async () => db.logs[TODAY]?.exercises["Leg Extension"]?.done === false);
   check("“undo” of that set takes the tick back too", !(await le.locator("input.tick").isChecked()) && db.logs[TODAY].exercises["Leg Extension"].done === false, JSON.stringify(db.logs[TODAY].exercises["Leg Extension"]));
+  // A tick given before the planned sets are in is yours: "undo" clears the set and keeps it.
+  await say("done");
+  await tap(le, /marked done/);
+  await say("undo");
+  await tap(le, /set.2 cleared/);
+  await page.waitForTimeout(300);
+  check("“undo” keeps a tick you gave before the planned sets were in", (await le.locator("input.tick").isChecked()) && (await rowOf(le, 1)).reps === "", JSON.stringify(await rowOf(le, 1)));
   const hc = liftEl(page, "Hamstring Curl");
   await say("twelve reps");
   await tap(hc, /set.1/);
