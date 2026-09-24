@@ -52,8 +52,9 @@ const FIRST_SAVE = "2026-09-23T04:12:00+00:00";
  * authorize request goes straight back with a code, or with an error when `db.oauthError`, recorded in `db.oauth`).
  *
  * Rows of `logs` and `plans` carry an updated_at (`db.logsAt[day]`, `db.planAt`) that every write moves on, as the
- * tables' triggers do. Reads and updates honour eq filters on day and updated_at, a write returns its rows when asked
- * (Prefer: return=representation), and adding a row that's there already fails as Postgres does (409, code 23505).
+ * tables' triggers do. Reads and updates honour eq filters on day and updated_at, a write returns the columns it selects
+ * of its rows when asked (Prefer: return=representation), and adding rows fails as Postgres does when one of them is
+ * there already (409, code 23505), adding none.
  * Several pages can share one `db`, like phones on one account.
  */
 export function mockSupabase(db) {
@@ -68,11 +69,12 @@ export function mockSupabase(db) {
     const json = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     /** The value of an eq filter in the address (day=eq.…), or null. */
     const eq = (col) => url.searchParams.get(col)?.replace(/^eq\./, "") ?? null;
-    /** What a write sends back: its rows' new versions when asked for them, or nothing. */
-    const written = (versions) =>
-      /return=representation/.test(req.headers()["prefer"] ?? "")
-        ? json(m === "POST" ? 201 : 200, versions.map((updated_at) => ({ updated_at })))
-        : route.fulfill({ status: m === "POST" ? 201 : 204, body: "" });
+    /** What a write sends back: the columns it selects (select=…) of the rows it wrote, when it asks for them, or nothing. */
+    const written = (rows) => {
+      if (!/return=representation/.test(req.headers()["prefer"] ?? "")) return route.fulfill({ status: m === "POST" ? 201 : 204, body: "" });
+      const cols = (url.searchParams.get("select") ?? "*").split(",");
+      return json(m === "POST" ? 201 : 200, rows.map((r) => (cols.includes("*") ? r : Object.fromEntries(cols.map((c) => [c, r[c]])))));
+    };
     const duplicate = () => json(409, { code: "23505", details: null, hint: null, message: "duplicate key value violates unique constraint" });
     if (url.pathname === "/rest/v1/logs") {
       const at = (day) => (db.logsAt[day] ??= FIRST_SAVE);
@@ -87,7 +89,7 @@ export function mockSupabase(db) {
           db.logsAt[r.day] = stamp();
         }
         if (rows.length) db.writes.logs++;
-        return written(rows.map((r) => db.logsAt[r.day]));
+        return written(rows.map((r) => ({ day: r.day, data: r.data, updated_at: db.logsAt[r.day] })));
       }
     }
     if (url.pathname === "/rest/v1/health_days") {
@@ -110,7 +112,7 @@ export function mockSupabase(db) {
         db.plan = [].concat(JSON.parse(req.postData()))[0].plan;
         db.planAt = stamp();
         db.writes.plans++;
-        return written([db.planAt]);
+        return written([{ plan: db.plan, updated_at: db.planAt }]);
       }
     }
     if (url.pathname === "/auth/v1/otp" && m === "POST") {

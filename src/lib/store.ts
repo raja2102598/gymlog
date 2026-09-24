@@ -117,6 +117,10 @@ export function mergeDays(mine: DayLog, theirs: DayLog): DayLog | null {
 
 /** Postgres's answer to adding a row that's there already. */
 const UNIQUE_VIOLATION = "23505";
+/** Days new here are added this many to a request: a restore into a new account brings hundreds. */
+const INSERT_CHUNK = 200;
+/** Days saved one by one go this many at once. */
+const SAVES_AT_ONCE = 4;
 /** The updated_at a write returned, or null when it wrote nothing: another device changed the row first. */
 const writtenAt = (rows: unknown) => (rows as { updated_at?: string }[] | null)?.[0]?.updated_at ?? null;
 /** What the plan editor and Settings say while the plan waits for you to choose a version. */
@@ -669,11 +673,15 @@ export class GymStore {
     this.setStatus("Saving…");
     let error: unknown = null;
     try {
-      // One day at a time: only a few ever wait, and each is written over the version it started from.
-      for (const d of days) {
-        error = await this.saveDay(d);
-        if (error) break;
+      // Days new here go in together, a chunk to a request; the others are each written over the version they started
+      // from, a few at once, and so are the days of a chunk that found one of them already there.
+      const fresh = days.filter((d) => !this.bases[d]), each = days.filter((d) => this.bases[d]);
+      for (let i = 0; i < fresh.length && !error; i += INSERT_CHUNK) {
+        const chunk = fresh.slice(i, i + INSERT_CHUNK), r = await this.addDays(chunk);
+        if (r.taken) each.push(...chunk);
+        error = r.error ?? null;
       }
+      if (!error) error = await this.saveEach(each);
     } finally {
       this.flushing = false;
     }
@@ -687,6 +695,36 @@ export class GymStore {
     }
     this.syncTrouble = false;
     this.setStatus(this.unsynced().length ? "Saving…" : Object.keys(this.conflicts).length ? "Not synced yet" : "Saved");
+  }
+
+  /** Adds days new here in one request. `taken` when one of them was there already: Postgres then turns the whole
+   *  request down, so none went in. Or an error to retry on. */
+  private async addDays(days: DayKey[]): Promise<{ taken?: boolean; error?: unknown }> {
+    const uid = this.user!.id, rows = days.map((day) => ({ user_id: uid, day, data: this.pending[day] }));
+    const { data, error } = await this.sb!.from("logs").insert(rows).select("day,updated_at");
+    if (error) return error.code === UNIQUE_VIOLATION ? { taken: true } : { error };
+    const at = new Map(((data as { day: DayKey; updated_at: string }[] | null) ?? []).map((r) => [r.day, r.updated_at]));
+    for (const r of rows) {
+      const v = at.get(r.day);
+      if (!v) continue;
+      this.bases[r.day] = v;
+      if (this.pending[r.day] === r.data) delete this.pending[r.day]; // unless edited meanwhile
+    }
+    return {};
+  }
+
+  /** Saves days one by one, a few at once. After an error it starts no more, lets those under way finish, and returns
+   *  the first error. */
+  private async saveEach(days: DayKey[]): Promise<unknown> {
+    let next = 0, error: unknown = null;
+    const worker = async () => {
+      while (!error && next < days.length) {
+        const e = await this.saveDay(days[next++]).catch((x: unknown) => x);
+        error ??= e;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SAVES_AT_ONCE, days.length) }, worker));
+    return error;
   }
 
   /** Saves a waiting day over the version this phone's copy started from, or adds it when Supabase has none. If

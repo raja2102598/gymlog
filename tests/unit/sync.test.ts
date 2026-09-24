@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { addDays } from "@/lib/dates";
 import { DEFAULT_PLAN } from "@/lib/plan";
 import { copy } from "@/lib/storage";
 import { GymStore, mergeDays } from "@/lib/store";
@@ -51,7 +52,7 @@ describe("saving a day over the version it started from", () => {
     s.editDay(D, (n) => void (n.steps = 9000), false);
     s.editDay("2026-09-24", (n) => void (n.cardio = true), false);
     await s.flush();
-    expect(f.sent).toEqual([`update logs ${D} @${v1}`, "insert logs"]);
+    expect(f.sent).toEqual(["insert logs ×1", `update logs ${D} @${v1}`]);
     expect([f.row(D)!.data.steps, f.row("2026-09-24")!.data.cardio]).toEqual([9000, true]);
     expect([s.pending, s.conflicts, s.status]).toEqual([{}, {}, "Saved"]);
     // The versions those writes returned are where the next ones start.
@@ -96,12 +97,12 @@ describe("saving a day over the version it started from", () => {
     expect(Object.keys(f.row(D)!.data.exercises).sort()).toEqual(all);
     expect(Object.keys(s.entry(D).exercises).sort()).toEqual(all);
     expect([s.pending, s.conflicts, s.status]).toEqual([{}, {}, "Saved"]);
-    // Neither phone had Monday: this one adds it, finds the other's already there, and merges.
+    // Neither phone had Monday: this one adds it, finds the other's already there, saves it on its own, and merges.
     f.elsewhere("2026-09-21", day({ exercises: { "Chest Press Machine": lift(12, 40) } }));
     s.editLift("2026-09-21", "Incline Machine Press", (r) => void (r.sets = [{ reps: 8, kg: 40 }]), false);
     f.sent.length = 0;
     await s.flush();
-    expect(f.sent).toEqual(["insert logs", "select logs 2026-09-21", expect.stringMatching(/^update logs 2026-09-21 @/)]);
+    expect(f.sent).toEqual(["insert logs ×1", "insert logs 2026-09-21", "select logs 2026-09-21", expect.stringMatching(/^update logs 2026-09-21 @/)]);
     expect(Object.keys(f.row("2026-09-21")!.data.exercises).sort()).toEqual(["Chest Press Machine", "Incline Machine Press"]);
     expect(s.conflicts).toEqual({});
   });
@@ -178,7 +179,7 @@ describe("saving a day over the version it started from", () => {
   it("doesn't bring back an older copy from a load that began before a save", async () => {
     const f = fakeSupabase();
     f.elsewhere(D, day({ steps: 8000 }));
-    const s = await phone(f), load = f.holdNextLoad();
+    const s = await phone(f), load = f.holdNext("load");
     const loading = s.pull();
     await load.read; // Supabase reads the day as it was…
     s.editDay(D, (n) => void (n.steps = 9100), false);
@@ -212,7 +213,7 @@ describe("saving a day over the version it started from", () => {
   it("doesn't swap the other device's copy for an older one from a load that began before it was found", async () => {
     const f = fakeSupabase();
     f.elsewhere(D, day({ steps: 8000 }));
-    const s = await phone(f), load = f.holdNextLoad();
+    const s = await phone(f), load = f.holdNext("load");
     const loading = s.pull();
     await load.read; // Supabase reads the day before the other device's save…
     f.elsewhere(D, day({ steps: 9000 }));
@@ -224,6 +225,117 @@ describe("saving a day over the version it started from", () => {
     expect(s.conflicts[D]).toMatchObject({ data: { steps: 9000 }, at: found });
     await s.keepDay(D, "mine");
     expect([f.row(D)!.data.steps, s.conflicts]).toEqual([9500, {}]);
+  });
+});
+
+describe("saving many days", () => {
+  /** `n` days in a row from `from`. */
+  const run = (n: number, from = "2025-06-01") => Array.from({ length: n }, (_, i) => addDays(from, i));
+  /** A backup of these days, as Settings exports it. */
+  const backup = (logs: { day: string; data: DayLog }[]) =>
+    new File([JSON.stringify({ format: "gymlog-backup", version: 1, exportedAt: "2026-09-20T08:00:00.000Z", plan: null, logs, healthDays: {} })], "gym-log.json");
+  /** A phone that has loaded these days, as another device saved them, and has changed every one since. */
+  async function edited(f: Fake, days: string[]) {
+    days.forEach((k, i) => f.elsewhere(k, day({ steps: i })));
+    const s = await phone(f);
+    for (const k of days) s.editDay(k, (n) => void (n.note = "edited"), false);
+    return s;
+  }
+
+  it("adds days new here together, 200 to a request, as a restore into a new account does", async () => {
+    const f = fakeSupabase(), s = await phone(f), days = run(250);
+    expect(await s.importFile(backup(days.map((k, i) => ({ day: k, data: day({ steps: i }) }))), () => true)).toBe("Imported 250 days.");
+    expect(f.sent).toEqual(["insert logs ×200", "insert logs ×50"]);
+    expect(days.every((k, i) => f.row(k)?.data.steps === i)).toBe(true);
+    expect([s.pending, s.status]).toEqual([{}, "Saved"]);
+    // Each day got its version back, and the next edit is written over it.
+    const v = f.row(days[7])!.updated_at;
+    f.sent.length = 0;
+    s.editDay(days[7], (n) => void (n.note = "edited"), false);
+    await s.flush();
+    expect(f.sent).toEqual([`update logs ${days[7]} @${v}`]);
+  });
+
+  it("saves a chunk day by day when one of its days is there already, and each still settles", async () => {
+    const f = fakeSupabase(), s = await phone(f), plain = run(200);
+    const [X, Y, Z, N] = run(4, "2026-09-20"), mine = { "Leg Press": lift(10, 50) };
+    // Since this phone loaded, another device saved three of the days it's about to restore: the same, with another
+    // lift, and with other steps.
+    f.elsewhere(X, day({ steps: 5000 }));
+    f.elsewhere(Y, day({ exercises: { "Leg Extension": lift(12, 27) } }));
+    f.elsewhere(Z, day({ steps: 7000 }));
+    const x = f.row(X)!.updated_at, y = f.row(Y)!.updated_at;
+    const restored = [...plain.map((k) => ({ day: k, data: day({ cardio: true }) })), { day: X, data: day({ steps: 5000 }) }, { day: Y, data: day({ exercises: mine }) }, { day: Z, data: day({ steps: 9000 }) }, { day: N, data: day({ steps: 4000 }) }];
+    await s.importFile(backup(restored), () => true);
+    // The first 200 go in together; the chunk with the three is turned down whole, so its days are saved one by one.
+    expect(f.sent.slice(0, 2)).toEqual(["insert logs ×200", "insert logs ×4"]);
+    expect(f.sent.slice(2).sort()).toEqual([...[X, Y, Z, N].map((k) => `insert logs ${k}`), `select logs ${X}`, `select logs ${Y}`, `select logs ${Z}`, `update logs ${Y} @${y}`].sort());
+    expect(plain.every((k) => f.row(k)?.data.cardio)).toBe(true);
+    expect([f.row(X)!.updated_at, f.row(N)!.data.steps, f.row(Z)!.data.steps]).toEqual([x, 4000, 7000]); // taken as it was, added, left alone
+    expect(Object.keys(f.row(Y)!.data.exercises).sort()).toEqual(["Leg Extension", "Leg Press"]); // merged
+    expect(Object.keys(s.entry(Y).exercises).sort()).toEqual(["Leg Extension", "Leg Press"]);
+    expect([Object.keys(s.pending), Object.keys(s.conflicts), s.conflicts[Z].data.steps, s.status]).toEqual([[Z], [Z], 7000, "Not synced yet"]); // kept for you
+  });
+
+  it("saves at most four days at once", async () => {
+    const f = fakeSupabase(), days = run(10, "2026-09-01"), s = await edited(f, days);
+    await s.flush();
+    expect(f.sent).toHaveLength(10);
+    expect(f.peak()).toBe(4);
+    expect([days.every((k) => f.row(k)!.data.note === "edited"), s.pending, s.status]).toEqual([true, {}, "Saved"]);
+  });
+
+  it("after an error starts no more saves, lets those under way finish, and reports the first error", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = fakeSupabase(), days = run(10, "2026-09-01"), s = await edited(f, days);
+    f.failWrites(days[0], days[1]);
+    await s.flush();
+    // The first four were under way when the first failed: the other two of them are saved, and no more are started.
+    expect(f.sent).toEqual(days.slice(0, 4).map((k) => expect.stringMatching(new RegExp(`^update logs ${k} @`))));
+    expect(days.map((k) => f.row(k)!.data.note === "edited")).toEqual([false, false, true, true, false, false, false, false, false, false]);
+    expect(Object.keys(s.pending).sort()).toEqual([days[0], days[1], ...days.slice(4)]);
+    expect([s.syncTrouble, s.status]).toEqual([true, "Not synced yet. Will retry"]);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ message: `couldn’t save ${days[0]}` }));
+    // Once they can be saved, the retry saves the rest.
+    f.failWrites();
+    await s.flush();
+    expect([days.every((k) => f.row(k)!.data.note === "edited"), s.pending, s.syncTrouble, s.status]).toEqual([true, {}, false, "Saved"]);
+    warn.mockRestore();
+  });
+
+  it("tries days new here again later when their request fails, starting no other saves", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const f = fakeSupabase(), s = await edited(f, [D]), v = f.row(D)!.updated_at;
+    s.editDay("2026-09-24", (n) => void (n.cardio = true), false);
+    s.editDay("2026-09-25", (n) => void (n.cardio = true), false);
+    f.failWrites("2026-09-25");
+    await s.flush();
+    expect(f.sent).toEqual(["insert logs ×2"]);
+    expect([Object.keys(s.pending).sort(), s.syncTrouble, s.status]).toEqual([[D, "2026-09-24", "2026-09-25"], true, "Not synced yet. Will retry"]);
+    f.failWrites();
+    f.sent.length = 0;
+    await s.flush();
+    expect(f.sent).toEqual(["insert logs ×2", `update logs ${D} @${v}`]);
+    expect([s.pending, s.status]).toEqual([{}, "Saved"]);
+    warn.mockRestore();
+  });
+
+  it("keeps a day edited while it was being added waiting, to save over the version it got", async () => {
+    const f = fakeSupabase(), s = await phone(f), [A, B] = run(2, "2026-09-22");
+    s.editDay(A, (n) => void (n.steps = 1000), false);
+    s.editDay(B, (n) => void (n.steps = 2000), false);
+    const insert = f.holdNext("insert"), saving = s.flush();
+    await insert.read; // the days are in…
+    s.editDay(A, (n) => void (n.steps = 1500), false); // …when A changes again…
+    insert.release(); // …before the answer arrives.
+    await saving;
+    const a = f.row(A)!.updated_at;
+    expect([f.row(A)!.data.steps, Object.keys(s.pending), s.entry(A).steps]).toEqual([1000, [A], 1500]);
+    f.sent.length = 0;
+    await s.flush();
+    expect(f.sent).toEqual([`update logs ${A} @${a}`]);
+    expect([f.row(A)!.data.steps, s.pending]).toEqual([1500, {}]);
   });
 });
 

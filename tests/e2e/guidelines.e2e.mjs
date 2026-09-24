@@ -179,7 +179,8 @@ export default async function guidelines({ browser, base, check }) {
     check("import: cancelling changes nothing", (await page.textContent("#dataMsg")) === "Import cancelled. Nothing changed." && db.logs["2026-09-22"].steps === 8000 && !db.logs["2026-07-01"]);
     page.once("dialog", (d) => d.accept());
     await page.setInputFiles("#importFile", file(changed));
-    await until(() => db.logs["2026-07-01"] != null);
+    // The message comes once every day is saved.
+    await until(async () => db.logs["2026-07-01"] != null && (await page.textContent("#dataMsg")) === "Imported 2 days.");
     check("import: once accepted, the file's days go in", (await page.textContent("#dataMsg")) === "Imported 2 days." && db.logs["2026-09-22"].steps === 1234);
     page.once("dialog", () => (asked = "asked again"));
     await page.setInputFiles("#importFile", file(changed));
@@ -274,6 +275,7 @@ export default async function guidelines({ browser, base, check }) {
       page.removeAllListeners("dialog");
       let asked = "";
       page.once("dialog", (d) => ((asked = d.message()), d.accept()));
+      const logWrites = db.writes.logs;
       await page.setInputFiles("#importFile", jsonFile(backupText));
       await until(async () => /^Imported/.test(await page.textContent("#dataMsg")));
       await until(() => Object.keys(db.logs).length === 29 && db.plan?.tempo === "4:0:1:0");
@@ -282,6 +284,7 @@ export default async function guidelines({ browser, base, check }) {
         "import: the days and the plan are restored, and synced",
         Object.keys(db.logs).length === 29 && db.logs[K(26)].exercises["Incline Machine Press"].swap === "Incline DB Press" && db.plan?.tempo === "4:0:1:0" && db.plan.days[0].name === "Chest, shoulders",
       );
+      check("import: the 29 days, all new to this account, are saved in one request", db.writes.logs === logWrites + 1, `${db.writes.logs - logWrites} requests`);
       check("import: says what came in", (await page.textContent("#dataMsg")) === "Imported 29 days, the plan and Health Connect data for 2 days.", await page.textContent("#dataMsg"));
       check(
         "import: Health Connect days go to the database, filling in the day it didn't have and leaving the one it had",
