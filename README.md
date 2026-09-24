@@ -32,7 +32,7 @@ A [Next.js](https://nextjs.org) app (App Router, TypeScript) exported as a stati
 
 ## Working on it
 
-Needs Node.js 20.9 or later.
+Needs Node.js 20 (20.19 or later), 22 (22.12 or later) or 24.
 
 ```bash
 npm install
