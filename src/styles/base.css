@@ -2,8 +2,8 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{color-scheme:light;-webkit-text-size-adjust:100%}
-/* while the sync bar is up, a field reached with Tab scrolls clear of it too, instead of sitting underneath */
-html:has(#syncBar:not([hidden])){scroll-padding-top:calc(var(--sat) + var(--appbar) + 84px)}
+/* while the sync bar or a notice is up, a field reached with Tab scrolls clear of it too, instead of sitting underneath */
+html:has(.bars>:not([hidden])){scroll-padding-top:calc(var(--sat) + var(--appbar) + 84px)}
 /* the top bar (shell.css) keeps the page clear of the phone's status bar */
 body{margin:0;background:var(--ground);color:var(--ink);font:var(--t-base)/1.5 var(--body);padding:0 var(--gut-r) calc(32px + var(--sab)) var(--gut-l);-webkit-tap-highlight-color:transparent}
 .wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
@@ -107,8 +107,11 @@ td.c,th.c{text-align:center}
 .callout.good{background:var(--good-soft);box-shadow:inset 3px 0 0 var(--good)}
 .callout.warn{background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn)}
 
-/* sync trouble, and the placeholder shown while the app starts */
-.syncbar{position:sticky;top:calc(var(--sat) + var(--appbar) + 8px);z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r-card);background:var(--warn-soft);box-shadow:inset 4px 0 0 var(--warn),var(--shadow-up);color:var(--ink);font-size:14px}
+/* sync trouble, and the placeholder shown while the app starts. The sync bar and the notices share one sticky
+   stack, so one that shows up alongside another sits under it instead of covering its buttons. */
+.bars{position:sticky;top:calc(var(--sat) + var(--appbar) + 8px);z-index:5;display:grid;gap:8px}
+.bars:not(:has(>:not([hidden]))){display:none}
+.syncbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r-card);background:var(--warn-soft);box-shadow:inset 4px 0 0 var(--warn),var(--shadow-up);color:var(--ink);font-size:14px}
 .syncbar .ghost{margin-left:auto}
 .syncbar p{margin:0;flex-basis:100%}
 .syncbar .conflict{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px}

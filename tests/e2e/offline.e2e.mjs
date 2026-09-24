@@ -128,7 +128,8 @@ export default async function offline({ browser, base, copy, check }) {
 
   // ---------- Updates: a new build reaches an installed copy by the next launch ----------
   {
-    const { ctx, page } = await open(browser, copy.url, { auth, db: { logs: today(), plan: null }, sw: "allow" });
+    const db = { logs: today(), plan: null };
+    const { ctx, page } = await open(browser, copy.url, { auth, db, sw: "allow" });
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
@@ -151,6 +152,16 @@ export default async function offline({ browser, base, copy, check }) {
     // one): a notice offers a reload, since this tab is still running the old code until then.
     await page.waitForSelector("#swUpdateBar:not([hidden])", { timeout: 5000 });
     check("a notice offers a reload once the new version takes over the open tab", (await flat(page.locator("#swUpdateMsg"))) === "Gym Log was updated.");
+    // With the sync bar up too, scrolled: the two stack, neither covering the other's buttons.
+    db.failWrites = true;
+    await page.fill("#s0_0_r", "10");
+    await page.waitForSelector("#syncBar:not([hidden])", { timeout: 8000 });
+    await page.evaluate(() => window.scrollBy(0, 600));
+    const bars = await page.evaluate(() => ["#syncBar", "#swUpdateBar"].map((s) => document.querySelector(s).getBoundingClientRect()).map((r) => ({ top: Math.round(r.top), bottom: Math.round(r.bottom) })));
+    check("the sync bar and a notice shown together stack, neither covering the other", bars[0].bottom <= bars[1].top || bars[1].bottom <= bars[0].top, JSON.stringify(bars));
+    db.failWrites = false;
+    // Those saves failed on purpose: what the browser and the app log about them isn't a page error.
+    page.errors = page.errors.filter((e) => !/status of 503 \(Service Unavailable\)|\{message: unavailable\}/.test(e));
     await page.click("#swUpdateReload");
     await ready(page);
     check("Reload runs the new version", await page.evaluate(() => window.__build === 2));

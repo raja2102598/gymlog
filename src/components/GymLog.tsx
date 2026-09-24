@@ -289,9 +289,11 @@ export default function GymLog() {
       )}
 
       <main id="main" tabIndex={-1}>
-        <SyncBar />
-        <SwUpdateNotice show={swUpdated} onReload={() => location.reload()} />
-        {isNative() && inApp ? <UpdateNotice onOpenSettings={() => navigate({ view: "settings" })} /> : null}
+        <div className="bars">
+          <SyncBar />
+          <SwUpdateNotice show={swUpdated} onReload={() => location.reload()} />
+          {isNative() && inApp ? <UpdateNotice onOpenSettings={() => navigate({ view: "settings" })} /> : null}
+        </div>
         <BootView hidden={screen !== "boot"} />
         <SetupView hidden={screen !== "setup"} />
         <LoginView hidden={screen !== "login"} />
