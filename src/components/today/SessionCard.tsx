@@ -8,6 +8,7 @@ import { num } from "@/lib/format";
 import type { DayKey, DayLog, KneeField, NumField, PlanDay } from "@/lib/types";
 import { CardioFinisher } from "./CardioFinisher";
 import { DayFields } from "./DayFields";
+import { HealthToday } from "./HealthToday";
 import { KneeScale } from "./KneeScale";
 import { LiftItem } from "./LiftItem";
 import type { LiftMenu } from "./types";
@@ -100,23 +101,30 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
   return (
     <>
       <div className="sess-head">
-        <div>
-          <h2>{p.name}</h2>
-          <div className="sub">
-            {p.focus} · {dm(sel)}
-          </div>
-          <div className="sess-pick">
-            <select id="sessionSel" className="ghost tiny" aria-label="Workout for this day" value={slot} onChange={(ev) => switchTo(+ev.target.value)}>
-              {plan.days.map((x, i) => (
-                <option key={i} value={i}>{`${x.name} (${DOW[i]}${i === own ? ", usual" : ""})`}</option>
-              ))}
-            </select>
-            {slot !== own ? <span className="moved">Usually {plan.days[own].name} · changed for this day</span> : null}
-          </div>
+        <div className="sess-title">
+          <h2 className="display">{p.name}</h2>
+          <span id="liftPill">
+            <LiftPill p={p} e={e} />
+          </span>
         </div>
-        <span id="liftPill">
-          <LiftPill p={p} e={e} />
-        </span>
+        <div className="sub">{[p.focus, dm(sel)].filter(Boolean).join(" · ")}</div>
+        {p.exercises.length ? (
+          // One segment per planned lift: filled when done, hatched when skipped.
+          <div className="segs" aria-hidden="true">
+            {p.exercises.map((x, n) => {
+              const r = e.exercises[x.name];
+              return <i key={n} className={cx(r?.done && "done", r?.skipped && "skip")} />;
+            })}
+          </div>
+        ) : null}
+        <div className="sess-pick">
+          <select id="sessionSel" className="ghost tiny" aria-label="Workout for this day" value={slot} onChange={(ev) => switchTo(+ev.target.value)}>
+            {plan.days.map((x, i) => (
+              <option key={i} value={i}>{`${x.name} (${DOW[i]}${i === own ? ", usual" : ""})`}</option>
+            ))}
+          </select>
+          {slot !== own ? <span className="moved">Usually {plan.days[own].name} · changed for this day</span> : null}
+        </div>
       </div>
       {missed.length ? (
         <div className="catchup">
@@ -140,23 +148,25 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
         </div>
       ) : null}
       {wake ? knee("kneeWake", "Knee on waking", `after ${store.planFor(yest).name} yesterday`, wakeMsg) : null}
-      {p.exercises.length || e.warmup.length ? <WarmUp all={wus} done={e.warmup} open={warmOpen} onToggle={onToggleWarm} onTick={tickWarmUp} /> : null}
+      {wus.length && (p.exercises.length || e.warmup.length) ? <WarmUp all={wus} done={e.warmup} open={warmOpen} onToggle={onToggleWarm} onTick={tickWarmUp} /> : null}
       {kneeHere ? knee("kneeBefore", "Knee pain before you start") : null}
-      <ul className="ex">
-        {items.map((it, i) => (
-          <LiftItem
-            key={`${i}|${it.name}`}
-            item={it}
-            i={i}
-            sel={sel}
-            entry={e}
-            marks={marks}
-            menu={menu && menu.day === sel && menu.name === it.name ? menu.mode : null}
-            setMenu={setMenu}
-            focusNext={focusNext}
-          />
-        ))}
-      </ul>
+      {items.length ? (
+        <ul className="ex">
+          {items.map((it, i) => (
+            <LiftItem
+              key={`${i}|${it.name}`}
+              item={it}
+              i={i}
+              sel={sel}
+              entry={e}
+              marks={marks}
+              menu={menu && menu.day === sel && menu.name === it.name ? menu.mode : null}
+              setMenu={setMenu}
+              focusNext={focusNext}
+            />
+          ))}
+        </ul>
+      ) : null}
       {kneeHere ? knee("kneeAfter", "Knee pain after the session", "", afterMsg) : null}
       <CardioFinisher
         cardio={p.cardio}
@@ -170,6 +180,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
       />
       <DayFields
         entry={e}
+        health={store.healthOf(sel)}
         stepGoal={plan.stepGoal}
         onSteps={(v) =>
           editDay((n) => {
@@ -188,6 +199,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
           }, false)
         }
       />
+      <HealthToday sel={sel} />
     </>
   );
 }

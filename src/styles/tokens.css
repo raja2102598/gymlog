@@ -1,19 +1,80 @@
-/* Colour: --good means done; --accent means it needs attention (a warning, a missed day, pain over the
-   limit, a destructive button). Suggestions and focus rings stay neutral. --edge outlines form fields.
-   Corners: cards and boxes 12px, controls 8px, chips and pills fully round, small marks 4px.
-   Fonts are served from this site (src/fonts, SIL Open Font License; loaded in src/app/fonts.ts), so
-   they work offline from the app cache. */
-:root{
-  --ground:#eef0f2; --surface:#ffffff; --ink:#15171b; --muted:#5b6270; --line:#d8dce2; --edge:#8a919c;
-  --accent:#c4531c; --accent-soft:#f7e3d8; --good:#287346; --good-soft:#dcefe3; --chip:#e3e6ea;
-  --r-card:12px; --r-ctl:8px; --r-mark:4px;
-  --display:var(--font-oswald),"Arial Narrow",Arial,sans-serif;
-  --body:var(--font-plex-sans),system-ui,-apple-system,"Segoe UI",sans-serif;
-  --mono:var(--font-plex-mono),ui-monospace,Menlo,monospace;
+/* Design tokens.
+   Colour: --good is done and progress, the one accent. --warn is a warning: pain over the limit, a missed
+   day, a failed sync, a destructive action. Everything else is neutral, including suggestions and the
+   focus ring. --edge outlines form fields (3:1 against every surface); --line is for hairlines only.
+   Shape: cards 16px, controls 10px, chips and pills fully round, small marks 4px.
+   Type: Oswald capitals only for the app name, page and session titles and big numbers; IBM Plex Sans in
+   sentence case for everything else; IBM Plex Mono for numbers you type or compare. The fonts are served
+   from this site (src/fonts, SIL Open Font License; loaded in src/app/fonts.ts), so they work offline.
+   Motion: feedback only, and none at all under prefers-reduced-motion. */
+:root {
+  --ground: #eef0f2;
+  --surface: #ffffff;
+  --sunken: #f3f4f6;
+  --ink: #15171b;
+  --muted: #5b6270;
+  --line: #e1e4e8;
+  --edge: #8a919c;
+  --good: #287346;
+  --good-soft: #dcefe3;
+  --warn: #b34a17;
+  --warn-soft: #f7e3d8;
+  --chip: #e3e6ea;
+  --shadow: 0 1px 2px rgb(21 23 27 / 0.06), 0 0 0 1px rgb(21 23 27 / 0.05);
+  --shadow-up: 0 6px 20px rgb(21 23 27 / 0.1), 0 0 0 1px rgb(21 23 27 / 0.05);
+
+  --r-card: 16px;
+  --r-ctl: 10px;
+  --r-mark: 4px;
+
+  --display: var(--font-oswald), "Arial Narrow", Arial, sans-serif;
+  --body: var(--font-plex-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: var(--font-plex-mono), ui-monospace, Menlo, monospace;
+  --t-xs: 12px;
+  --t-sm: 13px;
+  --t-base: 15px;
+  --t-md: 17px;
+  --t-lg: 20px;
+  --t-xl: 26px;
+  --t-2xl: 32px;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fast: 120ms;
+  --med: 200ms;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  color-scheme:dark;--ground:#121417;--surface:#1b1e23;--ink:#eceef1;--muted:#9aa2ae;--line:#2c3139;--edge:#6b7380;
-  --accent:#e9773f;--accent-soft:#3a251a;--good:#5cc488;--good-soft:#17301f;--chip:#262a31;}}
-:root[data-theme="dark"]{
-  color-scheme:dark;--ground:#121417;--surface:#1b1e23;--ink:#eceef1;--muted:#9aa2ae;--line:#2c3139;--edge:#6b7380;
-  --accent:#e9773f;--accent-soft:#3a251a;--good:#5cc488;--good-soft:#17301f;--chip:#262a31;}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #121417;
+    --surface: #1b1e23;
+    --sunken: #24282e;
+    --ink: #eceef1;
+    --muted: #9aa2ae;
+    --line: #2c3139;
+    --edge: #6b7380;
+    --good: #5cc488;
+    --good-soft: #17301f;
+    --warn: #e9773f;
+    --warn-soft: #3a251a;
+    --chip: #262a31;
+    --shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
+    --shadow-up: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.08);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #121417;
+  --surface: #1b1e23;
+  --sunken: #24282e;
+  --ink: #eceef1;
+  --muted: #9aa2ae;
+  --line: #2c3139;
+  --edge: #6b7380;
+  --good: #5cc488;
+  --good-soft: #17301f;
+  --warn: #e9773f;
+  --warn-soft: #3a251a;
+  --chip: #262a31;
+  --shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-up: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.08);
+}

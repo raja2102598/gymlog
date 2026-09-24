@@ -22,7 +22,7 @@ export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@exa
   };
 }
 
-/** The `logs` and `plans` tables, answered from `db` ({ logs, plan, failWrites, writes, unexpected }). */
+/** The `logs`, `plans` and `health_days` tables, answered from `db` ({ logs, plan, health, healthAt, failWrites, writes, unexpected }). */
 export function mockSupabase(db) {
   db.writes ??= { logs: 0, plans: 0 };
   db.unexpected ??= [];
@@ -34,6 +34,16 @@ export function mockSupabase(db) {
         if (db.failWrites) return route.fulfill({ status: 503, contentType: "application/json", body: '{"message":"unavailable"}' });
         for (const r of [].concat(JSON.parse(req.postData()))) db.logs[r.day] = r.data;
         db.writes.logs++;
+        return route.fulfill({ status: 201, body: "" });
+      }
+    }
+    if (url.pathname === "/rest/v1/health_days") {
+      db.health ??= {};
+      if (m === "GET")
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(Object.keys(db.health).sort().map((day) => ({ day, data: db.health[day], updated_at: db.healthAt || "2026-09-23T04:12:00+00:00" }))) });
+      if (m === "POST") {
+        for (const r of [].concat(JSON.parse(req.postData()))) db.health[r.day] = r.data;
+        db.writes.health = (db.writes.health || 0) + 1;
         return route.fulfill({ status: 201, body: "" });
       }
     }
@@ -88,6 +98,8 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
 export async function ready(page) {
   await page.waitForSelector("#appView:not([hidden])", { timeout: 15000 });
   await until(async () => (await page.locator("#status").textContent()) === "Synced");
+  // Let the view's fade-in finish: mid-transform, a 44px button can measure 43.99997px.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
 }
 
 export async function until(fn, ms = 6000) {

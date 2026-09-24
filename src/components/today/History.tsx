@@ -21,8 +21,8 @@ export function History() {
         </td>
         <td className="r num">{p.exercises.length ? `${done}/${p.exercises.length}` : "-"}</td>
         <td className="c">{e.cardio ? "✓" : "-"}</td>
-        <td className="r num">{fmt(e.steps)}</td>
-        <td className="r num">{e.weight ?? "-"}</td>
+        <td className="r num">{fmt(store.stepsOf(k))}</td>
+        <td className="r num">{store.weightOf(k) ?? "-"}</td>
       </tr>,
     );
   }

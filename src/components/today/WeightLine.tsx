@@ -1,4 +1,5 @@
 "use client";
+import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { ago, todayKey } from "@/lib/dates";
 import { signed } from "@/lib/format";
@@ -23,9 +24,9 @@ export function WeightLine({ onOpenDash }: { onOpenDash: () => void }) {
           ) : null}{" "}
           · weighed {ago(daysBetween(lastIn, todayKey()))}
         </p>
-        <button className="ghost tiny" id="toDash" onClick={onOpenDash}>
+        <ViewLink className="ghost tiny" id="toDash" href="#dashboard" onOpen={onOpenDash}>
           Open dashboard
-        </button>
+        </ViewLink>
       </>
     );
   }

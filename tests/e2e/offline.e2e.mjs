@@ -29,7 +29,7 @@ export default async function offline({ browser, base, copy, check }) {
     await ctx.setOffline(true);
     await page.fill("#steps", "9200");
     await until(() => page.locator("#syncBar").isVisible());
-    check("offline with an edit: the bar says it will sync later, no retry button", /they'll sync when you're back online/.test(await flat(page.locator("#syncMsg"))) && (await page.locator("#syncRetry").isHidden()));
+    check("offline with an edit: the bar says it will sync later, no retry button", /they’ll sync when you’re back online/.test(await flat(page.locator("#syncMsg"))) && (await page.locator("#syncRetry").isHidden()));
     await ctx.setOffline(false);
     await until(async () => (await page.locator("#syncBar").isHidden()) && db.logs["2026-09-23"].steps === 9200, 8000);
     check("back online: it syncs and the bar goes", (await page.locator("#syncBar").isHidden()) && db.logs["2026-09-23"].steps === 9200);

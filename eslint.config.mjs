@@ -5,5 +5,6 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "next-env.d.ts"]),
+  // android/ holds the native app and a copy of out/ (see capacitor.config.ts).
+  globalIgnores([".next/**", "out/**", "android/**", "next-env.d.ts"]),
 ]);

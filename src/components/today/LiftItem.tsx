@@ -1,11 +1,12 @@
 "use client";
-import type { FormEvent } from "react";
+import { CaretDown, DotsThree } from "@phosphor-icons/react";
+import { useState, type FormEvent } from "react";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
-import { num } from "@/lib/format";
+import { num, setsSummary } from "@/lib/format";
 import type { RecordKind } from "@/lib/stats";
 import { minSets, performed, prTitle, setsOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
@@ -24,16 +25,20 @@ interface Props {
   focusNext: FocusNext;
 }
 
-/** What was done last time, so there's something to beat. */
+/** What was done last time, set by set, so there's something to beat; the arrow shows today's heaviest
+ *  set is already heavier. */
 function LastHint({ last, cur }: { last: LastDone | null; cur: number | null }) {
-  if (!last) return <span className="last">first time</span>;
-  const top = topKg(setsOf(last.r));
-  if (top == null) return <span className="last">last · {dayMonth(last.day)}</span>;
-  const up = cur != null && cur > top;
+  if (!last) return <span className="last">First time</span>;
+  const sets = setsOf(last.r), top = topKg(sets), up = cur != null && top != null && cur > top;
   return (
     <span className={cx("last", up && "up")}>
-      last {top} kg · {dayMonth(last.day)}
-      {up ? " ↑" : ""}
+      Last {setsSummary(sets)} · {dayMonth(last.day)}
+      {up ? (
+        <>
+          <span aria-hidden="true"> ↑</span>
+          <span className="sr-only"> (heavier than last time)</span>
+        </>
+      ) : null}
     </span>
   );
 }
@@ -44,6 +49,9 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
   const { x, name, extra } = item, r: Partial<LiftLog> = entry.exercises[name] || {};
   const did = performed(name, r as LiftLog), last = store.lastDone(did, sel), next = r.skipped ? null : store.nextWeight(x, did, sel);
   const sets = setsOf(r as LiftLog), min = extra ? 1 : minSets(x), rows = Math.max(min, sets.length);
+  // How to do the lift: folded, since it's the same every week. Warnings (e.g. a KNEE NOTE) always show.
+  const cue = r.skipped || r.swap ? "" : x.cue;
+  const [howOpen, setHowOpen] = useState(false);
   const edit = (fn: (r: LiftLog) => void, immediate: boolean) => store.editLift(sel, name, fn, immediate);
 
   const setField = (j: number, f: keyof SetLog, value: string) =>
@@ -82,7 +90,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
                 id={`reason${i}`}
                 data-reason={i}
                 value={r.reason}
-                placeholder="e.g. machine busy"
+                placeholder="e.g. machine busy…"
                 autoComplete="off"
                 onChange={(ev) => {
                   const v = ev.target.value;
@@ -129,7 +137,8 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
                   r.skipped = true;
                   r.done = false;
                 }, true);
-                focusNext(`#reason${i}`);
+                // The reason is optional, so a phone keeps its keyboard closed: focus stays by the change.
+                focusNext(matchMedia("(pointer: fine)").matches ? `#reason${i}` : `[data-unskip="${i}"]`);
               }}
             >
               Skip today
@@ -154,7 +163,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
         <form className="acts" data-swapform={i} onSubmit={swap}>
           <label className="field grow" htmlFor={`swap${i}`}>
             <span>Did instead</span>
-            <input id={`swap${i}`} list="swapList" placeholder="e.g. Smith machine squat" autoComplete="off" required />
+            <input id={`swap${i}`} list="swapList" placeholder="e.g. Smith machine squat…" autoComplete="off" required />
           </label>
           <button className="ghost tiny" type="submit">
             Swap
@@ -177,12 +186,12 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
   ) : (
     <>
       {next ? (
-        <div className={cx("prog", next.held && "hold")}>
+        <div className={cx("prog callout", next.held ? "hold warn" : "good")}>
           {next.held ? (
-            `Hold ${next.from} kg: your knee was sore after ${dayMonth(next.day)}.`
+            `Hold ${next.from}\u00a0kg: your knee was sore after ${dayMonth(next.day)}.`
           ) : (
             <>
-              Go up to <b>{next.to} kg</b>: every set hit {next.top} reps last time.
+              Go up to <b>{next.to}&nbsp;kg</b>: every set hit {next.top} reps last time.
             </>
           )}
         </div>
@@ -244,27 +253,41 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
             <button
               className="ghost tiny"
               data-rmset={i}
-              onClick={() =>
+              onClick={() => {
+                const gone = sets[sets.length - 1], said = setsSummary([gone]);
+                if (said && !confirm(`Remove set ${sets.length} (${said})?`)) return;
                 edit((r) => {
                   r.sets = setsOf(r).slice(0, -1);
                   r.kg = topKg(r.sets);
-                }, true)
-              }
+                }, true);
+              }}
             >
               − Set
             </button>
           ) : null}
+          {cue ? (
+            <button type="button" className="ghost tiny howto" aria-expanded={howOpen} aria-controls={`cue${i}`} onClick={() => setHowOpen(!howOpen)}>
+              How to
+              <CaretDown size={14} weight="bold" aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       </div>
+      {cue && howOpen ? (
+        <p className="nt cue" id={`cue${i}`}>
+          {cue}
+        </p>
+      ) : null}
     </>
   );
 
   return (
-    <li className={cx(r.done && "checked", r.skipped && "skipped", r.swap && "swapped")}>
-      <div className="exrow">
-        <label htmlFor={`ex${i}`}>
+    <li className={cx("lift", r.done && "checked", r.skipped && "skipped", r.swap && "swapped")}>
+      <div className="lift-head">
+        <label htmlFor={`ex${i}`} className="lift-name">
           <input
             type="checkbox"
+            className="tick"
             id={`ex${i}`}
             data-i={i}
             checked={!!r.done}
@@ -276,43 +299,40 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
               }, true);
             }}
           />
-          <span>
-            <div className="nm">
-              {did}
-              {r.swap ? (
-                <>
-                  {" "}
-                  <span className="was">instead of {name}</span>
-                </>
-              ) : null}
-            </div>
-            {r.skipped || r.swap || !x.cue ? null : <div className="nt">{x.cue}</div>}
-            {x.flag && !r.skipped && !r.swap ? <div className="ch">{x.flag}</div> : null}
-            {extra ? <div className="ch">Not in this workout</div> : null}
+          <span className="nm">
+            {did}
+            {r.swap ? (
+              <>
+                {" "}
+                <span className="was">instead of {name}</span>
+              </>
+            ) : null}
           </span>
         </label>
-        <div className="load">
-          {x.sets || x.reps ? (
-            <span className="sr">
-              {x.sets} × {x.reps}
-            </span>
-          ) : null}
-          {r.skipped ? null : (
-            <span className="hint">
-              <LastHint last={last} cur={r.kg ?? null} />
-            </span>
-          )}
-          <button
-            className="ghost tiny more"
-            data-more={i}
-            aria-expanded={menu ? "true" : "false"}
-            aria-label={`More for ${did}`}
-            onClick={() => setMenu(menu ? null : { day: sel, name, mode: "menu" })}
-          >
-            ···
-          </button>
-        </div>
+        <button
+          className="ghost icon more"
+          data-more={i}
+          aria-expanded={menu ? "true" : "false"}
+          aria-label={`More for ${did}`}
+          onClick={() => setMenu(menu ? null : { day: sel, name, mode: "menu" })}
+        >
+          <DotsThree size={22} weight="bold" aria-hidden="true" />
+        </button>
       </div>
+      <div className="lift-meta">
+        {x.sets || x.reps ? (
+          <span className="sr">
+            {x.sets}&nbsp;×&nbsp;{x.reps}
+          </span>
+        ) : null}
+        {r.skipped ? null : (
+          <span className="hint">
+            <LastHint last={last} cur={r.kg ?? null} />
+          </span>
+        )}
+      </div>
+      {x.flag && !r.skipped && !r.swap ? <div className="ch">{x.flag}</div> : null}
+      {extra ? <div className="ch">Not in this workout</div> : null}
       {actions}
       {body}
     </li>

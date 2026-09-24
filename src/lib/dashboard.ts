@@ -2,6 +2,7 @@
  * raises for the list at the top. No rendering here, so the numbers can be tested on their own. */
 import { addDays, DOW, dm, mondayOf } from "./dates";
 import { avg, signed, sum } from "./format";
+import { hoursMin } from "./health";
 import * as S from "./stats";
 import { setsOf, topKg, type GymStore } from "./store";
 import type { DayKey, PlanExercise } from "./types";
@@ -50,7 +51,7 @@ export function weightModel(store: GymStore, t: DayKey): WeightModel {
     if (loss < target / 2)
       flags.push({
         pri: 3,
-        text: loss > 0 ? `Losing ${loss.toFixed(2)}% a week, well under your ${target}% target.` : `The trend isn't going down yet (${signed(pct, 2)}% a week) against your ${target}% target.`,
+        text: loss > 0 ? `Losing ${loss.toFixed(2)}% a week, well under your ${target}% target.` : `The trend isn’t going down yet (${signed(pct, 2)}% a week) against your ${target}% target.`,
       });
     else if (loss > target * 1.5) flags.push({ pri: 3, warn: true, text: `Losing ${loss.toFixed(2)}% a week, faster than your ${target}% target.` });
   }
@@ -119,7 +120,7 @@ export function planModel(store: GymStore, t: DayKey): PlanModel {
     recent: { weeks: recent.length, done: sum(recent.map((w) => w.done)), planned: sum(recent.map((w) => w.planned)) },
     cardioDays: wk.filter((k) => store.entry(k).cardio).length,
     cardioMin: sum(wk.map((k) => store.entry(k).cardioMin || 0)),
-    weighIns: wk.filter((k) => store.entry(k).weight != null).length,
+    weighIns: wk.filter((k) => store.weightOf(k) != null).length,
     heat: weeks.slice(-16).map((w) => DOW.map((_, i) => addDays(w.mon, i)).map((day) => ({ day, cls: cls(day) }))),
   };
 }
@@ -138,7 +139,7 @@ export interface StepsModel {
 
 export function stepsModel(store: GymStore, t: DayKey): StepsModel {
   const start = store.firstDay(), goal = store.plan.stepGoal, mon = mondayOf(t);
-  const steps = (k: DayKey) => store.entry(k).steps;
+  const steps = (k: DayKey) => store.stepsOf(k);
   const avg7 = avg(DOW.map((_, i) => addDays(t, -i)).filter((k) => k >= start).map(steps).filter((v): v is number => v != null));
   const wk = DOW.map((_, i) => addDays(mon, i)).filter((k) => k <= t && k >= start), weeks = [];
   for (let m = mondayOf(start); m <= mon; m = addDays(m, 7)) weeks.push(m);
@@ -148,6 +149,51 @@ export function stepsModel(store: GymStore, t: DayKey): StepsModel {
     atGoal: wk.filter((k) => (steps(k) || 0) >= goal).length,
     daysSoFar: wk.length,
     bars: weeks.slice(-12).map((m) => [m, avg(DOW.map((_, i) => steps(addDays(m, i))).filter((v): v is number => v != null))]),
+  };
+}
+
+/* ---------- sleep, heart and workouts, from Health Connect ---------- */
+
+export interface HealthModel {
+  flags: Flag[];
+  /** Any Health Connect data at all. */
+  any: boolean;
+  /** Minutes asleep a night and resting heart rate: averages of the last 7 days with data, and the 7 before. */
+  sleep7: number | null;
+  sleepPrev: number | null;
+  rhr7: number | null;
+  rhrPrev: number | null;
+  /** Monday to today. */
+  kcalWeek: number | null;
+  workoutsWeek: number;
+  workoutMinWeek: number;
+  /** Hours asleep for each of the last 14 nights, by the day the night ended. */
+  nights: [DayKey, number | null][];
+}
+
+export function healthModel(store: GymStore, t: DayKey): HealthModel {
+  const days = (n: number, skip = 0) => Array.from({ length: n }, (_, i) => addDays(t, -i - skip));
+  const mean = (ks: DayKey[], f: (k: DayKey) => number | undefined) => avg(ks.map(f).filter((v): v is number => v != null && v > 0));
+  const sleep = (k: DayKey) => store.healthOf(k)?.sleepMin, rhr = (k: DayKey) => store.healthOf(k)?.restingHr;
+  const sleep7 = mean(days(7), sleep), rhr7 = mean(days(7), rhr), rhrPrev = mean(days(7, 7), rhr);
+  const mon = mondayOf(t), wk = DOW.map((_, i) => addDays(mon, i)).filter((k) => k <= t);
+  const kcals = wk.map((k) => store.healthOf(k)?.activeKcal).filter((v): v is number => v != null);
+  const workouts = wk.flatMap((k) => store.healthOf(k)?.workouts ?? []);
+  const flags: Flag[] = [];
+  if (sleep7 != null && sleep7 < 6 * 60) flags.push({ pri: 3, text: `Sleeping ${hoursMin(sleep7)} a night on average this week. Short sleep makes a cut harder on muscle and appetite.` });
+  if (rhr7 != null && rhrPrev != null && rhr7 >= rhrPrev + 5)
+    flags.push({ pri: 3, text: `Resting heart rate is ${Math.round(rhr7 - rhrPrev)} bpm higher than last week, which can mean too little sleep, stress or a cold coming on.` });
+  return {
+    flags,
+    any: Object.keys(store.health).length > 0,
+    sleep7,
+    sleepPrev: mean(days(7, 7), sleep),
+    rhr7,
+    rhrPrev,
+    kcalWeek: kcals.length ? sum(kcals) : null,
+    workoutsWeek: workouts.length,
+    workoutMinWeek: sum(workouts.map((w) => w.min)),
+    nights: days(14).reverse().map((k) => [k, sleep(k) != null ? (sleep(k) as number) / 60 : null]),
   };
 }
 

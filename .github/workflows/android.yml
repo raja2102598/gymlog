@@ -1,0 +1,90 @@
+# The Android app (android/, built with Capacitor around the same static site): builds the APK for every
+# pull request and push to main, and on main publishes it as the "android-latest" release.
+#
+# Signing: with the GYMLOG_KEYSTORE_BASE64 and GYMLOG_KEYSTORE_PASSWORD repository secrets, the APK is signed
+# with the app's own key, so each one installs over the last. Without them it's signed with a throwaway debug
+# key: fine for trying a build, but it won't install over the app on your phone, so nothing is published.
+name: Android app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      signed: ${{ steps.apk.outputs.signed }}
+      version: ${{ steps.apk.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - name: Build the site and copy it into the app
+        run: npm run android
+      - name: Build the APK
+        id: apk
+        working-directory: android
+        env:
+          GYMLOG_VERSION_CODE: ${{ github.run_number }}
+          KEYSTORE_BASE64: ${{ secrets.GYMLOG_KEYSTORE_BASE64 }}
+          GYMLOG_KEYSTORE_PASSWORD: ${{ secrets.GYMLOG_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            trap 'rm -f "$RUNNER_TEMP/gymlog.p12"' EXIT
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/gymlog.p12"
+            export GYMLOG_KEYSTORE="$RUNNER_TEMP/gymlog.p12"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No GYMLOG_KEYSTORE_BASE64 secret, so this APK is signed with a throwaway debug key and won't install over the app on your phone. See README.md, Android app."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          ./gradlew assembleRelease --no-daemon --console=plain
+          mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/gym-log.apk"
+          echo "version=1.0.$GYMLOG_VERSION_CODE" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gym-log-apk
+          path: ${{ runner.temp }}/gym-log.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.signed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: gym-log-apk
+      - name: Replace the android-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest gym-log.apk --target "$GITHUB_SHA" --latest \
+            --title "Gym Log for Android $VERSION" \
+            --notes "Open this page on your phone, download gym-log.apk and open it to install or update. Built from $GITHUB_SHA."

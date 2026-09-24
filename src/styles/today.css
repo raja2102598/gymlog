@@ -1,109 +1,154 @@
-/* Today: the week strip, the day's session (lifts, sets, knee scores, warm-up, cardio), totals and history. */
-.week-head{margin-bottom:8px}
-.nav{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.stats-h{margin-bottom:12px}
+/* Today: the week strip, the day's session (a card per lift, knee scores, warm-up, cardio), the day's
+   numbers, and the week so far. */
+.week-head{margin-bottom:10px}
+.week-head h2{font-size:var(--t-md)}
+.nav{display:flex;gap:6px;align-items:center}
 
-/* the session */
-.sess-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}
-.sess-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
-.sess-pick select{max-width:100%;border-color:var(--edge)}
-.moved{font-size:12px;color:var(--muted)}
-.pill{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--chip);color:var(--muted)}
+/* the session: title and progress on the page, then one card per block */
+/* one column that can't grow past the screen: a select is as wide as its longest option */
+.session,.sess-head,.ex{grid-template-columns:minmax(0,1fr)}
+.session{display:grid;gap:12px}
+.sess-head{display:grid;gap:6px;padding:0 2px 4px}
+.sess-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.sess-title h2.display{min-width:0;font-size:var(--t-2xl)}
+.sess-head .sub{margin:0}
+.segs{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;margin:4px 0 2px}
+.segs i{height:6px;border-radius:99px;background:var(--chip)}
+.segs i.done{background:var(--good)}
+.segs i.skip{background:repeating-linear-gradient(135deg,var(--chip) 0 3px,var(--edge) 3px 5px)}
+.sess-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px}
+.sess-pick select.ghost{background-color:var(--surface);min-width:0}
+.moved{font-size:var(--t-xs);color:var(--muted)}
+.pill{flex:none;font-size:var(--t-xs);font-weight:600;padding:4px 10px;border-radius:99px;background:var(--chip);color:var(--muted);white-space:nowrap}
 .pill.good{background:var(--good-soft);color:var(--good)}
 .pill.part{background:var(--chip);color:var(--ink)}
-.catchup{background:var(--chip);border-radius:var(--r-card);padding:10px 12px;margin:0 0 12px}
-.catchup p{margin:0 0 8px;font-size:14px}
+.catchup{background:var(--surface);border-radius:var(--r-card);padding:14px 16px;box-shadow:var(--shadow)}
+.catchup p{margin:0 0 10px;font-size:14px}
 .catchup-btns{display:flex;flex-wrap:wrap;gap:6px}
 
-/* lifts */
-.ex{list-style:none;margin:0;padding:0;display:grid}
-.ex li{border-top:1px solid var(--line)}
-.ex label{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 0;cursor:pointer}
-.exrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start}
-.exrow label{grid-template-columns:26px minmax(0,1fr)}
-.load{display:grid;justify-items:end;gap:4px;padding:10px 0}
-.load .last{font-size:12px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
-.load .last.up{color:var(--good)}
-.load .more{min-width:44px;letter-spacing:.08em}
-.ex input[type="checkbox"]{width:20px;height:20px;margin:2px 0 0;accent-color:var(--good)}
-.ex .nm{font-weight:600}
-.ex .nt{font-size:13px;color:var(--muted)}
-.ex .ch{font-size:12px;font-weight:600;color:var(--accent)}
-.ex .sr{font-family:var(--mono);font-size:13px;color:var(--muted);white-space:nowrap}
-.ex .was{font-weight:400;font-size:12px;color:var(--muted)}
-.ex li.checked .nm{text-decoration:line-through;text-decoration-color:var(--good)}
-.ex li.skipped .nm{text-decoration:line-through;color:var(--muted)}
+/* lifts: one card each */
+.ex{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.lift{background:var(--surface);border-radius:var(--r-card);padding:12px 12px 14px 14px;box-shadow:var(--shadow);display:grid;gap:10px}
+.lift-head{display:flex;align-items:center;gap:8px}
+.lift-name{flex:1 1 auto;min-width:0;min-height:44px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.lift .nm{min-width:0;font-weight:600;font-size:var(--t-md);line-height:1.3}
+.lift .was{font-weight:400;font-size:var(--t-sm);color:var(--muted)}
+.lift.checked .nm{text-decoration:line-through;text-decoration-color:var(--good);text-decoration-thickness:2px}
+.lift.skipped .nm{text-decoration:line-through;color:var(--muted)}
+.lift-meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;font:var(--t-sm)/1.45 var(--body);font-variant-numeric:tabular-nums;color:var(--muted);padding-left:40px}
+.lift-meta .sr{color:var(--ink);font-weight:600}
+.lift-meta .last.up{color:var(--good);font-weight:600}
+.lift .ch{font-size:var(--t-xs);font-weight:600;color:var(--warn);padding-left:40px}
+.lift .nt{margin:0;font-size:14px;color:var(--muted);padding-left:40px}
+.lift .more{flex:none}
 
-/* sets, and the next-weight hint above them */
-.prog{font-size:13px;color:var(--good);padding:0 0 8px 36px}
-.prog.hold{color:var(--accent)}
-.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:8px 16px;padding:0 0 12px 36px}
-.set{display:flex;align-items:center;gap:6px;position:relative}
-.set .sn{display:inline-grid;place-items:center;flex:none;width:24px;height:24px;border:1px solid var(--line);border-radius:99px;font:600 12px var(--mono);color:var(--muted)}
-.set.logged .sn{background:var(--good);border-color:var(--good);color:var(--surface)}
-.set input{width:58px;height:44px;font:500 16px var(--mono);padding:0 8px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--ground);color:var(--ink);text-align:right;appearance:textfield;-moz-appearance:textfield}
+/* the done tick: a round checkbox, filled when the lift is done */
+.tick{appearance:none;-webkit-appearance:none;flex:none;width:28px;height:28px;margin:0;border-radius:50%;border:2px solid var(--edge);background:var(--surface);display:grid;place-items:center;cursor:pointer}
+.tick::after{content:"";width:11px;height:6px;border:2.5px solid transparent;border-top:0;border-right:0;transform:translateY(-1px) rotate(-45deg)}
+.tick:checked{background:var(--good);border-color:var(--good)}
+.tick:checked::after{border-color:var(--surface)}
+.tick:disabled{opacity:.4;cursor:default}
+
+/* hints above the sets */
+.prog{margin-left:40px}
+
+/* sets: reps × kg; a set's number turns green once its reps are in */
+.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:8px 20px;padding-left:40px}
+.set{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1.15fr) auto;align-items:center;gap:6px}
+.set .sn{display:grid;place-items:center;width:24px;height:24px;border-radius:99px;font:600 var(--t-xs) var(--mono);color:var(--muted);background:var(--sunken)}
+.set.logged .sn{background:var(--good);color:var(--surface)}
+.set input{width:100%;min-width:0;height:48px;font:500 18px var(--mono);padding:0 8px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);text-align:center;appearance:textfield;-moz-appearance:textfield}
 .set input:not(:placeholder-shown){background:var(--surface);font-weight:600}
 .set input::-webkit-outer-spin-button,.set input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.set input[data-set$=":kg"]{width:74px}
-.set .x,.set .u{font-size:13px;color:var(--muted)}
-.set .prb{display:none;position:absolute;top:-9px;left:30px;font:600 11px/1 var(--body);letter-spacing:.02em;color:var(--surface);background:var(--good);border-radius:99px;padding:2px 6px}
+.set .x,.set .u{font-size:var(--t-sm);color:var(--muted)}
+.set .prb{display:none;position:absolute;top:-8px;right:22px;font:600 11px/1 var(--body);letter-spacing:.02em;color:var(--surface);background:var(--good);border-radius:99px;padding:3px 7px}
 .set.pr .prb{display:inline-block}
-.set.pr input{border-color:var(--good)}
-.setbtns{grid-column:1/-1;display:flex;gap:6px}
+.set.pr input[data-set$=":kg"]{border-color:var(--good);box-shadow:inset 0 0 0 1px var(--good)}
+.setbtns{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.setbtns .howto{margin-left:auto;color:var(--muted)}
+.howto svg{transition:transform var(--fast) var(--ease)}
+.howto[aria-expanded="true"] svg{transform:rotate(180deg)}
 
 /* skip and swap */
-.acts{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:0 0 12px 36px}
-.ex .acts .field{display:grid;grid-template-columns:none;gap:4px;padding:0;cursor:auto;flex:1 1 200px}
-.acts .field input{font:15px var(--body);padding:6px 8px}
-.skipnote{font-size:13px;color:var(--muted);padding:0 0 12px 36px}
+.acts{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-left:40px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
+.acts .field{flex:1 1 200px}
+.acts .field input{font:var(--t-base) var(--body);background:var(--surface)}
+.acts .ghost{background:var(--surface)}
+.skipnote{font-size:14px;color:var(--muted);padding-left:40px}
 
-/* warm-up */
-.wu{margin:4px 0 12px}
-.wu-toggle{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+/* warm-up: a card that folds to one row */
+.wu{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow)}
+.wu-toggle{display:flex;align-items:center;gap:8px;width:100%;min-height:52px;padding:10px 16px;border:0;border-radius:var(--r-card);background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.wu-toggle[aria-expanded="true"]{border-radius:var(--r-card) var(--r-card) 0 0}
+/* the row fills the card, so its focus ring goes inside the card's edge */
+.wu-toggle:focus-visible{outline-offset:-2px}
 .wu-toggle .sub{margin:0;font-size:14px}
-.wu-act{margin-left:auto;font-size:14px;color:var(--muted)}
-.wu .chips{margin-top:10px}
+.wu-act{margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:14px;color:var(--muted)}
+.wu-act svg{transition:transform var(--fast) var(--ease)}
+.wu-toggle[aria-expanded="true"] .wu-act svg{transform:rotate(180deg)}
+.wu .chips{padding:0 16px 16px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{position:relative}
 .chip input{position:absolute;opacity:0;width:1px;height:1px}
-.chip span{display:inline-flex;align-items:center;min-height:40px;padding:8px 13px;border:1px solid var(--line);border-radius:99px;font-size:14px;background:var(--surface);color:var(--ink);cursor:pointer;user-select:none}
-.chip input:checked+span{background:var(--good-soft);border-color:var(--good);color:var(--good);font-weight:600}
+.chip span{display:inline-flex;align-items:center;min-height:40px;padding:8px 14px;border-radius:99px;font-size:14px;background:var(--sunken);color:var(--ink);cursor:pointer;user-select:none}
+.chip input:checked+span{background:var(--good-soft);color:var(--good);font-weight:600;box-shadow:inset 0 0 0 1.5px var(--good)}
 .chip input:focus-visible+span{outline:2px solid var(--ink);outline-offset:2px}
 
-/* knee pain scale */
-.knee{border:1px solid var(--line);border-radius:var(--r-card);padding:10px;margin:0 0 12px;display:grid;gap:8px}
-.kn-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:14px}
-.kn-head .kn-lim{margin-left:auto;font-size:12px;color:var(--muted)}
-.kn-head .kn-val{margin-left:auto;font-weight:600}
-.kn-val.hi{color:var(--accent)}
-.kn-scale{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
-.kn{font:500 15px var(--mono);min-height:44px;padding:0;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface);color:var(--ink);cursor:pointer}
-.kn.hi{color:var(--accent)}
-.kn.on{background:var(--good);border-color:var(--good);color:var(--surface)}
-.kn.on.hi{background:var(--accent);border-color:var(--accent)}
-.kn-msg{margin:0;font-size:13px;color:var(--muted)}
+/* knee pain scale: 0-10 in two rows; folds to one line once scored */
+.knee{background:var(--surface);border-radius:var(--r-card);padding:14px 16px;box-shadow:var(--shadow);display:grid;gap:10px}
+.kn-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:15px}
+.kn-head .sub{margin:0;font-size:14px}
+.kn-head .kn-lim{margin-left:auto;font-size:var(--t-xs);color:var(--muted)}
+.kn-head .kn-val{margin-left:auto;font:600 var(--t-md) var(--mono)}
+.kn-val.hi{color:var(--warn)}
+.kn-scale{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.kn{font:500 16px var(--mono);min-height:44px;padding:0;border:0;border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);cursor:pointer}
+.kn.hi{color:var(--warn)}
+.kn.on{background:var(--good);color:var(--surface)}
+.kn.on.hi{background:var(--warn);color:var(--surface)}
+.kn-msg{margin:0;font-size:var(--t-sm);color:var(--muted)}
 
-/* cardio finisher */
-.cardio{margin-top:8px;border:1px solid var(--line);border-radius:var(--r-card);padding:2px 12px}
-.cardio li{border-top:0}
-.cardio-log{display:flex;flex-wrap:wrap;gap:6px 12px;padding:0 0 10px 36px}
-.ex .cardio-log label{display:flex;align-items:center;gap:6px;padding:0;cursor:auto}
-.cardio-log input{width:64px;height:44px;font:500 16px var(--mono);padding:0 8px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--surface);color:var(--ink);text-align:right;appearance:textfield;-moz-appearance:textfield}
-.cardio-log input:not(:placeholder-shown){font-weight:600}
+/* cardio finisher: a lift card with three numbers */
+.cardio .sr{flex:none;font:500 var(--t-xs) var(--body);color:var(--muted);background:var(--sunken);border-radius:99px;padding:3px 10px}
+.cardio-log{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding-left:40px}
+.cardio-log .field>span{font-size:var(--t-xs)}
+.cardio-log input{text-align:center;font-size:17px;padding:8px 6px;appearance:textfield;-moz-appearance:textfield}
 .cardio-log input::-webkit-outer-spin-button,.cardio-log input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.cardio-log span{font-size:13px;color:var(--muted)}
 
-/* steps, weight, waist and note */
-.inputs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;align-items:start}
-.bar{height:6px;background:var(--chip);border-radius:var(--r-mark);overflow:hidden;margin-top:6px}
-.bar i{display:block;height:100%;background:var(--good);width:0}
+/* the day's numbers */
+.inputs{background:var(--surface);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow);display:grid;grid-template-columns:1fr 1fr;gap:14px 12px;align-items:start}
+.bar{height:6px;background:var(--chip);border-radius:99px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;background:var(--good);width:0;border-radius:99px}
+
+/* Health Connect: the day's sleep, heart rate, active calories and workouts, in a card like the day's numbers */
+.inputs>.note{grid-column:1/-1;margin:0}
+.hc{background:var(--surface);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow);display:grid;gap:12px}
+.hc-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 12px}
+.hc-head .sub{margin:0;font-size:var(--t-sm)}
+.hc-stats .stat .v{font-size:22px;line-height:1.15}
+.hc-list{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:14px;overflow-wrap:anywhere}
+.hc-list .sub{font-size:var(--t-sm)}
 
 /* this week so far, and history */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.stat .v{font:600 26px/1.1 var(--display)}
-.stat .l{font-size:12px;color:var(--muted)}
+.stats-h{margin-bottom:14px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 12px}
+.stat .v{font:600 28px/1.05 var(--display)}
+.stat .l{font-size:var(--t-xs);color:var(--muted);margin-top:4px}
 .hist{overflow-x:auto}
 .hist td:first-child{white-space:normal}
-.hist .hs{font-size:12px;color:var(--muted);line-height:1.3}
+.hist .hs{font-size:var(--t-xs);color:var(--muted);line-height:1.3}
+#chart .sub{margin:0 0 12px}
 
-@media (max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}.sets,.acts,.skipnote,.prog,.cardio-log{padding-left:0}}
+@media (hover:hover){
+  .wu-toggle:hover{background-color:var(--sunken)}
+  .kn:not(.on):hover,.chip input:not(:checked)+span:hover{background-color:var(--chip)}
+  .tick:not(:checked):not(:disabled):hover{border-color:var(--ink)}
+}
+.kn:not(.on):active,.chip input:not(:checked)+span:active{background-color:var(--chip)}
+
+@media (max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:561px){.lift{padding:16px 16px 18px}.inputs,.hc{padding:20px}}
+@media (prefers-reduced-motion:no-preference){
+  .wu .chips:not([hidden]),.acts,.lift .cue{animation:rise var(--med) var(--ease)}
+  .set .sn{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
+}

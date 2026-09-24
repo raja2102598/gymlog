@@ -1,84 +1,144 @@
 /* The page, type, and the controls every screen shares: buttons, cards, fields, tables, the day chips. */
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{color-scheme:light}
-body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.5 var(--body);padding-inline:16px;padding-top:calc(20px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
-.wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+html{color-scheme:light;-webkit-text-size-adjust:100%}
+/* while the sync bar is up, a field reached with Tab scrolls clear of it instead of sitting underneath */
+html:has(#syncBar:not([hidden])){scroll-padding-top:136px}
+body{margin:0;background:var(--ground);color:var(--ink);font:var(--t-base)/1.5 var(--body);padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));-webkit-tap-highlight-color:transparent}
+.wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
 .wrap>*{min-width:0}
-#appView,#dashView,#planView,#bootView{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
-#appView>*,#dashView>*,#planView>*{min-width:0}
-h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:.01em;margin:0;text-wrap:balance}
-h1{font-size:30px;line-height:1.1;text-transform:uppercase}
-h2{font-size:19px;text-transform:uppercase}
+main,#appView,#dashView,#planView,#bootView{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+main>*,#appView>*,#dashView>*,#planView>*{min-width:0}
+/* the skip link's target: focus lands here, so it isn't a control and needs no ring */
+#main:focus{outline:none}
+.skip{position:absolute;z-index:20;left:max(16px,env(safe-area-inset-left,0px));top:calc(8px + env(safe-area-inset-top,0px));background:var(--surface);box-shadow:var(--shadow-up)}
+.skip:not(:focus){width:1px;height:1px;min-height:0;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* type: Oswald capitals for the app name, page and session titles and big numbers, sentence case elsewhere */
+h1,h2,h3{margin:0;text-wrap:balance}
+h1,.display{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.01em;line-height:1.05}
+h1{font-size:var(--t-xl)}
+h2{font:600 var(--t-md)/1.3 var(--body);letter-spacing:-.005em}
+h2.display{font-size:var(--t-xl);font-family:var(--display);letter-spacing:.01em;line-height:1.05}
+h3{font:600 var(--t-base)/1.3 var(--body)}
 p{max-width:65ch}
 code{font-family:var(--mono);font-size:.9em;background:var(--chip);padding:1px 5px;border-radius:var(--r-mark)}
 .sub{color:var(--muted);margin:2px 0 0}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
-.note{font-size:12px;color:var(--muted)}
+p .num,.sub .num,.plain .num{font-family:var(--body);font-weight:600;color:var(--ink)}
+.note{font-size:var(--t-xs);color:var(--muted)}
+.note:empty{margin:0}
 .empty{color:var(--muted);font-size:14px}
+/* names, notes and emails can be one long word: they wrap instead of pushing the page sideways */
+.sess-title h2,.sess-head .sub,.moved,.catchup p,.lift .nm,.lift .ch,.lift .nt,.skipnote,.prog,.chip span,.kn-head,.hist .hs,#dashFlags li,.lifts .ln,.plain li,.knee-t td,.pe .warn,#whoami,#loginMsg{overflow-wrap:anywhere}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap}
 
 /* header, menu and sign-in */
-header.top{align-items:center}
+header.top{flex-wrap:nowrap}
 header.top>div:first-child{flex:1 1 0;min-width:0}
-.status{font-size:13px;color:var(--muted);margin-top:2px}
+.status{font-size:var(--t-sm);color:var(--muted);margin-top:2px}
 .status:empty{display:none}
 .topright{display:flex;align-items:center;gap:8px}
-.menu{display:grid;gap:10px}
+.menu{display:grid}
+.menu>*+*{margin-top:12px}
+.menu .note{margin:12px 0 0}
+.menu .note:empty{margin:0}
 .menu-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.login{display:grid;gap:12px;max-width:420px;margin-top:12px}
+#hcStatus{flex:1 1 220px}
+.login{display:grid;gap:12px;max-width:420px;margin-top:16px}
 
-/* cards and buttons */
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:18px}
-.panel-h{margin-bottom:8px}
-.ghost{background:var(--surface);border:1px solid var(--line);color:var(--ink);border-radius:var(--r-ctl);padding:10px 14px;min-height:44px;font:inherit;font-size:14px;line-height:1.3;cursor:pointer}
-.ghost.icon{min-width:44px;padding:6px 12px;font-size:22px;line-height:1}
-.ghost.tiny{padding:8px 12px;font-size:13px}
-.ghost.danger{color:var(--accent)}
+/* cards */
+.panel{background:var(--surface);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow)}
+.panel-h{margin-bottom:12px}
+
+/* buttons: tonal inside cards, raised on the page background; one label per action */
+.ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--sunken);border:0;color:var(--ink);border-radius:var(--r-ctl);padding:10px 14px;min-height:44px;font:500 14px/1.25 var(--body);cursor:pointer;text-decoration:none}
+.top .ghost,header .ghost,.syncbar .ghost{background:var(--surface);box-shadow:var(--shadow)}
+.ghost.tiny{padding:8px 12px;font-size:var(--t-sm)}
+.ghost.icon{min-width:44px;padding:0 10px}
+.ghost.danger{color:var(--warn)}
 .ghost:disabled{opacity:.45;cursor:default}
-button.primary{background:var(--ink);color:var(--ground);border:0;border-radius:var(--r-ctl);padding:12px 16px;min-height:44px;font:600 15px var(--body);cursor:pointer}
+.ghost svg,button.primary svg{flex:none}
+button.primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--ink);color:var(--ground);border:0;border-radius:var(--r-ctl);padding:12px 18px;min-height:44px;font:600 15px var(--body);cursor:pointer}
 button.primary:disabled{opacity:.6}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.dchip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.dchip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button,a,input,select,textarea,label{touch-action:manipulation}
 
-/* form fields */
-.field{display:grid;gap:4px}
-.field span{font-size:13px;font-weight:500;color:var(--muted)}
-.field input{font:500 18px var(--mono);padding:8px 10px;min-height:44px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--ground);color:var(--ink);width:100%}
+/* form fields: label above, outlined box; a typed value is bold on the card colour, an empty one sits in a well */
+.field{display:grid;gap:6px}
+.field>span{font-size:var(--t-sm);font-weight:500;color:var(--muted)}
+.field input{font:500 17px var(--body);padding:10px 12px;min-height:48px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);width:100%}
+.field input[type=number]{font:500 18px var(--mono)}
+.field input:not(:placeholder-shown){background:var(--surface);font-weight:600}
 .field.wide{grid-column:1/-1}
-.field textarea{font:15px/1.4 var(--body);padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--ground);color:var(--ink);width:100%;min-height:84px;resize:vertical;field-sizing:content}
+.field textarea{font:var(--t-base)/1.45 var(--body);padding:10px 12px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);width:100%;min-height:88px;resize:vertical;field-sizing:content}
+.field textarea:not(:placeholder-shown){background:var(--surface)}
+.field input[aria-invalid="true"]{border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}
 input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+select.ghost{appearance:none;-webkit-appearance:none;padding-right:34px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 55%,calc(100% - 12px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;box-shadow:inset 0 0 0 1px var(--edge);text-align:left;max-width:100%;text-overflow:ellipsis}
 
-/* days of the week, on Today and in the plan editor */
-.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-.dchip{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-ctl);padding:8px 2px;min-height:44px;text-align:center;cursor:pointer;color:var(--ink);font:inherit;display:grid;gap:2px}
-.dchip .dw{font-size:12px;color:var(--muted)}
-.dchip .dn{font-family:var(--mono);font-size:15px}
-.dchip .dp{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline:2px}
-.dchip.done{background:var(--good);border-color:var(--good);color:var(--surface)}
+/* days of the week, on Today and in the plan editor: the status fills the chip, the selected day is ringed */
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.dchip{border:0;background:var(--surface);box-shadow:var(--shadow);border-radius:var(--r-ctl);padding:8px 2px;min-height:56px;text-align:center;cursor:pointer;color:var(--ink);font:inherit;display:grid;gap:2px;align-content:center}
+.dchip .dw{font-size:var(--t-xs);color:var(--muted)}
+.dchip .dn{font:600 16px/1.2 var(--mono)}
+.dchip .dp{font-size:var(--t-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline:2px}
+.dchip.done{background:var(--good);color:var(--surface);box-shadow:none}
 .dchip.done .dw,.dchip.done .dp{color:inherit}
-.dchip.part{background:var(--good-soft);border-color:var(--good)}
-.dchip.miss{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-.dchip.sel{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
-.dchip.today .dn{text-decoration:underline;text-underline-offset:3px}
+.dchip.part{background:var(--good-soft);box-shadow:inset 0 0 0 1.5px var(--good)}
+.dchip.miss{box-shadow:inset 0 0 0 1.5px var(--warn)}
+.dchip.sel{outline:2.5px solid var(--ink);outline-offset:2px}
+/* while the keyboard is on another day, the selected day's ring goes grey, so only the focus ring is ink */
+.week:has(.dchip:focus-visible) .dchip.sel:not(:focus-visible){outline-color:var(--edge)}
+.dchip.today .dn{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px}
 
 /* tables */
-table{border-collapse:collapse;width:100%;font-size:13px}
-th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
-th{font-size:12px;color:var(--muted);font-weight:600}
+table{border-collapse:collapse;width:100%;font-size:var(--t-sm)}
+th,td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:var(--t-xs);color:var(--muted);font-weight:500}
+tbody tr:last-child td{border-bottom:0}
 td.r,th.r{text-align:right}
 td.c,th.c{text-align:center}
 
+/* callouts: a tinted strip with a coloured edge; text stays ink so it reads in both themes */
+.callout{border-radius:var(--r-ctl);padding:10px 12px;font-size:14px;background:var(--sunken);box-shadow:inset 3px 0 0 var(--edge)}
+.callout.good{background:var(--good-soft);box-shadow:inset 3px 0 0 var(--good)}
+.callout.warn{background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn)}
+
 /* sync trouble, and the placeholder shown while the app starts */
-.syncbar{position:sticky;top:calc(8px + env(safe-area-inset-top,0px));z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border:1px solid var(--accent);border-left-width:4px;border-radius:var(--r-card);background:var(--accent-soft);color:var(--ink);font-size:14px}
+.syncbar{position:sticky;top:calc(8px + env(safe-area-inset-top,0px));z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r-card);background:var(--warn-soft);box-shadow:inset 4px 0 0 var(--warn),var(--shadow-up);color:var(--ink);font-size:14px}
 .syncbar .ghost{margin-left:auto}
-.sk-week i{display:block;height:60px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface)}
+.sk-week i{display:block;height:56px;border-radius:var(--r-ctl);background:var(--surface);box-shadow:var(--shadow)}
+.sk-title{display:grid;gap:10px;padding-top:4px}
+.sk-title i{display:block;height:30px;width:38%;border-radius:var(--r-mark);background:var(--chip)}
+.sk-title i+i{height:14px;width:62%}
 .sk-panel{display:grid;gap:12px}
 .sk-panel i{display:block;height:14px;border-radius:var(--r-mark);background:var(--chip)}
-.sk-panel i:nth-child(1){width:40%;height:22px}
-.sk-panel i:nth-child(2){width:75%}
-.sk-panel i:nth-child(3){width:55%}
+.sk-panel i:nth-child(1){width:44%;height:20px}
+.sk-panel i:nth-child(2){width:72%}
+.sk-panel i:nth-child(3){height:48px}
 
-@media (max-width:560px){.dchip .dp{display:none}h1{font-size:26px}}
+@media (min-width:560px){.panel{padding:20px}}
+@media (max-width:560px){.dchip .dp{display:none}}
 @media (max-width:359px){th,td{padding-inline:4px}}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* hover, for a mouse; and a press state for everyone, motion or not */
+@media (hover:hover){
+  .ghost:hover:not(:disabled){background-color:var(--chip)}
+  .top .ghost:hover:not(:disabled),.syncbar .ghost:hover:not(:disabled){background-color:var(--sunken)}
+  button.primary:hover:not(:disabled){background-color:color-mix(in srgb,var(--ink) 85%,var(--ground))}
+  .dchip:not(.done):hover{background-color:var(--sunken)}
+  .dchip.done:hover{background-color:color-mix(in srgb,var(--good) 88%,var(--ink))}
+}
+.ghost:active:not(:disabled){background-color:var(--chip)}
+.dchip:not(.done):active{background-color:var(--sunken)}
+
+/* motion: feedback only */
+@keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:no-preference){
+  .ghost,button.primary,.dchip,.kn,.tick,.chip span,.wu-toggle{transition:background-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease),color var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  .ghost:active:not(:disabled),button.primary:active:not(:disabled),.dchip:active,.kn:active{transform:scale(.97)}
+  #appView:not([hidden]),#dashView:not([hidden]),#planView:not([hidden]),.menu:not([hidden]){animation:rise var(--med) var(--ease)}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}

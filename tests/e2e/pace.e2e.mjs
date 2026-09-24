@@ -26,7 +26,7 @@ export default async function pace({ browser, base, check }) {
   r = await flags(series(-0.1), { weeklyRatePct: 0.4 });
   check("too fast: faster than target", /Losing 0\.\d\d% a week, faster than your 0\.4% target\./.test(r.text), r.text);
   r = await flags(series(0.05), { weeklyRatePct: 0.7 });
-  check("rising: says it isn't going down, no negative 'Losing'", /The trend isn't going down yet \(\+0\.\d\d% a week\) against your 0\.7% target\./.test(r.text) && !/Losing/.test(r.text), r.text);
+  check("rising: says it isn't going down, no negative 'Losing'", /The trend isn’t going down yet \(\+0\.\d\d% a week\) against your 0\.7% target\./.test(r.text) && !/Losing/.test(r.text), r.text);
   r = await flags(series(-0.1), {});
   check("no target set: no pace flag", !/a week/.test(r.text), r.text || "(no flags)");
 }

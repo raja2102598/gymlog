@@ -3,6 +3,7 @@
 export const CACHE_KEY = "gymlog.cache.v1";
 export const PENDING_KEY = "gymlog.pending.v1";
 export const PLAN_KEY = "gymlog.plan.v1";
+export const HEALTH_KEY = "gymlog.health.v1";
 
 export function lsGet<T>(key: string, fallback: T): T {
   try {

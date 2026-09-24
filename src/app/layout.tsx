@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { preconnect } from "react-dom";
+import { SUPABASE_URL } from "@/lib/config";
 import { oswald, plexMono, plexSans } from "./fonts";
 import "@/styles/tokens.css";
 import "@/styles/base.css";
@@ -22,12 +24,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#15171b" },
+    { media: "(prefers-color-scheme: dark)", color: "#121417" },
     { media: "(prefers-color-scheme: light)", color: "#eef0f2" },
   ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // Opens the connection to the database while the page loads, so the first sync doesn't wait for it.
+  if (SUPABASE_URL) preconnect(new URL(SUPABASE_URL).origin, { crossOrigin: "anonymous" });
   return (
     <html lang="en" className={`${oswald.variable} ${plexSans.variable} ${plexMono.variable}`}>
       <body>{children}</body>
