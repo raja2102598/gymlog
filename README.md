@@ -111,6 +111,7 @@ Nothing about a deployment lives in the source. A build reads four `NEXT_PUBLIC_
 1. **Supabase:** create a project and run `supabase/schema.sql` in the SQL Editor. It creates the tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their row-level security and the two functions background sync uses, and is safe to re-run. The project URL and publishable key are under Project Settings → API.
 2. **Vercel:** Add New → Project → import your fork; `vercel.json` sets the build. Under Settings → Environment Variables add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` (the site's address) once you know it, then deploy again. Every push to `main` deploys.
 3. **Sign-in links:** in Supabase → Authentication → URL Configuration, set the Site URL to the site's address and add the address followed by `/**` as a redirect URL.
+   **Privacy page:** `public/privacypolicy.html` is what Health Connect and Google's consent screen show. It describes the app; add who runs your copy, where its database is hosted and how to reach you.
 4. **Android build, optional:** add the same variables as repository variables on GitHub (Settings → Secrets and variables → Actions → Variables) and the signing key as the two secrets in [docs/android.md](docs/android.md#updates-and-the-signing-key). Every push to `main` then publishes an APK as the `android-latest` release.
 5. **Google sign-in, optional:** [docs/google-sign-in.md](docs/google-sign-in.md).
 
