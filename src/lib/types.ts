@@ -22,6 +22,8 @@ export interface LiftLog {
   reason?: string;
   /** Did this exercise instead that day. */
   swap?: string;
+  /** The tick came from logging the planned number of sets, not from a hand: voice's "undo" can take it back. */
+  autoDone?: boolean;
 }
 
 export interface DayLog {

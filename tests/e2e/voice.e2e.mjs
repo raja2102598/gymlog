@@ -262,6 +262,19 @@ export default async function voice({ browser, base, check }) {
   await tap(le, /set.3 cleared/);
   await page.waitForTimeout(300);
   check("“undo” of the last planned set keeps a tick given before it", (await le.locator("input.tick").isChecked()) && (await rowOf(le, 2)).reps === "", JSON.stringify(await rowOf(le, 2)));
+  // An automatic tick is saved as one, so "undo" still takes it back after another day and a reload.
+  await le.locator("input.tick").click();
+  await say("8 reps");
+  await tap(le, /set.3,/);
+  await until(async () => db.logs[TODAY]?.exercises["Leg Extension"]?.autoDone === true);
+  await page.locator("#week .dchip").nth(1).click();
+  await page.locator("#week .dchip").nth(2).click();
+  await page.reload();
+  await ready(page);
+  await page.evaluate(() => window.__said.push(["undo"]));
+  await tap(le, /set.3 cleared/);
+  await until(async () => db.logs[TODAY]?.exercises["Leg Extension"]?.done === false);
+  check("after another day and a reload, “undo” still takes back the tick the last set gave", !(await le.locator("input.tick").isChecked()) && !db.logs[TODAY].exercises["Leg Extension"].autoDone, JSON.stringify(db.logs[TODAY].exercises["Leg Extension"]));
   const hc = liftEl(page, "Hamstring Curl");
   await say("twelve reps");
   await tap(hc, /set.1/);

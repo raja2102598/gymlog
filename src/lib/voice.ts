@@ -154,7 +154,7 @@ const SHAPE: Record<Token["t"], string> = { n: "n", reps: "r", kg: "k", lb: "l",
  */
 export function parseSetPhrase(text: string): VoiceResult {
   // A minus sign on a number ("-45") would be dropped with the other punctuation: refuse it instead.
-  if (/(^|[^\p{L}\p{N}])[-\u2212\u2013]\s*\d/u.test(text)) return unknown();
+  if (/(^|[^\p{L}\p{N}])[-\u2212\u2013]\s*\.?\d/u.test(text)) return unknown();
   const ws = words(text);
   const command = COMMANDS[ws.filter((w) => !FILLER.has(w)).join(" ")];
   if (command) return { kind: "command", command };
