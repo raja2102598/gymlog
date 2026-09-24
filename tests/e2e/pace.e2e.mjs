@@ -1,5 +1,5 @@
 // Dashboard pace flags: the weekly loss against the target set in Edit plan.
-import { K, open, ready, session } from "./harness.mjs";
+import { K, open, openTab, ready, session } from "./harness.mjs";
 
 // Daily weigh-ins from 26 Aug to today, changing by `perDay` kg.
 const series = (perDay) => {
@@ -13,8 +13,7 @@ export default async function pace({ browser, base, check }) {
   const flags = async (logs, plan) => {
     const { ctx, page } = await open(browser, base, { auth, db: { logs, plan }, mobile: false });
     await ready(page);
-    await page.click("#dashBtn");
-    await page.waitForSelector("#dashView:not([hidden])");
+    await openTab(page, "progress");
     const text = (await page.locator("#dashFlags").textContent()).replace(/\s+/g, " ").trim(), errors = page.errors;
     await ctx.close();
     return { text, errors };

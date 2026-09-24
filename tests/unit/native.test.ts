@@ -20,12 +20,23 @@ const app = vi.hoisted(() => {
     }),
   };
 });
+// The app's own GymSync plugin, for background sync.
+const gymSync = vi.hoisted(() => ({
+  status: vi.fn(),
+  requestBackground: vi.fn(),
+  enable: vi.fn(async () => {}),
+  disable: vi.fn(async () => {}),
+  runNow: vi.fn(async () => {}),
+}));
 vi.mock("@capgo/capacitor-health", () => ({ Health: health }));
 vi.mock("@capacitor/app", () => ({ App: app }));
+vi.mock("@capacitor/core", () => ({ registerPlugin: () => gymSync, SystemBars: { setStyle: vi.fn() }, SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" } }));
 
 import { APP_LOGIN_PAGE, NATIVE_SIGN_IN } from "@/lib/native";
 import { GymStore } from "@/lib/store";
-import { connectHealth, READ, syncHealth } from "@/native/health";
+import { connectHealth, healthAccess, READ, syncHealth } from "@/native/health";
+import { checkBackgroundOwner, deviceName, turnOffBackground, turnOnBackground } from "@/native/sync";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 
 const mid = (m: number, d: number) => new Date(2026, m - 1, d).toISOString();
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -52,8 +63,15 @@ function signedIn() {
 function phoneHas() {
   health.isAvailable.mockResolvedValue({ available: true, platform: "android" });
   health.checkAuthorization.mockResolvedValue({ readAuthorized: READ, readDenied: [], writeAuthorized: [], writeDenied: [] });
-  health.queryAggregated.mockImplementation(async ({ dataType }: { dataType: string }) => ({
-    samples: dataType === "steps" ? [{ startDate: mid(9, 22), value: 8421 }, { startDate: mid(9, 23), value: 3012 }] : dataType === "restingHeartRate" ? [{ startDate: mid(9, 23), value: 61 }] : [],
+  health.queryAggregated.mockImplementation(async ({ dataType, bucket }: { dataType: string; bucket: string }) => ({
+    samples:
+      dataType === "steps" && bucket === "hour"
+        ? [{ startDate: new Date(2026, 8, 23, 9).toISOString(), value: 3012 }]
+        : dataType === "steps"
+          ? [{ startDate: mid(9, 22), value: 8421 }, { startDate: mid(9, 23), value: 3012 }]
+          : dataType === "restingHeartRate"
+            ? [{ startDate: mid(9, 23), value: 61 }]
+            : [],
   }));
   health.readSamples.mockImplementation(async ({ dataType }: { dataType: string }) => ({
     samples: dataType === "weight" ? [{ startDate: new Date(2026, 8, 23, 7).toISOString(), endDate: new Date(2026, 8, 23, 7).toISOString(), value: 81.2 }] : [],
@@ -102,12 +120,37 @@ describe("syncHealth", () => {
     expect(upserts).toEqual([
       [
         { user_id: "u1", day: "2026-09-22", data: { steps: 8421 } },
-        { user_id: "u1", day: "2026-09-23", data: { steps: 3012, restingHr: 61, weight: 81.2 } },
+        { user_id: "u1", day: "2026-09-23", data: { steps: 3012, stepsByHour: [0, 0, 0, 0, 0, 0, 0, 0, 0, 3012, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], restingHr: 61, weight: 81.2 } },
       ],
     ]);
     expect(s.stepsOf("2026-09-22")).toBe(8421);
     expect(s.weightOf("2026-09-23")).toBe(81.2);
     expect(s.healthLink).toEqual({ state: "ok", msg: "2 days updated." });
+  });
+
+  it("reads the longer stretch again when more kinds of data are allowed", async () => {
+    const { s } = signedIn();
+    phoneHas();
+    health.checkAuthorization.mockResolvedValue({ readAuthorized: ["steps"] });
+    await syncHealth(s, true);
+    health.queryAggregated.mockClear();
+    health.checkAuthorization.mockResolvedValue({ readAuthorized: ["steps", "sleep"] });
+    await syncHealth(s, true);
+    expect(health.queryAggregated).toHaveBeenCalledWith(expect.objectContaining({ dataType: "steps", startDate: mid(8, 24) }));
+    health.queryAggregated.mockClear();
+    await syncHealth(s, true);
+    expect(health.queryAggregated).toHaveBeenCalledWith(expect.objectContaining({ dataType: "steps", startDate: mid(9, 14) }));
+  });
+
+  it("says in words what's allowed and what isn't, for Settings", async () => {
+    health.isAvailable.mockResolvedValue({ available: true });
+    health.checkAuthorization.mockResolvedValue({ readAuthorized: ["steps", "sleep", "heartRate"] });
+    const a = await healthAccess();
+    expect(a?.granted).toEqual(["steps", "heart rate", "sleep"]);
+    expect(a?.missing).toHaveLength(READ.length - 3);
+    expect(a?.missing).toContain("blood oxygen");
+    health.isAvailable.mockResolvedValue({ available: false });
+    expect(await healthAccess()).toBeNull();
   });
 
   it("then reads the last 10 days, and writes nothing when nothing changed", async () => {
@@ -138,7 +181,11 @@ describe("syncHealth", () => {
     phoneHas();
     health.checkAuthorization.mockResolvedValue({ readAuthorized: ["steps"] });
     await syncHealth(s, true);
-    expect(health.queryAggregated.mock.calls.map((c) => c[0].dataType)).toEqual(["steps"]);
+    // Steps by the day, and by the hour.
+    expect(health.queryAggregated.mock.calls.map((c) => [c[0].dataType, c[0].bucket])).toEqual([
+      ["steps", "day"],
+      ["steps", "hour"],
+    ]);
     expect(health.readSamples).not.toHaveBeenCalled();
     expect(health.queryWorkouts).not.toHaveBeenCalled();
   });
@@ -254,15 +301,102 @@ describe("store sign-in in the app", () => {
     expect(calls[0]).toEqual(["password", { email: "t@example.com", password: "hunter22" }]);
     const wrong = signedOutApp({ password: authError("Invalid login credentials", "invalid_credentials") });
     expect(await wrong.s.signInWithPassword("t@example.com", "nope")).toBe(
-      "That email and password don’t match. No password yet? Sign in with an email link, then set one from the menu.",
+      "That email and password don’t match. No password yet? Sign in with an email link, then set one in Settings.",
     );
+    expect(s.hasPassword).toBe(false);
     expect(await s.setPassword("a-long-password")).toEqual({ ok: true, msg: "Password saved. Sign in with your email and this password, in the Android app too." });
-    expect(calls[1]).toEqual(["user", { password: "a-long-password" }]);
+    // Flagged in the account's metadata, so Settings says "Change password" after a sign-in with a link, too.
+    expect(calls[1]).toEqual(["user", { password: "a-long-password", data: { has_password: true } }]);
+    expect(s.hasPassword).toBe(true);
+    expect(await s.setPassword("another-long-one")).toEqual({ ok: true, msg: "Password changed." });
     const reauth = signedOutApp({ user: authError("Password update requires reauthentication", "reauthentication_needed") });
     expect(await reauth.s.setPassword("a-long-password")).toEqual({
       ok: false,
       msg: "Supabase wants a fresh sign-in before a password change. Sign out, sign in again with an email link, then set it straight away.",
     });
+  });
+});
+
+describe("background sync", () => {
+  /** A signed-in store whose Supabase client makes keys and deletes them. */
+  function withKeys(key: string | null = "k".repeat(64)) {
+    const { s } = signedIn(), calls: unknown[][] = [];
+    s.sb = {
+      rpc: async (fn: string, args: unknown) => (calls.push(["rpc", fn, args]), key ? { data: key, error: null } : { data: null, error: new Error("offline") }),
+      from: (table: string) => ({ delete: () => ({ eq: async (col: string, v: string) => (calls.push(["delete", table, col, v]), { error: null }) }) }),
+    } as unknown as GymStore["sb"];
+    return { s, calls };
+  }
+  beforeEach(() => {
+    for (const f of Object.values(gymSync)) f.mockClear();
+  });
+
+  it("says so when the phone's Health Connect can't read in the background", async () => {
+    const { s, calls } = withKeys();
+    gymSync.requestBackground.mockResolvedValue({ available: false, allowed: false });
+    expect(await turnOnBackground(s)).toMatch(/^This phone’s Health Connect can’t read in the background yet/);
+    expect(calls).toEqual([]);
+    expect(gymSync.enable).not.toHaveBeenCalled();
+  });
+
+  it("needs the background permission", async () => {
+    const { s } = withKeys();
+    gymSync.requestBackground.mockResolvedValue({ available: true, allowed: false });
+    expect(await turnOnBackground(s)).toMatch(/Access data in the background/);
+    expect(gymSync.enable).not.toHaveBeenCalled();
+  });
+
+  it("makes a key for this phone and hands it to the worker", async () => {
+    const { s, calls } = withKeys();
+    gymSync.requestBackground.mockResolvedValue({ available: true, allowed: true });
+    expect(await turnOnBackground(s)).toBe("Background sync is on. Gym Log reads Health Connect about every hour, even when it’s closed.");
+    expect(deviceName()).toMatch(/^android-[0-9a-f]{8}$/);
+    expect(calls).toEqual([["rpc", "create_health_sync_key", { device_name: deviceName() }]]);
+    expect(gymSync.enable).toHaveBeenCalledWith({ key: "k".repeat(64), url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY });
+  });
+
+  it("keeps the phone's name, so a new key replaces its old one", () => {
+    expect(deviceName()).toBe(deviceName());
+  });
+
+  it("doesn't start the worker when no key came back", async () => {
+    const { s } = withKeys(null);
+    gymSync.requestBackground.mockResolvedValue({ available: true, allowed: true });
+    expect(await turnOnBackground(s)).toMatch(/^Couldn’t turn on background sync: offline\./);
+    expect(gymSync.enable).not.toHaveBeenCalled();
+  });
+
+  it("turns off: stops the worker and removes this phone's key", async () => {
+    const { s, calls } = withKeys();
+    expect(await turnOffBackground(s)).toBe("Background sync is off. Gym Log syncs when you open it.");
+    expect(gymSync.disable).toHaveBeenCalled();
+    expect(calls).toEqual([["delete", "health_sync_keys", "device", deviceName()]]);
+  });
+
+  it("stops when another account signs in on this phone", async () => {
+    const { s } = withKeys();
+    gymSync.requestBackground.mockResolvedValue({ available: true, allowed: true });
+    await turnOnBackground(s);
+    gymSync.disable.mockClear();
+    gymSync.status.mockResolvedValue({ on: true, available: true, allowed: true, lastRunAt: 0, lastOk: true, lastMsg: "" });
+    await checkBackgroundOwner(s);
+    expect(gymSync.disable).not.toHaveBeenCalled();
+    s.user = { id: "someone-else" } as GymStore["user"];
+    await checkBackgroundOwner(s);
+    expect(gymSync.disable).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("signing out", () => {
+  it("lets the app tidy up first, while the session still works, whatever goes wrong there", async () => {
+    const s = new GymStore(), order: string[] = [];
+    s.sb = { auth: { signOut: async () => void order.push("signed out") } } as unknown as GymStore["sb"];
+    s.onSignOut(async () => void order.push("background sync off"));
+    s.onSignOut(async () => {
+      throw new Error("offline");
+    });
+    await s.signOut();
+    expect(order).toEqual(["background sync off", "signed out"]);
   });
 });
 

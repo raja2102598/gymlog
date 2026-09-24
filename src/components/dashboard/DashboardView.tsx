@@ -1,16 +1,16 @@
 "use client";
 import { useGym } from "@/hooks/useGym";
 import { healthModel, kneeModel, planModel, stepsModel, strengthModel, weightModel } from "@/lib/dashboard";
-import { parseKey, todayKey } from "@/lib/dates";
-import { HealthCard } from "./HealthCard";
+import { todayKey } from "@/lib/dates";
 import { KneeCard } from "./KneeCard";
 import { PlanCard } from "./PlanCard";
 import { StepsCard } from "./StepsCard";
 import { StrengthCard } from "./StrengthCard";
 import { WeightCard } from "./WeightCard";
 
-/** How the plan is going: weight trend, sessions kept, steps, strength and the knee, with anything that
- *  needs attention flagged at the top. */
+/** Progress: how the plan is going. Weight trend, sessions kept, steps, strength and the knee, with anything that
+ *  needs attention flagged at the top (sleep and resting heart rate from Health Connect too; their charts are in
+ *  the Health tab). */
 export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
   const store = useGym();
   const t = todayKey();
@@ -18,12 +18,6 @@ export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
   const flags = [...weight.flags, ...strength.flags, ...knee.flags, ...health.flags].sort((a, b) => a.pri - b.pri);
   return (
     <>
-      <div className="top">
-        <h2 className="display">Dashboard</h2>
-        <span className="sub" id="dashAsOf">
-          {parseKey(t).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
-        </span>
-      </div>
       <section id="dashFlags" aria-live="polite" hidden={!flags.length}>
         <ul className="flags">
           {flags.map((f) => (
@@ -36,7 +30,6 @@ export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
       <WeightCard m={weight} onSetGoal={onSetGoal} />
       <PlanCard m={planModel(store, t)} today={t} />
       <StepsCard m={stepsModel(store, t)} />
-      <HealthCard m={health} />
       <StrengthCard m={strength} />
       <KneeCard m={knee} />
     </>

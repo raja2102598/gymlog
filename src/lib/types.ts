@@ -47,17 +47,47 @@ export interface DayLog {
 export interface HealthDay {
   /** Health Connect's total for the day: phone and watch counted once. */
   steps?: number;
-  /** Active calories burned, kcal. */
+  /** Steps in each hour of the day, 0 to 23, local time. */
+  stepsByHour?: number[];
+  /** Distance walked, run or ridden, km. */
+  km?: number;
+  /** Floors climbed. */
+  floors?: number;
+  /** kcal: burned by activity, burned in all (activity and resting), and eaten, as logged in a food app. */
   activeKcal?: number;
+  totalKcal?: number;
+  eatenKcal?: number;
+  /** kcal a day burned at rest (basal metabolic rate), the day's latest estimate. */
+  bmr?: number;
+  /** Water drunk, ml. */
+  waterMl?: number;
   /** kg: the day's first weigh-in. */
   weight?: number;
-  /** bpm: resting heart rate, and the day's average and highest heart rate. */
+  /** %: the day's first body-fat reading. */
+  bodyFat?: number;
+  /** cm: the day's latest height reading. */
+  height?: number;
+  /** bpm: resting heart rate, and the day's average, lowest and highest heart rate. */
   restingHr?: number;
   hrAvg?: number;
+  hrMin?: number;
   hrMax?: number;
+  /** Heart rate variability (RMSSD), ms, the day's average. */
+  hrv?: number;
+  /** Blood oxygen, %, the day's average. */
+  spo2?: number;
+  /** Breaths a minute, the day's average. */
+  respRate?: number;
+  /** VO2 max, mL/kg/min, the day's latest. */
+  vo2max?: number;
+  /** Blood pressure, mmHg: the day's last reading. */
+  bp?: { sys: number; dia: number };
   /** Minutes asleep in the sleep that ended this day, and by stage when the tracker reports stages. */
   sleepMin?: number;
   sleepStages?: Partial<Record<"deep" | "rem" | "light" | "awake", number>>;
+  /** When the night's main sleep started and ended (ISO). */
+  bed?: string;
+  wake?: string;
   workouts?: HealthWorkout[];
 }
 
@@ -101,7 +131,12 @@ export interface PlanDay {
 
 export interface Plan {
   tempo: string;
+  /** Daily goals: steps, and for the Health tab hours asleep, minutes of exercise, active kcal and ml of water. */
   stepGoal: number;
+  sleepGoalH: number;
+  exerciseGoalMin: number;
+  activeGoalKcal: number;
+  waterGoalMl: number;
   goalWeight: number | null;
   weeklyRatePct: number | null;
   kneeLimit: number;

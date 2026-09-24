@@ -1,6 +1,6 @@
 // Knee scores, next-weight hints, records, cardio and waist, home-screen shortcuts, and the dashboard,
 // on four weeks of history.
-import { flat, K, liftEl, open, ready, session, shot, until } from "./harness.mjs";
+import { flat, K, liftEl, open, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
 
 function history() {
   const logs = {};
@@ -85,9 +85,12 @@ export default async function dashboard({ browser, base, check }) {
     check("morning score saved on the next day", db.logs["2026-09-24"]?.kneeWake === 2 && /Not settled since yesterday/.test(await flat(page.locator(".knee").first())));
     await page.locator("#todayB").click();
 
-    // --- the dashboard
-    await page.locator("#dashBtn").click();
-    check("dashboard opens", (await page.locator("#dashView").isVisible()) && !(await page.locator("#appView").isVisible()) && (await page.locator("#dashBtn").textContent()) === "Today");
+    // --- the dashboard, in the Progress tab
+    await openTab(page, "progress");
+    check(
+      "Progress opens, its tab marked as the current one",
+      (await page.locator("#dashView").isVisible()) && !(await page.locator("#appView").isVisible()) && (await page.getAttribute("#tabProgress", "aria-current")) === "page" && (await page.textContent("#screenTitle")) === "Progress",
+    );
     const flags = await flat(page.locator("#dashFlags"));
     check("flags: sore knee today", /Knee was above your limit after Legs on 23 Sept/.test(flags), flags);
     check("flags: weigh-in gap", /No weigh-in for 6 days/.test(flags), flags);
@@ -121,12 +124,11 @@ export default async function dashboard({ browser, base, check }) {
     await page.locator("#pe_rate").fill("0.7");
     await until(() => db.plan?.goalWeight === 78 && db.plan?.weeklyRatePct === 0.7 && db.plan?.days?.[2]?.exercises?.[3]?.step === "5");
     check("settings saved to the plan", db.plan?.goalWeight === 78 && db.plan?.weeklyRatePct === 0.7 && db.plan.days[2].exercises[0].knee === true && db.plan.days[2].exercises[3].step === "5");
-    await page.locator("#planDone").click();
-    check("step change shows in the hint", /Go up to 35 kg/.test(await flat(liftEl(page, "Hamstring Curl").locator(".prog"))));
-    await page.locator("#dashBtn").click();
+    await planDone(page);
+    check("Done goes back to Progress, where the goal was set", await page.locator("#dashView").isVisible());
     check("goal date appears", /goal 78 kg at this pace/.test(await flat(page.locator("#dashWeight"))), await flat(page.locator("#dashWeight .kpis")));
-    await page.locator("#dashBtn").click();
-    check("dashboard back to Today", await page.locator("#appView").isVisible());
+    await openTab(page, "today");
+    check("step change shows in the hint", /Go up to 35 kg/.test(await flat(liftEl(page, "Hamstring Curl").locator(".prog"))));
     check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
     check("no console errors (light)", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
@@ -139,7 +141,7 @@ export default async function dashboard({ browser, base, check }) {
     await until(async () => page.evaluate(() => document.activeElement?.id === "weight"));
     check("Log weight shortcut focuses weight", await page.evaluate(() => document.activeElement?.id === "weight"));
     check("shortcut parameter removed from the address", !page.url().includes("go="), page.url());
-    await page.locator("#dashBtn").click();
+    await openTab(page, "progress");
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     check("dark mode colours", bg === "rgb(18, 20, 23)", bg);
     await shot(page, "d3-dashboard-dark", { fullPage: true });

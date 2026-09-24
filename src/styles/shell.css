@@ -1,0 +1,47 @@
+/* The frame, as on a phone: a bar across the top with the screen's title (a back arrow on pages under a tab) and
+   the sync state, the four tabs along the bottom, and the phone's own bars kept clear of both. In the Android app
+   Capacitor passes the insets as --safe-area-inset-*; in a browser they come from env(). */
+:root{
+  --sat:var(--safe-area-inset-top,env(safe-area-inset-top,0px));
+  --sab:var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px));
+  --sal:var(--safe-area-inset-left,env(safe-area-inset-left,0px));
+  --sar:var(--safe-area-inset-right,env(safe-area-inset-right,0px));
+  --gut-l:max(16px,var(--sal));
+  --gut-r:max(16px,var(--sar));
+  --appbar:64px;
+  --tabbar:68px;
+  /* a field reached with Tab or focused by the app scrolls clear of the bar */
+  scroll-padding-top:calc(var(--sat) + var(--appbar) + 12px);
+}
+
+/* the top bar: sticks, and draws its edge only once the page scrolls under it */
+.appbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:4px 12px;min-height:calc(var(--sat) + var(--appbar));margin-inline:calc(-1 * var(--gut-l)) calc(-1 * var(--gut-r));padding:calc(var(--sat) + 8px) var(--gut-r) 8px var(--gut-l);background:var(--ground)}
+.appbar-t{flex:1 1 auto;min-width:0}
+.appbar h1{font-size:var(--t-xl);overflow-wrap:anywhere}
+.appbar .sub{margin:2px 0 0;font-size:var(--t-sm)}
+.appbar .status{flex:0 1 auto;max-width:44%;margin:0;text-align:right;font-size:var(--t-xs);line-height:1.35}
+.appbar .ghost.back{flex:none;margin-left:-10px;background:transparent;box-shadow:none;border-radius:99px;color:var(--ink)}
+.appbar:has(.back) h1{font-size:var(--t-lg)}
+@supports (animation-timeline:scroll()){
+  .appbar{animation:bar-edge linear both;animation-timeline:scroll(root);animation-range:0 24px}
+  @keyframes bar-edge{from{box-shadow:0 1px 0 transparent}to{box-shadow:0 1px 0 var(--line)}}
+}
+/* signed out: the app's name, not sticky */
+.appbar.brand{position:static;align-items:flex-start;padding-top:calc(var(--sat) + 16px);animation:none}
+.appbar.brand .status{margin-top:6px}
+
+/* the tabs: an icon in a pill and a label, the current one filled */
+.wrap[data-tabs]{padding-bottom:calc(var(--tabbar) + var(--sab))}
+.tabbar{position:fixed;z-index:10;inset:auto 0 0;display:flex;justify-content:center;padding:0 var(--sar) var(--sab) var(--sal);background:var(--surface);box-shadow:0 -1px 0 var(--line)}
+.tab{flex:1 1 0;max-width:168px;display:grid;justify-items:center;align-content:center;gap:4px;height:var(--tabbar);color:var(--muted);font:500 var(--t-xs)/1.2 var(--body);text-decoration:none;-webkit-tap-highlight-color:transparent}
+.tab-pill{display:grid;place-items:center;width:60px;height:32px;border-radius:99px}
+.tab.on{color:var(--ink);font-weight:600}
+.tab.on .tab-pill{background:var(--good-soft);color:var(--good)}
+.tab:focus-visible{outline:none}
+.tab:focus-visible .tab-pill{outline:2px solid var(--ink);outline-offset:2px}
+.tab:not(.on):active .tab-pill{background:var(--chip)}
+@media (hover:hover){.tab:not(.on):hover .tab-pill{background:var(--sunken)}}
+@media (prefers-reduced-motion:no-preference){
+  .tab-pill{transition:background-color var(--fast) var(--ease)}
+  #healthView:not([hidden]),#settingsView:not([hidden]){animation:rise var(--med) var(--ease)}
+}

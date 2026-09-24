@@ -2,16 +2,18 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{color-scheme:light;-webkit-text-size-adjust:100%}
-/* while the sync bar is up, a field reached with Tab scrolls clear of it instead of sitting underneath */
-html:has(#syncBar:not([hidden])){scroll-padding-top:136px}
-body{margin:0;background:var(--ground);color:var(--ink);font:var(--t-base)/1.5 var(--body);padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px));-webkit-tap-highlight-color:transparent}
+/* while the sync bar is up, a field reached with Tab scrolls clear of it too, instead of sitting underneath */
+html:has(#syncBar:not([hidden])){scroll-padding-top:calc(var(--sat) + var(--appbar) + 84px)}
+/* the top bar (shell.css) keeps the page clear of the phone's status bar */
+body{margin:0;background:var(--ground);color:var(--ink);font:var(--t-base)/1.5 var(--body);padding:0 var(--gut-r) calc(32px + var(--sab)) var(--gut-l);-webkit-tap-highlight-color:transparent}
 .wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
 .wrap>*{min-width:0}
-main,#appView,#dashView,#planView,#bootView{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
-main>*,#appView>*,#dashView>*,#planView>*{min-width:0}
+main,#appView,#dashView,#planView,#bootView,#healthView,#settingsView{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+#healthView,#settingsView{gap:16px}
+main>*,#appView>*,#dashView>*,#planView>*,#healthView>*,#settingsView>*{min-width:0}
 /* the skip link's target: focus lands here, so it isn't a control and needs no ring */
 #main:focus{outline:none}
-.skip{position:absolute;z-index:20;left:max(16px,env(safe-area-inset-left,0px));top:calc(8px + env(safe-area-inset-top,0px));background:var(--surface);box-shadow:var(--shadow-up)}
+.skip{position:absolute;z-index:20;left:var(--gut-l);top:calc(8px + var(--sat));background:var(--surface);box-shadow:var(--shadow-up)}
 .skip:not(:focus){width:1px;height:1px;min-height:0;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
 /* type: Oswald capitals for the app name, page and session titles and big numbers, sentence case elsewhere */
@@ -30,23 +32,14 @@ p .num,.sub .num,.plain .num{font-family:var(--body);font-weight:600;color:var(-
 .note:empty{margin:0}
 .empty{color:var(--muted);font-size:14px}
 /* names, notes and emails can be one long word: they wrap instead of pushing the page sideways */
-.sess-title h2,.sess-head .sub,.moved,.catchup p,.lift .nm,.lift .ch,.lift .nt,.skipnote,.prog,.chip span,.kn-head,.hist .hs,#dashFlags li,.lifts .ln,.plain li,.knee-t td,.pe .warn,#whoami,#loginMsg{overflow-wrap:anywhere}
+.sess-title h2,.sess-head .sub,.moved,.catchup p,.lift .nm,.lift .ch,.lift .nt,.skipnote,.prog,.chip span,.kn-head,.hist .hs,#dashFlags li,.lifts .ln,.plain li,.knee-t td,.pe .warn,#whoami,#loginMsg,.tile-s,.sessions li{overflow-wrap:anywhere}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap}
 
-/* header, menu and sign-in */
-header.top{flex-wrap:nowrap}
-header.top>div:first-child{flex:1 1 0;min-width:0}
+/* sync state, the password form and sign-in */
 .status{font-size:var(--t-sm);color:var(--muted);margin-top:2px}
 .status:empty{display:none}
-.topright{display:flex;align-items:center;gap:8px}
-.menu{display:grid}
-.menu>*+*{margin-top:12px}
-.menu .note{margin:12px 0 0}
-.menu .note:empty{margin:0}
-.menu-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.pw-form{display:grid;gap:10px;flex:1 1 260px;max-width:420px}
-#hcStatus{flex:1 1 220px}
+.pw-form{display:grid;gap:10px;max-width:420px}
 .login{display:grid;gap:12px;max-width:420px;margin-top:16px}
 
 /* cards */
@@ -61,7 +54,7 @@ header.top>div:first-child{flex:1 1 0;min-width:0}
 .ghost.danger{color:var(--warn)}
 .ghost:disabled{opacity:.45;cursor:default}
 .ghost svg,button.primary svg{flex:none}
-button.primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--ink);color:var(--ground);border:0;border-radius:var(--r-ctl);padding:12px 18px;min-height:44px;font:600 15px var(--body);cursor:pointer}
+button.primary,a.primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--ink);color:var(--ground);border:0;border-radius:var(--r-ctl);padding:12px 18px;min-height:44px;font:600 15px var(--body);cursor:pointer;text-decoration:none}
 button.primary:disabled{opacity:.6}
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.dchip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 button,a,input,select,textarea,label{touch-action:manipulation}
@@ -108,7 +101,7 @@ td.c,th.c{text-align:center}
 .callout.warn{background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn)}
 
 /* sync trouble, and the placeholder shown while the app starts */
-.syncbar{position:sticky;top:calc(8px + env(safe-area-inset-top,0px));z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r-card);background:var(--warn-soft);box-shadow:inset 4px 0 0 var(--warn),var(--shadow-up);color:var(--ink);font-size:14px}
+.syncbar{position:sticky;top:calc(var(--sat) + var(--appbar) + 8px);z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r-card);background:var(--warn-soft);box-shadow:inset 4px 0 0 var(--warn),var(--shadow-up);color:var(--ink);font-size:14px}
 .syncbar .ghost{margin-left:auto}
 .sk-week i{display:block;height:56px;border-radius:var(--r-ctl);background:var(--surface);box-shadow:var(--shadow)}
 .sk-title{display:grid;gap:10px;padding-top:4px}
@@ -128,7 +121,7 @@ td.c,th.c{text-align:center}
 @media (hover:hover){
   .ghost:hover:not(:disabled){background-color:var(--chip)}
   .top .ghost:hover:not(:disabled),.syncbar .ghost:hover:not(:disabled){background-color:var(--sunken)}
-  button.primary:hover:not(:disabled){background-color:color-mix(in srgb,var(--ink) 85%,var(--ground))}
+  button.primary:hover:not(:disabled),a.primary:hover{background-color:color-mix(in srgb,var(--ink) 85%,var(--ground))}
   .dchip:not(.done):hover{background-color:var(--sunken)}
   .dchip.done:hover{background-color:color-mix(in srgb,var(--good) 88%,var(--ink))}
 }
@@ -138,8 +131,8 @@ td.c,th.c{text-align:center}
 /* motion: feedback only */
 @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:no-preference){
-  .ghost,button.primary,.dchip,.kn,.tick,.chip span,.wu-toggle{transition:background-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease),color var(--fast) var(--ease),transform var(--fast) var(--ease)}
-  .ghost:active:not(:disabled),button.primary:active:not(:disabled),.dchip:active,.kn:active{transform:scale(.97)}
-  #appView:not([hidden]),#dashView:not([hidden]),#planView:not([hidden]),.menu:not([hidden]){animation:rise var(--med) var(--ease)}
+  .ghost,button.primary,a.primary,.dchip,.kn,.tick,.chip span,.wu-toggle,.tile,.set-tap,.act-row,.seg-b{transition:background-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease),color var(--fast) var(--ease),transform var(--fast) var(--ease)}
+  .ghost:active:not(:disabled),button.primary:active:not(:disabled),a.primary:active,.dchip:active,.kn:active,.tile:active{transform:scale(.97)}
+  #appView:not([hidden]),#dashView:not([hidden]),#planView:not([hidden]){animation:rise var(--med) var(--ease)}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}

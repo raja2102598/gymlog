@@ -1,6 +1,6 @@
 // Signing in: an emailed link that carries its own flow id, a wait before another, Supabase's hourly email
-// limit, a password instead, and setting a password from the menu.
-import { flat, open, ready, session, until } from "./harness.mjs";
+// limit, a password instead, and setting or changing a password in Settings.
+import { flat, open, openTab, ready, session, until } from "./harness.mjs";
 
 export default async function signinSuite({ browser, base, check }) {
   // A link, then the wait before another
@@ -56,7 +56,7 @@ export default async function signinSuite({ browser, base, check }) {
       "password mode: a password box, a Sign in button, and where the password comes from",
       (await page.locator("#password").isVisible()) &&
         (await flat(page.locator("#loginBtn"))) === "Sign in" &&
-        /Menu → Set a password/.test(await flat(page.locator("#loginView .sub"))) &&
+        /Settings → Set a password/.test(await flat(page.locator("#loginView .sub"))) &&
         (await page.$eval("#password", (e) => e.autocomplete)) === "current-password",
     );
     await page.fill("#email", "t@example.com");
@@ -65,12 +65,16 @@ export default async function signinSuite({ browser, base, check }) {
     await until(async () => /don’t match/.test(await flat(page.locator("#loginMsg"))));
     check(
       "a wrong password says so, and how to get one",
-      (await flat(page.locator("#loginMsg"))) === "That email and password don’t match. No password yet? Sign in with an email link, then set one from the menu.",
+      (await flat(page.locator("#loginMsg"))) === "That email and password don’t match. No password yet? Sign in with an email link, then set one in Settings.",
     );
     await page.fill("#password", "right-password-1");
     await page.press("#password", "Enter");
     await ready(page);
     check("the right password signs you in", await page.locator("#loginView").isHidden());
+    await openTab(page, "settings");
+    check("signed in with the password: Settings offers Change password, not Set a password", (await flat(page.locator("#pwBtn"))) === "Change password");
+    await until(() => db.metadata?.has_password === true);
+    check("and marks the account as having one, for sign-ins with a link", db.metadata?.has_password === true, JSON.stringify(db.metadata));
     check("no link was sent on the way", !db.otp);
     check("only the expected endpoints", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
     // Chrome logs the wrong password's 400 from Supabase; nothing else.
@@ -79,14 +83,16 @@ export default async function signinSuite({ browser, base, check }) {
     await ctx.close();
   }
 
-  // Setting a password from the menu
+  // Setting a password from Settings
   {
     const db = { logs: {}, plan: null };
     const auth = session("00000000-0000-4000-8000-000000000061", "2026-08-26T05:00:00Z", "me@example.com");
     const { ctx, page } = await open(browser, base, { auth, db });
     await ready(page);
-    await page.click("#menuBtn");
+    await openTab(page, "settings");
+    check("signed in with a link and no password yet: Set a password", (await flat(page.locator("#pwBtn"))) === "Set a password" && /^Not set\./.test(await flat(page.locator("#pwD"))), await flat(page.locator("#pwD")));
     await page.click("#pwBtn");
+    check("the password box has the focus", await page.evaluate(() => document.activeElement?.id === "newPassword"));
     const form = await page.$eval("#pwForm", (f) => ({ user: f.elements.namedItem("username").value, auto: f.elements.namedItem("newPassword").autocomplete }));
     check("the form tells a password manager which account it's for", form.user === "me@example.com" && form.auto === "new-password", JSON.stringify(form));
     await page.fill("#newPassword", "short");
@@ -100,6 +106,14 @@ export default async function signinSuite({ browser, base, check }) {
       "saved: says how to use it, and the form closes",
       (await flat(page.locator("#pwMsg"))) === "Password saved. Sign in with your email and this password, in the Android app too." && (await page.locator("#pwForm").count()) === 0,
     );
+    check("the account is marked as having one, so later sign-ins know", db.metadata?.has_password === true, JSON.stringify(db.metadata));
+    check("then it offers Change password", (await flat(page.locator("#pwBtn"))) === "Change password" && /^Set\./.test(await flat(page.locator("#pwD"))), await flat(page.locator("#pwD")));
+    await page.click("#pwBtn");
+    await page.fill("#newPassword", "another-long-one");
+    await page.click("#pwSave");
+    await until(() => db.passwordSet === "another-long-one");
+    await until(async () => (await flat(page.locator("#pwMsg"))) === "Password changed.");
+    check("changing it says so", (await flat(page.locator("#pwMsg"))) === "Password changed.");
     check("only the expected endpoints", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();

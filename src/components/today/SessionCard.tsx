@@ -25,6 +25,8 @@ export interface SessionProps {
   onKneeChange: (f: KneeField) => void;
   onKneeScored: (f: KneeField) => void;
   focusNext: FocusNext;
+  /** Opens the Health tab at this day. */
+  onOpenHealth: () => void;
 }
 
 function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
@@ -40,7 +42,7 @@ function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
 
 /** The selected day: its workout (which can be switched for another weekday's), knee scores, warm-up,
  *  lifts, cardio finisher, steps, weight and note. Keyed by the day, so a new day starts fresh. */
-export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOpen, onKneeChange, onKneeScored, focusNext }: SessionProps) {
+export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOpen, onKneeChange, onKneeScored, focusNext, onOpenHealth }: SessionProps) {
   const store = useGym();
   const plan = store.plan, p = store.planFor(sel), e = store.entry(sel), items = store.liftsFor(sel);
   const wus = plan.warmups.concat(e.warmup.filter((w) => !plan.warmups.includes(w)));
@@ -199,7 +201,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
           }, false)
         }
       />
-      <HealthToday sel={sel} />
+      <HealthToday sel={sel} onOpenHealth={onOpenHealth} />
     </>
   );
 }

@@ -7,10 +7,55 @@ import { lsGet, lsSet } from "@/lib/storage";
 import type { GymStore } from "@/lib/store";
 import type { DayKey, HealthDay } from "@/lib/types";
 
-// What Gym Log reads. Distance too: without it, Health Connect won't total a workout's calories.
-export const READ: HealthDataType[] = ["steps", "distance", "calories", "heartRate", "restingHeartRate", "weight", "sleep", "workouts"];
-// Accounts whose first, longer read is done: after that, each sync reads the last 10 days.
-const FIRST_READ_KEY = "gymlog.health.first.v1";
+// What Gym Log reads, all read-only. Distance is also what lets Health Connect total a workout's calories.
+export const READ: HealthDataType[] = [
+  "steps",
+  "distance",
+  "flightsClimbed",
+  "calories",
+  "totalCalories",
+  "basalCalories",
+  "dietaryEnergyConsumed",
+  "dietaryWater",
+  "heartRate",
+  "restingHeartRate",
+  "heartRateVariability",
+  "oxygenSaturation",
+  "respiratoryRate",
+  "vo2Max",
+  "bloodPressure",
+  "weight",
+  "bodyFat",
+  "height",
+  "sleep",
+  "workouts",
+];
+/** Each kind in words, for Settings: "Gym Log can also read sleep, heart rate…". */
+const WORDS: Record<string, string> = {
+  steps: "steps",
+  distance: "distance",
+  flightsClimbed: "floors",
+  calories: "active calories",
+  totalCalories: "total calories",
+  basalCalories: "resting calories",
+  dietaryEnergyConsumed: "calories eaten",
+  dietaryWater: "water",
+  heartRate: "heart rate",
+  restingHeartRate: "resting heart rate",
+  heartRateVariability: "heart rate variability",
+  oxygenSaturation: "blood oxygen",
+  respiratoryRate: "breathing rate",
+  vo2Max: "VO₂ max",
+  bloodPressure: "blood pressure",
+  weight: "weight",
+  bodyFat: "body fat",
+  height: "height",
+  sleep: "sleep",
+  workouts: "exercise",
+};
+// The kinds of data each account had allowed at its last read. A kind allowed since (or a first read) reads the
+// longer stretch; otherwise each sync reads the last 10 days.
+const GRANTED_KEY = "gymlog.health.granted.v1";
 
 let busy = false;
 let lastRun = 0;
@@ -35,6 +80,20 @@ export async function connectHealth(store: GymStore): Promise<void> {
   await syncHealth(store, true);
 }
 
+/** What Health Connect lets Gym Log read, in words, for Settings; null when it isn't there. */
+export async function healthAccess(): Promise<{ granted: string[]; missing: string[] } | null> {
+  try {
+    if (!(await Health.isAvailable()).available) return null;
+    const ok = (await Health.checkAuthorization({ read: READ })).readAuthorized;
+    return { granted: READ.filter((k) => ok.includes(k)).map((k) => WORDS[k]), missing: READ.filter((k) => !ok.includes(k)).map((k) => WORDS[k]) };
+  } catch {
+    return null;
+  }
+}
+
+/** Health Connect's own page for Gym Log, to change what it may read. */
+export const openHealthSettings = (): Promise<void> => Health.openHealthConnectSettings();
+
 /** Reads Health Connect and saves the days that changed. Without `now`, at most every 5 minutes. */
 export async function syncHealth(store: GymStore, now = false): Promise<void> {
   if (busy || !store.user || (!now && Date.now() - lastRun < 5 * 60_000)) return;
@@ -51,13 +110,14 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
       return;
     }
     store.setHealthLink({ state: "syncing", msg: "Reading Health Connect…" });
-    const uid = store.user.id, done = lsGet<Record<string, boolean>>(FIRST_READ_KEY, {});
-    const t = todayKey();
-    // The first read goes back to when the log started (at least 30 days, at most 90); later ones, 10 days.
-    const from = done[uid] ? addDays(t, -9) : [addDays(t, -90), [store.firstDay(), addDays(t, -30)].sort()[0]].sort()[1];
+    const uid = store.user.id, seen = lsGet<Record<string, string[]>>(GRANTED_KEY, {});
+    const t = todayKey(), fresh = granted.some((k) => !seen[uid]?.includes(k));
+    // A first read (or one with newly allowed data) goes back to when the log started (at least 30 days, at most
+    // 90); later ones, 10 days.
+    const from = fresh ? [addDays(t, -90), [store.firstDay(), addDays(t, -30)].sort()[0]].sort()[1] : addDays(t, -9);
     const { days, failed } = await readDays(from, granted);
     const n = await store.saveHealth(days);
-    lsSet(FIRST_READ_KEY, { ...done, [uid]: true });
+    lsSet(GRANTED_KEY, { ...seen, [uid]: granted });
     const saved = n ? `${n} day${n === 1 ? "" : "s"} updated` : "Up to date";
     store.setHealthLink({ state: "ok", msg: failed.length ? `${saved}; couldn’t read ${failed.join(", ")}.` : `${saved}.` });
   } catch (e) {
@@ -81,16 +141,32 @@ async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record
       return undefined;
     }
   };
-  const total = (dataType: HealthDataType, label: string, aggregation: "sum" | "average" | ("average" | "max")[]) =>
-    read(dataType, label, async () => (await Health.queryAggregated({ dataType, startDate: start, endDate: end, bucket: "day", aggregation })).samples);
+  type Aggregation = "sum" | "average" | ("average" | "min" | "max")[];
+  const total = (dataType: HealthDataType, label: string, aggregation: Aggregation, bucket: "day" | "hour" = "day") =>
+    read(dataType, label, async () => (await Health.queryAggregated({ dataType, startDate: start, endDate: end, bucket, aggregation })).samples);
+  // Newest first, in pages of 500: some watches record blood oxygen or HRV every minute of the night.
   const samples = (dataType: HealthDataType, label: string, startDate = start) =>
-    read(dataType, label, async () => (await Health.readSamples({ dataType, startDate, endDate: end, limit: 2000, ascending: true })).samples);
+    read(dataType, label, async () => (await Health.readSamples({ dataType, startDate, endDate: end, limit: 5000, ascending: false })).samples);
   const r: HealthReadings = {
     steps: await total("steps", "steps", "sum"),
-    activeKcal: await total("calories", "calories", "sum"),
-    heartRate: await total("heartRate", "heart rate", ["average", "max"]),
+    stepsHourly: await total("steps", "steps by hour", "sum", "hour"),
+    distance: await total("distance", "distance", "sum"),
+    floors: await samples("flightsClimbed", "floors"),
+    activeKcal: await total("calories", "active calories", "sum"),
+    totalKcal: await samples("totalCalories", "total calories"),
+    bmr: await samples("basalCalories", "resting calories"),
+    eatenKcal: await total("dietaryEnergyConsumed", "calories eaten", "sum"),
+    water: await total("dietaryWater", "water", "sum"),
+    heartRate: await total("heartRate", "heart rate", ["average", "min", "max"]),
     restingHr: await total("restingHeartRate", "resting heart rate", "average"),
+    hrv: await samples("heartRateVariability", "heart rate variability"),
+    spo2: await samples("oxygenSaturation", "blood oxygen"),
+    respRate: await samples("respiratoryRate", "breathing rate"),
+    vo2max: await samples("vo2Max", "VO2 max"),
+    bp: await samples("bloodPressure", "blood pressure"),
     weight: await samples("weight", "weight"),
+    bodyFat: await samples("bodyFat", "body fat"),
+    height: await samples("height", "height"),
     // A night's sleep that ends on the first day started the evening before.
     sleep: await samples("sleep", "sleep", parseKey(addDays(from, -1)).toISOString()),
     workouts: await read("workouts", "workouts", async () => {

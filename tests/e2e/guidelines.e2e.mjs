@@ -1,8 +1,8 @@
-// Vercel's Web Interface Guidelines: navigation that the Back button understands, landmarks and a skip
-// link, focus rings you can see, long names, empty states, asking before replacing data, and the sticky
-// sync bar keeping clear of a focused field.
+// Vercel's Web Interface Guidelines: tabs and pages the Back button understands, landmarks and a skip link,
+// focus rings you can see, long names, empty states, asking before replacing data, and the sticky sync bar
+// keeping clear of a focused field.
 import fs from "node:fs";
-import { K, flat, open, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openTab, ready, session, until } from "./harness.mjs";
 
 const PLAN = JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
 
@@ -23,11 +23,11 @@ export default async function guidelines({ browser, base, check }) {
     await ready(page);
     const land = await page.evaluate(() => ({
       main: document.querySelectorAll("main").length,
-      nav: document.querySelector("nav#menu")?.getAttribute("aria-label"),
-      haspopup: document.querySelector("#menuBtn").getAttribute("aria-haspopup"),
-      controls: document.querySelector("#menuBtn").getAttribute("aria-controls"),
+      banner: document.querySelectorAll("header.appbar h1").length,
+      nav: document.querySelector("nav.tabbar")?.getAttribute("aria-label"),
+      current: [...document.querySelectorAll(".tabbar [aria-current=page]")].map((e) => e.id),
     }));
-    check("one main landmark; the menu is a labelled nav; Menu is a disclosure, not a popup menu", land.main === 1 && land.nav === "Menu" && land.haspopup === null && land.controls === "menu", JSON.stringify(land));
+    check("one main landmark, a header with the screen's name, the tabs a labelled nav with Today current", land.main === 1 && land.banner === 1 && land.nav === "Sections" && land.current.join() === "tabToday", JSON.stringify(land));
     await page.keyboard.press("Tab");
     const skip = await page.evaluate(() => ({ cls: document.activeElement.className, w: document.activeElement.getBoundingClientRect().width, text: document.activeElement.textContent }));
     check("the first Tab shows a Skip to content link", /\bskip\b/.test(skip.cls) && skip.w > 40 && skip.text === "Skip to content", JSON.stringify(skip));
@@ -62,49 +62,80 @@ export default async function guidelines({ browser, base, check }) {
     check("buttons change colour under the mouse", before !== after, `${before} → ${after}`);
     check("taps don't wait for a double-tap zoom", (await page.$eval("#todayB", (e) => getComputedStyle(e).touchAction)) === "manipulation");
 
-    // the dashboard has an address, and Back returns to Today
-    check("view links are real links", (await page.getAttribute("#dashBtn", "href")) === "#dashboard" && (await page.getAttribute("#toDash", "href")) === "#dashboard");
-    await page.click("#dashBtn");
-    check("Dashboard: its own address, and the header link leads back to Today", page.url().endsWith("/#dashboard") && (await page.locator("#dashView").isVisible()) && (await page.getAttribute("#dashBtn", "href")) === "./", page.url());
-    await page.goBack();
-    await page.waitForSelector("#appView:not([hidden])");
-    check("Back on the dashboard returns to Today (it used to close the app)", (await page.locator("#appView").isVisible()) && !page.url().includes("#"), page.url());
-    await page.goForward();
-    await page.waitForSelector("#dashView:not([hidden])");
-    check("Forward opens the dashboard again", page.url().endsWith("/#dashboard"));
+    // the tabs are links with addresses, and Back walks back the way you came
+    const hrefs = await page.$$eval(".tabbar a", (els) => els.map((e) => e.getAttribute("href")));
+    check("the tabs are real links", hrefs.join(" ") === "./ #health #progress #settings" && (await page.getAttribute("#toDash", "href")) === "#progress", hrefs.join(" "));
     const entries = await page.evaluate(() => history.length);
-    await page.click("#dashBtn");
-    await until(() => !page.url().includes("#"));
-    const hist = await page.evaluate(() => ({ len: history.length, view: history.state?.gymView ?? null }));
-    check("the Today link steps back rather than piling up entries", (await page.locator("#appView").isVisible()) && !page.url().includes("#") && hist.len === entries && hist.view === null, JSON.stringify({ entries, ...hist }));
-    await page.goForward();
-    await page.waitForSelector("#dashView:not([hidden])");
-    check("after the Today link, Forward still reopens the dashboard", page.url().endsWith("/#dashboard"));
+    await openTab(page, "progress");
+    check("Progress: its own address, and its tab marked current", page.url().endsWith("/#progress") && (await page.getAttribute("#tabProgress", "aria-current")) === "page" && (await page.getAttribute("#tabToday", "aria-current")) === null, page.url());
     await page.goBack();
     await page.waitForSelector("#appView:not([hidden])");
+    check("Back from a tab returns to Today (it used to close the app)", (await page.locator("#appView").isVisible()) && !page.url().includes("#"), page.url());
+    await page.goForward();
+    await page.waitForSelector("#dashView:not([hidden])");
+    check("Forward opens Progress again", page.url().endsWith("/#progress"));
+    await openTab(page, "health");
+    check("one tab to another replaces it: no pile of entries", page.url().endsWith("/#health") && (await page.evaluate(() => history.length)) === entries + 1, page.url());
+    await page.goBack();
+    await page.waitForSelector("#appView:not([hidden])");
+    check("so Back from the second tab goes to Today, not the first", !page.url().includes("#"), page.url());
+    await page.goForward();
+    await page.waitForSelector("#healthView:not([hidden])");
+    await openTab(page, "today");
+    await until(() => !page.url().includes("#"));
+    check("the Today tab steps back rather than adding an entry", (await page.locator("#appView").isVisible()) && (await page.evaluate(() => history.length)) === entries + 1, page.url());
+    await page.goForward();
+    await page.waitForSelector("#healthView:not([hidden])");
+    check("after the Today tab, Forward still reopens the tab you left", page.url().endsWith("/#health"));
 
-    // the plan editor: Back saves and returns to Today
-    await page.click("#menuBtn");
+    // a page under a tab: its own address, a back arrow, no tabs; Back returns to the tab
+    check("with no Health Connect data, Health says where it comes from", /Gym Log Android app/.test(await flat(page.locator("#healthEmpty"))));
+    await page.goto(base + "#health/sleep");
+    await page.waitForSelector("#healthView:not([hidden])");
+    check("a Health page: its title, a back arrow and no tabs", (await page.textContent("#screenTitle")) === "Sleep" && (await page.locator("#backBtn").isVisible()) && (await page.locator(".tabbar").count()) === 0);
+    await page.click("#backBtn");
+    await page.waitForSelector(".tabbar");
+    check("its back arrow goes to Health", page.url().endsWith("/#health") && (await page.textContent("#screenTitle")) === "Health", page.url());
+
+    // the plan editor: opened from Settings, Back saves and returns there
+    await openTab(page, "settings");
     check("Edit plan is a link to #plan", (await page.getAttribute("#planBtn", "href")) === "#plan");
     await page.click("#planBtn");
-    check("Edit plan has its own address", page.url().endsWith("/#plan") && (await page.locator("#planView").isVisible()), page.url());
+    check("Edit plan has its own address and a back arrow, lit under Settings", page.url().endsWith("/#plan") && (await page.locator("#planView").isVisible()) && (await page.locator("#backBtn").isVisible()), page.url());
     await page.fill("#pe_tempo", "4:0:1:0");
     await page.goBack();
-    await page.waitForSelector("#appView:not([hidden])");
+    await page.waitForSelector("#settingsView:not([hidden])");
     await until(() => db.plan?.tempo === "4:0:1:0");
-    check("Back from the plan editor returns to Today and saves the plan", (await page.locator("#appView").isVisible()) && db.plan?.tempo === "4:0:1:0" && /4:0:1:0/.test(await page.textContent("#tempoNote")));
+    check("Back from the plan editor returns to Settings and saves the plan", page.url().endsWith("/#settings") && db.plan?.tempo === "4:0:1:0", page.url());
+    await openTab(page, "today");
+    check("the edited plan shows on Today", /4:0:1:0/.test(await page.textContent("#tempoNote")));
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
 
-  // ---------- Opening the dashboard from its address ----------
+  // ---------- Opening a screen from its address ----------
   {
     const db = { logs: logs(), plan: null };
     const { ctx, page } = await open(browser, base, { auth, db, url: base + "#dashboard" });
     await page.waitForSelector("#dashView:not([hidden])", { timeout: 15000 });
-    check("a link to #dashboard opens the dashboard after sign-in", await page.locator("#dashWeight").isVisible());
-    await page.click("#dashBtn");
+    check("the old #dashboard address opens Progress after sign-in", (await page.locator("#dashWeight").isVisible()) && (await page.getAttribute("#tabProgress", "aria-current")) === "page");
+    await openTab(page, "today");
+    await until(() => !page.url().includes("#"));
     check("Today from there cleans the address", (await page.locator("#appView").isVisible()) && !page.url().includes("#"), page.url());
+    await ctx.close();
+  }
+  {
+    const db = { logs: logs(), plan: null, health: { "2026-09-23": { steps: 8421, sleepMin: 432 } } };
+    const { ctx, page } = await open(browser, base, { auth, db, url: base + "#health/steps" });
+    await page.waitForSelector("#healthView:not([hidden]) #hChart", { timeout: 15000 });
+    check("a link to a Health page opens it after sign-in", (await page.textContent("#screenTitle")) === "Steps");
+    await page.goBack();
+    await page.waitForSelector(".tabbar");
+    check("Back from it goes to Health, then Today, as if you'd tapped your way there", page.url().endsWith("/#health") && (await page.locator("#activity").isVisible()), page.url());
+    await page.goBack();
+    await page.waitForSelector("#appView:not([hidden])");
+    check("…and then Today", !page.url().includes("#"), page.url());
+    check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
 
@@ -128,40 +159,37 @@ export default async function guidelines({ browser, base, check }) {
     await ctx.close();
   }
 
-  // ---------- The menu's message, and importing over days already logged ----------
+  // ---------- Settings' message, and importing over days already logged ----------
   {
     const db = { logs: logs(), plan: null };
     const { ctx, page } = await open(browser, base, { auth, db });
     await ready(page);
-    await page.click("#menuBtn");
-    const gap = await page.evaluate(() => {
-      const m = document.querySelector("#menu"), rows = m.querySelectorAll(".menu-row");
-      return Math.round(m.getBoundingClientRect().bottom - rows[rows.length - 1].getBoundingClientRect().bottom - parseFloat(getComputedStyle(m).paddingBottom));
-    });
-    check("menu: no blank line under the buttons while there's no message", gap <= 1, `${gap}px`);
-    check("menu: export and import results are announced", (await page.getAttribute("#menuMsg", "role")) === "status");
+    await openTab(page, "settings");
+    const gap = await page.evaluate(() => Math.round(document.querySelector("#dataMsg").getBoundingClientRect().height));
+    check("Settings: no blank row under Import while there's no message", gap === 0, `${gap}px`);
+    check("Settings: export and import results are announced", (await page.getAttribute("#dataMsg", "role")) === "status");
     const file = (rows) => ({ name: "gym-log.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(rows)) });
     const changed = [{ day: "2026-09-22", data: { ...db.logs["2026-09-22"], steps: 1234 } }, { day: "2026-07-01", data: { exercises: {}, warmup: [], cardio: true, steps: 5000, weight: null, note: "" } }];
     page.removeAllListeners("dialog");
     let asked = "";
     page.once("dialog", (d) => ((asked = d.message()), d.dismiss()));
     await page.setInputFiles("#importFile", file(changed));
-    await until(async () => (await page.textContent("#menuMsg")) !== "");
+    await until(async () => (await page.textContent("#dataMsg")) !== "");
     check("import: asks before replacing a day already logged", /different entries for 1 day you’ve already logged/.test(asked), asked);
-    check("import: cancelling changes nothing", (await page.textContent("#menuMsg")) === "Import cancelled. Nothing changed." && db.logs["2026-09-22"].steps === 8000 && !db.logs["2026-07-01"]);
+    check("import: cancelling changes nothing", (await page.textContent("#dataMsg")) === "Import cancelled. Nothing changed." && db.logs["2026-09-22"].steps === 8000 && !db.logs["2026-07-01"]);
     page.once("dialog", (d) => d.accept());
     await page.setInputFiles("#importFile", file(changed));
     await until(() => db.logs["2026-07-01"] != null);
-    check("import: once accepted, the file's days go in", (await page.textContent("#menuMsg")) === "Imported 2 days." && db.logs["2026-09-22"].steps === 1234);
+    check("import: once accepted, the file's days go in", (await page.textContent("#dataMsg")) === "Imported 2 days." && db.logs["2026-09-22"].steps === 1234);
     page.once("dialog", () => (asked = "asked again"));
     await page.setInputFiles("#importFile", file(changed));
-    await until(async () => (await page.textContent("#menuMsg")) === "Imported 2 days.");
+    await until(async () => (await page.textContent("#dataMsg")) === "Imported 2 days.");
     check("import: the same file again doesn't ask", asked !== "asked again");
     await page.setInputFiles("#importFile", { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
-    await until(async () => /couldn’t be imported/.test(await page.textContent("#menuMsg")));
-    check("import: a wrong file says what to do next", /Choose a \.json file exported from Gym Log\.$/.test(await page.textContent("#menuMsg")), await page.textContent("#menuMsg"));
+    await until(async () => /couldn’t be imported/.test(await page.textContent("#dataMsg")));
+    check("import: a wrong file says what to do next", /Choose a \.json file exported from Gym Log\.$/.test(await page.textContent("#dataMsg")), await page.textContent("#dataMsg"));
     page.on("dialog", (d) => d.accept());
-    await page.click("#menuBtn");
+    await openTab(page, "today");
 
     // removing a set asks only when the set has numbers in it
     await page.click('[data-addset="0"]');

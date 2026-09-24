@@ -1,5 +1,5 @@
 // Layout and readability on a small phone (360 x 800): the fixes from the UI audit.
-import { flat, K, open, ready, session, until } from "./harness.mjs";
+import { flat, K, open, openTab, ready, session, until } from "./harness.mjs";
 
 const today = () => ({
   "2026-09-23": {
@@ -22,9 +22,24 @@ export default async function layout({ browser, base, check }) {
     const { ctx, page } = await open(browser, base, { auth, db, width: 360, height: 800 });
     await ready(page);
     await page.evaluate(() => document.fonts.ready);
-    const h1 = await box(page, "h1"), dash = await box(page, "#dashBtn");
-    check("header: title and buttons share one row", Math.abs(h1.y + h1.height / 2 - (dash.y + dash.height / 2)) < 20, `title y ${Math.round(h1.y)}, button y ${Math.round(dash.y)}`);
-    check("header: tagline hidden once signed in, status under the title", (await page.locator("#tagline").isHidden()) && (await page.textContent("#status")) === "Synced");
+    const h1 = await box(page, "h1"), status = await box(page, "#status");
+    check("top bar: the screen's title and the sync state share one row", Math.abs(h1.y + h1.height / 2 - (status.y + status.height / 2)) < 24, `title y ${Math.round(h1.y)}, status y ${Math.round(status.y)}`);
+    check("top bar: Today and the date, no tagline once signed in", (await page.textContent("#screenTitle")) === "Today" && (await page.locator("#tagline").count()) === 0 && (await page.textContent("#status")) === "Synced");
+    const bar = await box(page, ".tabbar"), tabs = await page.$$eval(".tabbar a", (els) => els.map((e) => [e.id, e.getAttribute("aria-current"), Math.round(e.getBoundingClientRect().height)]));
+    check("four tabs along the bottom of the screen, Today current", Math.round(bar.y + bar.height) === 800 && tabs.map((t) => t[0]).join() === "tabToday,tabHealth,tabProgress,tabSettings" && tabs[0][1] === "page" && tabs.every((t) => t[2] >= 48), JSON.stringify(tabs));
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const last = await page.evaluate(() => [...document.querySelectorAll("#appView > *")].filter((e) => e.getClientRects().length).pop().getBoundingClientRect().bottom);
+    check("the end of the page scrolls clear of the tabs", last <= bar.y + 1, `last ${Math.round(last)}, tabs at ${Math.round(bar.y)}`);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    // The keyboard coming up: the visible part of the page shrinks while a box has focus.
+    await page.focus("#steps");
+    await page.setViewportSize({ width: 360, height: 480 });
+    await until(() => page.locator(".tabbar").isHidden());
+    check("typing: the tabs step aside for the keyboard", await page.locator(".tabbar").isHidden());
+    await page.setViewportSize({ width: 360, height: 800 });
+    await until(() => page.locator(".tabbar").isVisible());
+    check("the keyboard closed (Back) with the box still focused: the tabs come back", (await page.locator(".tabbar").isVisible()) && (await page.evaluate(() => document.activeElement.id)) === "steps");
+    await page.evaluate(() => document.activeElement.blur());
     const lift = await box(page, "#session .ex li");
     check("first lift starts on the first screen", lift.y < 800, `top ${Math.round(lift.y)}px`);
     check("warm-up starts folded", (await page.locator("#wuChips").isHidden()) && (await page.getAttribute("#wuToggle", "aria-expanded")) === "false" && /Warm-up 2 of 13 done Show/.test(await flat(page.locator("#wuToggle"))), await flat(page.locator("#wuToggle")));
@@ -67,14 +82,15 @@ export default async function layout({ browser, base, check }) {
     await page.locator("#week .dchip").nth(3).click(); // Thursday: rest
     check("rest days skip the warm-up", (await page.locator("#session .wu").count()) === 0);
     await page.locator("#week .dchip").nth(2).click();
-    // The menu: Import is a real, focusable button that opens the file picker.
-    await page.click("#menuBtn");
+    // Settings: Import is a real, focusable button that opens the file picker.
+    await openTab(page, "settings");
     check("Import is a button", (await page.$eval("#importBtn", (e) => e.tagName)) === "BUTTON");
     const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null), page.click("#importBtn")]);
     check("Import opens the file picker", !!chooser);
-    await page.click("#menuBtn");
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth);
+    check("Settings fits at 360px (no sideways scroll)", wide <= 360, `${wide}px`);
     // The dashboard on a new account
-    await page.click("#dashBtn");
+    await openTab(page, "progress");
     const k = await page.$$eval("#dashWeight .kpi", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     check("dashboard numbers sit two to a row at 360px", k.length >= 2 && k[0] === k[1], k.join(","));
     const str = await flat(page.locator("#dashStrength"));
@@ -106,7 +122,7 @@ export default async function layout({ browser, base, check }) {
     await page.locator("#week .dchip").nth(3).click(); // Thursday: rest, with Push and Pull missed this week
     const cu = await page.$eval(".catchup", (e) => ({ bg: getComputedStyle(e).backgroundColor, c: getComputedStyle(e).color }));
     check("catch-up suggestion is neutral, not warning orange", cu.bg === "rgb(255, 255, 255)" && cu.c === "rgb(21, 23, 27)", JSON.stringify(cu));
-    await page.click("#dashBtn");
+    await openTab(page, "progress");
     const warn = await page.$eval("#dashFlags li.warn", (e) => ({ c: getComputedStyle(e).color, m: getComputedStyle(e).marginBottom }));
     check("dashboard warnings: dark text on the tint (was orange, 3.68:1)", warn.c === "rgb(21, 23, 27)" && warn.m === "0px", JSON.stringify(warn));
     const part = await page.$eval("#dashPlan .legend i.part", (e) => getComputedStyle(e).backgroundColor);

@@ -1,0 +1,117 @@
+{
+  "about": "Health Connect readings as the Android plugin returns them (UTC instants), and the days they make in zone. healthDays() in src/lib/health.ts and HealthDays.kt in the Android app must both turn readings into expected.",
+  "zone": "Asia/Kolkata",
+  "readings": {
+    "steps": [
+      { "startDate": "2026-09-21T18:30:00Z", "value": 9206.4 },
+      { "startDate": "2026-09-22T18:30:00Z", "value": 3332 },
+      { "startDate": "2026-09-19T18:30:00Z", "value": 0 }
+    ],
+    "stepsHourly": [
+      { "startDate": "2026-09-22T21:30:00Z", "value": 120.6 },
+      { "startDate": "2026-09-23T03:30:00Z", "value": 2100 },
+      { "startDate": "2026-09-23T04:30:00Z", "value": 1111.4 },
+      { "startDate": "2026-09-22T14:30:00Z", "value": 1500 }
+    ],
+    "distance": [
+      { "startDate": "2026-09-21T18:30:00Z", "value": 7254.4 },
+      { "startDate": "2026-09-22T18:30:00Z", "value": 2553 }
+    ],
+    "activeKcal": [
+      { "startDate": "2026-09-21T18:30:00Z", "value": 373.2 },
+      { "startDate": "2026-09-22T18:30:00Z", "value": 182.5 }
+    ],
+    "eatenKcal": [{ "startDate": "2026-09-22T18:30:00Z", "value": 1850.6 }],
+    "water": [{ "startDate": "2026-09-22T18:30:00Z", "value": 1.75 }],
+    "heartRate": [{ "startDate": "2026-09-22T18:30:00Z", "value": 77.6, "values": { "average": 77.6, "min": 52.2, "max": 151 } }],
+    "restingHr": [{ "startDate": "2026-09-22T18:30:00Z", "value": 61.7 }],
+    "totalKcal": [
+      { "startDate": "2026-09-22T18:30:00Z", "endDate": "2026-09-23T03:30:00Z", "value": 600.3 },
+      { "startDate": "2026-09-23T03:30:00Z", "endDate": "2026-09-23T07:30:00Z", "value": 613.9 }
+    ],
+    "bmr": [
+      { "startDate": "2026-09-23T02:00:00Z", "endDate": "2026-09-23T02:00:00Z", "value": 1662.7 },
+      { "startDate": "2026-09-22T19:00:00Z", "endDate": "2026-09-22T19:00:00Z", "value": 1650.2 }
+    ],
+    "floors": [
+      { "startDate": "2026-09-22T14:00:00Z", "endDate": "2026-09-22T14:10:00Z", "value": 4 },
+      { "startDate": "2026-09-22T13:00:00Z", "endDate": "2026-09-22T13:05:00Z", "value": 3 }
+    ],
+    "hrv": [
+      { "startDate": "2026-09-22T22:00:00Z", "endDate": "2026-09-22T22:00:00Z", "value": 46.4 },
+      { "startDate": "2026-09-22T21:00:00Z", "endDate": "2026-09-22T21:00:00Z", "value": 41 }
+    ],
+    "spo2": [
+      { "startDate": "2026-09-22T23:00:00Z", "endDate": "2026-09-22T23:00:00Z", "value": 95 },
+      { "startDate": "2026-09-22T22:00:00Z", "endDate": "2026-09-22T22:00:00Z", "value": 97.5 },
+      { "startDate": "2026-09-22T21:00:00Z", "endDate": "2026-09-22T21:00:00Z", "value": 96 }
+    ],
+    "respRate": [{ "startDate": "2026-09-22T22:00:00Z", "endDate": "2026-09-22T22:00:00Z", "value": 14.6 }],
+    "vo2max": [{ "startDate": "2026-09-20T10:00:00Z", "endDate": "2026-09-20T10:00:00Z", "value": 38.44 }],
+    "bp": [
+      { "startDate": "2026-09-23T12:00:00Z", "endDate": "2026-09-23T12:00:00Z", "value": 118, "systolic": 118, "diastolic": 76 },
+      { "startDate": "2026-09-23T02:00:00Z", "endDate": "2026-09-23T02:00:00Z", "value": 122.4, "systolic": 122.4, "diastolic": 79.6 }
+    ],
+    "weight": [
+      { "startDate": "2026-09-23T15:00:00Z", "endDate": "2026-09-23T15:00:00Z", "value": 80.9 },
+      { "startDate": "2026-09-23T01:40:00Z", "endDate": "2026-09-23T01:40:00Z", "value": 80.04 }
+    ],
+    "bodyFat": [{ "startDate": "2026-09-23T01:40:00Z", "endDate": "2026-09-23T01:40:00Z", "value": 24.36 }],
+    "height": [{ "startDate": "2026-09-01T05:00:00Z", "endDate": "2026-09-01T05:00:00Z", "value": 175.3 }],
+    "sleep": [
+      { "startDate": "2026-09-23T08:30:00Z", "endDate": "2026-09-23T09:00:00Z", "value": 30 },
+      {
+        "startDate": "2026-09-22T17:00:00Z",
+        "endDate": "2026-09-23T01:50:00Z",
+        "value": 530,
+        "stages": [
+          { "stage": "light", "durationMinutes": 300 },
+          { "stage": "deep", "durationMinutes": 90 },
+          { "stage": "rem", "durationMinutes": 110 },
+          { "stage": "awake", "durationMinutes": 30 }
+        ]
+      }
+    ],
+    "workouts": [
+      { "workoutType": "walking", "duration": 1092, "totalDistance": 1340, "startDate": "2026-09-23T04:09:00Z", "endDate": "2026-09-23T04:27:12Z", "sourceName": "Samsung Health" },
+      { "workoutType": "bikingStationary", "duration": 956, "totalEnergyBurned": 173.4, "startDate": "2026-09-22T16:48:00Z", "endDate": "2026-09-22T17:03:56Z", "sourceName": "Samsung Health" }
+    ]
+  },
+  "expected": {
+    "2026-09-01": { "height": 175 },
+    "2026-09-20": { "vo2max": 38.4 },
+    "2026-09-22": {
+      "steps": 9206,
+      "km": 7.25,
+      "activeKcal": 373,
+      "floors": 7,
+      "stepsByHour": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1500, 0, 0, 0],
+      "workouts": [{ "type": "bikingStationary", "start": "2026-09-22T16:48:00Z", "end": "2026-09-22T17:03:56Z", "min": 16, "kcal": 173, "source": "Samsung Health" }]
+    },
+    "2026-09-23": {
+      "steps": 3332,
+      "stepsByHour": [0, 0, 0, 121, 0, 0, 0, 0, 0, 2100, 1111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "km": 2.55,
+      "activeKcal": 183,
+      "eatenKcal": 1851,
+      "waterMl": 1750,
+      "totalKcal": 1214,
+      "bmr": 1663,
+      "hrAvg": 78,
+      "hrMin": 52,
+      "hrMax": 151,
+      "restingHr": 62,
+      "hrv": 44,
+      "spo2": 96.2,
+      "respRate": 14.6,
+      "bp": { "sys": 118, "dia": 76 },
+      "weight": 80,
+      "bodyFat": 24.4,
+      "sleepMin": 530,
+      "sleepStages": { "light": 300, "deep": 90, "rem": 110, "awake": 30 },
+      "bed": "2026-09-22T17:00:00Z",
+      "wake": "2026-09-23T01:50:00Z",
+      "workouts": [{ "type": "walking", "start": "2026-09-23T04:09:00Z", "end": "2026-09-23T04:27:12Z", "min": 18, "km": 1.34, "source": "Samsung Health" }]
+    }
+  }
+}

@@ -10,10 +10,11 @@ export const NOW = new Date("2026-09-23T12:00:00");
 export const K = (n) => new Date(Date.UTC(2026, 7, 26 + n)).toISOString().slice(0, 10);
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
-/** A signed-in Supabase session for a made-up user. */
-export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@example.com") {
+/** A signed-in Supabase session for a made-up user, signed in with an emailed link ("otp") or a password. */
+export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@example.com", method = "otp") {
+  const amr = [{ method, timestamp: 1790000000 }];
   return {
-    access_token: `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub: uid, role: "authenticated", aud: "authenticated", exp: 4102444800, email })}.sig`,
+    access_token: `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub: uid, role: "authenticated", aud: "authenticated", exp: 4102444800, email, amr })}.sig`,
     token_type: "bearer",
     expires_in: 3600,
     expires_at: 4102444800,
@@ -25,7 +26,8 @@ export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@exa
 /**
  * The `logs`, `plans` and `health_days` tables, answered from `db` ({ logs, plan, health, healthAt, failWrites, writes,
  * unexpected }), and Supabase Auth: sign-in links (recorded in `db.otp`, refused with `db.otpError`), passwords
- * (`db.passwords`: { email: password }) and password changes (the new one in `db.passwordSet`).
+ * (`db.passwords`: { email: password }), password changes (the new one in `db.passwordSet`) and the account's
+ * metadata (`db.metadata`).
  */
 export function mockSupabase(db) {
   db.writes ??= { logs: 0, plans: 0 };
@@ -68,12 +70,14 @@ export function mockSupabase(db) {
       const { email, password } = JSON.parse(req.postData());
       if (db.passwords?.[email] !== password)
         return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ code: 400, error_code: "invalid_credentials", msg: "Invalid login credentials" }) });
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session(db.uid || "00000000-0000-4000-8000-0000000000aa", "2026-09-01T00:00:00Z", email)) });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session(db.uid || "00000000-0000-4000-8000-0000000000aa", "2026-09-01T00:00:00Z", email, "password")) });
     }
     if (url.pathname === "/auth/v1/user" && m === "PUT") {
-      db.passwordSet = JSON.parse(req.postData()).password;
+      const body = JSON.parse(req.postData());
+      if (body.password) db.passwordSet = body.password;
+      if (body.data) db.metadata = { ...db.metadata, ...body.data };
       const who = JSON.parse(Buffer.from(req.headers()["authorization"].split(".")[1], "base64url").toString());
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: who.sub, aud: "authenticated", role: "authenticated", email: who.email, app_metadata: {}, user_metadata: {}, created_at: "2026-09-01T00:00:00Z" }) });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: who.sub, aud: "authenticated", role: "authenticated", email: who.email, app_metadata: {}, user_metadata: db.metadata ?? {}, created_at: "2026-09-01T00:00:00Z" }) });
     }
     if (url.pathname === "/auth/v1/logout" && m === "POST") return route.fulfill({ status: 204, body: "" });
     db.unexpected.push(`${m} ${url.pathname}`);
@@ -115,12 +119,27 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
   return { ctx, page, db };
 }
 
+/** In the page: waits for timed animations to end. (The top bar's edge follows the scroll, and never ends.) */
+export const settled = () => Promise.all(document.getAnimations().filter((a) => a.timeline === document.timeline).map((a) => a.finished.catch(() => {})));
+
 /** Waits for the app to show Today and finish its first sync. */
 export async function ready(page) {
   await page.waitForSelector("#appView:not([hidden])", { timeout: 15000 });
   await until(async () => (await page.locator("#status").textContent()) === "Synced");
   // Let the view's fade-in finish: mid-transform, a 44px button can measure 43.99997px.
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
+  await page.evaluate(settled);
+}
+
+const VIEWS = { today: "#appView", health: "#healthView", progress: "#dashView", settings: "#settingsView" };
+/** Taps a tab along the bottom (today, health, progress or settings) and waits for its screen. */
+export async function openTab(page, name) {
+  await page.click(`#tab${name[0].toUpperCase()}${name.slice(1)}`);
+  await page.waitForSelector(`${VIEWS[name]}:not([hidden])`);
+}
+/** Leaves the plan editor with Done, back to the screen it opened from. */
+export async function planDone(page) {
+  await page.click("#planDone");
+  await page.waitForSelector("#planView", { state: "hidden" });
 }
 
 export async function until(fn, ms = 6000) {

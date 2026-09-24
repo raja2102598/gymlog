@@ -1,5 +1,5 @@
 // Today: sets, skip and swap, the plan editor, switching a day's workout, and history for a new account.
-import { flat, liftEl, open, ready, session, shot, until } from "./harness.mjs";
+import { flat, liftEl, open, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
 
 // Today's real first entry (older format: one weight per lift, no sets).
 const firstDay = () => ({
@@ -127,7 +127,7 @@ export default async function today({ browser, base, check }) {
 
   // --- plan editor
   await page.locator("#week .dchip").first().click(); // Monday
-  await page.locator("#menuBtn").click();
+  await openTab(page, "settings");
   await page.locator("#planBtn").click();
   check("plan editor opens on the selected weekday", (await page.locator("#planView").isVisible()) && (await page.locator("#pe_name").inputValue()) === "Push");
   await page.locator("#pe_name").fill("Push A");
@@ -158,7 +158,9 @@ export default async function today({ browser, base, check }) {
       JSON.stringify(db.plan.warmups) === JSON.stringify(["Treadmill walk 5 min", "Wrist circles", "Arm circles"]),
     JSON.stringify(pd?.exercises.map((x) => x.name)),
   );
-  await page.locator("#planDone").click();
+  await planDone(page);
+  check("Done goes back to Settings, where the plan opened", await page.locator("#settingsView").isVisible());
+  await openTab(page, "today");
 
   check("day view uses the edited plan", (await page.locator("#session h2").textContent()) === "Push A" && (await lift("Cable Fly").count()) === 1);
   const extra = lift("Incline Machine Press");
@@ -176,12 +178,13 @@ export default async function today({ browser, base, check }) {
   check("plan loads from the plans table after reload", (await page.locator("#week .dchip").first().getAttribute("aria-label")).includes(", Push A"));
 
   // --- reset to the default plan
-  await page.locator("#menuBtn").click();
+  await openTab(page, "settings");
   await page.locator("#planBtn").click();
   await page.locator("#pe_reset").click();
   await until(() => db.plan?.days?.[0]?.name === "Push");
   check("reset to default plan saved", db.plan.days[0].name === "Push" && db.plan.stepGoal === 10000 && db.plan.days[0].exercises.length === 6);
-  await page.locator("#planDone").click();
+  await planDone(page);
+  await openTab(page, "today");
   check("reload returns to today", (await page.locator("#session h2").textContent()) === "Legs");
   await page.locator("#week .dchip").first().click();
   check(

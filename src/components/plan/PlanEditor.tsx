@@ -65,12 +65,10 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   return (
     <>
       <section className="panel">
+        {/* The bar above names the page; this says whether it's saved. */}
         <div className="top pe-head">
-          <div>
-            <h2 className="display">Edit plan</h2>
-            <div className="sub" id="planMsg" aria-live="polite">
-              {store.planMsg}
-            </div>
+          <div className="sub" id="planMsg" aria-live="polite">
+            {store.planMsg}
           </div>
           <button className="primary" id="planDone" onClick={onDone}>
             Done
