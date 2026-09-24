@@ -4,6 +4,10 @@ apply plugin: 'org.jetbrains.kotlin.android'
 android {
     namespace = "io.github.raja2102598.gymlog"
     compileSdk = rootProject.ext.compileSdkVersion
+    // AGP 8 no longer generates BuildConfig by default; AppUpdatePlugin reads GYMLOG_UPDATE_REPO from it.
+    buildFeatures {
+        buildConfig = true
+    }
     defaultConfig {
         applicationId "io.github.raja2102598.gymlog"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -12,6 +16,9 @@ android {
         versionCode = (System.getenv("GYMLOG_VERSION_CODE") ?: "1").toInteger()
         // A tagged build (v1.2.0) is named after its tag; see .github/workflows/android.yml.
         versionName = System.getenv("GYMLOG_VERSION_NAME") ?: ("1.0." + (System.getenv("GYMLOG_VERSION_CODE") ?: "0"))
+        // The GitHub repo this build's releases live in, for AppUpdatePlugin to check and download from. Empty in a
+        // local build (npm run android), so it never checks; a fork's CI build carries the fork's own repository.
+        buildConfigField "String", "GYMLOG_UPDATE_REPO", "\"${System.getenv('GYMLOG_UPDATE_REPO') ?: ''}\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

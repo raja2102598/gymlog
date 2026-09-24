@@ -134,6 +134,7 @@ export default async function offline({ browser, base, copy, check }) {
     });
     await page.reload();
     await ready(page);
+    check("no update notice before anything's changed", await page.locator("#swUpdateBar").isHidden());
     const v1 = await page.evaluate(() => caches.keys());
     // "Deploy" a new build: changed app code, and so a new VERSION in sw.js.
     const html = fs.readFileSync(path.join(copy.dir, "index.html"), "utf8");
@@ -146,6 +147,13 @@ export default async function offline({ browser, base, copy, check }) {
     check("the launch right after a deploy still runs the cached version (no half-updated mix)", await page.evaluate(() => window.__build === undefined));
     await until(async () => (await page.evaluate(() => caches.keys())).includes("gymlog-test-next"), 10000);
     await until(async () => (await page.evaluate(() => caches.keys())).length === 1, 10000);
+    // The new service worker has just claimed this still-open tab (a controllerchange on a page that already had
+    // one): a notice offers a reload, since this tab is still running the old code until then.
+    await page.waitForSelector("#swUpdateBar:not([hidden])", { timeout: 5000 });
+    check("a notice offers a reload once the new version takes over the open tab", (await flat(page.locator("#swUpdateMsg"))) === "Gym Log was updated.");
+    await page.click("#swUpdateReload");
+    await ready(page);
+    check("Reload runs the new version", await page.evaluate(() => window.__build === 2));
     await page.reload();
     await ready(page);
     check("the next launch runs the new version", await page.evaluate(() => window.__build === 2), JSON.stringify({ before: v1, after: await page.evaluate(() => caches.keys()) }));

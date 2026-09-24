@@ -23,6 +23,8 @@
 .pref-goals .field>span{font-size:var(--t-xs)}
 .pref-col>.note{margin:0}
 .pref-btns{display:flex;flex-wrap:wrap;gap:8px}
+/* a download's progress (Settings → About): the same meter as Health's rings, filling the row instead of a tile */
+.pref-row .meter{flex:1 1 auto}
 .pref-msg{margin:0;padding:12px 16px}
 .pref-card>.pref-msg:empty{padding:0}
 .pref-card>.pref-msg:empty::before{display:none}

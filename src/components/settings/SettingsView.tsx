@@ -1,6 +1,6 @@
 "use client";
 import { ArrowSquareOut, CaretRight, DownloadSimple, SignOut, UploadSimple } from "@phosphor-icons/react";
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Segmented } from "@/components/health/parts";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
@@ -14,7 +14,9 @@ import { switchVoice } from "@/lib/speech";
 import type { Replacing } from "@/lib/store";
 import { savedTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Plan } from "@/lib/types";
+import { availableMessage, downloadingMessage, downloadPercent } from "@/lib/update";
 import type { SyncStatus } from "@/native/sync";
+import type { LatestUpdate } from "@/native/update";
 
 // Loaded only in the Android app, so the website doesn't carry the Health Connect plugin.
 const native = () => import("@/native/app");
@@ -486,6 +488,177 @@ function About() {
       <div className="pref-row">
         <Text title={<span translate="no">Gym Log</span>} sub={isNative() ? `Android app${build ? `, version ${build}` : ""}` : "Website. The Android app adds Health Connect."} />
       </div>
+      {isNative() ? <UpdateAndroid /> : <UpdateWeb />}
     </Group>
+  );
+}
+
+/** Couldn't reach GitHub to check, or the version.json it answered with doesn't parse: same words either way, since
+ *  there's nothing more useful to say. */
+const CANT_CHECK = "Couldn’t check for updates. Try again when you’re online.";
+
+type AndroidUpdate =
+  | { kind: "checking" }
+  | { kind: "hidden" } // no repo to check: a local build (AppUpdatePlugin.check's `enabled`)
+  | { kind: "upToDate" }
+  | { kind: "available"; latest: LatestUpdate }
+  | { kind: "downloading"; latest: LatestUpdate; received: number; total: number }
+  | { kind: "readyToInstall"; latest: LatestUpdate }
+  | { kind: "needsPermission"; latest: LatestUpdate }
+  | { kind: "error"; message: string };
+
+/** Settings → About → Check for updates, in the Android app: downloads and installs a newer build from this
+ *  build's GitHub releases (see AppUpdatePlugin.kt and docs/android.md). The website's is UpdateWeb, below. */
+function UpdateAndroid() {
+  const [s, setS] = useState<AndroidUpdate>({ kind: "checking" });
+
+  // The state starts at "checking" already, so the mount effect can kick this off without setting it again itself.
+  const runCheck = useCallback(() => {
+    void native()
+      .then((m) => m.checkUpdate())
+      .then((r) => setS(!r.enabled ? { kind: "hidden" } : r.available && r.latest ? { kind: "available", latest: r.latest } : { kind: "upToDate" }))
+      .catch(() => setS({ kind: "error", message: CANT_CHECK }));
+  }, []);
+  // Checked once as the screen opens, like Health Connect's own status above.
+  useEffect(runCheck, [runCheck]);
+  // "Check again" / "Retry": back to checking, then the same call.
+  const check = () => {
+    setS({ kind: "checking" });
+    runCheck();
+  };
+
+  const install = useCallback((latest: LatestUpdate) => {
+    void native()
+      .then((m) => m.installUpdate())
+      // { started: true }: Android's installer has taken over. Back to readyToInstall either way, not needsPermission
+      // again once it's started, so coming back from the installer (cancelled, say) doesn't retry it on a loop.
+      .then((r) => setS("needsPermission" in r ? { kind: "needsPermission", latest } : { kind: "readyToInstall", latest }))
+      .catch((e: unknown) => setS({ kind: "error", message: `Couldn’t start the installer: ${(e instanceof Error ? e.message : String(e)).replace(/\.$/, "")}.` }));
+  }, []);
+
+  // "Download and install": once the download checks out, straight on to Android's installer (or to the one-time
+  // permission it asks for first), as the button says, without a second tap.
+  const download = (latest: LatestUpdate) => {
+    setS({ kind: "downloading", latest, received: 0, total: latest.size });
+    void native()
+      .then((m) => m.downloadUpdate((p) => setS((cur) => (cur.kind === "downloading" ? { ...cur, received: p.received, total: p.total || cur.total } : cur))))
+      .then(
+        () => install(latest),
+        (e: unknown) => setS({ kind: "error", message: `Couldn’t download the update: ${(e instanceof Error ? e.message : String(e)).replace(/\.$/, "")}.` }),
+      );
+  };
+
+  // Back from Android's "allow installs from Gym Log" screen: try installing again, now that it may be allowed.
+  useEffect(() => {
+    if (s.kind !== "needsPermission") return;
+    const latest = s.latest;
+    let live = true;
+    let unsub: (() => void) | undefined;
+    void native().then((m) => {
+      if (live) unsub = m.onAppResume(() => install(latest));
+    });
+    return () => {
+      live = false;
+      unsub?.();
+    };
+  }, [s, install]);
+
+  if (s.kind === "hidden") return null;
+  const pct = s.kind === "downloading" ? downloadPercent(s.received, s.total) : 0;
+  return (
+    <>
+      <div className="pref-row">
+        <Text
+          id="updChk"
+          title="Check for updates"
+          sub={
+            s.kind === "checking"
+              ? "Checking…"
+              : s.kind === "upToDate"
+                ? "You have the newest version."
+                : s.kind === "available"
+                  ? availableMessage(s.latest.name, s.latest.size)
+                  : s.kind === "downloading"
+                    ? downloadingMessage(s.received, s.total)
+                    : s.kind === "readyToInstall"
+                      ? `Version ${s.latest.name} is ready to install.`
+                      : s.kind === "needsPermission"
+                        ? "Android asks once whether Gym Log can install updates."
+                        : s.message
+          }
+        />
+        {s.kind === "upToDate" || s.kind === "error" ? (
+          <button className="ghost" id="updCheckBtn" onClick={check}>
+            {s.kind === "error" ? "Retry" : "Check again"}
+          </button>
+        ) : null}
+        {s.kind === "available" ? (
+          <button className="ghost" id="updDownload" onClick={() => download(s.latest)}>
+            Download and install
+          </button>
+        ) : null}
+        {s.kind === "readyToInstall" ? (
+          <button className="ghost" id="updInstall" onClick={() => install(s.latest)}>
+            Install
+          </button>
+        ) : null}
+        {s.kind === "needsPermission" ? (
+          <button className="ghost" id="updOpenSettings" onClick={() => void native().then((m) => m.openInstallSettings())}>
+            Open settings
+          </button>
+        ) : null}
+      </div>
+      {s.kind === "downloading" ? (
+        <div className="pref-row">
+          <span className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Downloading the update" style={{ ["--c" as string]: "var(--ink)" }}>
+            <i style={{ width: `${pct}%` }} />
+          </span>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+type WebUpdate = "idle" | "checking" | "upToDate" | "found" | "error";
+
+/** Settings → About → Check for updates, on the website: the service worker already updates itself in the
+ *  background (GymLog's controllerchange notice says when a fetched one has taken over); this just asks it to
+ *  look now instead of waiting for the browser's own schedule. */
+function UpdateWeb() {
+  const [s, setS] = useState<WebUpdate>("idle");
+  if (typeof navigator === "undefined" || process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return null;
+  const check = async () => {
+    setS("checking");
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      await reg?.update();
+      setS(reg?.installing || reg?.waiting ? "found" : "upToDate");
+    } catch {
+      setS("error");
+    }
+  };
+  return (
+    <div className="pref-row">
+      <Text
+        id="updChkWeb"
+        title="Check for updates"
+        sub={
+          s === "checking"
+            ? "Checking…"
+            : s === "upToDate"
+              ? "You have the newest version."
+              : s === "found"
+                ? "A new version is downloading in the background."
+                : s === "error"
+                  ? "Couldn’t check for updates. Try again when you’re online."
+                  : ""
+        }
+      />
+      {s !== "checking" ? (
+        <button className="ghost" id="updCheckWebBtn" onClick={() => void check()}>
+          {s === "idle" ? "Check for updates" : "Check again"}
+        </button>
+      ) : null}
+    </div>
   );
 }

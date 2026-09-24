@@ -20,8 +20,10 @@ import { BootView } from "./shell/BootView";
 import { ChoosePlanView } from "./shell/ChoosePlanView";
 import { LoginView } from "./shell/LoginView";
 import { SetupView } from "./shell/SetupView";
+import { SwUpdateNotice } from "./shell/SwUpdateNotice";
 import { SyncBar } from "./shell/SyncBar";
 import { TabBar } from "./shell/TabBar";
+import { UpdateNotice } from "./shell/UpdateNotice";
 import { TodayView } from "./today/TodayView";
 import type { KneeEdit, LiftMenu } from "./today/types";
 
@@ -60,6 +62,8 @@ export default function GymLog() {
   // A backup restored on the first-run screen: under way, and then what it brought in, for Settings → Your data.
   const [restoring, setRestoring] = useState(false);
   const [restored, setRestored] = useState("");
+  // A new service worker took over this open tab (website only; the Android app has none): only a reload runs it.
+  const [swUpdated, setSwUpdated] = useState(false);
   const shown = useRef(route);
   const backing = useRef(false); // a Back this app started that hasn't landed yet
   useLayoutEffect(() => {
@@ -110,9 +114,18 @@ export default function GymLog() {
   // its files on the phone already.
   useEffect(() => {
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator) || isNative()) return;
+    // A new sw.js installs and takes over in the background (it calls skipWaiting and clients.claim); if this tab
+    // already had a controller when it loaded, that's a swap under it, not the first install, so only a reload
+    // runs the new code.
+    const hadController = !!navigator.serviceWorker.controller;
+    const onControllerChange = () => {
+      if (hadController) setSwUpdated(true);
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
     const register = () => void navigator.serviceWorker.register("/sw.js").catch(() => {});
     if (document.readyState === "complete") register();
     else window.addEventListener("load", register, { once: true });
+    return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
   }, []);
 
   // A shortcut opens Today at the weight or steps field, then drops ?go= from the address.
@@ -276,6 +289,8 @@ export default function GymLog() {
 
       <main id="main" tabIndex={-1}>
         <SyncBar />
+        <SwUpdateNotice show={swUpdated} onReload={() => location.reload()} />
+        {isNative() && inApp ? <UpdateNotice onOpenSettings={() => navigate({ view: "settings" })} /> : null}
         <BootView hidden={screen !== "boot"} />
         <SetupView hidden={screen !== "setup"} />
         <LoginView hidden={screen !== "login"} />

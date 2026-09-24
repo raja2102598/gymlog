@@ -113,6 +113,8 @@ td.c,th.c{text-align:center}
 .syncbar p{margin:0;flex-basis:100%}
 .syncbar .conflict{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px}
 .syncbar .conflict .ghost{margin-left:0;flex:1 1 auto}
+/* a quieter notice, not a warning: a build ready to install, or the site having just updated under you */
+.syncbar.info{background:var(--sunken);box-shadow:inset 4px 0 0 var(--edge),var(--shadow-up)}
 .sk-week i{display:block;height:56px;border-radius:var(--r-ctl);background:var(--surface);box-shadow:var(--shadow)}
 .sk-title{display:grid;gap:10px;padding-top:4px}
 .sk-title i{display:block;height:30px;width:38%;border-radius:var(--r-mark);background:var(--chip)}
