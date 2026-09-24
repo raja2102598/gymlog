@@ -1,5 +1,6 @@
 "use client";
 import { Fragment } from "react";
+import { ViewLink } from "@/components/ui/ViewLink";
 import { useChartWidth } from "@/hooks/useChartWidth";
 import type { WeightModel } from "@/lib/dashboard";
 import { ago, dm } from "@/lib/dates";
@@ -48,7 +49,7 @@ export function WeightCard({ m, onSetGoal }: { m: WeightModel; onSetGoal: () => 
               width={width}
             />
           ) : (
-            <p className="empty">One weigh-in so far. The trend line starts after a few more.</p>
+            <p className="empty">1 weigh-in so far. The trend line starts after a few more.</p>
           )}
           {m.waist ? (
             <p className="sub">
@@ -74,9 +75,9 @@ function GoalKpi({ goal, onSetGoal }: { goal: NonNullable<WeightModel["goal"]>; 
         <>
           <div className="v">-</div>
           <div className="l">no goal weight yet</div>
-          <button className="ghost tiny" data-goto="pe_goalw" onClick={onSetGoal}>
+          <ViewLink className="ghost tiny" data-goto="pe_goalw" href="#plan" onOpen={onSetGoal}>
             Set a goal
-          </button>
+          </ViewLink>
         </>
       );
     case "reached":

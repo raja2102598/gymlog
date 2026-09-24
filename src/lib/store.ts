@@ -186,7 +186,9 @@ export class GymStore {
 
   async sendLink(email: string): Promise<string> {
     const { error } = await this.sb!.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
-    return error ? "Couldn't send the link: " + error.message : `Check ${email} for a sign-in link. Open it on this device.`;
+    return error
+      ? `Couldn’t send the link: ${error.message.replace(/\.$/, "")}. Check the address and your connection, then try again.`
+      : `Check ${email} for a sign-in link. Open it on this device.`;
   }
 
   async signOut() {
@@ -425,7 +427,7 @@ export class GymStore {
     if (!this.user || !navigator.onLine || !this.sb) return;
     const { data, error } = await this.sb.from("logs").select("day,data").order("day", { ascending: true }).limit(5000);
     if (error) {
-      this.setStatus("Couldn't load. Showing saved copy");
+      this.setStatus("Couldn’t load. Showing saved copy");
       console.warn(error);
       return;
     }
@@ -515,25 +517,29 @@ export class GymStore {
   exportRows() {
     return this.days().map((day) => ({ day, data: this.logs[day] }));
   }
-  async importFile(file: File): Promise<string> {
+  /** Reads an export back in. `replace` is asked first when the file would change days already logged. */
+  async importFile(file: File, replace: (days: number) => boolean): Promise<string> {
+    let rows: { day: DayKey; data: DayLog }[];
     try {
-      const rows = JSON.parse(await file.text()) as unknown;
-      if (!Array.isArray(rows)) throw new Error("Expected a list of days");
-      let n = 0;
-      for (const r of rows as { day?: unknown; data?: unknown }[]) {
-        if (!r || typeof r.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(r.day) || typeof r.data !== "object" || !r.data) continue;
-        this.logs[r.day] = r.data as DayLog;
-        this.pending[r.day] = r.data as DayLog;
-        n++;
-      }
-      this.logsChanged();
-      this.persistLocal();
-      this.changed();
-      await this.flush();
-      return `Imported ${n} day${n === 1 ? "" : "s"}.`;
+      const all = JSON.parse(await file.text()) as unknown;
+      if (!Array.isArray(all)) throw new Error("expected a list of days");
+      rows = (all as { day?: unknown; data?: unknown }[]).filter(
+        (r): r is { day: DayKey; data: DayLog } => !!r && typeof r.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.day) && typeof r.data === "object" && !!r.data,
+      );
     } catch (err) {
-      return "That file couldn't be imported: " + (err as Error).message;
+      return `That file couldn’t be imported: ${(err as Error).message.replace(/\.$/, "")}. Choose a .json file exported from Gym Log.`;
     }
+    const changes = rows.filter((r) => this.logs[r.day] && JSON.stringify(this.logs[r.day]) !== JSON.stringify(r.data)).length;
+    if (changes && !replace(changes)) return "Import cancelled. Nothing changed.";
+    for (const r of rows) {
+      this.logs[r.day] = r.data;
+      this.pending[r.day] = r.data;
+    }
+    this.logsChanged();
+    this.persistLocal();
+    this.changed();
+    await this.flush();
+    return `Imported ${rows.length} day${rows.length === 1 ? "" : "s"}.`;
   }
 }
 

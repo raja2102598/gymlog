@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef, type InputHTMLAttributes, type TextareaHTMLAtt
 // (the week strip, totals and history follow what's typed), and a controlled input would rewrite a
 // half-typed "5." or a blank line on each render. These take the saved value only while not focused:
 // on first render, and when the day changes underneath them (another day's data, a sync, a set filled in).
+// They also turn off the browser's list of past entries, which would cover the next set's boxes.
 type Value = string | number | null | undefined;
 const text = (v: Value) => (v == null ? "" : String(v));
 
@@ -15,7 +16,7 @@ export function SyncedInput({ value, ...rest }: Omit<InputHTMLAttributes<HTMLInp
     const el = ref.current;
     if (el && document.activeElement !== el && el.value !== v) el.value = v;
   });
-  return <input ref={ref} defaultValue={v} {...rest} />;
+  return <input ref={ref} defaultValue={v} autoComplete="off" {...rest} />;
 }
 
 // Where the browser can't size a text box to its content (field-sizing, Chrome 123+), the note grows here.
@@ -35,5 +36,5 @@ export function SyncedTextarea({ value, autoGrow = false, ...rest }: Omit<Textar
     if (document.activeElement !== el && el.value !== v) el.value = v;
     if (autoGrow) grow(el);
   });
-  return <textarea ref={ref} defaultValue={v} {...rest} />;
+  return <textarea ref={ref} defaultValue={v} autoComplete="off" {...rest} />;
 }

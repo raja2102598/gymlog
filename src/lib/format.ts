@@ -12,19 +12,23 @@ export const avg = (a: number[]) => (a.length ? sum(a) / a.length : null);
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+// A non-breaking space: a number stays on the same line as its "×" and unit.
+const NB = "\u00a0";
+
 /**
  * A lift's sets the way you'd say them: "10, 10, 8 × 45 kg"; "10 × 40, 8 × 45 kg" when the weight
- * changed; "50 kg" for older entries that hold only a weight; "12, 10 reps" with no weight.
+ * changed; "50 kg" for older entries that hold only a weight; "12, 10 reps" with no weight. Lines can
+ * break only after the commas.
  */
 export function setsSummary(sets: { reps: number | null; kg: number | null }[]): string {
   const done = sets.filter((s) => s.reps != null || s.kg != null);
   if (!done.length) return "";
   const reps = (s: { reps: number | null }) => (s.reps == null ? "-" : String(s.reps));
-  if (done.every((s) => s.reps == null)) return `${Math.max(...done.map((s) => s.kg as number))} kg`;
+  if (done.every((s) => s.reps == null)) return `${Math.max(...done.map((s) => s.kg as number))}${NB}kg`;
   const kgs = new Set(done.map((s) => s.kg));
   if (kgs.size === 1) {
     const [kg] = kgs;
-    return kg == null ? `${done.map(reps).join(", ")} reps` : `${done.map(reps).join(", ")} × ${kg} kg`;
+    return kg == null ? `${done.map(reps).join(", ")}${NB}reps` : `${done.map(reps).join(", ")}${NB}×${NB}${kg}${NB}kg`;
   }
-  return `${done.map((s) => `${reps(s)} × ${s.kg ?? "-"}`).join(", ")} kg`;
+  return `${done.map((s) => `${reps(s)}${NB}×${NB}${s.kg ?? "-"}`).join(", ")}${NB}kg`;
 }

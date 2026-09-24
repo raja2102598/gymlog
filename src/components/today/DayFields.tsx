@@ -32,7 +32,7 @@ export function DayFields({ entry: e, stepGoal, onSteps, onWeight, onNumber, onN
       </label>
       <label className="field wide" htmlFor="note">
         <span>Notes / extra exercise</span>
-        <SyncedTextarea id="note" placeholder="e.g. 65 jumping jacks, knee felt fine" value={e.note} autoGrow onChange={(ev) => onNote(ev.target.value)} />
+        <SyncedTextarea id="note" placeholder="e.g. 65 jumping jacks, knee felt fine…" value={e.note} autoGrow onChange={(ev) => onNote(ev.target.value)} />
       </label>
     </div>
   );

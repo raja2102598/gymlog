@@ -147,7 +147,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
         </div>
       ) : null}
       {wake ? knee("kneeWake", "Knee on waking", `after ${store.planFor(yest).name} yesterday`, wakeMsg) : null}
-      {p.exercises.length || e.warmup.length ? <WarmUp all={wus} done={e.warmup} open={warmOpen} onToggle={onToggleWarm} onTick={tickWarmUp} /> : null}
+      {wus.length && (p.exercises.length || e.warmup.length) ? <WarmUp all={wus} done={e.warmup} open={warmOpen} onToggle={onToggleWarm} onTick={tickWarmUp} /> : null}
       {kneeHere ? knee("kneeBefore", "Knee pain before you start") : null}
       {items.length ? (
         <ul className="ex">

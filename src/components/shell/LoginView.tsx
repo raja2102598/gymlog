@@ -19,14 +19,14 @@ export function LoginView({ hidden }: { hidden: boolean }) {
   return (
     <section className="panel" id="loginView" hidden={hidden}>
       <h2 className="display">Sign in</h2>
-      <p className="sub">Enter your email and we&apos;ll send you a sign-in link. No password needed.</p>
+      <p className="sub">Enter your email to get a sign-in link. No password needed.</p>
       <form id="loginForm" className="login" onSubmit={send}>
         <label className="field" htmlFor="email">
           <span>Email</span>
-          <input id="email" type="email" autoComplete="email" required placeholder="you@example.com" />
+          <input id="email" name="email" type="email" autoComplete="email" spellCheck={false} required placeholder="you@example.com" />
         </label>
         <button className="primary" type="submit" id="loginBtn" disabled={busy}>
-          Email me a sign-in link
+          Send sign-in link
         </button>
       </form>
       <p className="note" id="loginMsg" aria-live="polite">

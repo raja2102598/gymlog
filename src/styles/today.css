@@ -5,10 +5,12 @@
 .nav{display:flex;gap:6px;align-items:center}
 
 /* the session: title and progress on the page, then one card per block */
+/* one column that can't grow past the screen: a select is as wide as its longest option */
+.session,.sess-head,.ex{grid-template-columns:minmax(0,1fr)}
 .session{display:grid;gap:12px}
 .sess-head{display:grid;gap:6px;padding:0 2px 4px}
 .sess-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.sess-title h2.display{font-size:var(--t-2xl)}
+.sess-title h2.display{min-width:0;font-size:var(--t-2xl)}
 .sess-head .sub{margin:0}
 .segs{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;margin:4px 0 2px}
 .segs i{height:6px;border-radius:99px;background:var(--chip)}
@@ -29,7 +31,7 @@
 .lift{background:var(--surface);border-radius:var(--r-card);padding:12px 12px 14px 14px;box-shadow:var(--shadow);display:grid;gap:10px}
 .lift-head{display:flex;align-items:center;gap:8px}
 .lift-name{flex:1 1 auto;min-width:0;min-height:44px;display:flex;align-items:center;gap:12px;cursor:pointer}
-.lift .nm{font-weight:600;font-size:var(--t-md);line-height:1.3}
+.lift .nm{min-width:0;font-weight:600;font-size:var(--t-md);line-height:1.3}
 .lift .was{font-weight:400;font-size:var(--t-sm);color:var(--muted)}
 .lift.checked .nm{text-decoration:line-through;text-decoration-color:var(--good);text-decoration-thickness:2px}
 .lift.skipped .nm{text-decoration:line-through;color:var(--muted)}
@@ -75,8 +77,11 @@
 .skipnote{font-size:14px;color:var(--muted);padding-left:40px}
 
 /* warm-up: a card that folds to one row */
-.wu{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow);overflow:hidden}
-.wu-toggle{display:flex;align-items:center;gap:8px;width:100%;min-height:52px;padding:10px 16px;border:0;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.wu{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow)}
+.wu-toggle{display:flex;align-items:center;gap:8px;width:100%;min-height:52px;padding:10px 16px;border:0;border-radius:var(--r-card);background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.wu-toggle[aria-expanded="true"]{border-radius:var(--r-card) var(--r-card) 0 0}
+/* the row fills the card, so its focus ring goes inside the card's edge */
+.wu-toggle:focus-visible{outline-offset:-2px}
 .wu-toggle .sub{margin:0;font-size:14px}
 .wu-act{margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:14px;color:var(--muted)}
 .wu-act svg{transition:transform var(--fast) var(--ease)}
@@ -125,9 +130,16 @@
 .hist .hs{font-size:var(--t-xs);color:var(--muted);line-height:1.3}
 #chart .sub{margin:0 0 12px}
 
+@media (hover:hover){
+  .wu-toggle:hover{background-color:var(--sunken)}
+  .kn:not(.on):hover,.chip input:not(:checked)+span:hover{background-color:var(--chip)}
+  .tick:not(:checked):not(:disabled):hover{border-color:var(--ink)}
+}
+.kn:not(.on):active,.chip input:not(:checked)+span:active{background-color:var(--chip)}
+
 @media (max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
 @media (min-width:561px){.lift{padding:16px 16px 18px}.inputs{padding:20px}}
 @media (prefers-reduced-motion:no-preference){
-  .wu .chips:not([hidden]),.acts,.lift .nt{animation:rise var(--med) var(--ease)}
+  .wu .chips:not([hidden]),.acts,.lift .cue{animation:rise var(--med) var(--ease)}
   .set .sn{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
 }

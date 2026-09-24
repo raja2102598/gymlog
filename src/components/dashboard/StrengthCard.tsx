@@ -9,7 +9,7 @@ export function StrengthCard({ m }: { m: StrengthModel }) {
   return (
     <section className="panel" id="dashStrength">
       <h2>Strength</h2>
-      <p className="note">Estimated 1RM of each day&apos;s first lift, from sets of 12 reps or fewer. Holding steady is a win during a cut.</p>
+      <p className="note">Estimated 1RM of each day’s first lift, from sets of 12 reps or fewer. Holding steady is a win during a cut.</p>
       {m.anyLogged ? (
         <ul className="lifts">
           {m.rows.map((r) => (
@@ -30,12 +30,12 @@ export function StrengthCard({ m }: { m: StrengthModel }) {
         <ul className="plain">
           {m.ready.map((x) => (
             <li key={x.name}>
-              <b>{x.name}</b> <span className="sub">{x.day}</span>: {x.from} → <b>{x.to} kg</b>
+              <b>{x.name}</b> <span className="sub">{x.day}</span>: {x.from} → <b>{x.to}&nbsp;kg</b>
             </li>
           ))}
           {m.held.map((x) => (
             <li key={x.name}>
-              <b>{x.name}</b> <span className="sub">{x.day}</span>: hold {x.from} kg (knee)
+              <b>{x.name}</b> <span className="sub">{x.day}</span>: hold {x.from}&nbsp;kg (knee)
             </li>
           ))}
         </ul>
@@ -47,8 +47,8 @@ export function StrengthCard({ m }: { m: StrengthModel }) {
         <ul className="plain">
           {m.records.map((r) => (
             <li key={`${r.day}|${r.name}|${r.set}`}>
-              <span className="num">{dayMonth(r.day)}</span> <b>{r.name}</b> {r.reps != null ? `${r.reps} × ` : ""}
-              {r.kg} kg <span className="sub">{r.kinds.map((k) => PR_WORDS[k]).join(", ")}</span>
+              <span className="num">{dayMonth(r.day)}</span> <b>{r.name}</b> {r.reps != null ? `${r.reps}\u00a0×\u00a0` : ""}
+              {r.kg}&nbsp;kg <span className="sub">{r.kinds.map((k) => PR_WORDS[k]).join(", ")}</span>
             </li>
           ))}
         </ul>

@@ -88,6 +88,8 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
 export async function ready(page) {
   await page.waitForSelector("#appView:not([hidden])", { timeout: 15000 });
   await until(async () => (await page.locator("#status").textContent()) === "Synced");
+  // Let the view's fade-in finish: mid-transform, a 44px button can measure 43.99997px.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
 }
 
 export async function until(fn, ms = 6000) {

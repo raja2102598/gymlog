@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { addDays, todayKey, wdIndex } from "@/lib/dates";
@@ -13,8 +13,15 @@ import { SetupView } from "./shell/SetupView";
 import { SyncBar } from "./shell/SyncBar";
 import { TodayView } from "./today/TodayView";
 import type { KneeEdit, LiftMenu } from "./today/types";
+import { ViewLink } from "./ui/ViewLink";
 
 type View = "day" | "dash" | "plan";
+
+// The dashboard and the plan editor have their own address (#dashboard, #plan), so the phone's Back
+// button returns to Today, and either can be opened from a link or in a new tab.
+const HASH: Record<View, string> = { day: "", dash: "#dashboard", plan: "#plan" };
+const viewIn = (hash: string): View => (hash === HASH.dash ? "dash" : hash === HASH.plan ? "plan" : "day");
+const address = (v: View) => location.pathname + location.search + HASH[v];
 
 /** A text box has focus, so the page shouldn't move under the person typing. */
 const editing = () => {
@@ -30,24 +37,31 @@ const shortcut = () => (typeof location === "undefined" ? null : new URL(locatio
 export default function GymLog() {
   const store = useGym();
   const focusNext = useFocusNext();
-  const [view, setView] = useState<View>("day");
+  const [view, setView] = useState<View>(() => (typeof location === "undefined" ? "day" : viewIn(location.hash)));
   const [sel, setSel] = useState<DayKey>(todayKey);
   const [menu, setMenu] = useState<LiftMenu | null>(null);
   const [warmOpen, setWarmOpen] = useState<DayKey | null>(null);
   const [kneeEdit, setKneeEdit] = useState<KneeEdit>({ day: null, fields: [] });
-  const [editDay, setEditDay] = useState(0);
+  const [editDay, setEditDay] = useState(() => wdIndex(todayKey()));
   const [menuOpen, setMenuOpen] = useState(false);
   const [, setToday] = useState(todayKey);
   const [go] = useState(shortcut);
+  const shown = useRef(view);
+  const backing = useRef(false); // a Back this app started that hasn't landed yet
+  useLayoutEffect(() => {
+    shown.current = view;
+  }, [view]);
 
-  // Each sign-in starts on Today.
+  // Each sign-in starts on Today. (The first one keeps a view opened by its address, e.g. #dashboard.)
   const uid = store.user?.id ?? null;
   const [uiFor, setUiFor] = useState<string | null>(null);
   if (uid !== uiFor) {
     setUiFor(uid);
-    setView("day");
-    setMenu(null);
-    setMenuOpen(false);
+    if (uiFor !== null) {
+      setView("day");
+      setMenu(null);
+      setMenuOpen(false);
+    }
   }
 
   useEffect(() => store.start(), [store]);
@@ -83,38 +97,86 @@ export default function GymLog() {
     return () => clearInterval(id);
   }, [view, sel]);
 
-  const show = (v: View) => {
-    setView(v);
-    setMenuOpen(false);
+  // Leaving the plan editor tidies the plan and saves it straight away.
+  const leave = useCallback(
+    (from: View, to: View) => {
+      if (from === "plan" && to !== "plan") {
+        if (store.user) store.closePlan();
+        setMenu(null);
+      }
+      setMenuOpen(false);
+    },
+    [store],
+  );
+
+  // Back and Forward, or an edited address, switch views.
+  useEffect(() => {
+    const onPop = () => {
+      backing.current = false;
+      const to = viewIn(location.hash);
+      if (to === shown.current) return;
+      leave(shown.current, to);
+      setView(to);
+      if (to !== "day") window.scrollTo(0, 0);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [leave]);
+
+  // A view closed some other way (signing out) takes its address with it. (A Back on its way does that itself.)
+  useEffect(() => {
+    if (view === "day" && !backing.current && viewIn(location.hash) !== "day") history.replaceState(null, "", address("day"));
+  }, [view]);
+
+  /** Switches view from a tap. The dashboard and plan get a history entry; going back to Today steps back
+   *  over it, so Back never returns to a view that was closed. */
+  const navigate = (to: View) => {
+    if (backing.current || to === view) return false;
+    if (to === "day") {
+      if (history.state?.gymView) {
+        backing.current = true;
+        history.back();
+        setTimeout(() => (backing.current = false), 1000); // in case the Back never lands
+      } else history.replaceState(null, "", address("day"));
+    } else if (view === "day") history.pushState({ gymView: to }, "", address(to));
+    else history.replaceState({ gymView: to }, "", address(to));
+    leave(view, to);
+    setView(to);
+    return true;
   };
   const select = (k: DayKey) => {
     setSel(k);
     setMenu(null);
   };
   const openDash = () => {
-    show("dash");
+    if (!navigate("dash")) return;
     setMenu(null);
     window.scrollTo(0, 0);
   };
   const openPlan = (focus?: string) => {
+    if (!navigate("plan")) return;
     setEditDay(wdIndex(sel));
-    show("plan");
     window.scrollTo(0, 0);
     if (focus) focusNext(focus, true);
-  };
-  const closePlan = () => {
-    store.closePlan();
-    setMenu(null);
-    show("day");
   };
 
   const screen = store.auth === "starting" ? "boot" : store.auth === "setup" ? "setup" : store.auth === "signedOut" ? "login" : view;
   const inApp = screen === "day" || screen === "dash";
   return (
     <div className="wrap">
+      <a
+        className="ghost skip"
+        href="#main"
+        onClick={(ev) => {
+          ev.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <header className="top">
         <div>
-          <h1>Gym Log</h1>
+          <h1 translate="no">Gym Log</h1>
           <p className="sub" id="tagline" hidden={signedIn}>
             5-day split + cardio + 10,000 steps.
           </p>
@@ -123,47 +185,55 @@ export default function GymLog() {
           </div>
         </div>
         <div className="topright">
-          <button className="ghost" id="dashBtn" hidden={!inApp} onClick={() => (screen === "dash" ? show("day") : openDash())}>
+          <ViewLink
+            className="ghost"
+            id="dashBtn"
+            hidden={!inApp}
+            href={screen === "dash" ? "./" : HASH.dash}
+            onOpen={() => (screen === "dash" ? navigate("day") : openDash())}
+          >
             {screen === "dash" ? "Today" : "Dashboard"}
-          </button>
-          <button className="ghost" id="menuBtn" aria-haspopup="true" aria-expanded={menuOpen} hidden={!inApp} onClick={() => setMenuOpen(!menuOpen)}>
+          </ViewLink>
+          <button className="ghost" id="menuBtn" aria-controls="menu" aria-expanded={menuOpen} hidden={!inApp} onClick={() => setMenuOpen(!menuOpen)}>
             Menu
           </button>
         </div>
       </header>
 
-      <SyncBar />
       <AppMenu open={menuOpen} onEditPlan={() => openPlan()} />
 
-      <BootView hidden={screen !== "boot"} />
-      <SetupView hidden={screen !== "setup"} />
-      <LoginView hidden={screen !== "login"} />
+      <main id="main" tabIndex={-1}>
+        <SyncBar />
+        <BootView hidden={screen !== "boot"} />
+        <SetupView hidden={screen !== "setup"} />
+        <LoginView hidden={screen !== "login"} />
 
-      <div id="appView" hidden={screen !== "day"}>
-        {signedIn ? (
-          <TodayView
-            sel={sel}
-            onSelect={select}
-            onOpenDash={openDash}
-            menu={menu}
-            setMenu={setMenu}
-            warmOpen={warmOpen === sel}
-            onToggleWarm={() => setWarmOpen((w) => (w === sel ? null : sel))}
-            kneeOpen={kneeEdit.day === sel ? kneeEdit.fields : []}
-            onKneeChange={(f) => setKneeEdit((k) => ({ day: sel, fields: [...(k.day === sel ? k.fields : []), f] }))}
-            onKneeScored={(f) => setKneeEdit((k) => ({ ...k, fields: k.fields.filter((x) => x !== f) }))}
-            focusNext={focusNext}
-          />
-        ) : null}
-      </div>
+        <div id="appView" hidden={screen !== "day"}>
+          {signedIn ? (
+            <TodayView
+              sel={sel}
+              onSelect={select}
+              onOpenDash={openDash}
+              menu={menu}
+              setMenu={setMenu}
+              warmOpen={warmOpen === sel}
+              onToggleWarm={() => setWarmOpen((w) => (w === sel ? null : sel))}
+              kneeOpen={kneeEdit.day === sel ? kneeEdit.fields : []}
+              onKneeChange={(f) => setKneeEdit((k) => ({ day: sel, fields: [...(k.day === sel ? k.fields : []), f] }))}
+              onKneeScored={(f) => setKneeEdit((k) => ({ ...k, fields: k.fields.filter((x) => x !== f) }))}
+              focusNext={focusNext}
+            />
+          ) : null}
+        </div>
 
-      <div id="dashView" className="dash" hidden={screen !== "dash"}>
-        {screen === "dash" ? <DashboardView onSetGoal={() => openPlan("#pe_goalw")} /> : null}
-      </div>
+        <div id="dashView" className="dash" hidden={screen !== "dash"}>
+          {screen === "dash" ? <DashboardView onSetGoal={() => openPlan("#pe_goalw")} /> : null}
+        </div>
 
-      <div id="planView" className="pe" hidden={screen !== "plan"}>
-        {screen === "plan" ? <PlanEditor editDay={editDay} onEditDay={setEditDay} onDone={closePlan} /> : null}
-      </div>
+        <div id="planView" className="pe" hidden={screen !== "plan"}>
+          {screen === "plan" ? <PlanEditor editDay={editDay} onEditDay={setEditDay} onDone={() => navigate("day")} /> : null}
+        </div>
+      </main>
     </div>
   );
 }

@@ -33,7 +33,12 @@ function LastHint({ last, cur }: { last: LastDone | null; cur: number | null }) 
   return (
     <span className={cx("last", up && "up")}>
       Last {setsSummary(sets)} · {dayMonth(last.day)}
-      {up ? " ↑" : ""}
+      {up ? (
+        <>
+          <span aria-hidden="true"> ↑</span>
+          <span className="sr-only"> (heavier than last time)</span>
+        </>
+      ) : null}
     </span>
   );
 }
@@ -85,7 +90,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
                 id={`reason${i}`}
                 data-reason={i}
                 value={r.reason}
-                placeholder="e.g. machine busy"
+                placeholder="e.g. machine busy…"
                 autoComplete="off"
                 onChange={(ev) => {
                   const v = ev.target.value;
@@ -132,7 +137,8 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
                   r.skipped = true;
                   r.done = false;
                 }, true);
-                focusNext(`#reason${i}`);
+                // The reason is optional, so a phone keeps its keyboard closed: focus stays by the change.
+                focusNext(matchMedia("(pointer: fine)").matches ? `#reason${i}` : `[data-unskip="${i}"]`);
               }}
             >
               Skip today
@@ -157,7 +163,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
         <form className="acts" data-swapform={i} onSubmit={swap}>
           <label className="field grow" htmlFor={`swap${i}`}>
             <span>Did instead</span>
-            <input id={`swap${i}`} list="swapList" placeholder="e.g. Smith machine squat" autoComplete="off" required />
+            <input id={`swap${i}`} list="swapList" placeholder="e.g. Smith machine squat…" autoComplete="off" required />
           </label>
           <button className="ghost tiny" type="submit">
             Swap
@@ -182,10 +188,10 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
       {next ? (
         <div className={cx("prog callout", next.held ? "hold warn" : "good")}>
           {next.held ? (
-            `Hold ${next.from} kg: your knee was sore after ${dayMonth(next.day)}.`
+            `Hold ${next.from}\u00a0kg: your knee was sore after ${dayMonth(next.day)}.`
           ) : (
             <>
-              Go up to <b>{next.to} kg</b>: every set hit {next.top} reps last time.
+              Go up to <b>{next.to}&nbsp;kg</b>: every set hit {next.top} reps last time.
             </>
           )}
         </div>
@@ -247,12 +253,14 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
             <button
               className="ghost tiny"
               data-rmset={i}
-              onClick={() =>
+              onClick={() => {
+                const gone = sets[sets.length - 1], said = setsSummary([gone]);
+                if (said && !confirm(`Remove set ${sets.length} (${said})?`)) return;
                 edit((r) => {
                   r.sets = setsOf(r).slice(0, -1);
                   r.kg = topKg(r.sets);
-                }, true)
-              }
+                }, true);
+              }}
             >
               − Set
             </button>
@@ -266,7 +274,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
         </div>
       </div>
       {cue && howOpen ? (
-        <p className="nt" id={`cue${i}`}>
+        <p className="nt cue" id={`cue${i}`}>
           {cue}
         </p>
       ) : null}
@@ -314,7 +322,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
       <div className="lift-meta">
         {x.sets || x.reps ? (
           <span className="sr">
-            {x.sets} × {x.reps}
+            {x.sets}&nbsp;×&nbsp;{x.reps}
           </span>
         ) : null}
         {r.skipped ? null : (

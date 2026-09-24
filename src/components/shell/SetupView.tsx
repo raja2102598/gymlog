@@ -4,7 +4,7 @@ export function SetupView({ hidden }: { hidden: boolean }) {
     <section className="panel" id="setupView" hidden={hidden}>
       <h2 className="display">Almost ready</h2>
       <p>
-        This copy of Gym Log isn&apos;t connected to a database yet. Add your Supabase project URL and anon key to <code>src/lib/config.ts</code> in the repo. The README has
+        This copy of Gym Log isn’t connected to a database yet. Add your Supabase project URL and anon key to <code translate="no">src/lib/config.ts</code> in the repo. The README has
         the steps.
       </p>
     </section>

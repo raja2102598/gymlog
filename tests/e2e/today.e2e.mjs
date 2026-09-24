@@ -40,7 +40,9 @@ export default async function today({ browser, base, check }) {
   const lp = lift("Leg Press");
   check("legacy weight shows as set 1 kg", (await lp.locator('input[data-set$=":0:kg"]').inputValue()) === "50");
   check("3 set rows for a 3-set lift", (await lp.locator(".set").count()) === 3);
-  check("hint shows last week's sets, and that today is heavier", /Last 10, 10, 8 × 45 kg · 16\/09 ↑/.test(await lp.locator(".hint").textContent()), await lp.locator(".hint").textContent());
+  const hint = await flat(lp.locator(".hint"));
+  check("hint shows last week's sets, and that today is heavier (in words too)", /Last 10, 10, 8 × 45 kg · 16\/09 ↑ \(heavier than last time\)/.test(hint), hint);
+  check("hint keeps each number with its × and kg", (await lp.locator(".hint").textContent()).includes("8\u00a0×\u00a045\u00a0kg"));
   check("reps placeholder from last week", (await lp.locator('input[data-set$=":1:reps"]').getAttribute("placeholder")) === "10");
   check("pill counts today's lifts", /5\/5 lifts/.test(await page.locator("#liftPill").textContent()));
   check("progress bar: one segment per planned lift, filled when done", (await page.locator("#session .segs i").count()) === 5 && (await page.locator("#session .segs i.done").count()) === 5);
@@ -83,8 +85,8 @@ export default async function today({ browser, base, check }) {
   // --- skip
   await lift("Chest Press Machine").locator("button[data-more]").click();
   await lift("Chest Press Machine").locator("button[data-skip]").click();
-  check("reason box focused after skipping", await page.evaluate(() => document.activeElement?.dataset.reason !== undefined));
-  await page.keyboard.type("machine busy");
+  check("on a phone, skipping keeps the keyboard closed: focus goes to Undo skip, not the optional reason", await page.evaluate(() => document.activeElement?.dataset.unskip !== undefined));
+  await lift("Chest Press Machine").locator("[data-reason]").fill("machine busy");
   check("skip note shows reason", /Skipped · machine busy/.test(await lift("Chest Press Machine").locator(".skipnote").textContent()));
   check("pill counts skipped", /1\/6 lifts · 1 skipped/.test(await page.locator("#liftPill").textContent()));
   await until(() => db.logs["2026-09-21"].exercises["Chest Press Machine"]?.reason === "machine busy");
@@ -119,7 +121,7 @@ export default async function today({ browser, base, check }) {
   await lift("Hack Squat").locator("button[data-swapopen]").click();
   await page.locator("form[data-swapform] input").fill("Smith Squat");
   await page.locator("form[data-swapform] input").press("Enter");
-  check("swap hint uses that exercise's past sets", /Last 10 × 20 kg · 16\/09/.test(await lift("Smith Squat").locator(".hint").textContent()), await lift("Smith Squat").locator(".hint").textContent());
+  check("swap hint uses that exercise's past sets", /Last 10 × 20 kg · 16\/09/.test(await flat(lift("Smith Squat").locator(".hint"))), await flat(lift("Smith Squat").locator(".hint")));
   await lift("Smith Squat").locator("button[data-more]").click();
   await lift("Smith Squat").locator("button[data-unswap]").click();
 

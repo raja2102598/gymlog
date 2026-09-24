@@ -92,7 +92,7 @@ describe("dashboard", () => {
     expect(pace(-0.1, 0.7)).toEqual([]);
     expect(pace(-0.1, 2)[0]).toMatch(/^Losing 0\.\d\d% a week, well under your 2% target\.$/);
     expect(pace(-0.1, 0.4)[0]).toMatch(/^Losing 0\.\d\d% a week, faster than your 0\.4% target\.$/);
-    expect(pace(0.05, 0.7)[0]).toMatch(/^The trend isn't going down yet \(\+0\.\d\d% a week\) against your 0\.7% target\.$/);
+    expect(pace(0.05, 0.7)[0]).toMatch(/^The trend isn’t going down yet \(\+0\.\d\d% a week\) against your 0\.7% target\.$/);
     expect(pace(-0.1, null)).toEqual([]);
   });
 

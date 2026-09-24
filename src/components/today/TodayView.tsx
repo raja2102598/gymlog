@@ -24,7 +24,7 @@ export function TodayView({ onSelect, onOpenDash, ...session }: Props) {
       <WeekStats sel={session.sel} />
       <WeightLine onOpenDash={onOpenDash} />
       <History />
-      <p className="note" id="tempoNote">
+      <p className="note" id="tempoNote" hidden={!plan.tempo}>
         {plan.tempo
           ? `Tempo on every lift: ${plan.tempo} (seconds down, pause, up, pause). Warm up at 60 to 75% of working weight before the first main lift.`
           : ""}

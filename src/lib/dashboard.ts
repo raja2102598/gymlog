@@ -50,7 +50,7 @@ export function weightModel(store: GymStore, t: DayKey): WeightModel {
     if (loss < target / 2)
       flags.push({
         pri: 3,
-        text: loss > 0 ? `Losing ${loss.toFixed(2)}% a week, well under your ${target}% target.` : `The trend isn't going down yet (${signed(pct, 2)}% a week) against your ${target}% target.`,
+        text: loss > 0 ? `Losing ${loss.toFixed(2)}% a week, well under your ${target}% target.` : `The trend isn’t going down yet (${signed(pct, 2)}% a week) against your ${target}% target.`,
       });
     else if (loss > target * 1.5) flags.push({ pri: 3, warn: true, text: `Losing ${loss.toFixed(2)}% a week, faster than your ${target}% target.` });
   }

@@ -1,7 +1,9 @@
 "use client";
 import { useRef, useState, type ChangeEvent } from "react";
+import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { todayKey } from "@/lib/dates";
+import { plural } from "@/lib/format";
 
 /** The menu: edit the plan, export or import data, sign out. */
 export function AppMenu({ open, onEditPlan }: { open: boolean; onEditPlan: () => void }) {
@@ -23,22 +25,23 @@ export function AppMenu({ open, onEditPlan }: { open: boolean; onEditPlan: () =>
   const importData = async (ev: ChangeEvent<HTMLInputElement>) => {
     const f = ev.currentTarget.files?.[0];
     ev.currentTarget.value = "";
-    if (f) setMsg(await store.importFile(f));
+    // Days already logged are only replaced once you say so.
+    if (f) setMsg(await store.importFile(f, (n) => confirm(`The file has different entries for ${plural(n, "day")} you’ve already logged. Replace them with the file’s version?`)));
   };
 
   return (
-    <div className="menu panel" id="menu" hidden={!open}>
+    <nav className="menu panel" id="menu" aria-label="Menu" hidden={!open}>
       <div className="menu-row">
         <span id="whoami" className="sub">
           {store.user ? `Signed in as ${store.user.email || "you"}` : ""}
         </span>
       </div>
       <div className="menu-row">
-        <button className="ghost" id="planBtn" onClick={onEditPlan}>
+        <ViewLink className="ghost" id="planBtn" href="#plan" onOpen={onEditPlan}>
           Edit plan
-        </button>
+        </ViewLink>
         <button className="ghost" id="exportBtn" onClick={exportData}>
-          Export my data (.json)
+          Export data (.json)
         </button>
         <button className="ghost" id="importBtn" onClick={() => file.current?.click()}>
           Import data (.json)
@@ -48,9 +51,9 @@ export function AppMenu({ open, onEditPlan }: { open: boolean; onEditPlan: () =>
           Sign out
         </button>
       </div>
-      <p className="note" id="menuMsg">
+      <p className="note" id="menuMsg" role="status">
         {msg}
       </p>
-    </div>
+    </nav>
   );
 }

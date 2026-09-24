@@ -36,6 +36,7 @@ export function WeekStrip({ sel, onSelect }: { sel: DayKey; onSelect: (k: DayKey
               className={cx("dchip", st, k === sel && "sel", k === t && "today")}
               aria-label={`${wd} ${k}, ${name}${st ? ", " + DAY_WORDS[st] : ""}`}
               aria-current={k === t ? "date" : undefined}
+              aria-pressed={k === sel}
               onClick={() => onSelect(k)}
             >
               <span className="dw">{wd}</span>

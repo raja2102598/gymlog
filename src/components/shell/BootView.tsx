@@ -3,7 +3,7 @@
 export function BootView({ hidden }: { hidden: boolean }) {
   return (
     <div id="bootView" aria-busy="true" hidden={hidden}>
-      <p className="sr-only">Loading</p>
+      <p className="sr-only">Loading…</p>
       <div className="week sk-week" aria-hidden="true">
         {Array.from({ length: 7 }, (_, i) => (
           <i key={i} />
