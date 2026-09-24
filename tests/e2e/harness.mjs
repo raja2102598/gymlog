@@ -42,13 +42,14 @@ export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@exa
 
 /**
  * The `logs`, `plans` and `health_days` tables, answered from `db` ({ logs, plan, health, healthAt, failWrites, writes,
- * unexpected }), and Supabase Auth: sign-in links (recorded in `db.otp`, refused with `db.otpError`), passwords
+ * unexpected }; a write to `health_days` that asks to ignore duplicates, as a restore does, leaves the days `db.health`
+ * has), and Supabase Auth: sign-in links (recorded in `db.otp`, refused with `db.otpError`), passwords
  * (`db.passwords`: { email: password }), password changes (the new one in `db.passwordSet`), the account's
  * metadata (`db.metadata`), and Continue with Google (switched on with `db.google`; Google's page is skipped: the
  * authorize request goes straight back with a code, or with an error when `db.oauthError`, recorded in `db.oauth`).
  */
 export function mockSupabase(db) {
-  db.writes ??= { logs: 0, plans: 0 };
+  db.writes ??= { logs: 0, plans: 0, health: 0 };
   db.unexpected ??= [];
   return async (route) => {
     const req = route.request(), url = new URL(req.url()), m = req.method();
@@ -66,8 +67,9 @@ export function mockSupabase(db) {
       if (m === "GET")
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(Object.keys(db.health).sort().map((day) => ({ day, data: db.health[day], updated_at: db.healthAt || "2026-09-23T04:12:00+00:00" }))) });
       if (m === "POST") {
-        for (const r of [].concat(JSON.parse(req.postData()))) db.health[r.day] = r.data;
-        db.writes.health = (db.writes.health || 0) + 1;
+        const keep = /resolution=ignore-duplicates/.test(req.headers()["prefer"] ?? "");
+        for (const r of [].concat(JSON.parse(req.postData()))) if (!(keep && r.day in db.health)) db.health[r.day] = r.data;
+        db.writes.health++;
         return route.fulfill({ status: 201, body: "" });
       }
     }
