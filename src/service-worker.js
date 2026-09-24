@@ -1,13 +1,7 @@
-// Offline shell for Gym Log. Bump VERSION whenever app files change: installed copies only pick up new
-// files when this file changes.
-const VERSION = "gymlog-v6";
-const SHELL = [
-  "./", "index.html", "styles.css", "stats.js", "app.js", "config.js", "plan.json",
-  "manifest.webmanifest", "vendor/supabase.js",
-  "fonts/oswald-latin.woff2", "fonts/ibm-plex-sans-latin.woff2",
-  "fonts/ibm-plex-mono-500-latin.woff2", "fonts/ibm-plex-mono-600-latin.woff2",
-  "icons/icon-192.png", "icons/icon-512.png"
-];
+/* The offline copy of Gym Log. After each build, scripts/build-sw.mjs writes this to out/sw.js with two
+ * constants above it: SHELL, every file of the built site, and VERSION, a hash of them all. So any change
+ * to the site changes sw.js, which is how installed copies find out there's an update. */
+/* global VERSION, SHELL */
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -15,9 +9,10 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys()
+    caches
+      .keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()),
   );
 });
 
@@ -37,8 +32,8 @@ self.addEventListener("fetch", (e) => {
         if (res.ok) cache.put(req, res.clone());
         return res;
       } catch {
-        return (req.mode === "navigate" && (await cache.match("index.html"))) || Response.error();
+        return (req.mode === "navigate" && (await cache.match("/"))) || Response.error();
       }
-    })
+    }),
   );
 });

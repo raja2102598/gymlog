@@ -1,0 +1,16 @@
+/* The plan editor. */
+#planDays{margin-top:14px}
+.pe .field input,.pe .field textarea{font:15px/1.4 var(--body)}
+.pe-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.pe-h{font:600 14px var(--body);color:var(--ink);margin:20px 0 8px}
+.pe-list{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}
+.pe-ex{border:1px solid var(--line);border-radius:var(--r-card);padding:12px;display:grid;gap:8px}
+.pe-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 76px;gap:8px}
+.pe-row2{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
+.pe-row2 .field{flex:0 1 160px}
+.pe-check{display:flex;align-items:center;gap:8px;font-size:14px;min-height:44px;cursor:pointer}
+.pe-check input{width:20px;height:20px;accent-color:var(--good)}
+.pe-stack{display:grid;gap:8px}
+.pe-btns{display:flex;flex-wrap:wrap;gap:6px}
+.pe .warn{color:var(--accent);font-size:13px;margin:0 0 8px}
+@media (max-width:560px){.pe-grid{grid-template-columns:1fr}.pe-row{grid-template-columns:1fr 1fr}.pe-row .field:first-child{grid-column:1/-1}}
