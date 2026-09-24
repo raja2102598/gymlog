@@ -3,6 +3,7 @@ import { CSV_COLUMNS, csvField, toCsv } from "@/lib/backup";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import { GymStore } from "@/lib/store";
 import type { DayLog, HealthDay, LiftLog } from "@/lib/types";
+import { fakeSupabase, type Write } from "./fakeSupabase";
 
 // Wednesday 23 September 2026, as in the end-to-end tests.
 beforeEach(() => {
@@ -25,33 +26,16 @@ function storeWith(logs: Record<string, DayLog>) {
 }
 /** A file as the file picker gives it. */
 const file = (v: unknown) => new File([typeof v === "string" ? v : JSON.stringify(v)], "gym-log.json", { type: "application/json" });
-type Row = Record<string, unknown>;
-type Options = { onConflict?: string; ignoreDuplicates?: boolean };
-/** Supabase, online, with `health` as its health_days table, by day. Records each upsert with its options. With `fail`,
+/** Supabase, online, with `health` as its health_days table, by day. Records each write in `writes`. With `fail`,
  *  writes to health_days fail, as they do when the connection drops. */
 function supabase(health: Record<string, HealthDay> = {}, fail = false) {
   vi.stubGlobal("navigator", { onLine: true });
-  const upserts: { table: string; rows: Row[]; opts?: Options }[] = [];
-  const sb = {
-    from: (table: string) => ({
-      upsert: async (rows: Row | Row[], opts?: Options) => {
-        const list = [rows].flat();
-        upserts.push({ table, rows: list, opts });
-        if (table !== "health_days") return { error: null };
-        if (fail) return { error: { message: "TypeError: Failed to fetch" } };
-        for (const r of list) if (!(opts?.ignoreDuplicates && (r.day as string) in health)) health[r.day as string] = r.data as HealthDay;
-        return { error: null };
-      },
-      select: () => ({
-        order: () => ({
-          limit: async () => ({ data: table === "health_days" ? Object.keys(health).sort().map((day) => ({ day, data: health[day], updated_at: "2026-09-23T04:12:00+00:00" })) : [], error: null }),
-        }),
-      }),
-    }),
-  };
-  return { sb: sb as unknown as GymStore["sb"], upserts, health };
+  return fakeSupabase(health, { failHealth: fail });
 }
-const tables = (upserts: { table: string }[]) => upserts.map((u) => u.table).sort();
+/** The tables written to. */
+const tables = (writes: Write[]) => [...new Set(writes.map((w) => w.table))].sort();
+/** Every row written to a table. */
+const rowsOf = (writes: Write[], table: string) => writes.filter((w) => w.table === table).flatMap((w) => w.rows);
 const myPlan = () => normalizePlan({ ...DEFAULT_PLAN, tempo: "4:0:1:0", stepGoal: 12000, days: DEFAULT_PLAN.days.map((d, i) => (i === 0 ? { ...d, name: "Chest day" } : d)) }, DEFAULT_PLAN);
 const backupOf = (v: { plan?: unknown; logs?: unknown[]; healthDays?: Record<string, HealthDay> }) => ({ format: "gymlog-backup", version: 1, exportedAt: "2026-09-20T08:00:00.000Z", plan: null, logs: [], healthDays: {}, ...v });
 
@@ -75,9 +59,9 @@ describe("backup", () => {
     expect([b.logs, b.plan, b.health]).toEqual([a.logs, a.plan, a.health]);
     expect(b.exportBackup()).toEqual(backup);
     // All three are saved to the database.
-    expect(tables(db.upserts)).toEqual(["health_days", "logs", "plans"]);
-    expect(db.upserts.find((u) => u.table === "logs")?.rows).toHaveLength(2);
-    expect(db.upserts.find((u) => u.table === "plans")?.rows).toEqual([{ user_id: "u", plan: a.plan }]);
+    expect(tables(db.writes)).toEqual(["health_days", "logs", "plans"]);
+    expect(rowsOf(db.writes, "logs")).toHaveLength(2);
+    expect(rowsOf(db.writes, "plans")).toEqual([{ user_id: "u", plan: a.plan }]);
     expect(db.health).toEqual(a.health);
     expect([b.pending, b.planDirty]).toEqual([{}, false]);
   });
@@ -96,13 +80,13 @@ describe("backup", () => {
     expect(await s.importFile(file(backup), ask)).toBe("Imported 1 day and the plan.");
     expect(ask).toHaveBeenCalledWith({ days: 0, plan: true });
     expect(s.plan).toEqual(DEFAULT_PLAN);
-    expect(db.upserts.find((u) => u.table === "plans")?.rows).toEqual([{ user_id: "u", plan: DEFAULT_PLAN }]);
+    expect(rowsOf(db.writes, "plans")).toEqual([{ user_id: "u", plan: DEFAULT_PLAN }]);
     // Saying no keeps the account's own plan.
     const t = storeWith({}), db2 = supabase();
     t.sb = db2.sb;
     t.plan = myPlan();
     expect(await t.importFile(file(backup), () => false)).toBe("Import cancelled. Nothing changed.");
-    expect([t.plan, db2.upserts]).toEqual([myPlan(), []]);
+    expect([t.plan, db2.writes]).toEqual([myPlan(), []]);
   });
 
   it("doesn't ask about or name the plan when a backup made on the default meets the default", async () => {
@@ -111,7 +95,7 @@ describe("backup", () => {
     const ask = vi.fn(() => true);
     expect(await s.importFile(file(backupOf({ logs: [{ day: "2026-07-01", data: day({ cardio: true }) }] })), ask)).toBe("Imported 1 day.");
     expect(ask).not.toHaveBeenCalled();
-    expect([s.plan, s.planDirty, tables(db.upserts)]).toEqual([DEFAULT_PLAN, false, ["logs"]]);
+    expect([s.plan, s.planDirty, tables(db.writes)]).toEqual([DEFAULT_PLAN, false, ["logs"]]);
   });
 
   it("still imports the first exports, a bare list of days, leaving the plan and Health Connect days alone", async () => {
@@ -141,7 +125,7 @@ describe("backup", () => {
     const no = vi.fn(() => false);
     expect(await s.importFile(file1, no)).toBe("Import cancelled. Nothing changed.");
     expect(no).toHaveBeenCalledWith({ days: 1, plan: true });
-    expect([s.logs, s.pending, s.plan, s.health, db.upserts]).toEqual([{ "2026-09-22": day({ steps: 8000 }) }, {}, DEFAULT_PLAN, {}, []]);
+    expect([s.logs, s.pending, s.plan, s.health, db.writes]).toEqual([{ "2026-09-22": day({ steps: 8000 }) }, {}, DEFAULT_PLAN, {}, []]);
 
     expect(await s.importFile(file1, () => true)).toBe("Imported 2 days, the plan and Health Connect data for 1 day.");
     expect([s.logs["2026-09-22"].steps, s.plan, s.health]).toEqual([1234, myPlan(), { "2026-07-01": { steps: 5000 } }]);
@@ -171,7 +155,7 @@ describe("backup", () => {
     expect(await s.importFile(file(backupOf({ healthDays })), ask)).toBe("Imported Health Connect data for 2 days.");
     // Nothing in the database is replaced, so there's nothing to ask.
     expect(ask).not.toHaveBeenCalled();
-    expect(db.upserts).toEqual([
+    expect(db.writes).toEqual([
       {
         table: "health_days",
         rows: [
@@ -200,8 +184,8 @@ describe("backup", () => {
       // The day and the plan are in, and sync as usual.
       expect([Object.keys(s.logs), s.plan, s.health]).toEqual([["2026-07-01"], myPlan(), {}]);
     }
-    expect(offline.upserts).toEqual([]);
-    expect(tables(failing.upserts)).toEqual(["health_days", "logs", "plans"]);
+    expect(offline.writes).toEqual([]);
+    expect(tables(failing.writes)).toEqual(["health_days", "logs", "plans"]);
     expect(failing.health).toEqual({});
     expect(warn).toHaveBeenCalledOnce();
   });
