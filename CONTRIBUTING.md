@@ -9,7 +9,7 @@ Issues and pull requests are welcome.
 
 ## Setting up
 
-The README's [Working on it](README.md#working-on-it) has the commands: `npm install`, then `npm run dev`. Without a `.env.local`, the development server talks to the live app's Supabase project. To use your own, copy `.env.example` to `.env.local` and fill it in; [Setting it up again from scratch](README.md#setting-it-up-again-from-scratch) has the steps.
+The README's [Working on it](README.md#working-on-it) has the commands: `npm install`, then `npm run dev`. The app needs a Supabase project to talk to: copy `.env.example` to `.env.local` and fill it in with your own (a free project is enough; [Setting it up](README.md#setting-it-up) has the steps). The browser tests answer every request themselves, so for `npm run build && npm run test:e2e` any address in `.env.local` will do.
 
 ## Before you open a pull request
 

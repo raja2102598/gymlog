@@ -6,9 +6,9 @@ Please don't open a public issue for a security problem. Report it privately ins
 
 ## Public on purpose
 
-These are in the repo, the site's JavaScript and the APK, where anyone can read them. They aren't secrets:
+These are in the site's JavaScript and in the APK, where anyone can read them. They aren't secrets:
 
-- The Supabase project URL and its **publishable** key (`src/lib/config.ts`). What keeps each account's data private is row-level security, in `supabase/schema.sql`: each signed-in account can read and write only its own rows.
+- The Supabase project URL and its **publishable** key, which a build gets from the `NEXT_PUBLIC_*` variables (`src/lib/config.ts`). What keeps each account's data private is row-level security, in `supabase/schema.sql`: each signed-in account can read and write only its own rows.
 - The Google OAuth **web client ID**. Google's client secret lives only in Supabase.
 - The Android signing certificate's fingerprints, which CI prints. The signing key itself is never in the repo; CI gets it from repository secrets, and pull requests from forks don't see it.
 

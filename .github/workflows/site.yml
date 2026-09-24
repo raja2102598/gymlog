@@ -19,6 +19,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The build needs a Supabase project to point at, and the browser tests intercept every request to it, so no
+    # real project is called and any address will do.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example-project.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_example
+      NEXT_PUBLIC_SITE_URL: https://gym-log.example
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

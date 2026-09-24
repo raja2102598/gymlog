@@ -441,11 +441,11 @@ describe("Continue with Google in the app", () => {
 
 describe("Continue with Google on the website", () => {
   it("goes to Google's page and back to this page", async () => {
-    vi.stubGlobal("location", { origin: "https://gym-log-omega-seven.vercel.app", pathname: "/" });
+    vi.stubGlobal("location", { origin: "https://gym-log.example", pathname: "/" });
     const s = new GymStore(), calls: unknown[] = [];
     s.sb = { auth: { signInWithOAuth: async (o: unknown) => (calls.push(o), { error: null }) } } as unknown as GymStore["sb"];
     expect(await s.signInWithGoogle()).toBe("");
-    expect(calls).toEqual([{ provider: "google", options: { redirectTo: "https://gym-log-omega-seven.vercel.app/" } }]);
+    expect(calls).toEqual([{ provider: "google", options: { redirectTo: "https://gym-log.example/" } }]);
   });
 });
 

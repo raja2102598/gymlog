@@ -9,7 +9,7 @@ export const NATIVE_SIGN_IN = "io.github.raja2102598.gymlog://login";
 
 /** Where sign-in links from the Android app land first: a page on the site that hands the link to the app.
  *  Being on the site's address, Supabase accepts it with the link's flow id added (see GymStore.sendLink). */
-export const APP_LOGIN_PAGE = `${SITE_URL}/app-login.html`;
+export const APP_LOGIN_PAGE = SITE_URL ? `${SITE_URL}/app-login.html` : "";
 
 type CapacitorGlobal = { Capacitor?: { isNativePlatform?: () => boolean } };
 export const isNative = (): boolean => typeof window !== "undefined" && !!(window as CapacitorGlobal).Capacitor?.isNativePlatform?.();
