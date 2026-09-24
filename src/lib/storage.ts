@@ -14,11 +14,13 @@ export function lsGet<T>(key: string, fallback: T): T {
   }
 }
 
-export function lsSet(key: string, value: unknown): void {
+/** Keeps `value` on the phone. False when it couldn't: storage full, or blocked (as in some private windows). */
+export function lsSet(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    /* storage full or blocked */
+    return false;
   }
 }
 

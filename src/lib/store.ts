@@ -117,6 +117,9 @@ export class GymStore {
   planDirty = false;
   /** The last save to Supabase failed. */
   syncTrouble = false;
+  /** The phone wouldn't keep its copy of the days, plan or Health Connect data (storage full or blocked), so
+   *  edits could be lost on reload. Stays set until each of those saves works again. */
+  localSaveFailed = false;
   online = true;
   /** Bumped when the plan's shape changes, so the plan editor's fields reload. */
   planShape = 0;
@@ -134,6 +137,8 @@ export class GymStore {
   private listeners = new Set<() => void>();
   private started = false;
   private beforeSignOut: (() => Promise<unknown>)[] = [];
+  /** The storage keys whose last save on the phone failed. */
+  private unsaved = new Set<string>();
 
   /* ---------- subscription (for useSyncExternalStore) ---------- */
   subscribe = (fn: () => void) => {
@@ -287,6 +292,8 @@ export class GymStore {
     this.healthSyncedAt = null;
     this.logsChanged();
     this.syncTrouble = false;
+    this.unsaved.clear();
+    this.localSaveFailed = false;
     this.plan = copy(DEFAULT_PLAN);
     this.planDirty = false;
     this.planShape++;
@@ -571,15 +578,21 @@ export class GymStore {
     return r;
   }
 
+  /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) */
+  private saveLocal(key: string, value: unknown) {
+    if (lsSet(key, value)) this.unsaved.delete(key);
+    else this.unsaved.add(key);
+    this.localSaveFailed = this.unsaved.size > 0;
+  }
   private persistLocal() {
-    lsSet(CACHE_KEY, { user: this.user?.id, logs: this.logs });
-    lsSet(PENDING_KEY, { user: this.user?.id, pending: this.pending });
+    this.saveLocal(CACHE_KEY, { user: this.user?.id, logs: this.logs });
+    this.saveLocal(PENDING_KEY, { user: this.user?.id, pending: this.pending });
   }
   private persistHealth() {
-    lsSet(HEALTH_KEY, { user: this.user?.id, health: this.health, at: this.healthSyncedAt });
+    this.saveLocal(HEALTH_KEY, { user: this.user?.id, health: this.health, at: this.healthSyncedAt });
   }
   private persistPlan() {
-    lsSet(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty });
+    this.saveLocal(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty });
   }
 
   /** How many days wait on a failed save or on the phone being offline, or null when all is well. */
