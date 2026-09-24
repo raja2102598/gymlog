@@ -84,6 +84,48 @@ function returnedTrouble(q: URLSearchParams): string {
   return `That sign-in didn’t work (${desc.replace(/\.$/, "")}). Try again.`;
 }
 
+/** A day's log with every field in place, as the screens read it: older rows can lack some. */
+function fullDay(d?: Partial<DayLog> | null): DayLog {
+  const e = d || {};
+  const out: DayLog = {
+    exercises: e.exercises || {},
+    warmup: Array.isArray(e.warmup) ? e.warmup : [],
+    cardio: !!e.cardio,
+    steps: e.steps ?? null,
+    weight: e.weight ?? null,
+    note: e.note || "",
+  };
+  if (isSlot(e.session)) out.session = e.session;
+  for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
+  return out;
+}
+/** The same day, whatever order its keys come in (Supabase's jsonb keeps its own order). */
+const sameDay = (a: DayLog, b: DayLog) => canon(fullDay(a)) === canon(fullDay(b));
+
+/** Two copies of a day that differ only in lifts one has and the other doesn't, made one: every lift of both.
+ *  Null when they differ in anything else: a lift both have, the steps, the note, … */
+export function mergeDays(mine: DayLog, theirs: DayLog): DayLog | null {
+  const a = fullDay(mine), b = fullDay(theirs);
+  if (canon({ ...a, exercises: {} }) !== canon({ ...b, exercises: {} })) return null;
+  const lifts = { ...b.exercises };
+  for (const [name, r] of Object.entries(a.exercises)) {
+    if (Object.prototype.hasOwnProperty.call(lifts, name) && canon(lifts[name]) !== canon(r)) return null;
+    lifts[name] = r;
+  }
+  return { ...a, exercises: lifts };
+}
+
+/** Postgres's answer to adding a row that's there already. */
+const UNIQUE_VIOLATION = "23505";
+/** Days new here are added this many to a request: a restore into a new account brings hundreds. */
+const INSERT_CHUNK = 200;
+/** Days saved one by one go this many at once. */
+const SAVES_AT_ONCE = 4;
+/** The updated_at a write returned, or null when it wrote nothing: another device changed the row first. */
+const writtenAt = (rows: unknown) => (rows as { updated_at?: string }[] | null)?.[0]?.updated_at ?? null;
+/** What the plan editor and Settings say while the plan waits for you to choose a version. */
+const PLAN_HELD = "Not synced yet: the plan was changed on another device too.";
+
 /** How a session signed in ("password", "otp", …), from its access token's amr claim. */
 export function signInMethods(accessToken: string): string[] {
   try {
@@ -99,6 +141,11 @@ export class GymStore {
   logs: Record<DayKey, DayLog> = {};
   /** Days changed on this phone and not yet saved to Supabase. */
   pending: Record<DayKey, DayLog> = {};
+  /** Days changed here and on another device since this phone last had them, each with the other device's copy
+   *  and its version, until you choose one. This phone's copy waits in `pending`. */
+  conflicts: Record<DayKey, { data: DayLog; at: string }> = {};
+  /** The plan, changed here and on another device: the other device's copy and its version, until you choose one. */
+  planConflict: { plan: Plan; at: string } | null = null;
   /** Health Connect data by day, saved by the Android app. Apart from `logs`, so neither overwrites the other. */
   health: Record<DayKey, HealthDay> = {};
   /** When the Android app last saved Health Connect data (ISO), or null. */
@@ -117,6 +164,9 @@ export class GymStore {
   planDirty = false;
   /** The last save to Supabase failed. */
   syncTrouble = false;
+  /** The phone wouldn't keep its copy of the days, plan or Health Connect data (storage full or blocked), so
+   *  edits could be lost on reload. Stays set until each of those saves works again. */
+  localSaveFailed = false;
   online = true;
   /** Bumped when the plan's shape changes, so the plan editor's fields reload. */
   planShape = 0;
@@ -134,6 +184,12 @@ export class GymStore {
   private listeners = new Set<() => void>();
   private started = false;
   private beforeSignOut: (() => Promise<unknown>)[] = [];
+  /** The storage keys whose last save on the phone failed. */
+  private unsaved = new Set<string>();
+  /** Each day's version on Supabase (its updated_at) that this phone's copy started from. Kept with the cache. */
+  private bases: Record<DayKey, string> = {};
+  /** The plan's version on Supabase that this phone's copy started from, or null while it has none there. */
+  private planBase: string | null = null;
 
   /* ---------- subscription (for useSyncExternalStore) ---------- */
   subscribe = (fn: () => void) => {
@@ -253,20 +309,25 @@ export class GymStore {
     this.user = u;
     this.hasPassword = false;
     this.notePassword(session);
-    const cache = lsGet<{ user?: string; logs?: Record<DayKey, DayLog> } | null>(CACHE_KEY, null);
+    const cache = lsGet<{ user?: string; logs?: Record<DayKey, DayLog>; bases?: Record<DayKey, string> } | null>(CACHE_KEY, null);
     const pend = lsGet<{ user?: string; pending?: Record<DayKey, DayLog> } | null>(PENDING_KEY, null);
-    const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean } | null>(PLAN_KEY, null);
+    const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean; base?: string | null } | null>(PLAN_KEY, null);
     const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null } | null>(HEALTH_KEY, null);
     this.logs = cache && cache.user === u.id ? cache.logs || {} : {};
+    this.bases = cache && cache.user === u.id ? cache.bases || {} : {};
     this.health = hc && hc.user === u.id ? hc.health || {} : {};
     this.healthSyncedAt = hc && hc.user === u.id ? hc.at ?? null : null;
     this.authMsg = "";
     this.pending = pend && pend.user === u.id ? pend.pending || {} : {};
+    // Not kept: the first save of such a day finds the other device's copy again.
+    this.conflicts = {};
     this.logsChanged();
     this.syncTrouble = false;
     const mine = !!(pc && pc.user === u.id && pc.plan);
     this.plan = mine ? normalizePlan(pc!.plan, DEFAULT_PLAN) : copy(DEFAULT_PLAN);
     this.planDirty = !!(mine && pc!.dirty);
+    this.planBase = mine ? pc!.base ?? null : null;
+    this.planConflict = null;
     this.planShape++;
     this.auth = "signedIn";
     this.status = Object.keys(this.pending).length ? "Syncing…" : "Loading…";
@@ -283,12 +344,18 @@ export class GymStore {
     this.hasPassword = false;
     this.logs = {};
     this.pending = {};
+    this.bases = {};
+    this.conflicts = {};
     this.health = {};
     this.healthSyncedAt = null;
     this.logsChanged();
     this.syncTrouble = false;
+    this.unsaved.clear();
+    this.localSaveFailed = false;
     this.plan = copy(DEFAULT_PLAN);
     this.planDirty = false;
+    this.planBase = null;
+    this.planConflict = null;
     this.planShape++;
     this.auth = "signedOut";
     this.status = "";
@@ -380,18 +447,7 @@ export class GymStore {
 
   /* ---------- reading a day ---------- */
   entry(k: DayKey): DayLog {
-    const e = (this.logs[k] || {}) as Partial<DayLog>;
-    const out: DayLog = {
-      exercises: e.exercises || {},
-      warmup: Array.isArray(e.warmup) ? e.warmup : [],
-      cardio: !!e.cardio,
-      steps: e.steps ?? null,
-      weight: e.weight ?? null,
-      note: e.note || "",
-    };
-    if (isSlot(e.session)) out.session = e.session;
-    for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
-    return out;
+    return fullDay(this.logs[k]);
   }
   clone(k: DayKey): DayLog {
     return copy(this.entry(k));
@@ -571,20 +627,30 @@ export class GymStore {
     return r;
   }
 
+  /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) */
+  private saveLocal(key: string, value: unknown) {
+    if (lsSet(key, value)) this.unsaved.delete(key);
+    else this.unsaved.add(key);
+    this.localSaveFailed = this.unsaved.size > 0;
+  }
   private persistLocal() {
-    lsSet(CACHE_KEY, { user: this.user?.id, logs: this.logs });
-    lsSet(PENDING_KEY, { user: this.user?.id, pending: this.pending });
+    this.saveLocal(CACHE_KEY, { user: this.user?.id, logs: this.logs, bases: this.bases });
+    this.saveLocal(PENDING_KEY, { user: this.user?.id, pending: this.pending });
   }
   private persistHealth() {
-    lsSet(HEALTH_KEY, { user: this.user?.id, health: this.health, at: this.healthSyncedAt });
+    this.saveLocal(HEALTH_KEY, { user: this.user?.id, health: this.health, at: this.healthSyncedAt });
   }
   private persistPlan() {
-    lsSet(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty });
+    this.saveLocal(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty, base: this.planBase });
   }
 
+  /** Days waiting to be saved, leaving out those waiting for you to choose a version. */
+  private unsynced(): DayKey[] {
+    return Object.keys(this.pending).filter((d) => !this.conflicts[d]);
+  }
   /** How many days wait on a failed save or on the phone being offline, or null when all is well. */
   syncWaiting(): { days: number; offline: boolean } | null {
-    const days = Object.keys(this.pending).length, offline = !this.online;
+    const days = this.unsynced().length, offline = !this.online;
     return this.user && days > 0 && (this.syncTrouble || offline) ? { days, offline } : null;
   }
   retrySync() {
@@ -597,7 +663,7 @@ export class GymStore {
       this.flushTimer = setTimeout(() => void this.flush(), 400);
       return;
     }
-    const days = Object.keys(this.pending);
+    const days = this.unsynced();
     if (!days.length || !this.user || !this.sb) return;
     if (!navigator.onLine) {
       this.setStatus("Offline. Saved on this phone, will sync");
@@ -605,9 +671,21 @@ export class GymStore {
     }
     this.flushing = true;
     this.setStatus("Saving…");
-    const batch = days.map((d) => ({ user_id: this.user!.id, day: d, data: this.pending[d] }));
-    const { error } = await this.sb.from("logs").upsert(batch, { onConflict: "user_id,day" });
-    this.flushing = false;
+    let error: unknown = null;
+    try {
+      // Days new here go in together, a chunk to a request; the others are each written over the version they started
+      // from, a few at once, and so are the days of a chunk that found one of them already there.
+      const fresh = days.filter((d) => !this.bases[d]), each = days.filter((d) => this.bases[d]);
+      for (let i = 0; i < fresh.length && !error; i += INSERT_CHUNK) {
+        const chunk = fresh.slice(i, i + INSERT_CHUNK), r = await this.addDays(chunk);
+        if (r.taken) each.push(...chunk);
+        error = r.error ?? null;
+      }
+      if (!error) error = await this.saveEach(each);
+    } finally {
+      this.flushing = false;
+    }
+    this.persistLocal();
     if (error) {
       this.syncTrouble = true;
       this.setStatus("Not synced yet. Will retry");
@@ -616,23 +694,128 @@ export class GymStore {
       return;
     }
     this.syncTrouble = false;
-    for (const b of batch) if (this.pending[b.day] === b.data) delete this.pending[b.day];
+    this.setStatus(this.unsynced().length ? "Saving…" : Object.keys(this.conflicts).length ? "Not synced yet" : "Saved");
+  }
+
+  /** Adds days new here in one request. `taken` when one of them was there already: Postgres then turns the whole
+   *  request down, so none went in. Or an error to retry on. */
+  private async addDays(days: DayKey[]): Promise<{ taken?: boolean; error?: unknown }> {
+    const uid = this.user!.id, rows = days.map((day) => ({ user_id: uid, day, data: this.pending[day] }));
+    const { data, error } = await this.sb!.from("logs").insert(rows).select("day,updated_at");
+    if (error) return error.code === UNIQUE_VIOLATION ? { taken: true } : { error };
+    const at = new Map(((data as { day: DayKey; updated_at: string }[] | null) ?? []).map((r) => [r.day, r.updated_at]));
+    for (const r of rows) {
+      const v = at.get(r.day);
+      if (!v) continue;
+      this.bases[r.day] = v;
+      if (this.pending[r.day] === r.data) delete this.pending[r.day]; // unless edited meanwhile
+    }
+    return {};
+  }
+
+  /** Saves days one by one, a few at once. After an error it starts no more, lets those under way finish, and returns
+   *  the first error. */
+  private async saveEach(days: DayKey[]): Promise<unknown> {
+    let next = 0, error: unknown = null;
+    const worker = async () => {
+      while (!error && next < days.length) {
+        const e = await this.saveDay(days[next++]).catch((x: unknown) => x);
+        error ??= e;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SAVES_AT_ONCE, days.length) }, worker));
+    return error;
+  }
+
+  /** Saves a waiting day over the version this phone's copy started from, or adds it when Supabase has none. If
+   *  another device changed the day first: takes that version when the copies match, merges edits to different
+   *  lifts, or else keeps both for you to choose (`conflicts`). Returns an error to retry on. */
+  private async saveDay(day: DayKey): Promise<unknown> {
+    const sb = this.sb!, uid = this.user!.id;
+    for (let tries = 0; tries < 3; tries++) {
+      const data = this.pending[day], base = this.bases[day];
+      if (!data || this.conflicts[day]) return null;
+      const w = await (base
+        ? sb.from("logs").update({ data }).eq("user_id", uid).eq("day", day).eq("updated_at", base).select("updated_at")
+        : sb.from("logs").insert({ user_id: uid, day, data }).select("updated_at"));
+      if (w.error && w.error.code !== UNIQUE_VIOLATION) return w.error;
+      const at = w.error ? null : writtenAt(w.data);
+      if (at) {
+        this.bases[day] = at;
+        if (this.pending[day] === data) delete this.pending[day];
+        return null;
+      }
+      // Changed on another device since this phone last had it: compare its copy with this one.
+      const got = await sb.from("logs").select("data,updated_at").eq("user_id", uid).eq("day", day).maybeSingle();
+      if (got.error) return got.error;
+      const theirs = got.data as { data: DayLog; updated_at: string } | null, mine = this.pending[day];
+      if (!mine) return null;
+      if (!theirs) {
+        delete this.bases[day]; // gone from Supabase: add it again
+        continue;
+      }
+      if (sameDay(mine, theirs.data)) {
+        this.bases[day] = theirs.updated_at;
+        delete this.pending[day];
+        return null;
+      }
+      const both = mergeDays(mine, theirs.data);
+      if (!both) {
+        // The base stays as it was, so this is found again after a reload.
+        this.conflicts[day] = { data: theirs.data, at: theirs.updated_at };
+        return null;
+      }
+      this.bases[day] = theirs.updated_at;
+      this.logs[day] = this.pending[day] = both;
+      this.logsChanged();
+    }
+    return new Error(`${day} kept changing on another device while saving`);
+  }
+
+  /** Settles a day changed here and on another device: keeps this phone's version, saving it over the other one,
+   *  or the other version, dropping this phone's changes to the day. Then syncs. */
+  async keepDay(day: DayKey, which: "mine" | "theirs"): Promise<void> {
+    const c = this.conflicts[day];
+    if (!c) return;
+    delete this.conflicts[day];
+    this.bases[day] = c.at;
+    if (which === "theirs") {
+      this.logs[day] = c.data;
+      delete this.pending[day];
+      this.logsChanged();
+    }
     this.persistLocal();
-    this.setStatus(Object.keys(this.pending).length ? "Saving…" : "Saved");
+    this.changed();
+    await this.flush();
+    await this.pull();
   }
 
   async pull(): Promise<void> {
     if (!this.user || !navigator.onLine || !this.sb) return;
-    const { data, error } = await this.sb.from("logs").select("day,data").order("day", { ascending: true }).limit(5000);
+    const before = { ...this.bases }, asked = { ...this.conflicts };
+    const { data, error } = await this.sb.from("logs").select("day,data,updated_at").order("day", { ascending: true }).limit(5000);
     if (error) {
       this.setStatus("Couldn’t load. Showing saved copy");
       console.warn(error);
       return;
     }
-    const next: Record<DayKey, DayLog> = {};
-    for (const r of data as { day: DayKey; data: DayLog }[]) next[r.day] = r.data;
-    for (const d of Object.keys(this.pending)) next[d] = this.pending[d]; // local unsaved edits win
+    const next: Record<DayKey, DayLog> = {}, bases: Record<DayKey, string> = {};
+    for (const r of data as { day: DayKey; data: DayLog; updated_at: string }[]) {
+      next[r.day] = r.data;
+      bases[r.day] = r.updated_at;
+      // A day waiting for your choice offers the other device's latest copy, unless a save found a newer one meanwhile.
+      if (this.conflicts[r.day] && this.conflicts[r.day] === asked[r.day]) this.conflicts[r.day] = { data: r.data, at: r.updated_at };
+    }
+    // This phone's copy stands, with the version it started from, for days with unsaved edits (local edits win), and
+    // for days whose version moved while this loaded: saved meanwhile, their rows here may be from before.
+    const moved = Object.keys(this.logs).filter((d) => !this.pending[d] && this.bases[d] !== before[d]);
+    for (const d of [...Object.keys(this.pending), ...moved]) {
+      next[d] = this.pending[d] ?? this.logs[d];
+      if (this.bases[d]) bases[d] = this.bases[d];
+      else delete bases[d];
+    }
     this.logs = next;
+    this.bases = bases;
     this.logsChanged();
     this.persistLocal();
     if (!Object.keys(this.pending).length) this.status = "Synced";
@@ -670,22 +853,36 @@ export class GymStore {
 
   async flushPlan(): Promise<void> {
     if (!this.planDirty || !this.user || this.planFlushing || !this.sb) return;
+    if (this.planConflict) {
+      this.setPlanMsg(PLAN_HELD);
+      return;
+    }
     if (!navigator.onLine) {
       this.setPlanMsg("Offline. Saved on this phone, will sync");
       return;
     }
     this.planFlushing = true;
     const rev = this.planRev;
-    const { error } = await this.sb.from("plans").upsert({ user_id: this.user.id, plan: normalizePlan(this.plan, DEFAULT_PLAN) }, { onConflict: "user_id" });
-    this.planFlushing = false;
+    let r: { at?: string; error?: unknown };
+    try {
+      r = await this.savePlan(normalizePlan(this.plan, DEFAULT_PLAN));
+    } finally {
+      this.planFlushing = false;
+    }
     clearTimeout(this.planTimer);
-    if (error) {
+    if (r.error) {
       this.setPlanMsg("Not synced yet. Will retry");
-      console.warn(error);
+      console.warn(r.error);
       this.planTimer = setTimeout(() => void this.flushPlan(), 15000);
       return;
     }
+    if (!r.at) {
+      this.setPlanMsg(PLAN_HELD);
+      return;
+    }
+    this.planBase = r.at;
     if (rev !== this.planRev) {
+      this.persistPlan();
       this.planTimer = setTimeout(() => void this.flushPlan(), 400); // edited while saving
       return;
     }
@@ -694,18 +891,70 @@ export class GymStore {
     this.setPlanMsg("Saved");
   }
 
+  /** Saves the plan over the version this phone's copy started from, or adds it when Supabase has none. Returns the
+   *  new version; none when another device changed the plan first (so it's kept for you to choose), unless that
+   *  device's plan is the same, whose version is taken; or an error to retry on. */
+  private async savePlan(plan: Plan, tries = 2): Promise<{ at?: string; error?: unknown }> {
+    const sb = this.sb!, uid = this.user!.id, base = this.planBase;
+    const w = await (base
+      ? sb.from("plans").update({ plan }).eq("user_id", uid).eq("updated_at", base).select("updated_at")
+      : sb.from("plans").insert({ user_id: uid, plan }).select("updated_at"));
+    if (w.error && w.error.code !== UNIQUE_VIOLATION) return { error: w.error };
+    const at = w.error ? null : writtenAt(w.data);
+    if (at) return { at };
+    const got = await sb.from("plans").select("plan,updated_at").eq("user_id", uid).maybeSingle();
+    if (got.error) return { error: got.error };
+    if (!got.data) {
+      if (!tries) return { error: new Error("the plan kept changing on another device while saving") };
+      this.planBase = null; // gone from Supabase: add it again
+      return this.savePlan(plan, tries - 1);
+    }
+    const theirs = normalizePlan(got.data.plan, DEFAULT_PLAN);
+    if (canon(theirs) === canon(plan)) return { at: got.data.updated_at };
+    this.planConflict = { plan: theirs, at: got.data.updated_at };
+    return {};
+  }
+
+  /** Settles the plan changed here and on another device: keeps this phone's version, saving it over the other one,
+   *  or the other version, dropping this phone's changes. Then syncs. */
+  async keepPlan(which: "mine" | "theirs"): Promise<void> {
+    const c = this.planConflict;
+    if (!c) return;
+    this.planConflict = null;
+    this.planBase = c.at;
+    if (which === "theirs") {
+      this.plan = c.plan;
+      this.planDirty = false;
+      this.planRev++; // a load already under way is older than this
+      this.planShape++;
+      this.planMsg = "Saved";
+    }
+    this.persistPlan();
+    this.changed();
+    await this.flushPlan();
+    await this.pullPlan();
+  }
+
   async pullPlan(): Promise<void> {
     if (!this.user || !navigator.onLine || this.planDirty || !this.sb) return;
-    const { data, error } = await this.sb.from("plans").select("plan").eq("user_id", this.user.id).maybeSingle();
+    const rev = this.planRev;
+    const { data, error } = await this.sb.from("plans").select("plan,updated_at").eq("user_id", this.user.id).maybeSingle();
     if (error) {
       console.warn(error);
       return;
     }
-    if (this.planDirty) return; // edited while loading
-    const next = data?.plan ? normalizePlan(data.plan, DEFAULT_PLAN) : copy(DEFAULT_PLAN);
+    if (this.planDirty || rev !== this.planRev) return; // edited while loading
+    const next = data?.plan ? normalizePlan(data.plan, DEFAULT_PLAN) : copy(DEFAULT_PLAN), base: string | null = data?.updated_at ?? null;
     // Unchanged (the usual case): leave the plan editor's fields alone, in case one is being typed in.
-    if (JSON.stringify(next) === JSON.stringify(this.plan)) return;
+    if (JSON.stringify(next) === JSON.stringify(this.plan)) {
+      if (base !== this.planBase) {
+        this.planBase = base;
+        this.persistPlan();
+      }
+      return;
+    }
     this.plan = next;
+    this.planBase = base;
     this.planShape++;
     this.persistPlan();
     this.changed();

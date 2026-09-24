@@ -110,6 +110,9 @@ td.c,th.c{text-align:center}
 /* sync trouble, and the placeholder shown while the app starts */
 .syncbar{position:sticky;top:calc(var(--sat) + var(--appbar) + 8px);z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r-card);background:var(--warn-soft);box-shadow:inset 4px 0 0 var(--warn),var(--shadow-up);color:var(--ink);font-size:14px}
 .syncbar .ghost{margin-left:auto}
+.syncbar p{margin:0;flex-basis:100%}
+.syncbar .conflict{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px}
+.syncbar .conflict .ghost{margin-left:0;flex:1 1 auto}
 .sk-week i{display:block;height:56px;border-radius:var(--r-ctl);background:var(--surface);box-shadow:var(--shadow)}
 .sk-title{display:grid;gap:10px;padding-top:4px}
 .sk-title i{display:block;height:30px;width:38%;border-radius:var(--r-mark);background:var(--chip)}

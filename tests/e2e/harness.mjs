@@ -40,6 +40,9 @@ export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@exa
   };
 }
 
+/** The updated_at of rows a test puts in `db` itself: older than any write. */
+const FIRST_SAVE = "2026-09-23T04:12:00+00:00";
+
 /**
  * The `logs`, `plans` and `health_days` tables, answered from `db` ({ logs, plan, health, healthAt, failWrites, writes,
  * unexpected }; a write to `health_days` that asks to ignore duplicates, as a restore does, leaves the days `db.health`
@@ -47,19 +50,46 @@ export function session(uid, created = "2026-09-01T00:00:00Z", email = "test@exa
  * (`db.passwords`: { email: password }), password changes (the new one in `db.passwordSet`), the account's
  * metadata (`db.metadata`), and Continue with Google (switched on with `db.google`; Google's page is skipped: the
  * authorize request goes straight back with a code, or with an error when `db.oauthError`, recorded in `db.oauth`).
+ *
+ * Rows of `logs` and `plans` carry an updated_at (`db.logsAt[day]`, `db.planAt`) that every write moves on, as the
+ * tables' triggers do. Reads and updates honour eq filters on day and updated_at, a write returns the columns it selects
+ * of its rows when asked (Prefer: return=representation), and adding rows fails as Postgres does when one of them is
+ * there already (409, code 23505), adding none.
+ * Several pages can share one `db`, like phones on one account.
  */
 export function mockSupabase(db) {
   db.writes ??= { logs: 0, plans: 0, health: 0 };
   db.unexpected ??= [];
+  db.logsAt ??= {};
+  db.clock ??= 0;
+  /** A new updated_at, later than every one before it. */
+  const stamp = () => new Date(Date.UTC(2026, 8, 23, 6, 0, 0, ++db.clock)).toISOString().replace("Z", "+00:00");
   return async (route) => {
     const req = route.request(), url = new URL(req.url()), m = req.method();
+    const json = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    /** The value of an eq filter in the address (day=eq.…), or null. */
+    const eq = (col) => url.searchParams.get(col)?.replace(/^eq\./, "") ?? null;
+    /** What a write sends back: the columns it selects (select=…) of the rows it wrote, when it asks for them, or nothing. */
+    const written = (rows) => {
+      if (!/return=representation/.test(req.headers()["prefer"] ?? "")) return route.fulfill({ status: m === "POST" ? 201 : 204, body: "" });
+      const cols = (url.searchParams.get("select") ?? "*").split(",");
+      return json(m === "POST" ? 201 : 200, rows.map((r) => (cols.includes("*") ? r : Object.fromEntries(cols.map((c) => [c, r[c]])))));
+    };
+    const duplicate = () => json(409, { code: "23505", details: null, hint: null, message: "duplicate key value violates unique constraint" });
     if (url.pathname === "/rest/v1/logs") {
-      if (m === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(Object.keys(db.logs).sort().map((day) => ({ day, data: db.logs[day] }))) });
-      if (m === "POST") {
+      const at = (day) => (db.logsAt[day] ??= FIRST_SAVE);
+      const picked = () => Object.keys(db.logs).sort().filter((d) => (eq("day") == null || d === eq("day")) && (eq("updated_at") == null || at(d) === eq("updated_at")));
+      if (m === "GET") return json(200, picked().map((day) => ({ day, data: db.logs[day], updated_at: at(day) })));
+      if (m === "POST" || m === "PATCH") {
         if (db.failWrites) return route.fulfill({ status: 503, contentType: "application/json", body: '{"message":"unavailable"}' });
-        for (const r of [].concat(JSON.parse(req.postData()))) db.logs[r.day] = r.data;
-        db.writes.logs++;
-        return route.fulfill({ status: 201, body: "" });
+        const body = JSON.parse(req.postData()), rows = m === "POST" ? [].concat(body) : picked().map((day) => ({ day, data: body.data }));
+        if (m === "POST" && rows.some((r) => r.day in db.logs)) return duplicate();
+        for (const r of rows) {
+          db.logs[r.day] = r.data;
+          db.logsAt[r.day] = stamp();
+        }
+        if (rows.length) db.writes.logs++;
+        return written(rows.map((r) => ({ day: r.day, data: r.data, updated_at: db.logsAt[r.day] })));
       }
     }
     if (url.pathname === "/rest/v1/health_days") {
@@ -74,11 +104,15 @@ export function mockSupabase(db) {
       }
     }
     if (url.pathname === "/rest/v1/plans") {
-      if (m === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(db.plan ? [{ plan: db.plan }] : []) });
-      if (m === "POST") {
+      const at = () => (db.planAt ??= FIRST_SAVE);
+      if (m === "GET") return json(200, db.plan ? [{ plan: db.plan, updated_at: at() }] : []);
+      if (m === "POST" || m === "PATCH") {
+        if (m === "POST" && db.plan) return duplicate();
+        if (m === "PATCH" && (!db.plan || (eq("updated_at") != null && at() !== eq("updated_at")))) return written([]);
         db.plan = [].concat(JSON.parse(req.postData()))[0].plan;
+        db.planAt = stamp();
         db.writes.plans++;
-        return route.fulfill({ status: 201, body: "" });
+        return written([{ plan: db.plan, updated_at: db.planAt }]);
       }
     }
     if (url.pathname === "/auth/v1/otp" && m === "POST") {

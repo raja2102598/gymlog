@@ -39,6 +39,50 @@ export default async function offline({ browser, base, copy, check }) {
     await ctx.close();
   }
 
+  // ---------- A phone that won't keep a save (storage full or blocked) says so in the bar ----------
+  {
+    const db = { logs: today(), plan: null };
+    const { ctx, page } = await open(browser, base, { auth, db, width: 360, height: 800 });
+    await ready(page);
+    // Every save on the phone now throws, as the browser's do when its storage is full.
+    await page.evaluate(() => {
+      window.__setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = () => {
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      };
+    });
+    await page.fill("#steps", "9300");
+    await until(() => page.locator("#syncBar").isVisible(), 8000);
+    check(
+      "an edit the phone couldn't keep shows in the sync bar",
+      (await flat(page.locator("#syncLocal"))) === "Couldn’t save on this phone: storage is full or blocked. Free up space, or export your data from Settings.",
+      await flat(page.locator("#syncBar")),
+    );
+    await until(() => db.logs["2026-09-23"].steps === 9300, 8000);
+    await page.waitForTimeout(300);
+    check("the edit still syncs, and the line stays while the phone's copy is out of date", db.logs["2026-09-23"].steps === 9300 && (await page.locator("#syncLocal").isVisible()) && (await page.locator("#syncMsg").isHidden()));
+    db.failWrites = true;
+    await page.fill("#steps", "9350");
+    await until(() => page.locator("#syncMsg").isVisible(), 8000);
+    check(
+      "a failed upload too: the bar doesn't claim the day is saved on this phone",
+      (await flat(page.locator("#syncMsg"))) === "1 day not synced yet. Retrying every 15 seconds." && (await page.locator("#syncLocal").isVisible()),
+      await flat(page.locator("#syncBar")),
+    );
+    db.failWrites = false;
+    await page.click("#syncRetry");
+    await until(async () => db.logs["2026-09-23"].steps === 9350 && (await page.locator("#syncMsg").isHidden()));
+    check("Retry now still saves it", db.logs["2026-09-23"].steps === 9350 && (await page.locator("#syncLocal").isVisible()));
+    await page.evaluate(() => (Storage.prototype.setItem = window.__setItem));
+    await page.fill("#steps", "9400");
+    await until(() => page.locator("#syncBar").isHidden());
+    const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("gymlog.cache.v1")).logs["2026-09-23"].steps);
+    check("once the phone saves again, the line goes", (await page.locator("#syncBar").isHidden()) && kept === 9400, `kept ${kept}`);
+    const uncaught = page.errors.filter((e) => e.startsWith("pageerror"));
+    check("no uncaught errors with storage full", uncaught.length === 0, uncaught.join(" | "));
+    await ctx.close();
+  }
+
   // ---------- Launching from the offline copy: quick on weak signal, and with no signal ----------
   {
     await delay(base, 0);

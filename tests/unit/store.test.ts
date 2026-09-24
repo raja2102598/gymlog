@@ -75,6 +75,47 @@ describe("store", () => {
   });
 });
 
+describe("the phone's copy", () => {
+  /** The phone's storage, which throws on every save while `full` is set, as a browser does when it's full or blocked. */
+  function phoneStorage() {
+    const kept = new Map<string, string>(), phone = { kept, full: false };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => kept.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        if (phone.full) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        kept.set(k, v);
+      },
+      removeItem: (k: string) => void kept.delete(k),
+    });
+    return phone;
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("says when the phone won't keep an edit, until each copy saves again", async () => {
+    const phone = phoneStorage(), s = storeWith({});
+    s.editDay("2026-09-23", (n) => void (n.steps = 9100), false);
+    expect(s.localSaveFailed).toBe(false);
+    phone.full = true;
+    s.editDay("2026-09-23", (n) => void (n.steps = 9200), false);
+    expect(s.localSaveFailed).toBe(true);
+    expect(JSON.parse(phone.kept.get("gymlog.pending.v1")!).pending["2026-09-23"].steps).toBe(9100);
+    phone.full = false;
+    // The plan saves, but the day's copy on the phone is still the old one.
+    s.editPlan((p) => void (p.stepGoal = 12000));
+    expect(s.localSaveFailed).toBe(true);
+    s.editDay("2026-09-23", (n) => void (n.steps = 9300), false);
+    expect(s.localSaveFailed).toBe(false);
+    // Health Connect's copy counts too.
+    s.sb = { from: () => ({ upsert: async () => ({ error: null }) }) } as unknown as GymStore["sb"];
+    phone.full = true;
+    await s.saveHealth({ "2026-09-23": { steps: 8421 } });
+    expect(s.localSaveFailed).toBe(true);
+    phone.full = false;
+    await s.saveHealth({ "2026-09-23": { steps: 8500 } });
+    expect(s.localSaveFailed).toBe(false);
+  });
+});
+
 describe("dashboard", () => {
   // Daily weigh-ins from 26 Aug to today, changing by `perDay` kg.
   const series = (perDay: number, upTo = 28) => {
