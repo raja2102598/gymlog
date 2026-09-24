@@ -153,8 +153,9 @@ const SHAPE: Record<Token["t"], string> = { n: "n", reps: "r", kg: "k", lb: "l",
  * any word it doesn't know.
  */
 export function parseSetPhrase(text: string): VoiceResult {
-  // A minus sign on a number ("-45") would be dropped with the other punctuation: refuse it instead.
-  if (/(^|[^\p{L}\p{N}])[-\u2212\u2013]\s*\.?\d/u.test(text)) return unknown();
+  // A minus sign before a number ("-45", "at-45", "10x-45") would be dropped with the other punctuation: refuse it
+  // instead. "forty-five" has no digit after its hyphen.
+  if (/[-\u2212\u2013]\s*\.?\d/.test(text)) return unknown();
   const ws = words(text);
   const command = COMMANDS[ws.filter((w) => !FILLER.has(w)).join(" ")];
   if (command) return { kind: "command", command };

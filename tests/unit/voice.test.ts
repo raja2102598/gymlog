@@ -80,6 +80,9 @@ describe("parseSetPhrase: numbers", () => {
     expect(parseSetPhrase("10 at − 45")).toEqual(unknown);
     expect(parseSetPhrase("10 at -.5")).toEqual(unknown);
     expect(parseSetPhrase("10 at − .5")).toEqual(unknown);
+    expect(parseSetPhrase("10x-45")).toEqual(unknown);
+    expect(parseSetPhrase("10 at-45")).toEqual(unknown);
+    expect(parseSetPhrase("45kg for-10")).toEqual(unknown);
     expect(parseSetPhrase("10 at forty-five")).toEqual(set(10, 45));
   });
 
