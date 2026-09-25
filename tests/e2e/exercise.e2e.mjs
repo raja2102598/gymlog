@@ -111,6 +111,12 @@ export default async function exercise({ browser, base, check }) {
     await seed(now - 5 * 60 * 60_000);
     await openWorkout(page);
     check("a clock left running for 5 hours starts again when the workout opens", /^0:0\d$/.test(await shown()), await shown());
+    // The same when the app comes back already on the workout (a reload).
+    await seed(now - 5 * 60 * 60_000);
+    await page.reload();
+    await page.waitForSelector("#workoutView #wclock", { timeout: 15000 });
+    await until(async () => /^0:0\d$/.test(await shown()));
+    check("and when the app reloads on the workout", /^0:0\d$/.test(await shown()), await shown());
     check("the clock names what a tap does", /Restart the clock$/.test(await page.getAttribute("#wclock", "aria-label")));
     await ctx.close();
   }

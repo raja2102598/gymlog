@@ -324,6 +324,20 @@ export default function GymLog() {
     [navigate, focusNext],
   );
 
+  // Reopened on a workout (a reload, or Android bringing the app back): the same clock rules as opening it from a
+  // tap, once the account is known (runs belong to it): a clock left running for hours starts again, and a finished
+  // day opened to review drops one.
+  const restoredRun = useRef(false);
+  useEffect(() => {
+    if (restoredRun.current || !signedIn || !uid) return;
+    restoredRun.current = true;
+    const r = shown.current;
+    if (r.view !== "workout" || r.done) return;
+    keepRunsInMemory(store.demo);
+    if (!sessionDone(store, sel)) startRun(sel);
+    else dropStaleRun(sel);
+  }, [signedIn, uid, store, sel]);
+
   // A shortcut opens today's weight or steps field, then drops ?go= from the address. Train opened that way gets
   // its own address with Home behind it, as a tap on its tab would, so a reload stays there and Back goes Home.
   useEffect(() => {
