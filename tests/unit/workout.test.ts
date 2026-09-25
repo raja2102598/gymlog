@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearRun, dropStaleRun, endRun, keepRunsInMemory, restartRun, runOf, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
+import { clearRun, dropStaleRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runOf, runSeconds, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
 
 const mem = new Map<string, string>();
 globalThis.localStorage = {
@@ -29,6 +29,31 @@ describe("workout runs", () => {
     expect(restartRun("2026-09-23", 60_000).startedAt).toBe(60_000);
     expect(startRun("2026-09-23", 60_000 + STALE_RUN_MS - 1).startedAt).toBe(60_000); // still the same workout
     expect(startRun("2026-09-23", 60_000 + STALE_RUN_MS).startedAt).toBe(60_000 + STALE_RUN_MS); // left behind
+  });
+
+  it("pauses: the clock stops where it is, the paused time never counts, and Finish while paused ends it there", () => {
+    const d = "2026-09-23";
+    startRun(d, 0);
+    expect(pauseRun(d, 10 * 60_000)?.pausedAt).toBe(10 * 60_000);
+    expect(pauseRun(d, 11 * 60_000)?.pausedAt).toBe(10 * 60_000); // already paused: unchanged
+    expect(runSeconds(runOf(d)!, 25 * 60_000)).toBe(10 * 60); // stopped at 10:00
+    expect(resumeRun(d, 25 * 60_000)).toMatchObject({ pausedMs: 15 * 60_000 });
+    expect(runOf(d)?.pausedAt).toBeUndefined();
+    expect(runSeconds(runOf(d)!, 30 * 60_000)).toBe(15 * 60); // 10 before, 5 since
+    pauseRun(d, 40 * 60_000);
+    expect(runSeconds(endRun(d, 50 * 60_000)!)).toBe(25 * 60); // finished while paused: 25:00, not 35:00
+    expect(pauseRun(d, 60 * 60_000)?.pausedAt).toBe(40 * 60_000); // a finished run doesn't pause again
+  });
+
+  it("never counts a paused clock as left behind; one running for hours, less its pauses, is", () => {
+    const d = "2026-09-23";
+    startRun(d, 0);
+    pauseRun(d, 60_000);
+    expect(startRun(d, 10 * STALE_RUN_MS).startedAt).toBe(0); // paused on purpose: kept
+    resumeRun(d, STALE_RUN_MS);
+    // Counted: a minute before the pause, then from STALE_RUN_MS on.
+    expect(startRun(d, 2 * STALE_RUN_MS - 2 * 60_000).startedAt).toBe(0);
+    expect(startRun(d, 2 * STALE_RUN_MS).startedAt).toBe(2 * STALE_RUN_MS);
   });
 
   it("keeps a long workout's clock on screen and at Finish; drops one left behind only when a finished day is reviewed", () => {

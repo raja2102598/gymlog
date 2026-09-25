@@ -34,10 +34,23 @@ export default async function exercise({ browser, base, check }) {
 
     // Train: a photo for each library lift, loaded from the app's own files.
     await openTab(page, "train");
-    const thumbs = await page.$$eval("#liftRows .lrow-main img.ex-thumb", (els) => els.map((e) => ({ src: e.getAttribute("src"), ok: e.complete && e.naturalWidth > 0, alt: e.getAttribute("alt") })));
+    const thumbs = await page.$$eval("#liftRows .lrow-pic img.ex-thumb", (els) => els.map((e) => ({ src: e.getAttribute("src"), ok: e.complete && e.naturalWidth > 0, alt: e.getAttribute("alt") })));
     await until(async () => (await page.$$eval("#liftRows img.ex-thumb", (els) => els.every((e) => e.complete && e.naturalWidth > 0))) === true);
     check("Train: each lift the library knows shows its photo, not the one dumbbell icon", thumbs.length === LEGS.length && thumbs.every((t) => /^\/exercises\/thumbs\/[A-Za-z0-9_-]+\.webp$/.test(t.src)), JSON.stringify(thumbs));
     check("the photos load, and are decorative (the name is beside them)", (await page.$$eval("#liftRows img.ex-thumb", (els) => els.every((e) => e.naturalWidth > 0 && e.getAttribute("alt") === ""))) === true);
+    // A photo pulls up everything about its lift from the bottom; the rest of the row still opens the workout.
+    check("each photo is a button saying what it opens", (await page.getAttribute('#liftRows [data-about="0"]', "aria-label")) === `About ${LEGS[0]}: photos, muscles and how to do it`);
+    await page.click('#liftRows [data-about="0"]');
+    await page.waitForSelector("#exSheet[open] .howto-steps li");
+    const facts = (await page.locator("#exSheet .xsheet-facts").innerText()).replace(/\s+/g, " ").trim();
+    check(
+      "it opens the lift's sheet: its name, today's sets, what it works and needs, then its photos, steps and videos",
+      (await flat(page.locator("#exSheetT"))) === LEGS[0] && /^Today \d.+ Works .+ Needs .+$/.test(facts) && (await page.locator("#exSheet .howto-photos img").count()) === 2 && (await page.locator("#exSheet .howto-video").count()) === 1,
+      facts,
+    );
+    await page.click("#exSheetClose");
+    await until(async () => (await page.locator("#exSheet[open]").count()) === 0);
+    check("× closes it, still on Train", (await page.locator("#trainView").count()) === 1 && (await page.locator("#workoutView").count()) === 0);
 
     // The library: a lift's photo and name open how to do it, before adding it.
     await page.click("#addExercise");
@@ -84,7 +97,7 @@ export default async function exercise({ browser, base, check }) {
     const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: { days } } });
     await ready(page);
     await openTab(page, "train");
-    const srcs = await page.$$eval("#liftRows .lrow-main", (rows) => rows.map((r) => r.querySelector("img.ex-thumb")?.getAttribute("src") ?? "icon"));
+    const srcs = await page.$$eval("#liftRows .lrow-pic", (rows) => rows.map((r) => r.querySelector("img.ex-thumb")?.getAttribute("src") ?? "icon"));
     check(
       "unlinked lifts from an older plan get the photo of the lift picked for their name; a name nobody picked keeps the icon",
       srcs.join("|") === "/exercises/thumbs/Dumbbell_Shoulder_Press.webp|/exercises/thumbs/Side_Lateral_Raise.webp|/exercises/thumbs/Lying_Leg_Curls.webp|icon",
@@ -103,9 +116,26 @@ export default async function exercise({ browser, base, check }) {
     await seed(now - 60 * 60_000);
     await openWorkout(page);
     check("an hour into the workout, the clock says so", /^1:00:\d\d$/.test(await shown()), await shown());
-    await page.click("#wclock"); // the harness accepts the "Restart the workout clock?" question
+    // Tapped, the clock opens its own sheet: stop it for a while, or start it again from 0:00.
+    await page.click("#wclock");
+    await page.waitForSelector("#askDialog[open]");
+    const sheet = { title: await flat(page.locator("#askTitle")), choices: await page.locator("#askDialog [data-choice]").allInnerTexts() };
+    check("tapping the clock opens its sheet: Pause, and Restart from 0:00", sheet.title === "Workout clock" && sheet.choices.join("|") === "Pause the clock|Restart from 0:00" && (await page.locator("#askCancel").count()) === 1, JSON.stringify(sheet));
+    await page.click('#askDialog [data-choice="pause"]');
+    await until(async () => (await page.getAttribute("#wclock", "class")).includes("paused"));
+    const paused = JSON.parse(await page.evaluate(() => localStorage.getItem("gymlog.workout.v1")));
+    check("Pause stops the clock where it is, and says so", paused.pausedAt === now && /^Clock paused at 60 minutes\. Resume or restart it$/.test(await page.getAttribute("#wclock", "aria-label")) && /^1:00:\d\d$/.test(await shown()), JSON.stringify(paused));
+    await page.click("#wclock");
+    await page.waitForSelector('#askDialog [data-choice="resume"]');
+    await page.click('#askDialog [data-choice="resume"]');
+    await until(async () => !(await page.getAttribute("#wclock", "class")).includes("paused"));
+    const resumed = JSON.parse(await page.evaluate(() => localStorage.getItem("gymlog.workout.v1")));
+    check("Resume starts it again, the paused time not counted", resumed.pausedAt === undefined && resumed.pausedMs === 0 && resumed.startedAt === paused.startedAt, JSON.stringify(resumed));
+    await page.click("#wclock");
+    await page.waitForSelector('#askDialog [data-choice="restart"]');
+    await page.click('#askDialog [data-choice="restart"]');
     await until(async () => /^0:0\d$/.test(await shown()));
-    check("tapping the clock starts it again from 0:00", /^0:0\d$/.test(await shown()), await shown());
+    check("Restart from 0:00 starts it again from 0:00", /^0:0\d$/.test(await shown()), await shown());
     await page.click("#closeWorkout");
     await page.waitForSelector("#trainView");
     await seed(now - 5 * 60 * 60_000);
@@ -117,7 +147,7 @@ export default async function exercise({ browser, base, check }) {
     await page.waitForSelector("#workoutView #wclock", { timeout: 15000 });
     await until(async () => /^0:0\d$/.test(await shown()));
     check("and when the app reloads on the workout", /^0:0\d$/.test(await shown()), await shown());
-    check("the clock names what a tap does", /Restart the clock$/.test(await page.getAttribute("#wclock", "aria-label")));
+    check("the clock names what a tap does", /Pause or restart the clock$/.test(await page.getAttribute("#wclock", "aria-label")));
     await ctx.close();
   }
 

@@ -2,7 +2,7 @@
 // name that already has history of its own or clashes with another lift on the same day, and the plain rename
 // when there's no history yet to lose.
 import fs from "node:fs";
-import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS } from "./harness.mjs";
+import { K, answerAsk, clearAsked, flat, lastAsked, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 // It opens a renamed lift's page, so it runs with the other suites that do when that page or its charts change.
 export const covers = ["src/components/dashboard/LiftDetail.tsx", "src/components/health/Bars.tsx", "src/components/health/Trend.tsx", "src/lib/scale.ts"];
@@ -35,14 +35,13 @@ export default async function plan({ browser, base, check }) {
   check("Lift 2 is Leg Press, with history", (await page.locator("#pe_x1_name").inputValue()) === "Leg Press");
 
   // --- renaming a lift with history asks to carry it over, and carries it when you say yes
-  let asked = "";
-  page.removeAllListeners("dialog");
-  page.once("dialog", (d) => ((asked = d.message()), d.accept()));
+  await clearAsked(page);
   const name1 = page.locator("#pe_x1_name");
   await name1.click();
   await name1.fill("Leg Press Machine");
   await name1.blur();
   await until(() => db.plan?.days?.[2]?.exercises?.[1]?.name === "Leg Press Machine" && db.logs[K(0)]?.exercises?.["Leg Press Machine"]);
+  let asked = await lastAsked(page);
   check(
     "asks to carry the history over, naming both, before doing it",
     asked === "Carry Leg Press’s history over to Leg Press Machine? Every logged day, and anything swapped for Leg Press, will show Leg Press Machine instead.",
@@ -61,7 +60,6 @@ export default async function plan({ browser, base, check }) {
       Object.keys(db.logs[K(21)].exercises).sort().join("|") === "Hack Squat|Leg Press Machine",
     JSON.stringify([db.logs[K(0)].exercises, db.logs[K(21)].exercises]),
   );
-  page.on("dialog", (d) => d.accept());
 
   // --- Train and the workout: the renamed lift carries its numbers and its go-up hint, the old name is gone
   await planDone(page);
@@ -124,9 +122,8 @@ export default async function plan({ browser, base, check }) {
   // --- refuses to carry history onto a name that already has its own, asking nothing. The lift is still renamed as
   // typed, since the plan saves as you type; only the history stays where it was.
   await page.locator("#planBtn").click();
-  let dialogFired = false;
-  page.removeAllListeners("dialog");
-  page.once("dialog", () => (dialogFired = true));
+  await clearAsked(page);
+  const dialogFired = async () => (await lastAsked(page)) !== "";
   const name0 = page.locator("#pe_x0_name");
   await name0.click();
   await name0.fill("Lat Pulldown");
@@ -134,7 +131,7 @@ export default async function plan({ browser, base, check }) {
   await until(async () => (await flat(page.locator("#peRename"))) !== "");
   check(
     "refuses when the new name already has its own history, without asking to confirm anything",
-    !dialogFired && (await flat(page.locator("#peRename"))) === "“Lat Pulldown” already has its own history, so Hack Squat’s can’t be carried over there too.",
+    !(await dialogFired()) && (await flat(page.locator("#peRename"))) === "“Lat Pulldown” already has its own history, so Hack Squat’s can’t be carried over there too.",
     await flat(page.locator("#peRename")),
   );
   await until(() => db.plan.days[2].exercises[0].name === "Lat Pulldown");
@@ -150,14 +147,12 @@ export default async function plan({ browser, base, check }) {
   await until(() => db.plan.days[2].exercises[0].name === "Hack Squat");
   check(
     "typing the old name back renames it back, and moves no history",
-    !dialogFired && "Hack Squat" in db.logs[K(21)].exercises && "Lat Pulldown" in db.logs[K(0)].exercises,
+    !(await dialogFired()) && "Hack Squat" in db.logs[K(21)].exercises && "Lat Pulldown" in db.logs[K(0)].exercises,
     await flat(page.locator("#peRename")),
   );
 
   // --- refuses a name already used by another lift the same day, asking nothing
-  page.removeAllListeners("dialog");
-  page.once("dialog", () => (dialogFired = true));
-  dialogFired = false;
+  await clearAsked(page);
   const name4 = page.locator("#pe_x4_name");
   await name4.click();
   await name4.fill("Hamstring Curl");
@@ -165,7 +160,7 @@ export default async function plan({ browser, base, check }) {
   await until(async () => (await flat(page.locator("#peRename"))) !== "");
   check(
     "refuses a name already used by another lift that day, without asking to confirm anything",
-    !dialogFired && (await flat(page.locator("#peRename"))) === "Another lift on Wed is already called “Hamstring Curl”. Give them different names to carry Calf Raise’s history over.",
+    !(await dialogFired()) && (await flat(page.locator("#peRename"))) === "Another lift on Wed is already called “Hamstring Curl”. Give them different names to carry Calf Raise’s history over.",
     await flat(page.locator("#peRename")),
   );
   check("no history moved there either", "Calf Raise" in db.logs[K(0)].exercises && !("Hamstring Curl" in db.logs[K(0)].exercises));
@@ -174,33 +169,29 @@ export default async function plan({ browser, base, check }) {
   await name4.fill("Calf Raise");
   await name4.blur();
   await until(() => db.plan.days[2].exercises[4].name === "Calf Raise");
-  check("renaming it back asks nothing", !dialogFired);
+  check("renaming it back asks nothing", !(await dialogFired()));
 
   // --- saying no in the prompt still renames the lift; it just starts a fresh history
-  page.removeAllListeners("dialog");
-  page.once("dialog", (d) => ((asked = d.message()), d.dismiss()));
+  await answerAsk(page, "cancel");
   await name0.click();
   await name0.fill("Hack Squat V2");
   await name0.blur();
-  await until(() => db.plan?.days?.[2]?.exercises?.[0]?.name === "Hack Squat V2");
+  await until(async () => db.plan?.days?.[2]?.exercises?.[0]?.name === "Hack Squat V2" && (await dialogFired()) && (await page.locator("#askDialog[open]").count()) === 0);
+  asked = await lastAsked(page);
   check(
     "declining the carry-over still renames the lift, without moving its old history",
     asked.startsWith("Carry Hack Squat’s history over to Hack Squat V2?") && "Hack Squat" in db.logs[K(21)].exercises && !("Hack Squat V2" in db.logs[K(21)].exercises),
     asked,
   );
-  page.on("dialog", (d) => d.accept());
 
   // --- a lift with no history yet needs no prompt at all: it's just a rename
-  page.removeAllListeners("dialog");
-  dialogFired = false;
-  page.once("dialog", () => (dialogFired = true));
+  await clearAsked(page);
   const name2 = page.locator("#pe_x2_name");
   await name2.click();
   await name2.fill("Leg Extension V2");
   await name2.blur();
   await until(() => db.plan?.days?.[2]?.exercises?.[2]?.name === "Leg Extension V2");
-  check("a lift with no history renames without any prompt or message", !dialogFired && (await flat(page.locator("#peRename"))) === "");
-  page.on("dialog", (d) => d.accept());
+  check("a lift with no history renames without any prompt or message", !(await dialogFired()) && (await flat(page.locator("#peRename"))) === "");
 
   check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("no console errors", page.errors.length === 0, page.errors.join(" | "));

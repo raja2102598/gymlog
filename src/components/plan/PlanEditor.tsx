@@ -1,6 +1,7 @@
 "use client";
 import { ChevronDown } from "lucide-react";
 import { useState, type InputHTMLAttributes } from "react";
+import { ask } from "@/components/ds/Ask";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { useLibrary } from "@/components/library/LibraryContext";
@@ -71,8 +72,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       else if (blocks[b + dir]) [blocks[b], blocks[b + dir]] = [blocks[b + dir], blocks[b]];
       xs.splice(0, xs.length, ...blocks.flatMap((bl) => bl.map((x, n) => joined(x, n > 0))));
     }, true);
-  const remove = (j: number) => {
-    if (!confirm(`Remove ${d.exercises[j].name.trim() || "this lift"} from ${wd}? Days you’ve already logged keep it.`)) return;
+  const remove = async (j: number) => {
+    if (!(await ask(`Remove ${d.exercises[j].name.trim() || "this lift"} from ${wd}?`, "Remove", { body: "Days you’ve already logged keep it.", danger: true }))) return;
     edit((p) => {
       const xs = p.days[editDay].exercises;
       // The first lift of a superset leaves the next one first, rather than joining the lift before.
@@ -156,7 +157,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       setRenameMsg({ warn: true, text: `“${to}” already has its own history, so ${from}’s can’t be carried over there too.` });
       return;
     }
-    if (!confirm(`Carry ${from}’s history over to ${to}? Every logged day, and anything swapped for ${from}, will show ${to} instead.`)) return;
+    if (!(await ask(`Carry ${from}’s history over to ${to}?`, "Carry it over", { body: `Every logged day, and anything swapped for ${from}, will show ${to} instead.` }))) return;
     setRenameMsg({ text: `Carrying ${from}’s history over to ${to}…` });
     const r = await store.renameLift(from, to);
     setRenameMsg({ warn: !r.ok, text: r.msg });
@@ -556,8 +557,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           <button
             className="ghost danger"
             id="pe_reset"
-            onClick={() => {
-              if (confirm("Replace your plan with the default plan? Days you’ve already logged are kept.")) store.resetPlan();
+            onClick={async () => {
+              if (await ask("Replace your plan with the default plan?", "Replace", { body: "Days you’ve already logged are kept.", danger: true })) store.resetPlan();
             }}
           >
             Reset to the default plan
@@ -566,8 +567,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
         <TemplateList
           id="peTemplates"
           hidden={!templates}
-          onPick={(t) => {
-            if (!confirm(`Replace your sessions, lifts, warm-ups and tempo with “${t.name}”? Your goals and the days you’ve already logged are kept.`)) return;
+          onPick={async (t) => {
+            if (!(await ask(`Replace your sessions, lifts, warm-ups and tempo with “${t.name}”?`, "Replace", { body: "Your goals and the days you’ve already logged are kept.", danger: true }))) return;
             setTemplates(false);
             store.startFrom(t.plan);
           }}

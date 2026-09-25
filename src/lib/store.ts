@@ -1763,7 +1763,7 @@ export class GymStore {
   }
   /** Reads an export back in: its logged days and, from a backup, the plan and the Health Connect days. `replace` is
    *  asked first when the file would change days already logged or the plan. */
-  async importFile(file: File, replace: (what: Replacing) => boolean): Promise<string> {
+  async importFile(file: File, replace: (what: Replacing) => boolean | Promise<boolean>): Promise<string> {
     let b: BackupContents;
     try {
       b = readBackup(await file.text());
@@ -1775,7 +1775,7 @@ export class GymStore {
     // A backup made on the default plan brings the default back; an older list of days leaves the plan alone.
     const plan = b.plan === "default" ? copy(DEFAULT_PLAN) : b.plan ? normalizePlan(b.plan, DEFAULT_PLAN) : null;
     const newPlan = plan !== null && JSON.stringify(plan) !== JSON.stringify(normalizePlan(this.plan, DEFAULT_PLAN));
-    if ((days || newPlan) && !replace({ days, plan: newPlan })) return "Import cancelled. Nothing changed.";
+    if ((days || newPlan) && !(await replace({ days, plan: newPlan }))) return "Import cancelled. Nothing changed.";
     for (const r of b.logs) {
       this.logs[r.day] = r.data;
       this.pending[r.day] = r.data;

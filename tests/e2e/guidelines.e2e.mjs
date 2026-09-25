@@ -3,7 +3,7 @@
 // can see, long names, empty states, asking before replacing data, a backup that restores an account, and the sticky
 // sync bar keeping clear of a focused field.
 import fs from "node:fs";
-import { K, NOW, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
+import { K, NOW, answerAsk, clearAsked, flat, lastAsked, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 export const covers = [
   "src/components/health/HealthView.tsx",
@@ -204,45 +204,40 @@ export default async function guidelines({ browser, base, check }) {
     check("Settings: export and import results are announced", (await page.getAttribute("#dataMsg", "role")) === "status");
     const file = (rows) => ({ name: "gym-log.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(rows)) });
     const changed = [{ day: "2026-09-22", data: { ...db.logs["2026-09-22"], steps: 1234 } }, { day: "2026-07-01", data: { exercises: {}, warmup: [], cardio: true, steps: 5000, weight: null, note: "" } }];
-    page.removeAllListeners("dialog");
-    let asked = "";
-    page.once("dialog", (d) => ((asked = d.message()), d.dismiss()));
+    await answerAsk(page, "cancel");
     await page.setInputFiles("#importFile", file(changed));
     await until(async () => (await page.textContent("#dataMsg")) !== "");
+    const asked = await lastAsked(page);
     check("import: asks before replacing a day already logged", /different entries for 1 day you’ve already logged/.test(asked), asked);
     check("import: cancelling changes nothing", (await page.textContent("#dataMsg")) === "Import cancelled. Nothing changed." && db.logs["2026-09-22"].steps === 8000 && !db.logs["2026-07-01"]);
-    page.once("dialog", (d) => d.accept());
     await page.setInputFiles("#importFile", file(changed));
     // The message comes once every day is saved.
     await until(async () => db.logs["2026-07-01"] != null && (await page.textContent("#dataMsg")) === "Imported 2 days.");
     check("import: once accepted, the file's days go in", (await page.textContent("#dataMsg")) === "Imported 2 days." && db.logs["2026-09-22"].steps === 1234);
-    page.once("dialog", () => (asked = "asked again"));
+    await clearAsked(page);
     await page.setInputFiles("#importFile", file(changed));
     await until(async () => (await page.textContent("#dataMsg")) === "Imported 2 days.");
-    check("import: the same file again doesn't ask", asked !== "asked again");
+    check("import: the same file again doesn't ask", (await lastAsked(page)) === "");
     await page.setInputFiles("#importFile", { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
     await until(async () => /couldn’t be imported/.test(await page.textContent("#dataMsg")));
     check("import: a wrong file says what to do next", /Choose a \.json file exported from Gym Log\.$/.test(await page.textContent("#dataMsg")), await page.textContent("#dataMsg"));
-    page.on("dialog", (d) => d.accept());
     await page.click("#backBtn");
     await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
 
     // removing a set, in the workout, asks only when the set has numbers in it
     await openWorkout(page, 0);
     await page.click('[data-addset="0"]');
-    let removeAsk = "";
-    page.removeAllListeners("dialog");
-    page.on("dialog", (d) => ((removeAsk = d.message()), d.accept()));
+    await clearAsked(page);
     await page.click('[data-rmset="0"]');
-    check("− Set on an empty set removes it without asking", removeAsk === "" && (await page.locator("#s0_3_r").count()) === 0);
+    check("− Set on an empty set removes it without asking", (await lastAsked(page)) === "" && (await page.locator("#s0_3_r").count()) === 0);
     await page.click('[data-addset="0"]');
     await page.fill("#s0_3_r", "10");
     await page.fill("#s0_3_k", "20");
-    page.removeAllListeners("dialog");
-    page.once("dialog", (d) => ((removeAsk = d.message()), d.dismiss()));
+    await answerAsk(page, "cancel");
     await page.click('[data-rmset="0"]');
-    check("− Set on a set with numbers asks first, and No keeps it", removeAsk === "Remove set 4 (10\u00a0×\u00a020\u00a0kg)?" && (await page.locator("#s0_3_r").count()) === 1, removeAsk);
-    page.on("dialog", (d) => d.accept());
+    await until(async () => (await lastAsked(page)) !== "" && (await page.locator("#askDialog[open]").count()) === 0);
+    const removeAsk = await lastAsked(page);
+    check("− Set on a set with numbers asks first, and Cancel keeps it", removeAsk === "Remove set 4 (10\u00a0×\u00a020\u00a0kg)?" && (await page.locator("#s0_3_r").count()) === 1, removeAsk);
     await ctx.close();
   }
 
@@ -293,13 +288,11 @@ export default async function guidelines({ browser, base, check }) {
       check("CSV: says how many sets", (await page.textContent("#dataMsg")) === "Exported 7 sets as CSV.", await page.textContent("#dataMsg"));
 
       // A file with another plan: asked first, and Cancel keeps yours
-      page.removeAllListeners("dialog");
-      let asked = "";
-      page.once("dialog", (d) => ((asked = d.message()), d.dismiss()));
+      await answerAsk(page, "cancel");
       await page.setInputFiles("#importFile", jsonFile({ ...backup, plan: { ...backup.plan, tempo: "2:0:2:0" } }));
       await until(async () => (await page.textContent("#dataMsg")) === "Import cancelled. Nothing changed.");
-      check("import: asks before replacing a plan that differs, and Cancel keeps yours", asked === "The file has a different plan. Replace yours with the file’s version?" && db.plan.tempo === "4:0:1:0" && !db.writes.plans, asked);
-      page.on("dialog", (d) => d.accept());
+      const asked = await lastAsked(page);
+      check("import: asks before replacing a plan that differs, and Cancel keeps yours", asked === "Replace yours with the file’s version? The file has a different plan." && db.plan.tempo === "4:0:1:0" && !db.writes.plans, asked);
       check("no console errors", page.errors.length === 0, page.errors.join(" | "));
       await ctx.close();
     }
@@ -309,14 +302,12 @@ export default async function guidelines({ browser, base, check }) {
       const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000042", "2026-09-01T00:00:00Z", "new@example.com"), db });
       await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
       check("a new account: the plan picker, with Restore a backup, and no tabs yet", (await page.locator("#chooseRestore").isVisible()) && (await page.locator(".tabbar").count()) === 0);
-      page.removeAllListeners("dialog");
-      let asked = "";
-      page.on("dialog", (d) => ((asked = d.message()), d.accept()));
       const logWrites = db.writes.logs;
       await page.setInputFiles("#restoreFile", jsonFile(backupText));
       await page.waitForSelector("#settingsView", { timeout: 15000 });
       await until(async () => /^Imported/.test(await page.textContent("#dataMsg")));
       await until(() => Object.keys(db.logs).length === 29 && db.plan?.tempo === "4:0:1:0");
+      const asked = await lastAsked(page);
       check("import: the picker's restore doesn't ask: a new account has nothing to replace", asked === "", asked);
       check(
         "import: the days and the plan are restored, and synced",

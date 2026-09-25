@@ -1,6 +1,7 @@
 "use client";
 import { Check, CircleHelp, Ellipsis, Mic, Trophy } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { ask } from "@/components/ds/Ask";
 import { useLibrary } from "@/components/library/LibraryContext";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
@@ -489,9 +490,9 @@ export function LiftHead({
           <button
             className="btn btn-sm btn-danger"
             data-freerm={i}
-            onClick={() => {
+            onClick={async () => {
               const n = m.sets.filter((s) => s.reps != null || s.kg != null).length;
-              if (n && !confirm(`Remove ${did} and its ${n === 1 ? "set" : `${n} sets`} from this workout?`)) return;
+              if (n && !(await ask(`Remove ${did} and its ${n === 1 ? "set" : `${n} sets`} from this workout?`, "Remove", { danger: true }))) return;
               setMenu(null);
               onRemove();
             }}
@@ -724,9 +725,9 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
           <button
             className="btn btn-sm"
             data-rmset={i}
-            onClick={() => {
+            onClick={async () => {
               const said = setsSummary([sets[sets.length - 1]]);
-              if (said && !confirm(`Remove set ${sets.length} (${said})?`)) return;
+              if (said && !(await ask(`Remove set ${sets.length} (${said})?`, "Remove", { danger: true }))) return;
               m.dropSet();
             }}
           >

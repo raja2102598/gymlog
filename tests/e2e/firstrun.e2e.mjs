@@ -3,7 +3,7 @@
 // goes to Home on the default plan, as before. And the plan editor can start over from a template.
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
-import { HOST, flat, open, openSetting, openTab, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
+import { HOST, answerAsk, flat, lastAsked, open, openSetting, openTab, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
 const template = (id) => JSON.parse(fs.readFileSync(new URL(`../../src/data/templates/${id}.json`, import.meta.url), "utf8"));
 const NAMES = "Blank plan|Full body, 3 days|Upper and lower, 4 days|Five-day split";
@@ -131,9 +131,6 @@ export default async function firstRun({ browser, base, check }) {
     const row = page.locator("#chooseView .tpl-list ~ .choose-row").first();
     const offer = `${await flat(row.locator(".sub"))} | ${await flat(row.locator("button"))}`;
     check("under the templates: Moving from another copy of Gym Log? Restore a backup", offer === "Moving from another copy of Gym Log? | Restore a backup" && (await row.locator("#chooseRestore").count()) === 1, offer);
-    page.removeAllListeners("dialog");
-    let asked = "";
-    page.on("dialog", (d) => ((asked = d.message()), d.accept()));
     const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null), page.click("#chooseRestore")]);
     check("it opens the file picker for .json files, as Settings' Import does", !!chooser && (await chooser.element().getAttribute("accept")) === "application/json,.json");
     await chooser?.setFiles(jsonFile({ hello: "world" }));
@@ -154,6 +151,7 @@ export default async function firstRun({ browser, base, check }) {
     await page.waitForSelector("#settingsView", { timeout: 15000 });
     await until(() => db.logs["2026-09-21"] != null);
     check("an older export: its days restored, and Settings says so", (await page.textContent("#dataMsg")) === "Imported 1 day." && db.logs["2026-09-21"].steps === 9000, await page.textContent("#dataMsg"));
+    const asked = await lastAsked(page);
     check("the picker's restore never asks, and a file without a plan saves none", asked === "" && db.writes.plans === 0 && db.plan === null, asked);
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
@@ -234,15 +232,14 @@ export default async function firstRun({ browser, base, check }) {
     check("it lists the same templates as a new account's first screen", names === NAMES && (await page.locator("#peTemplates").isVisible()) && (await page.getAttribute("#pe_tpl", "aria-expanded")) === "true", names);
     await shot(page.locator("#planGeneral"), "firstrun-editor-templates");
 
-    page.removeAllListeners("dialog");
-    let asked = "";
-    page.once("dialog", (d) => ((asked = d.message()), d.dismiss()));
+    await answerAsk(page, "cancel");
     await page.click('#peTemplates [data-template="upper-lower-4"]');
-    await until(() => asked !== "");
+    await until(async () => (await lastAsked(page)) !== "");
+    const asked = await lastAsked(page);
     check("it asks first, saying what's replaced and what's kept", asked === "Replace your sessions, lifts, warm-ups and tempo with “Upper and lower, 4 days”? Your goals and the days you’ve already logged are kept.", asked);
+    await until(async () => (await page.locator("#askDialog[open]").count()) === 0);
     check("No leaves the plan as it was", (await page.locator("#planDays .dchip").first().getAttribute("aria-label")) === "Edit Mon, Push" && db.plan.days[0].name === "Push");
 
-    page.once("dialog", (d) => d.accept());
     await page.click('#peTemplates [data-template="upper-lower-4"]');
     await until(() => db.plan?.days?.[0]?.name === "Upper A");
     const want = template("upper-lower-4");
@@ -258,7 +255,6 @@ export default async function firstRun({ browser, base, check }) {
       chips === "Upper A|Lower A|Rest|Upper B|Lower B|Rest|Rest" && (await page.inputValue("#pe_name")) === "Rest" && (await page.locator("#peTemplates").isHidden()),
       chips,
     );
-    page.on("dialog", (d) => d.accept());
     await planDone(page);
     // Done goes back to Settings, and its back chevron to Home.
     await page.waitForSelector("#settingsView");

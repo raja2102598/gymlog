@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Timer } from "lucide-react";
+import { AskHost } from "@/components/ds/Ask";
 import { PushHead } from "@/components/ds/parts";
 import { TabBar } from "@/components/ds/TabBar";
 import { useBarsHeight } from "@/hooks/useBarsHeight";
@@ -422,6 +423,9 @@ export default function GymLog() {
       <p className="sr-only" id="status" aria-live="polite">
         {store.status}
       </p>
+      {/* The app's own question sheet (Ask.tsx). First in the page, so Back closes it before a dialog under it
+          (lib/back.ts closes the first open one). */}
+      <AskHost />
       {inApp && pushed && v !== "workout" ? <PushHead title={title} backHref={hashOf(backTo(route)) || "./"} onBack={goBack} backLabel={backLabel} /> : null}
 
       <main id="main" tabIndex={-1}>
