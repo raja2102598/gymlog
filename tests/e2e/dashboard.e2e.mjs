@@ -6,9 +6,7 @@ export const covers = [
   "src/components/dashboard/LiftDetail.tsx",
   "src/components/health/Bars.tsx",
   "src/components/health/Trend.tsx",
-  "src/components/health/parts.tsx",
   "src/lib/scale.ts",
-  "src/hooks/useChartWidth.ts",
 ];
 
 function history() {

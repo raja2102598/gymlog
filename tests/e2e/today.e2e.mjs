@@ -5,9 +5,7 @@ export const covers = [
   "src/components/dashboard/LiftDetail.tsx",
   "src/components/health/Bars.tsx",
   "src/components/health/Trend.tsx",
-  "src/components/health/parts.tsx",
   "src/lib/scale.ts",
-  "src/hooks/useChartWidth.ts",
 ];
 
 // Today's real first entry (older format: one weight per lift, no sets).

@@ -2,7 +2,7 @@
 // limit, a password instead, setting or changing a password in Settings, and Continue with Google.
 import { flat, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
-export const covers = ["src/components/shell/LoginView.tsx", "public/app-login.html"];
+export const covers = ["public/app-login.html"];
 
 export default async function signinSuite({ browser, base, check }) {
   // A link, then the wait before another

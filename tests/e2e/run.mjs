@@ -246,9 +246,11 @@ function globToRegExp(glob) {
 
 /** Which suites a set of changed files selects, and why: a suite's own file, a file in its `covers`, or a
  *  changed file broad enough (src/, public/, tests/e2e/, or shared build/config files) that every suite runs.
- *  A file in `covers` runs only the suites that list it, so it belongs there only when every suite that shows
- *  it lists it too (the Health tab's files: health and guidelines, which both open it). Anything shared, such as
- *  the store, the plan or a screen every suite passes through, stays unlisted and so runs every suite. */
+ *  A file in `covers` runs only the suites that list it, so it belongs there only when every suite that renders
+ *  it lists it too: the Health tab's files (health, guidelines and measurements open it), or a metric's or a
+ *  lift's page and their charts. The app shell renders Today, the sign-in and plan-picker screens and the bars in
+ *  every suite, on show or not, so their files and whatever they import stay unlisted and run every suite, as do
+ *  Settings' and Progress's, which most suites open. */
 function pickChanged(files, allSuites) {
   const reasons = new Map();
   const add = (name, file, why) => {

@@ -4,15 +4,12 @@
 import { K, flat, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
 export const covers = [
-  "src/lib/healthView.ts",
   "src/components/health/HealthView.tsx",
   "src/components/health/HealthDetail.tsx",
   "src/components/health/Rings.tsx",
   "src/components/health/Bars.tsx",
   "src/components/health/Trend.tsx",
-  "src/components/health/parts.tsx",
   "src/lib/scale.ts",
-  "src/hooks/useChartWidth.ts",
 ];
 
 function data() {

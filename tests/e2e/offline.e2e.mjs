@@ -4,8 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { flat, open, openTab, ready, session, until } from "./harness.mjs";
 
-export const covers = ["src/components/shell/LoginView.tsx"];
-
 const today = () => ({ "2026-09-23": { exercises: {}, warmup: [], cardio: true, steps: 7351, weight: 81, note: "" } });
 
 export default async function offline({ browser, base, copy, check }) {

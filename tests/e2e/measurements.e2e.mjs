@@ -5,15 +5,12 @@ import fs from "node:fs";
 import { flat, K, open, openTab, ready, session, until } from "./harness.mjs";
 
 export const covers = [
-  "src/lib/healthView.ts",
   "src/components/health/HealthView.tsx",
   "src/components/health/HealthDetail.tsx",
   "src/components/health/Rings.tsx",
   "src/components/health/Bars.tsx",
   "src/components/health/Trend.tsx",
-  "src/components/health/parts.tsx",
   "src/lib/scale.ts",
-  "src/hooks/useChartWidth.ts",
 ];
 
 const FIELDS = ["chest", "arms", "thighs", "hips", "bodyFat"];

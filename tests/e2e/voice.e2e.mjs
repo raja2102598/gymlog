@@ -2,8 +2,6 @@
 // way typing it would. Chromium's own speech recognition is swapped for a fake that answers from a queue.
 import { flat, liftEl, open, openTab, ready, session, until } from "./harness.mjs";
 
-export const covers = ["src/hooks/useVoice.ts", "src/lib/voice.ts", "src/lib/speech.ts"];
-
 const TODAY = "2026-09-23"; // Wednesday: Legs
 const NB = "\u00a0";
 
