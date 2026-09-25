@@ -65,3 +65,27 @@ object AppUpdateLogic {
      *  SHA-256 hex), order aside. Two empty sets (neither could be read) don't count as matching. */
     fun sameSigners(a: Set<String>, b: Set<String>): Boolean = a.isNotEmpty() && a == b
 }
+
+/**
+ * One run at a time, for any number of callers: a caller that arrives while a run is under way joins it and hears
+ * how it ended, instead of starting another. AppUpdatePlugin's download: two at once (Settings left and opened
+ * again mid-download, say) would write the same file over each other.
+ */
+class SingleRun<C> {
+    private var joined: MutableList<C>? = null
+
+    /** True if `caller` should start a run, as none is under way; false if it has joined the one that is. */
+    @Synchronized
+    fun join(caller: C): Boolean {
+        joined?.let {
+            it.add(caller)
+            return false
+        }
+        joined = mutableListOf(caller)
+        return true
+    }
+
+    /** Ends the run under way, returning every caller that started or joined it, to tell how it went. */
+    @Synchronized
+    fun finish(): List<C> = joined.orEmpty().also { joined = null }
+}

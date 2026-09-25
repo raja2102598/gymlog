@@ -42,6 +42,7 @@ class AppUpdatePlugin : Plugin() {
     // Network and file work, off the main thread; SupervisorJob so one failed call doesn't cancel another's.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var cleanedLeftover = false
+    private val downloads = SingleRun<PluginCall>()
 
     override fun handleOnDestroy() {
         super.handleOnDestroy()
@@ -161,25 +162,37 @@ class AppUpdatePlugin : Plugin() {
     /**
      * Re-reads version.json, downloads gym-log.apk to a temp file, verifies it and renames it into place, emitting
      * "progress" ({received, total}) as it goes. Resolves once it's ready for install() to hand to Android's
-     * installer. Rejects, with the file removed, on any check that fails — see the reasons in `problem` below.
+     * installer. Rejects, with the file removed, on any check that fails — see the reasons in downloadAndVerify.
+     * A call while a download is under way joins it and resolves or rejects with it, so the file is never written
+     * twice at once.
      */
     @PluginMethod
-    fun download(call: PluginCall) = safely(call) {
-        val repo = repo()
-        if (repo.isEmpty()) {
-            call.reject("This build doesn't check for updates")
-            return@safely
+    fun download(call: PluginCall) {
+        if (!downloads.join(call)) return
+        scope.launch {
+            var problem: String? = "Couldn’t download the update"
+            var error: Exception? = null
+            try {
+                problem = downloadAndVerify()
+            } catch (e: Exception) {
+                problem = e.message ?: problem
+                error = e
+            } finally {
+                for (c in downloads.finish()) if (problem == null) c.resolve() else c.reject(problem, null, error)
+            }
         }
+    }
+
+    /** download()'s work: null once the verified APK is in place, or why it isn't (with the file removed). */
+    private fun downloadAndVerify(): String? {
+        val repo = repo()
+        if (repo.isEmpty()) return "This build doesn't check for updates"
         val dest = apkFile()
         val tmp = File(updatesDir(), "gym-log.apk.tmp")
         var lastProblem = "Couldn’t download the update"
         // Up to twice: if the hash doesn't match, CI may have replaced the release while this was downloading.
         for (attempt in 1..2) {
-            val latest = fetchLatest(repo)
-            if (latest == null) {
-                call.reject("No update is published right now")
-                return@safely
-            }
+            val latest = fetchLatest(repo) ?: return "No update is published right now"
             val sha = downloadToFile(tmp, latest)
             if (!sha.equals(latest.sha256, ignoreCase = true)) {
                 tmp.delete()
@@ -198,18 +211,15 @@ class AppUpdatePlugin : Plugin() {
             }
             if (problem != null) {
                 tmp.delete()
-                call.reject(problem)
-                return@safely
+                return problem
             }
             if (!tmp.renameTo(dest)) {
                 tmp.delete()
-                call.reject("Couldn’t save the download")
-                return@safely
+                return "Couldn’t save the download"
             }
-            call.resolve()
-            return@safely
+            return null
         }
-        call.reject("$lastProblem. Try again.")
+        return "$lastProblem. Try again."
     }
 
     /** Streams the APK to `tmp`, hashing it as it goes, and returns the hex SHA-256. Emits "progress" at most 4

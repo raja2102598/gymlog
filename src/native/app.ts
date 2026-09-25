@@ -15,7 +15,9 @@ export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./h
 export { backgroundStatus, runBackgroundNow, turnOffBackground, turnOnBackground, type SyncStatus } from "./sync";
 export {
   checkUpdate,
+  downloadUnderway,
   downloadUpdate,
+  followDownload,
   installUpdate,
   onAppResume,
   openInstallSettings,

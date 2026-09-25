@@ -16,7 +16,7 @@ import { savedTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Plan } from "@/lib/types";
 import { availableMessage, downloadingMessage, downloadPercent } from "@/lib/update";
 import type { SyncStatus } from "@/native/sync";
-import type { LatestUpdate } from "@/native/update";
+import type { DownloadProgress, LatestUpdate } from "@/native/update";
 
 // Loaded only in the Android app, so the website doesn't carry the Health Connect plugin.
 const native = () => import("@/native/app");
@@ -507,6 +507,10 @@ type AndroidUpdate =
   | { kind: "needsPermission"; latest: LatestUpdate }
   | { kind: "error"; message: string };
 
+/** A download's "progress", into the state while it's still downloading. */
+const withProgress = (p: DownloadProgress) => (cur: AndroidUpdate): AndroidUpdate => (cur.kind === "downloading" ? { ...cur, received: p.received, total: p.total || cur.total } : cur);
+const downloadFailed = (e: unknown): AndroidUpdate => ({ kind: "error", message: `Couldn’t download the update: ${(e instanceof Error ? e.message : String(e)).replace(/\.$/, "")}.` });
+
 /** Settings → About → Check for updates, in the Android app: downloads and installs a newer build from this
  *  build's GitHub releases (see AppUpdatePlugin.kt and docs/android.md). The website's is UpdateWeb, below. */
 function UpdateAndroid() {
@@ -515,8 +519,20 @@ function UpdateAndroid() {
   // The state starts at "checking" already, so the mount effect can kick this off without setting it again itself.
   const runCheck = useCallback(() => {
     void native()
-      .then((m) => m.checkUpdate())
-      .then((r) => setS(!r.enabled ? { kind: "hidden" } : r.available && r.latest ? { kind: "available", latest: r.latest } : { kind: "upToDate" }))
+      .then(async (m) => {
+        const r = await m.checkUpdate();
+        if (!r.enabled) return setS({ kind: "hidden" });
+        if (!r.available || !r.latest) return setS({ kind: "upToDate" });
+        const latest = r.latest;
+        // Opened again while a download from an earlier visit is still going: this follows that one, rather than
+        // offering a second. It ends at Install, as the screen that started it has already asked for the installer.
+        if (!m.downloadUnderway()) return setS({ kind: "available", latest });
+        setS({ kind: "downloading", latest, received: 0, total: latest.size });
+        await m.followDownload((p) => setS(withProgress(p)))?.then(
+          () => setS({ kind: "readyToInstall", latest }),
+          (e: unknown) => setS(downloadFailed(e)),
+        );
+      })
       .catch(() => setS({ kind: "error", message: CANT_CHECK }));
   }, []);
   // Checked once as the screen opens, like Health Connect's own status above.
@@ -541,10 +557,10 @@ function UpdateAndroid() {
   const download = (latest: LatestUpdate) => {
     setS({ kind: "downloading", latest, received: 0, total: latest.size });
     void native()
-      .then((m) => m.downloadUpdate((p) => setS((cur) => (cur.kind === "downloading" ? { ...cur, received: p.received, total: p.total || cur.total } : cur))))
+      .then((m) => m.downloadUpdate((p) => setS(withProgress(p))))
       .then(
         () => install(latest),
-        (e: unknown) => setS({ kind: "error", message: `Couldn’t download the update: ${(e instanceof Error ? e.message : String(e)).replace(/\.$/, "")}.` }),
+        (e: unknown) => setS(downloadFailed(e)),
       );
   };
 

@@ -64,4 +64,17 @@ class AppUpdateLogicTest {
         assertFalse(AppUpdateLogic.sameSigners(setOf("a"), setOf("a", "b")))
         assertFalse(AppUpdateLogic.sameSigners(emptySet(), emptySet()))
     }
+
+    @Test
+    fun aCallerArrivingMidRunJoinsItAndTheNextRunStartsFresh() {
+        val runs = SingleRun<String>()
+        assertTrue(runs.join("first"))
+        assertFalse(runs.join("second"))
+        assertFalse(runs.join("third"))
+        assertEquals(listOf("first", "second", "third"), runs.finish())
+        // Once that run has ended, the next caller starts one of its own.
+        assertTrue(runs.join("fourth"))
+        assertEquals(listOf("fourth"), runs.finish())
+        assertEquals(emptyList<String>(), runs.finish())
+    }
 }
