@@ -15,7 +15,7 @@ import { switchVoice } from "@/lib/speech";
 import type { Replacing } from "@/lib/store";
 import { savedTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Plan } from "@/lib/types";
-import { availableMessage, downloadingMessage, downloadPercent } from "@/lib/update";
+import { availableMessage, downloadingMessage, downloadPercent, NOTHING_PUBLISHED, updateFinding } from "@/lib/update";
 import type { SyncStatus } from "@/native/sync";
 import type { DownloadProgress, LatestUpdate } from "@/native/update";
 
@@ -614,10 +614,11 @@ function UpdateAndroid() {
   const runCheck = useCallback(() => {
     void native()
       .then(async (m) => {
-        const r = await m.checkUpdate();
-        if (!r.enabled) return setS({ kind: "hidden" });
-        if (!r.available || !r.latest) return setS({ kind: "upToDate" });
-        const latest = r.latest;
+        const found = updateFinding(await m.checkUpdate());
+        if (found.kind === "hidden") return setS({ kind: "hidden" });
+        if (found.kind === "nothingPublished") return setS({ kind: "error", message: NOTHING_PUBLISHED });
+        if (found.kind === "upToDate") return setS({ kind: "upToDate" });
+        const latest = found.latest;
         // Opened again while a download from an earlier visit is still going: this follows that one, rather than
         // offering a second. It ends at Install, as the screen that started it has already asked for the installer.
         if (!m.downloadUnderway()) return setS({ kind: "available", latest });

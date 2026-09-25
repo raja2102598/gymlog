@@ -17,6 +17,17 @@ export const formatMB = (bytes: number): string => `${(bytes / (1024 * 1024)).to
 /** What Settings and the quiet notice both say once a newer build is found. */
 export const availableMessage = (name: string, sizeBytes: number): string => `Version ${name} is available (${formatMB(sizeBytes)}).`;
 
+/** What a check found, from AppUpdatePlugin.check's answer. `nothingPublished`: it reached GitHub, but the release had
+ *  no version.json (a 404). For a second while CI swaps in a new build's files that's expected; any longer, the
+ *  release is missing or broken, and calling that "the newest version" hid it (1.0.70 went out as a draft nobody could
+ *  see, and phones said they were up to date). */
+export type UpdateFinding<L> = { kind: "hidden" } | { kind: "nothingPublished" } | { kind: "upToDate" } | { kind: "available"; latest: L };
+export const updateFinding = <L>(r: { enabled: boolean; available: boolean; latest?: L }): UpdateFinding<L> =>
+  !r.enabled ? { kind: "hidden" } : r.latest == null ? { kind: "nothingPublished" } : r.available ? { kind: "available", latest: r.latest } : { kind: "upToDate" };
+
+/** What Settings says when a check finds nothing published. */
+export const NOTHING_PUBLISHED = "Couldn’t find a published build to update from. Try again in a few minutes.";
+
 /** How far a download has got, 0 to 100. 0 while the total isn't known yet, so it never divides by zero. */
 export const downloadPercent = (received: number, total: number): number => (total > 0 ? Math.min(100, Math.max(0, Math.round((received / total) * 100))) : 0);
 

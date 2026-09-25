@@ -141,16 +141,46 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: gym-log-apk
-      - name: Replace the android-latest release
+      # Updated in place: new files, then the tag moved on. Deleting the release and its tag and making both again
+      # raced GitHub, which drafts the release a deleted tag belonged to and sometimes got there after the new one was
+      # out: 1.0.70 ended up a draft nobody else can see, so the app found nothing to update to.
+      - name: Update the android-latest release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          gh release delete android-latest --yes --cleanup-tag || true
-          gh release create android-latest gym-log.apk version.json --target "$GITHUB_SHA" --latest \
-            --title "Gym Log for Android $VERSION" \
-            --notes "Open this page on your phone, download gym-log.apk and open it to install or update, or use Settings → About → Check for updates in the app. Built from $GITHUB_SHA."
+          title="Gym Log for Android $VERSION"
+          notes="Open this page on your phone, download gym-log.apk and open it to install or update, or use Settings → About → Check for updates in the app. Built from $GITHUB_SHA."
+          # A draft under the tag (as that race left) is invisible to the app, and gh would take it for the release.
+          for id in $(gh api "repos/$GH_REPO/releases?per_page=100" --jq '.[] | select(.draft and .tag_name == "android-latest") | .id'); do
+            gh api --method DELETE "repos/$GH_REPO/releases/$id"
+          done
+          if gh release view android-latest > /dev/null 2>&1; then
+            # The APK first, then version.json, so version.json never names an APK that isn't there yet.
+            gh release upload android-latest gym-log.apk --clobber
+            gh release upload android-latest version.json --clobber
+            gh release edit android-latest --title "$title" --notes "$notes" --latest
+          else
+            gh release create android-latest gym-log.apk version.json --target "$GITHUB_SHA" --latest --title "$title" --notes "$notes"
+          fi
+          # The tag follows, for the release page's commit and source files; the app only reads the files above.
+          gh api --method PATCH "repos/$GH_REPO/git/refs/tags/android-latest" -f sha="$GITHUB_SHA" -F force=true --silent ||
+            echo "::warning::Couldn't move the android-latest tag to $GITHUB_SHA. The release has this build's files; only its tag is behind."
+      # What the app reads (AppUpdatePlugin): the job fails unless the public version.json is this build's, so a
+      # release the app can't see never passes as published again.
+      - name: Check the app will find this build
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          want=$(jq -r .versionCode version.json)
+          for try in $(seq 1 12); do
+            got=$(curl -fsSL "https://github.com/$GH_REPO/releases/download/android-latest/version.json" | jq -r .versionCode) || got=""
+            if [ "$got" = "$want" ]; then echo "The app will find build $want."; exit 0; fi
+            sleep 5
+          done
+          echo "::error::The published version.json names build ${got:-nothing}, not $want, so the app won't offer this one. Check the android-latest release."
+          exit 1
 
   # A tag's release stays, unlike android-latest, so a build people installed can always be found again. It isn't
   # marked Latest: android-latest stays the newest build.
