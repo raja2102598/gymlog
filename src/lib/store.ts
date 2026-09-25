@@ -156,6 +156,7 @@ function fullDay(d?: Partial<DayLog> | null): DayLog {
     note: e.note || "",
   };
   if (isSlot(e.session)) out.session = e.session;
+  if (typeof e.skip === "string") out.skip = e.skip;
   if (Array.isArray(e.order) && e.order.every((n) => typeof n === "string")) out.order = e.order;
   const free = freeOf(e);
   if (free) out.free = free;
@@ -735,6 +736,14 @@ export class GymStore {
       true,
     );
   }
+  /** Skips day k's workout on purpose (`reason` optional): it isn't counted as missed, or offered again that week. */
+  skipDay(k: DayKey, reason = "") {
+    this.editDay(k, (n) => void (n.skip = reason), true);
+  }
+  /** Takes day k's skip back: its workout is on again. */
+  unskipDay(k: DayKey) {
+    this.editDay(k, (n) => void delete n.skip, true);
+  }
   /** Back to day k's planned session. What was logged in the free-form workout stays, as lifts outside the plan. */
   endFree(k: DayKey) {
     this.editDay(
@@ -846,6 +855,15 @@ export class GymStore {
   exerciseOf(name: string, x?: Pick<PlanExercise, "lib"> | null): Exercise | null {
     return exerciseFor(name, this.plan.custom ?? [], x === undefined ? this.planLift(name) : x);
   }
+  /** The library lift whose photos and steps show for a lift: its own when the library or the plan's link knows it,
+   *  else, for a name from the plans the app comes with, the one picked for it by hand (a plan saved before the
+   *  library has its lifts unlinked until you answer the plan editor's questions). Pictures only: its equipment,
+   *  muscles and weight steps still come from exerciseOf. Null for your own lifts and names nobody picked. */
+  mediaIdOf(name: string, x?: Pick<PlanExercise, "lib"> | null): string | null {
+    const ex = this.exerciseOf(name, x);
+    if (ex) return ex.custom ? null : ex.id;
+    return libraryLift(SHIPPED.get(name.trim().toLowerCase()))?.id ?? null;
+  }
   /** Saves a lift of your own, new or (`again`) changed, and says what's wrong, if anything. Its name stays its
    *  name: a plan lift of that name takes its muscles and equipment, since your own lifts are found by name. */
   saveCustom(c: CustomExercise, again = false): string {
@@ -944,7 +962,7 @@ export class GymStore {
   missedThisWeek(k: DayKey): number[] {
     const mon = mondayOf(k), t = todayKey(), days = DOW.map((_, i) => addDays(mon, i));
     // A free-form workout, even on a planned day, does none of the plan's sessions.
-    const covered = (s: number) => days.some((d) => !this.isFree(d) && this.slotFor(d) === s && (this.worked(d) || (d >= t && this.logs[d]?.session === s)));
+    const covered = (s: number) => days.some((d) => !this.isFree(d) && this.slotFor(d) === s && (this.worked(d) || this.logs[d]?.skip != null || (d >= t && this.logs[d]?.session === s)));
     return days.map((d, i) => (d < t && d < k && this.plan.days[i].exercises.length && !covered(i) ? i : -1)).filter((i) => i >= 0);
   }
   // First day worth showing in history: the earliest log or the day the account was created.
@@ -956,7 +974,7 @@ export class GymStore {
   // Steps and cardio have their own counts, so they don't colour the day.
   dayState(k: DayKey, start = this.firstDay()): DayState {
     const p = this.planFor(k);
-    if (!p.exercises.length || k < start) return "";
+    if (!p.exercises.length || k < start || this.logs[k]?.skip != null) return "";
     const n = p.exercises.filter((x) => this.entry(k).exercises[x.name]?.done).length;
     if (n === p.exercises.length) return "done";
     if (n || this.worked(k)) return "part";

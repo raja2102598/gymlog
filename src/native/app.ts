@@ -4,6 +4,7 @@
  * can listen (speech.ts). */
 import { App } from "@capacitor/app";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
+import { handleBack } from "@/lib/back";
 import { GO_EVENT, NATIVE_GO, NATIVE_SIGN_IN } from "@/lib/native";
 import { checkPhoneSpeech } from "@/lib/speech";
 import type { GymStore } from "@/lib/store";
@@ -58,6 +59,10 @@ export async function startNative(store: GymStore): Promise<void> {
   await App.addListener("appUrlOpen", ({ url }) => open(url));
   open((await App.getLaunchUrl())?.url);
   await App.addListener("resume", () => void syncHealth(store));
+  // Back (the gesture or the button): closes what's open, then goes back a screen, and at Home puts the app in the
+  // background, as Android apps do. Without this, Back only stepped through the web view's history, left the
+  // exercise library open, and did nothing at all on Home.
+  await App.addListener("backButton", () => handleBack(document, () => void App.minimizeApp()));
   // Signing out stops background sync, so this phone's data stops going to the account.
   store.onSignOut(async () => {
     if ((await backgroundStatus()).on) await turnOffBackground(store);

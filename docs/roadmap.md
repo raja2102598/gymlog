@@ -43,6 +43,39 @@ Items that depend on something from outside the repo: a licensed dataset or nati
 - **In-app demo mode** with sample data, so people can try it without a database.
 - **Android home-screen widgets.** Needs native code.
 
+## Next: smooth on the phone
+
+Reported from using the Android app after the redesign.
+
+- **Smooth animations.** Movement wasn't smooth on the phone. The first pass is done; what's left is measuring it on
+  a real, mid-range Android phone.
+
+  Done so far:
+  - **Settings' switches** slide and grow their thumb with `transform`, not `left`, `top`, `width` and `height`, so
+    the page isn't laid out again every frame.
+  - **The activity rings and the bars** draw once they're on screen (`useOnScreen`), not all at once while their
+    screen is still being built or further down the page. The shadow under a second lap's tip is a still shape with a
+    gradient instead of an SVG drop-shadow filter, which was redrawn on the CPU every frame of the draw.
+  - **Things that open in place** fade and rise in (opacity and `transform`, 200 ms): a lift's how-to (the workout's
+    **?**, the library) and a Settings row unfolding. A logged set fills in rather than snapping, and its tick gives
+    under the thumb.
+  - Nothing moves with Reduce motion on, as before.
+
+  In headless Chromium, with the CPU slowed four times, Home and Health dropped no frames before or after these
+  changes, so that can't tell how much they help: only the phone can.
+
+  Still to do:
+  - Measure on the phone with Chrome's remote DevTools (`chrome://inspect`) on the app's WebView and its Performance
+    panel: switching tabs; opening Health, then a metric's page; opening the workout, then Complete set and the rest
+    ring.
+  - **Every screen fades and rises in** (`rise`, 200 ms) from the frame it's built in, so if that frame is slow, the
+    start of the fade is lost. If the traces show it, start the fade once the screen has painted.
+  - **A lift moved in Train** still jumps to its new place.
+
+  Done when:
+  - those interactions hold 60 fps on that phone, with the traces attached to the pull request;
+  - nothing moves with Reduce motion on, as now.
+
 ## Later
 
 New platforms, storage, external services or business decisions. These wait for feedback from other lifters.

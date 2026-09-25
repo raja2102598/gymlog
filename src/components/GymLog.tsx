@@ -13,10 +13,11 @@ import { mmss } from "@/lib/format";
 import { METRIC_TITLE } from "@/lib/healthView";
 import { GO_EVENT, isNative } from "@/lib/native";
 import { depthOf, hashOf, isPushed, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
+import { onBack } from "@/lib/back";
 import { sessionDone } from "@/lib/session";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
-import { clearRun, endRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
+import { clearRun, dropStaleRun, endRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
 import { LiftDetail } from "./dashboard/LiftDetail";
 import { ProgressView } from "./dashboard/ProgressView";
 import { HealthDetail } from "./health/HealthDetail";
@@ -261,6 +262,21 @@ export default function GymLog() {
     if (stackDepth() > 0) stepBack(1);
     else navigate(parentOf(route));
   };
+  // The phone's Back (lib/back.ts, from the Android app): an open menu closes first, then any screen but Home goes
+  // back the way the chevron does. On Home there's nothing to go back to, and the app goes to the background.
+  const onPhoneBack = useRef<() => boolean>(() => false);
+  useLayoutEffect(() => {
+    onPhoneBack.current = () => {
+      if (menu) {
+        setMenu(null);
+        return true;
+      }
+      if (route.view === "home") return false;
+      goBack();
+      return true;
+    };
+  });
+  useEffect(() => onBack(() => onPhoneBack.current()), []);
   const select = (k: DayKey) => {
     setSel(k);
     setMenu(null);
@@ -281,7 +297,10 @@ export default function GymLog() {
     keepRunsInMemory(store.demo);
     select(k);
     setWorkoutAt(at);
+    // Opening a skipped day's workout (a lift row in Train) means doing it after all: the skip goes.
+    if (store.entry(k).skip != null) store.unskipDay(k);
     if (!sessionDone(store, k)) startRun(k);
+    else dropStaleRun(k);
     navigate({ view: "workout" });
   };
   const finishWorkout = () => {
@@ -304,6 +323,21 @@ export default function GymLog() {
     },
     [navigate, focusNext],
   );
+
+  // Reopened on a workout (a reload, or Android bringing the app back): the same clock rules as opening it from a
+  // tap, once the account is known (runs belong to it) and its days are loaded (a session finished on another
+  // device counts): a clock left running for hours starts again, and a finished day opened to review drops one.
+  const restoredRun = useRef(false);
+  const loading = store.firstLoad;
+  useEffect(() => {
+    if (restoredRun.current || !signedIn || !uid || loading) return;
+    restoredRun.current = true;
+    const r = shown.current;
+    if (r.view !== "workout" || r.done) return;
+    keepRunsInMemory(store.demo);
+    if (!sessionDone(store, sel)) startRun(sel);
+    else dropStaleRun(sel);
+  }, [signedIn, uid, loading, store, sel]);
 
   // A shortcut opens today's weight or steps field, then drops ?go= from the address. Train opened that way gets
   // its own address with Home behind it, as a tap on its tab would, so a reload stays there and Back goes Home.
@@ -395,7 +429,7 @@ export default function GymLog() {
           <DemoBar />
           <SyncBar />
           <SwUpdateNotice show={swUpdated} onReload={() => location.reload()} />
-          {isNative() && inApp ? <UpdateNotice onOpenSettings={() => navigate({ view: "settings" })} /> : null}
+          {isNative() && inApp ? <UpdateNotice /> : null}
         </div>
         <BootView hidden={screen !== "boot"} />
         <SetupView hidden={screen !== "setup"} />

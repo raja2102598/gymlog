@@ -76,7 +76,10 @@ function WorkoutCard({ t, onStart, onOpenDay, focusNext }: { t: DayKey; onStart:
   const rest = !items.length && !free;
   const missed = rest ? store.missedThisWeek(t) : [];
   const title = free ? free.name.trim() || "Free workout" : rest ? "Rest day" : p.name;
-  const sub = rest
+  const skipped = !rest && e.skip != null;
+  const sub = skipped
+    ? ["Skipped today", e.skip?.trim()].filter(Boolean).join(" · ")
+    : rest
     ? missed.length
       ? `Missed this week: ${missed.map((i) => `${store.plan.days[i].name} (${DOW[i]})`).join(", ")}.`
       : "Recover today. A walk counts."
@@ -166,6 +169,12 @@ function WorkoutCard({ t, onStart, onOpenDay, focusNext }: { t: DayKey; onStart:
             Start an empty workout
           </Button>
         </div>
+      ) : skipped ? (
+        <div className="btn-row start-row">
+          <Button id="unskipHome" className="grow" onClick={() => store.unskipDay(t)}>
+            Undo skip
+          </Button>
+        </div>
       ) : (
         <div className="btn-row start-row">
           <Button variant="primary" id="startWorkout" className="grow" onClick={() => onStart(t)}>
@@ -177,6 +186,11 @@ function WorkoutCard({ t, onStart, onOpenDay, focusNext }: { t: DayKey; onStart:
           </Button>
         </div>
       )}
+      {!rest && !skipped && !done && !started ? (
+        <button type="button" className="btn btn-sm btn-quiet skip-today" id="skipHome" onClick={() => store.skipDay(t)}>
+          Skip today’s workout
+        </button>
+      ) : null}
     </section>
   );
 }

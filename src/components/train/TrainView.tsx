@@ -136,6 +136,7 @@ function Session({ sel, onStart, focusNext }: { sel: DayKey; onStart: (at: numbe
   const addLifts = useAddLifts(sel, focusNext);
   const items = blocks.flat();
   const done = sessionDone(store, sel);
+  const skipped = e.skip != null;
   const editDay = (fn: (n: DayLog) => void) => store.editDay(sel, fn, true);
   const switchTo = (v: number) =>
     editDay((n) => {
@@ -164,10 +165,14 @@ function Session({ sel, onStart, focusNext }: { sel: DayKey; onStart: (at: numbe
             </h2>
           )}
           <p className="sub" id="liftPill">
-            {rest ? p.focus || "Nothing planned" : items.length ? [`${sum.lifts} lift${sum.lifts === 1 ? "" : "s"}`, sum.min ? `about ${sum.min} min` : "", done ? "done" : ""].filter(Boolean).join(" · ") : "No lifts yet"}
+            {rest ? p.focus || "Nothing planned" : skipped ? ["Skipped", e.skip?.trim()].filter(Boolean).join(" · ") : items.length ? [`${sum.lifts} lift${sum.lifts === 1 ? "" : "s"}`, sum.min ? `about ${sum.min} min` : "", done ? "done" : ""].filter(Boolean).join(" · ") : "No lifts yet"}
           </p>
         </div>
-        {items.length ? (
+        {items.length && skipped ? (
+          <Button className="start-sm" id="unskipBtn" onClick={() => store.unskipDay(sel)}>
+            Undo skip
+          </Button>
+        ) : items.length ? (
           <Button variant="primary" className="start-sm" id="startBtn" onClick={() => onStart(null)}>
             {done ? <Check size={16} aria-hidden="true" /> : <Play size={13} fill="currentColor" aria-hidden="true" />}
             {done ? "Review" : store.worked(sel) ? "Continue" : "Start"}
@@ -250,9 +255,20 @@ function Session({ sel, onStart, focusNext }: { sel: DayKey; onStart: (at: numbe
             >
               Empty workout
             </Button>
+            {items.length && !skipped && !done && !store.worked(sel) ? (
+              <Button size="sm" id="skipDay" onClick={() => store.skipDay(sel)}>
+                Skip day
+              </Button>
+            ) : null}
           </>
         )}
       </div>
+      {skipped ? (
+        <label className="field" htmlFor="skipReason">
+          <span>Why it was skipped (optional)</span>
+          <SyncedInput id="skipReason" value={e.skip ?? ""} placeholder="e.g. travelling, knee sore…" autoComplete="off" onChange={(ev) => store.skipDay(sel, ev.target.value)} />
+        </label>
+      ) : null}
       {!free && slot !== own ? <p className="note moved">Usually {plan.days[own].name} · changed for this day</p> : null}
     </section>
   );
@@ -305,7 +321,7 @@ function LiftRows({ sel, onOpen, focusNext, cardio, cardioDone }: { sel: DayKey;
                 </span>
               ) : (
                 <ExerciseThumb
-                  id={store.exerciseOf(names[0], r?.swap ? null : it.x)?.id}
+                  id={store.mediaIdOf(names[0], r?.swap ? null : it.x)}
                   fallback={
                     <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
                       <Dumbbell size={20} />

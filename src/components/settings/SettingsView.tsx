@@ -4,6 +4,7 @@ import { ChevronRight, Download, ExternalLink, LogOut, Upload } from "lucide-rea
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { SegmentedControl } from "@/components/ds/parts";
 import { firstName } from "@/components/ds/ProfileButton";
+import { downloadFailed, retryWith, useAndroidUpdate, withProgress } from "@/components/shell/useAndroidUpdate";
 import { Group, NumField, Text } from "@/components/settings/parts";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
@@ -18,7 +19,6 @@ import { savedTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Plan } from "@/lib/types";
 import { availableMessage, downloadingMessage, downloadPercent, NOTHING_PUBLISHED, updateFinding } from "@/lib/update";
 import type { SyncStatus } from "@/native/sync";
-import type { DownloadProgress, LatestUpdate } from "@/native/update";
 
 // Loaded only in the Android app, so the website doesn't carry the Health Connect plugin.
 const native = () => import("@/native/app");
@@ -635,24 +635,10 @@ function About({ demo }: { demo: boolean }) {
  *  there's nothing more useful to say. */
 const CANT_CHECK = "Couldn’t check for updates. Try again when you’re online.";
 
-type AndroidUpdate =
-  | { kind: "checking" }
-  | { kind: "hidden" } // no repo to check: a local build (AppUpdatePlugin.check's `enabled`)
-  | { kind: "upToDate" }
-  | { kind: "available"; latest: LatestUpdate }
-  | { kind: "downloading"; latest: LatestUpdate; received: number; total: number }
-  | { kind: "readyToInstall"; latest: LatestUpdate }
-  | { kind: "needsPermission"; latest: LatestUpdate }
-  | { kind: "error"; message: string };
-
-/** A download's "progress", into the state while it's still downloading. */
-const withProgress = (p: DownloadProgress) => (cur: AndroidUpdate): AndroidUpdate => (cur.kind === "downloading" ? { ...cur, received: p.received, total: p.total || cur.total } : cur);
-const downloadFailed = (e: unknown): AndroidUpdate => ({ kind: "error", message: `Couldn’t download the update: ${(e instanceof Error ? e.message : String(e)).replace(/\.$/, "")}.` });
-
 /** Settings → About → Check for updates, in the Android app: downloads and installs a newer build from this
  *  build's GitHub releases (see AppUpdatePlugin.kt and docs/android.md). The website's is UpdateWeb, below. */
 function UpdateAndroid() {
-  const [s, setS] = useState<AndroidUpdate>({ kind: "checking" });
+  const { s, setS, download, install, openInstallSettings } = useAndroidUpdate({ kind: "checking" });
 
   // The state starts at "checking" already, so the mount effect can kick this off without setting it again itself.
   const runCheck = useCallback(() => {
@@ -669,11 +655,11 @@ function UpdateAndroid() {
         setS({ kind: "downloading", latest, received: 0, total: latest.size });
         await m.followDownload((p) => setS(withProgress(p)))?.then(
           () => setS({ kind: "readyToInstall", latest }),
-          (e: unknown) => setS(downloadFailed(e)),
+          (e: unknown) => setS(downloadFailed(e, latest)),
         );
       })
       .catch(() => setS({ kind: "error", message: CANT_CHECK }));
-  }, []);
+  }, [setS]);
   // Checked once as the screen opens, like Health Connect's own status above.
   useEffect(runCheck, [runCheck]);
   // "Check again" / "Retry": back to checking, then the same call.
@@ -681,42 +667,6 @@ function UpdateAndroid() {
     setS({ kind: "checking" });
     runCheck();
   };
-
-  const install = useCallback((latest: LatestUpdate) => {
-    void native()
-      .then((m) => m.installUpdate())
-      // { started: true }: Android's installer has taken over. Back to readyToInstall either way, not needsPermission
-      // again once it's started, so coming back from the installer (cancelled, say) doesn't retry it on a loop.
-      .then((r) => setS("needsPermission" in r ? { kind: "needsPermission", latest } : { kind: "readyToInstall", latest }))
-      .catch((e: unknown) => setS({ kind: "error", message: `Couldn’t start the installer: ${(e instanceof Error ? e.message : String(e)).replace(/\.$/, "")}.` }));
-  }, []);
-
-  // "Download and install": once the download checks out, straight on to Android's installer (or to the one-time
-  // permission it asks for first), as the button says, without a second tap.
-  const download = (latest: LatestUpdate) => {
-    setS({ kind: "downloading", latest, received: 0, total: latest.size });
-    void native()
-      .then((m) => m.downloadUpdate((p) => setS(withProgress(p))))
-      .then(
-        () => install(latest),
-        (e: unknown) => setS(downloadFailed(e)),
-      );
-  };
-
-  // Back from Android's "allow installs from Gym Log" screen: try installing again, now that it may be allowed.
-  useEffect(() => {
-    if (s.kind !== "needsPermission") return;
-    const latest = s.latest;
-    let live = true;
-    let unsub: (() => void) | undefined;
-    void native().then((m) => {
-      if (live) unsub = m.onAppResume(() => install(latest));
-    });
-    return () => {
-      live = false;
-      unsub?.();
-    };
-  }, [s, install]);
 
   if (s.kind === "hidden") return null;
   const pct = s.kind === "downloading" ? downloadPercent(s.received, s.total) : 0;
@@ -742,7 +692,12 @@ function UpdateAndroid() {
                         : s.message
           }
         />
-        {s.kind === "upToDate" || s.kind === "error" ? (
+        {s.kind === "error" && retryWith(s) === "install" && s.latest ? (
+          // Only the installer failed: the download is on the phone, so this opens the installer again.
+          <button className="btn btn-sm" id="updRetryInstall" onClick={() => install(s.latest!)}>
+            Try again
+          </button>
+        ) : s.kind === "upToDate" || s.kind === "error" ? (
           <button className="btn btn-sm" id="updCheckBtn" onClick={check}>
             {s.kind === "error" ? "Retry" : "Check again"}
           </button>
@@ -758,7 +713,7 @@ function UpdateAndroid() {
           </button>
         ) : null}
         {s.kind === "needsPermission" ? (
-          <button className="btn btn-sm" id="updOpenSettings" onClick={() => void native().then((m) => m.openInstallSettings())}>
+          <button className="btn btn-sm" id="updOpenSettings" onClick={openInstallSettings}>
             Open settings
           </button>
         ) : null}

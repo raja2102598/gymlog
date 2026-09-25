@@ -1,6 +1,10 @@
 "use client";
+import { CirclePlay } from "lucide-react";
 import { useEffect, useState } from "react";
 import { loadHowTo, photoUrls, type HowTo as HowToData } from "@/lib/exerciseMedia";
+
+/** Videos of a lift: YouTube's results for it, opened outside the app. No open dataset has videos to ship with it. */
+export const videoSearch = (name: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`how to do ${name} exercise`)}`;
 
 const MECHANIC: Record<string, string> = { compound: "Works several joints", isolation: "Works one joint" };
 const FORCE: Record<string, string> = { push: "Push", pull: "Pull", static: "Hold" };
@@ -28,6 +32,8 @@ export function HowTo({ id, name, headingId }: { id: string; name: string; headi
   return (
     <div className="howto-body" aria-labelledby={headingId}>
       {h.photos >= 2 && noPhotos !== id ? (
+        // The two photos take turns, start then finish, so the lift is seen moving; with Reduce motion on, they sit
+        // side by side instead (ds.css).
         <div className="howto-photos">
           {[start, end].map((src, i) => (
             <figure key={src}>
@@ -36,10 +42,17 @@ export function HowTo({ id, name, headingId }: { id: string; name: string; headi
               <figcaption>{i ? "Finish" : "Start"}</figcaption>
             </figure>
           ))}
+          <span className="howto-loop" aria-hidden="true">
+            Start ⇄ finish
+          </span>
         </div>
       ) : h.photos >= 2 ? (
         <p className="sub">The photos need a connection.</p>
       ) : null}
+      <a className="btn btn-sm howto-video" href={videoSearch(name)} target="_blank" rel="noreferrer">
+        <CirclePlay size={18} aria-hidden="true" />
+        Watch videos of it
+      </a>
       {tags.length ? (
         <p className="howto-tags">
           {tags.map((t) => (

@@ -359,7 +359,7 @@ export function LiftHead({
   const { r, i, name, did, x, target, last } = m;
   const [howOpen, setHowOpen] = useState(false);
   // The library lift being done (the swap's, if swapped), for its photos and steps; none for one of your own.
-  const ex = store.exerciseOf(did, r.swap ? null : x), libId = ex && !ex.custom ? ex.id : null;
+  const libId = store.mediaIdOf(did, r.swap ? null : x);
 
   const swap = (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault();

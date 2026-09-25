@@ -1,6 +1,6 @@
 // Layout and readability on a small phone (360 x 800): the fixes from the UI audit, in the redesign's Home, Train,
 // the workout, Settings and Progress.
-import { flat, K, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
+import { flat, K, open, openSetting, openTab, openWorkout, ready, session, settled, until, TAB_VIEWS } from "./harness.mjs";
 
 const today = () => ({
   "2026-09-23": {
@@ -123,6 +123,7 @@ export default async function layout({ browser, base, check }) {
     await page.fill("#s0_0_r", "10");
     await until(async () => (await hs.locator(".srow.set").first().getAttribute("class")).includes("logged"));
     check("entering reps marks the set as logged", (await hs.locator(".srow.set").first().getAttribute("class")).includes("logged"));
+    await page.evaluate(settled); // the row's tint fades in
     const typed = await page.$eval("#s0_0_r", (e) => ({ w: getComputedStyle(e).fontWeight, c: getComputedStyle(e).color, row: getComputedStyle(e.closest(".srow")).backgroundColor }));
     const later = await page.$eval("#s0_2_r", (e) => ({ w: getComputedStyle(e).fontWeight, c: getComputedStyle(e).color }));
     check("typed numbers are heavy ink on the logged row's tint, unlike later sets' muted ones", typed.w === "900" && typed.c === INK && typed.row === "rgb(255, 244, 238)" && later.c === MUTED && +later.w < 900, JSON.stringify({ typed, later }));

@@ -15,7 +15,13 @@
 .lib-filters select.ghost{width:100%;background-color:var(--surface)}
 .lib-tools .label{padding:4px 4px 0}
 .lib-list{margin:0 16px;overflow:auto;flex:1 1 auto;min-height:0;overscroll-behavior:contain;align-self:stretch}
-.lib-row{display:flex;align-items:center;gap:12px;min-height:64px;padding:10px 12px 10px 14px}
+.lib-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;min-height:64px;padding:10px 12px 10px 14px}
+/* The photo and name: a button that opens how to do the lift under the row. */
+.lib-info{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:12px;min-height:var(--touch-min);padding:0;border:0;background:transparent;color:var(--ink);text-align:left;font:inherit;cursor:pointer;border-radius:var(--radius-md)}
+.lib-info:disabled{cursor:default}
+.lib-info:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}
+.lib-see{font:var(--type-label);color:var(--brand-text)}
+.lib-how{flex:1 1 100%;padding:4px 0 6px}
 .lib-t{flex:1 1 auto;display:grid;gap:2px;min-width:0}
 .lib-n{font:var(--type-body-strong);overflow-wrap:anywhere}
 .lib-n .pill{margin-left:6px;vertical-align:2px;font-size:12px;padding:2px 8px}

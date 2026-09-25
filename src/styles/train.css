@@ -41,7 +41,10 @@
 .wtop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(var(--sat) + 12px) var(--gut-r) 0 var(--gut-l)}
 .wtop-t{display:flex;flex-direction:column;align-items:center;min-width:0;text-align:center}
 .wtop h1{font:800 15px/20px var(--font-sans);overflow-wrap:anywhere}
-.wclock{font:900 15px/20px var(--font-sans);color:var(--brand-text)}
+/* The workout's clock: tap to start it again from 0:00 (it asks first). A 44px target around the small label. */
+.wclock{position:relative;display:inline-flex;align-items:center;gap:5px;padding:0 6px;border:0;border-radius:var(--radius-pill);background:transparent;color:var(--brand-text);font:900 15px/20px var(--font-sans);cursor:pointer}
+.wclock::before{content:"";position:absolute;inset:-12px -8px}
+.wclock:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}
 .wtop .btn-raised:not(.btn-icon){padding:0 20px;font-size:16px}
 .wprog{position:relative;z-index:1;list-style:none;margin:0;padding:16px var(--gut-r) 0 var(--gut-l);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px}
 .wprog li{display:flex}
@@ -122,6 +125,12 @@
 .chk{width:44px;height:44px;border-radius:22px;border:2px solid var(--ink-subtle);background:transparent;padding:0;display:grid;place-items:center;cursor:pointer;color:var(--on-brand)}
 .srow.up .chk{border-color:var(--outline)}
 .srow.done .chk{border:0;background:var(--brand)}
+/* A logged set fills in rather than snapping, and its tick gives under the thumb: colour and transform only. */
+@media (prefers-reduced-motion:no-preference){
+  .srow{transition:background-color var(--sheet) var(--ease)}
+  .chk{transition:background-color var(--press) var(--ease),transform var(--press) var(--ease)}
+  .chk:active{transform:scale(.92)}
+}
 .prb{display:none;position:absolute;top:-6px;left:118px;align-items:center;gap:3px;padding:2px 7px;border-radius:8px;background:var(--brand-tint);color:var(--brand-tint-ink);font:900 11px/14px var(--font-sans)}
 .srow.pr .prb{display:inline-flex}
 .setmenu-w{display:grid;gap:10px;padding:12px;margin:2px 0 6px;border-radius:var(--radius-md);background:var(--surface-sunken)}

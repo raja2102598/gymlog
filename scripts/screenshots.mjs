@@ -7,7 +7,7 @@ import path from "node:path";
 import { chromium } from "playwright-core";
 import { sampleDays } from "../src/lib/sampleData.js";
 import { serve } from "./serve.mjs";
-import { open, openTab, ready, savedPlan, session, settled } from "../tests/e2e/harness.mjs";
+import { drawCharts, open, openTab, ready, savedPlan, session, settled } from "../tests/e2e/harness.mjs";
 
 const OUT = path.resolve(process.env.SHOTS_DIR || "docs/screenshots");
 const FULL = process.argv.includes("--full");
@@ -27,6 +27,7 @@ const fresh = () => ({ logs: structuredClone(logs), plan: null, health: structur
 async function snap(page, name) {
   await page.evaluate(() => document.fonts.ready);
   await page.evaluate(settled);
+  if (FULL) await drawCharts(page);
   await page.waitForTimeout(250);
   await page.screenshot({ path: `${OUT}/${name}.png`, type: "png", animations: "disabled", caret: "hide", fullPage: FULL });
   console.log("shot", name);
@@ -57,6 +58,11 @@ for (const scheme of ["dark", "light"]) {
   await page.click("#libTile");
   await page.waitForSelector("#libList");
   await snap(page, `library-${scheme}`);
+  // A lift opened in the library: its photos and steps, before adding it.
+  await page.locator("#libList [data-info]").first().click();
+  await page.waitForSelector("#libList .howto-steps li");
+  await page.evaluate(() => Promise.all([...document.querySelectorAll("#libList .howto-photos img")].map((i) => i.decode().catch(() => {}))));
+  await snap(page, `library-how-${scheme}`);
   await page.keyboard.press("Escape");
   // The workout: today's session, how to do its first lift, then a set in, resting.
   await page.click("#startBtn");

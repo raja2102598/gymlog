@@ -27,6 +27,16 @@ export default async function gym({ browser, base, check }) {
   await until(() => JSON.stringify(db.plan?.gym?.off) === '["barbell"]');
   check("turning the barbell off saves with the plan", JSON.stringify(db.plan?.gym) === '{"off":["barbell"],"always":[],"never":[]}', JSON.stringify(db.plan?.gym));
   check("and the library offers fewer lifts", (await switchOn("barbell")) === "false" && (await flat(page.locator("#gymCount"))) === "The library offers 490 of its 657 lifts.", await flat(page.locator("#gymCount")));
+  // The switch's thumb slides and grows by transform alone (no layout each frame): off, a 24px circle scaled to 16px.
+  const thumb = (e) =>
+    page.$eval(`[data-equip="${e}"] .switch`, (el) => {
+      const a = getComputedStyle(el, "::after");
+      return { moves: a.transitionProperty, transform: a.transform };
+    });
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
+  const off = await thumb("barbell"), on = await thumb("dumbbell");
+  check("a switch's thumb moves by transform, not by its position and size", /transform/.test(off.moves) && !/left|top|width|height/.test(off.moves), off.moves);
+  check("off, it's shrunk in place; on, slid across at full size", /^matrix\(0\.66\d*, 0, 0, 0\.66\d*, 0, 0\)$/.test(off.transform) && on.transform === "matrix(1, 0, 0, 1, 20, 0)", `${off.transform} | ${on.transform}`);
 
   // Always and never: picked from every lift, whatever the gym has.
   await page.click('[data-gymadd="always"]');

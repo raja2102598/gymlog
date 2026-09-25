@@ -111,7 +111,7 @@ export function planModel(store: GymStore, t: DayKey): PlanModel {
     if (k > t) return "fut";
     if (k < start) return "pre";
     const p = store.planFor(k), n = p.exercises.filter((x) => store.entry(k).exercises[x.name]?.done).length;
-    if (!p.exercises.length) return "rest";
+    if (!p.exercises.length || store.entry(k).skip != null) return "rest";
     return n === p.exercises.length ? "done" : n || store.worked(k) ? "part" : k < t ? "miss" : "todo";
   };
   return {
