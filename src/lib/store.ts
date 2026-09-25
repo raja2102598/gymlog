@@ -518,8 +518,9 @@ export class GymStore {
     const ls = L ? setsOf(L.r).filter(S.isWorkingSet) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
     return [String(s.reps ?? (parseInt(x.reps, 10) || "-")), String(s.kg ?? "-")];
   }
+  // Warm-ups alone don't count: a workout left after them wasn't done.
   worked(k: DayKey): boolean {
-    return Object.values(this.entry(k).exercises).some((r) => r.done || setsOf(r).some((s) => s.reps != null));
+    return Object.values(this.entry(k).exercises).some((r) => r.done || setsOf(r).some((s) => S.isWorkingSet(s) && s.reps != null));
   }
   // Gym sessions planned for days before today in k's week that no day of that week has done,
   // or taken over for today or later.

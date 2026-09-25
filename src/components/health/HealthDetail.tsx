@@ -224,7 +224,9 @@ function RangePage({ metric, days }: { metric: Metric; days: DayKey[] }) {
       const fat = seriesOf(store, metric, days, (x) => x.bodyFat), fs = summarize(fat);
       const w = s.filter((x): x is [DayKey, number] => x[1] != null);
       const change = w.length > 1 ? w[w.length - 1][1] - w[0][1] : null;
-      const fatChange = measureChange(store.measureReadings("bodyFat"));
+      // A note reads up to the period's last day, like its chart, so an earlier month never shows a later reading.
+      const upTo = (r: [DayKey, number][]) => r.filter(([k]) => k <= days[days.length - 1]);
+      const fatChange = measureChange(upTo(store.measureReadings("bodyFat")));
       return (
         <>
           <SeriesTrend s={s} metric="body" title="Body weight" unit={(v) => `${v.toFixed(1)} kg`} id="hChart" minSpan={1} />
@@ -242,7 +244,7 @@ function RangePage({ metric, days }: { metric: Metric; days: DayKey[] }) {
           {MEASURES.map(({ field, title, chartId, noteId }) => {
             const ser = seriesOf(store, metric, days, (x) => x[field]);
             if (!summarize(ser).n) return null;
-            const mc = measureChange(store.measureReadings(field));
+            const mc = measureChange(upTo(store.measureReadings(field)));
             return (
               <Fragment key={field}>
                 <SeriesTrend s={ser} metric="body" title={title} unit={(v) => `${v} cm`} id={chartId} minSpan={2} />

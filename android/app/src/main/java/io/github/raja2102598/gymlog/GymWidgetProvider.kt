@@ -75,7 +75,8 @@ class GymWidgetProvider : AppWidgetProvider() {
 
         private fun goIntent(context: Context, target: String, requestCode: Int): PendingIntent {
             val scheme = context.getString(R.string.custom_url_scheme)
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("$scheme://go/$target"))
+            // Explicit, so no other app that claims the same scheme can take the tap or raise a chooser.
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("$scheme://go/$target"), context, MainActivity::class.java)
             return PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
     }

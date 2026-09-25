@@ -83,6 +83,12 @@ export default async function measurements({ browser, base, check }) {
     hero.includes("105.5 cm chest") && hero.includes("35.5 cm arms") && hero.includes("59.5 cm thighs") && hero.includes("97.5 cm hips") && hero.includes("21% body fat"),
     hero,
   );
+  // --- an earlier week: each note reads up to that week's last day, as its chart does, never a later reading
+  await page.click(".seg-b >> text=Week");
+  for (let i = 0; i < 4; i++) await page.click("#hPrev"); // the week ending 26 Aug, the first round's day
+  await page.waitForSelector("#hChestChange");
+  check("an earlier week's chest note stops at that week, like its chart", (await flat(page.locator("#hChestChange"))) === "Chest 100 cm on 26 Aug", await flat(page.locator("#hChestChange")));
+  check("and body fat's too", (await flat(page.locator("#hFatChange"))) === "Body fat 22% on 26 Aug", await flat(page.locator("#hFatChange")));
   await page.click("#backBtn");
   await page.waitForSelector("#activity");
 

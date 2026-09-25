@@ -69,6 +69,17 @@ describe("store", () => {
     expect(["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-08-25"].map((k) => s.dayState(k))).toEqual(["part", "miss", "done", "", ""]);
   });
 
+  it("doesn't count a day with only warm-up sets as trained, so its session is still offered as missed", () => {
+    const warm: LiftLog = { done: false, kg: null, sets: [{ reps: 8, kg: 20, type: "warmup" }, { reps: 5, kg: 30, type: "warmup" }] };
+    const s = storeWith({ "2026-09-21": day({ exercises: { "Chest Press Machine": warm } }) });
+    expect(s.worked("2026-09-21")).toBe(false);
+    expect(s.dayState("2026-09-21")).toBe("miss");
+    expect(s.missedThisWeek("2026-09-24")).toEqual([0, 1]);
+    s.logs["2026-09-21"].exercises["Chest Press Machine"].sets!.push({ reps: 12, kg: 40 });
+    expect([s.worked("2026-09-21"), s.dayState("2026-09-21")]).toEqual([true, "part"]);
+    expect(s.missedThisWeek("2026-09-24")).toEqual([1]);
+  });
+
   it("suggests more weight when every set hit the top, but holds knee lifts after a sore day", () => {
     const s = storeWith({
       "2026-09-16": day({ exercises: { "Leg Press": lift([[12, 50], [12, 50], [12, 50]]), "Hamstring Curl": lift([[12, 30], [12, 30], [12, 30]]) }, kneeAfter: 6 }),

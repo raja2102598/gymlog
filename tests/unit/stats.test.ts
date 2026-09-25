@@ -197,9 +197,15 @@ describe("warm-up ladder", () => {
     expect(G.warmupLadder(47, 20).map((s) => s.kg)).toEqual([20, 27.5, 37.5]); // 18.8, 28.2, 37.6 rounded
   });
 
-  it("never suggests less than the bar, however light the working weight", () => {
+  it("never suggests less than the bar for a barbell lift", () => {
     expect(G.warmupLadder(25, 20).map((s) => s.kg)).toEqual([20, 20, 20]);
-    expect(G.warmupLadder(0, 20).map((s) => s.kg)).toEqual([20, 20, 20]);
+    expect(G.warmupLadder(20, 20).map((s) => s.kg)).toEqual([20, 20, 20]);
+  });
+
+  it("leaves the bar out for a lift lighter than it, and never goes over the working weight", () => {
+    expect(G.warmupLadder(10, 20).map((s) => s.kg)).toEqual([5, 5, 7.5]); // a dumbbell lift: 4, 6, 8 rounded
+    expect(G.warmupLadder(2, 20)).toEqual([{ pct: 80, reps: 3, kg: 2 }]); // 0.8 and 1.2 round to nothing; 1.6 to 2.5, capped
+    expect(G.warmupLadder(0, 20)).toEqual([]);
   });
 });
 
