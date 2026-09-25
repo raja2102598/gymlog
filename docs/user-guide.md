@@ -76,6 +76,11 @@ Changes save automatically. With poor gym signal they're kept on the phone and s
 
 The installed app loads its files from the phone's cache first, so it opens straight away even on weak signal. New versions download in the background and run from the next launch.
 
+## Updates
+
+- **On the website**, a new version downloads in the background as you use the site and runs from the next visit; if it finishes while a tab is still open, that tab shows **Gym Log was updated** with **Reload**. **Settings → About → Check for updates** asks right away instead of waiting for that.
+- **In the Android app**, updates come as a new APK. **Settings → About → Check for updates** downloads and installs one from inside the app — see the [Android app](android.md#updates-and-the-signing-key) for how it's verified — and the app also checks quietly every so often, with a small banner when one's ready.
+
 ## Good to know
 
 - Supabase's built-in email service sends only a few sign-in emails an hour for the whole project (about 2). If you hit the limit, the sign-in screen says so: wait an hour, or sign in with your password. The Send button also waits a minute after each link, since a new link replaces the last one.

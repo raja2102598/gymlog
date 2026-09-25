@@ -2,7 +2,7 @@
 // how a new build reaches an installed copy.
 import fs from "node:fs";
 import path from "node:path";
-import { flat, open, ready, session, until } from "./harness.mjs";
+import { flat, open, openTab, ready, session, until } from "./harness.mjs";
 
 const today = () => ({ "2026-09-23": { exercises: {}, warmup: [], cardio: true, steps: 7351, weight: 81, note: "" } });
 
@@ -128,12 +128,14 @@ export default async function offline({ browser, base, copy, check }) {
 
   // ---------- Updates: a new build reaches an installed copy by the next launch ----------
   {
-    const { ctx, page } = await open(browser, copy.url, { auth, db: { logs: today(), plan: null }, sw: "allow" });
+    const db = { logs: today(), plan: null };
+    const { ctx, page } = await open(browser, copy.url, { auth, db, sw: "allow" });
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
     });
     await page.reload();
     await ready(page);
+    check("no update notice before anything's changed", await page.locator("#swUpdateBar").isHidden());
     const v1 = await page.evaluate(() => caches.keys());
     // "Deploy" a new build: changed app code, and so a new VERSION in sw.js.
     const html = fs.readFileSync(path.join(copy.dir, "index.html"), "utf8");
@@ -146,10 +148,52 @@ export default async function offline({ browser, base, copy, check }) {
     check("the launch right after a deploy still runs the cached version (no half-updated mix)", await page.evaluate(() => window.__build === undefined));
     await until(async () => (await page.evaluate(() => caches.keys())).includes("gymlog-test-next"), 10000);
     await until(async () => (await page.evaluate(() => caches.keys())).length === 1, 10000);
+    // The new service worker has just claimed this still-open tab (a controllerchange on a page that already had
+    // one): a notice offers a reload, since this tab is still running the old code until then.
+    await page.waitForSelector("#swUpdateBar:not([hidden])", { timeout: 5000 });
+    check("a notice offers a reload once the new version takes over the open tab", (await flat(page.locator("#swUpdateMsg"))) === "Gym Log was updated.");
+    // With the sync bar up too, scrolled: the two stack, neither covering the other's buttons.
+    db.failWrites = true;
+    await page.fill("#s0_0_r", "10");
+    await page.waitForSelector("#syncBar:not([hidden])", { timeout: 8000 });
+    await page.evaluate(() => window.scrollBy(0, 600));
+    const bars = await page.evaluate(() => ["#syncBar", "#swUpdateBar"].map((s) => document.querySelector(s).getBoundingClientRect()).map((r) => ({ top: Math.round(r.top), bottom: Math.round(r.bottom) })));
+    check("the sync bar and a notice shown together stack, neither covering the other", bars[0].bottom <= bars[1].top || bars[1].bottom <= bars[0].top, JSON.stringify(bars));
+    db.failWrites = false;
+    // Those saves failed on purpose: what the browser and the app log about them isn't a page error.
+    page.errors = page.errors.filter((e) => !/status of 503 \(Service Unavailable\)|\{message: unavailable\}/.test(e));
+    await page.click("#swUpdateReload");
+    await ready(page);
+    check("Reload runs the new version", await page.evaluate(() => window.__build === 2));
     await page.reload();
     await ready(page);
     check("the next launch runs the new version", await page.evaluate(() => window.__build === 2), JSON.stringify({ before: v1, after: await page.evaluate(() => caches.keys()) }));
     check("no page errors across the update", page.errors.length === 0, page.errors.join(" | "));
+    await ctx.close();
+  }
+
+  // ---------- Updates: a first visit left open still hears about the next build ----------
+  {
+    const { ctx, page } = await open(browser, copy.url, { auth, db: { logs: today(), plan: null }, sw: "allow" });
+    await ready(page);
+    // Its service worker installs and takes this tab over: that's the first install, not an update.
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 10000 });
+    check("a first visit's own install shows no update notice", await page.locator("#swUpdateBar").isHidden());
+    // "Deploy" another build, and ask for it from Settings → About without leaving the page.
+    const html = fs.readFileSync(path.join(copy.dir, "index.html"), "utf8");
+    const chunk = html.match(/<script src="\/(_next\/static\/chunks\/[^"]+\.js)" async=""/)[1];
+    fs.appendFileSync(path.join(copy.dir, chunk), "\n;window.__build = 3;\n");
+    const swFile = path.join(copy.dir, "sw.js");
+    fs.writeFileSync(swFile, fs.readFileSync(swFile, "utf8").replace(/const VERSION = "[^"]+"/, 'const VERSION = "gymlog-test-third"'));
+    await openTab(page, "settings");
+    await page.click("#updCheckWebBtn");
+    await page.waitForSelector("#swUpdateBar:not([hidden])", { timeout: 10000 });
+    check("a first visit left open still offers a reload once the next build takes over", (await flat(page.locator("#swUpdateMsg"))) === "Gym Log was updated.");
+    await page.click("#swUpdateReload");
+    // The reload opens where it was: Settings.
+    await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
+    check("…and Reload runs that build", await page.evaluate(() => window.__build === 3));
+    check("no page errors across it", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
 }

@@ -34,8 +34,25 @@ vi.mock("@capacitor/app", () => ({ App: app }));
 const googleSignIn = vi.hoisted(() => ({ signIn: vi.fn() }));
 // The app's own Speech plugin, for voice logging: this phone can listen.
 const speech = vi.hoisted(() => ({ available: vi.fn(async () => ({ available: true })) }));
+// The app's own AppUpdate plugin: a download that lasts until the test ends it, with "progress" on the way.
+const appUpdate = vi.hoisted(() => {
+  type Progress = { received: number; total: number };
+  const listeners = new Set<(p: Progress) => void>();
+  let end: { resolve: () => void; reject: (e: Error) => void } = { resolve: () => {}, reject: () => {} };
+  return {
+    listeners,
+    progress: (p: Progress) => listeners.forEach((f) => f(p)),
+    finish: () => end.resolve(),
+    fail: (e: Error) => end.reject(e),
+    download: vi.fn(() => new Promise<void>((resolve, reject) => void (end = { resolve, reject }))),
+    addListener: vi.fn(async (_: string, fn: (p: Progress) => void) => {
+      listeners.add(fn);
+      return { remove: async () => void listeners.delete(fn) };
+    }),
+  };
+});
 vi.mock("@capacitor/core", () => ({
-  registerPlugin: (name: string) => (name === "GoogleSignIn" ? googleSignIn : name === "Speech" ? speech : gymSync),
+  registerPlugin: (name: string) => (name === "GoogleSignIn" ? googleSignIn : name === "Speech" ? speech : name === "AppUpdate" ? appUpdate : gymSync),
   SystemBars: { setStyle: vi.fn() },
   SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" },
 }));
@@ -46,6 +63,7 @@ import { GymStore } from "@/lib/store";
 import { connectHealth, healthAccess, READ, syncHealth } from "@/native/health";
 import { signInWithGoogle } from "@/native/google";
 import { checkBackgroundOwner, deviceName, turnOffBackground, turnOnBackground } from "@/native/sync";
+import { downloadUnderway, downloadUpdate, followDownload, type DownloadProgress } from "@/native/update";
 import { createHash } from "node:crypto";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 
@@ -481,5 +499,50 @@ describe("steps and weight from both sources", () => {
       ["2026-09-20", 82],
       ["2026-09-21", 81.6],
     ]);
+  });
+});
+
+describe("downloading an update", () => {
+  beforeEach(() => {
+    appUpdate.download.mockClear();
+  });
+
+  it("joins a download that's under way instead of starting a second, with the progress for both", async () => {
+    const a: DownloadProgress[] = [], b: DownloadProgress[] = [];
+    const first = downloadUpdate((p) => a.push(p));
+    await flush();
+    appUpdate.progress({ received: 4, total: 10 });
+    // Settings left and opened again: another "Download and install" joins the first, where it's got to.
+    const second = downloadUpdate((p) => b.push(p));
+    appUpdate.progress({ received: 10, total: 10 });
+    appUpdate.finish();
+    await Promise.all([first, second]);
+    expect(appUpdate.download).toHaveBeenCalledTimes(1);
+    expect(a).toEqual([{ received: 4, total: 10 }, { received: 10, total: 10 }]);
+    expect(b).toEqual([{ received: 4, total: 10 }, { received: 10, total: 10 }]);
+    expect(appUpdate.listeners.size).toBe(0);
+  });
+
+  it("lets Settings, opened again mid-download, follow it to the end, a failure included; then nothing's under way", async () => {
+    expect(downloadUnderway()).toBe(false);
+    expect(followDownload(() => {})).toBeNull();
+    const first = downloadUpdate(() => {});
+    await flush();
+    appUpdate.progress({ received: 3, total: 10 });
+    expect(downloadUnderway()).toBe(true);
+    const seen: DownloadProgress[] = [];
+    const following = followDownload((p) => seen.push(p));
+    appUpdate.fail(new Error("The download didn’t match what was expected"));
+    await expect(following).rejects.toThrow("didn’t match");
+    await expect(first).rejects.toThrow("didn’t match");
+    expect(seen).toEqual([{ received: 3, total: 10 }]);
+    expect(downloadUnderway()).toBe(false);
+    expect(followDownload(() => {})).toBeNull();
+    // And the next "Download and install" starts afresh.
+    const again = downloadUpdate(() => {});
+    await flush();
+    appUpdate.finish();
+    await again;
+    expect(appUpdate.download).toHaveBeenCalledTimes(2);
   });
 });

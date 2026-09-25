@@ -85,6 +85,9 @@ jobs:
           GYMLOG_VERSION_CODE: ${{ github.run_number }}
           KEYSTORE_BASE64: ${{ secrets.GYMLOG_KEYSTORE_BASE64 }}
           GYMLOG_KEYSTORE_PASSWORD: ${{ secrets.GYMLOG_KEYSTORE_PASSWORD }}
+          # So the app can check its own repo's releases for a newer build (AppUpdatePlugin); a fork's build then
+          # follows the fork's releases, never this one.
+          GYMLOG_UPDATE_REPO: ${{ github.repository }}
         run: |
           # A tag such as v1.2.0 names the build 1.2.0; anything else is 1.0.<run number>.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export GYMLOG_VERSION_NAME="${GITHUB_REF_NAME#v}"; fi
@@ -108,10 +111,22 @@ jobs:
           ./gradlew testReleaseUnitTest assembleRelease --no-daemon --console=plain
           mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/gym-log.apk"
           echo "version=${GYMLOG_VERSION_NAME:-1.0.$GYMLOG_VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          # version.json, next to the APK: what AppUpdatePlugin reads to tell a newer build from an older one and
+          # verify a download, published alongside gym-log.apk by both release jobs below.
+          jq -n \
+            --argjson code "$GYMLOG_VERSION_CODE" \
+            --arg name "${GYMLOG_VERSION_NAME:-1.0.$GYMLOG_VERSION_CODE}" \
+            --arg commit "$GITHUB_SHA" \
+            --argjson size "$(stat -c%s "$RUNNER_TEMP/gym-log.apk")" \
+            --arg sha256 "$(sha256sum "$RUNNER_TEMP/gym-log.apk" | cut -d' ' -f1)" \
+            '{versionCode: $code, versionName: $name, commit: $commit, size: $size, sha256: $sha256}' \
+            > "$RUNNER_TEMP/version.json"
       - uses: actions/upload-artifact@v7
         with:
           name: gym-log-apk
-          path: ${{ runner.temp }}/gym-log.apk
+          path: |
+            ${{ runner.temp }}/gym-log.apk
+            ${{ runner.temp }}/version.json
           if-no-files-found: error
           retention-days: 30
 
@@ -133,9 +148,9 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           gh release delete android-latest --yes --cleanup-tag || true
-          gh release create android-latest gym-log.apk --target "$GITHUB_SHA" --latest \
+          gh release create android-latest gym-log.apk version.json --target "$GITHUB_SHA" --latest \
             --title "Gym Log for Android $VERSION" \
-            --notes "Open this page on your phone, download gym-log.apk and open it to install or update. Built from $GITHUB_SHA."
+            --notes "Open this page on your phone, download gym-log.apk and open it to install or update, or use Settings → About → Check for updates in the app. Built from $GITHUB_SHA."
 
   # A tag's release stays, unlike android-latest, so a build people installed can always be found again. It isn't
   # marked Latest: android-latest stays the newest build.
@@ -158,9 +173,9 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" gym-log.apk --clobber
+            gh release upload "$GITHUB_REF_NAME" gym-log.apk version.json --clobber
           else
-            gh release create "$GITHUB_REF_NAME" gym-log.apk --verify-tag --latest=false \
+            gh release create "$GITHUB_REF_NAME" gym-log.apk version.json --verify-tag --latest=false \
               --title "Gym Log for Android $VERSION" \
               --notes "Open this page on your phone, download gym-log.apk and open it to install or update. Built from $GITHUB_SHA. The build's summary lists the signing certificate's fingerprints: $RUN_URL"
           fi

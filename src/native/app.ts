@@ -13,6 +13,19 @@ import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./syn
 export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
 export { backgroundStatus, runBackgroundNow, turnOffBackground, turnOnBackground, type SyncStatus } from "./sync";
+export {
+  checkUpdate,
+  downloadUnderway,
+  downloadUpdate,
+  followDownload,
+  installUpdate,
+  onAppResume,
+  openInstallSettings,
+  type DownloadProgress,
+  type InstallResult,
+  type LatestUpdate,
+  type UpdateCheck,
+} from "./update";
 
 /** The phone's status and navigation bars follow the theme picked in Settings: light icons on the dark theme. */
 export const setBarStyle = (theme: "system" | "light" | "dark"): Promise<void> =>
