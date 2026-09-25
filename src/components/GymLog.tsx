@@ -16,6 +16,7 @@ import { LiftDetail } from "./dashboard/LiftDetail";
 import { HealthDetail } from "./health/HealthDetail";
 import { HealthView } from "./health/HealthView";
 import { PlanEditor } from "./plan/PlanEditor";
+import { GymView } from "./settings/GymView";
 import { SettingsView } from "./settings/SettingsView";
 import { AppBar } from "./shell/AppBar";
 import { BootView } from "./shell/BootView";
@@ -284,7 +285,9 @@ export default function GymLog() {
           ? (route.lift ?? "Progress")
           : route.view === "settings"
             ? "Settings"
-            : "Edit plan";
+            : route.view === "gym"
+              ? "My gym"
+              : "Edit plan";
   return (
     <div className="wrap" data-tabs={inApp && !sub ? "" : undefined}>
       <a
@@ -383,11 +386,15 @@ export default function GymLog() {
         </div>
 
         <div id="settingsView" hidden={!inApp || route.view !== "settings"}>
-          {inApp && route.view === "settings" ? <SettingsView onEditPlan={() => openPlan()} dataMsg={restored} /> : null}
+          {inApp && route.view === "settings" ? <SettingsView onEditPlan={() => openPlan()} onOpenGym={() => navigate({ view: "gym" })} dataMsg={restored} /> : null}
         </div>
 
         <div id="planView" className="pe" hidden={!inApp || route.view !== "plan"}>
           {inApp && route.view === "plan" ? <PlanEditor editDay={editDay} onEditDay={setEditDay} onDone={goBack} /> : null}
+        </div>
+
+        <div id="gymView" hidden={!inApp || route.view !== "gym"}>
+          {inApp && route.view === "gym" ? <GymView onDone={goBack} /> : null}
         </div>
       </main>
 

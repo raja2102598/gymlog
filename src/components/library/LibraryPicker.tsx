@@ -20,13 +20,18 @@ export interface LibraryAsk {
   name?: string;
   /** Opens on the form for your own lift `name`, to give it its muscles and equipment. */
   edit?: boolean;
+  /** Every lift to begin with, not only those My gym can do. */
+  everything?: boolean;
+  /** Offers Create a lift (the default), or not. */
+  create?: boolean;
   /** Names already there: shown as added, not picked again. */
   have?: string[];
   onPick: (xs: Exercise[]) => void;
 }
 
 /** The exercise library, over the screen: search by name, filter by muscle and equipment, common lifts first, and a
- *  lift of your own made with Create. Closes on a pick, Close or Escape. */
+ *  lift of your own made with Create. Only lifts My gym can do, until My gym is unticked. Closes on a pick, Close or
+ *  Escape. */
 export function LibraryPicker({ ask, onClose }: { ask: LibraryAsk | null; onClose: () => void }) {
   const dlg = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -59,8 +64,12 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
   const [chosen, setChosen] = useState<Exercise[]>([]);
   const [shown, setShown] = useState(SHOWN);
   const [making, setMaking] = useState(!!ask.edit);
+  const [every, setEvery] = useState(!!ask.everything);
   const have = new Set((ask.have ?? []).map((n) => n.toLowerCase()));
-  const all = store.library(), found = searchLibrary(all, q);
+  // My gym leaves out what it can't do, unless it's unticked; with nothing left out, there's no tick to show.
+  const all = store.library(), mine = all.filter((x) => store.canDo(x)), gym = mine.length < all.length;
+  const pool = every || !gym ? all : mine, found = searchLibrary(pool, q);
+  const elsewhere = !found.length && pool !== all ? searchLibrary(all, q).length : 0;
   const set = (patch: Partial<LibQuery>) => {
     setQ({ ...q, ...patch });
     setShown(SHOWN);
@@ -117,8 +126,22 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
         </div>
         <div className="lib-count">
           <p className="sub" id="libCount" role="status">
-            {found.length === all.length ? plural(all.length, "lift") : `${plural(found.length, "lift")} of ${all.length}`}
+            {found.length === pool.length ? plural(pool.length, "lift") : `${plural(found.length, "lift")} of ${pool.length}`}
           </p>
+          {gym ? (
+            <label className="lib-chip lib-gym" htmlFor="libGym">
+              <input
+                type="checkbox"
+                id="libGym"
+                checked={!every}
+                onChange={(ev) => {
+                  setEvery(!ev.target.checked);
+                  setShown(SHOWN);
+                }}
+              />
+              <span>My gym</span>
+            </label>
+          ) : null}
           <select id="libSort" className="ghost tiny" aria-label="Order" value={q.sort} onChange={(ev) => set({ sort: ev.target.value === "az" ? "az" : "common" })}>
             <option value="common">Common first</option>
             <option value="az">A to Z</option>
@@ -127,13 +150,14 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
       </div>
       <ul className="lib-list" id="libList">
         {found.slice(0, shown).map((x) => {
-          const had = have.has(x.name.toLowerCase()), on = chosen.some((c) => c.id === x.id);
+          const had = have.has(x.name.toLowerCase()), on = chosen.some((c) => c.id === x.id), away = every && gym && !store.canDo(x);
           const words = (
             <span className="lib-t">
               <span className="lib-n">
                 {x.name}
                 {x.custom ? <span className="lib-tag">Yours</span> : null}
                 {had ? <span className="lib-tag">Added</span> : null}
+                {away ? <span className="lib-tag away">Not in my gym</span> : null}
               </span>
               <span className="sub">
                 {equipText(x)} · {muscleText(x)}
@@ -162,12 +186,24 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
             </button>
           </li>
         ) : null}
-        {found.length ? null : <li className="empty">Nothing matches. Create it as a lift of your own?</li>}
+        {found.length ? null : (
+          <li className="empty">
+            {elsewhere
+              ? `Nothing your gym can do matches: untick My gym for ${plural(elsewhere, "lift")} that need${elsewhere === 1 ? "s" : ""} more.`
+              : ask.create === false
+                ? "Nothing matches."
+                : "Nothing matches. Create it as a lift of your own?"}
+          </li>
+        )}
       </ul>
       <div className="lib-foot">
-        <button type="button" className="ghost" id="libCreate" onClick={() => setMaking(true)}>
-          Create a lift
-        </button>
+        {ask.create === false ? (
+          <span />
+        ) : (
+          <button type="button" className="ghost" id="libCreate" onClick={() => setMaking(true)}>
+            Create a lift
+          </button>
+        )}
         {ask.many ? (
           <button type="button" className="primary" id="libAdd" disabled={!chosen.length} onClick={() => pick(chosen)}>
             {chosen.length ? `Add ${chosen.length}` : "Add"}

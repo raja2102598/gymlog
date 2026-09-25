@@ -43,3 +43,7 @@
 @media (prefers-reduced-motion:no-preference){
   .switch,.switch::after{transition:background-color var(--fast) var(--ease),left var(--fast) var(--ease),top var(--fast) var(--ease),width var(--fast) var(--ease),height var(--fast) var(--ease)}
 }
+
+/* My gym: the lifts always or never offered, each with a way to take it off */
+.gym-lifts{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.gym-lifts li{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border-radius:var(--r-ctl);background:var(--sunken)}

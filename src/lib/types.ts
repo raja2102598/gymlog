@@ -220,4 +220,14 @@ export interface Plan {
   days: PlanDay[];
   /** Lifts of your own for the exercise library. Left out until there's one, so older plans round-trip. */
   custom?: CustomExercise[];
+  /** My gym: what the library offers. Left out until it's set, when the gym has everything. */
+  gym?: Gym;
+}
+
+/** My gym: the equipment it hasn't got, so equipment the app adds later starts on, and lifts the library always
+ *  or never offers whatever the equipment says, by their library id ("custom:" and the name for one of your own). */
+export interface Gym {
+  off: Equip[];
+  always: string[];
+  never: string[];
 }

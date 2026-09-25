@@ -29,6 +29,7 @@
 /* a lift's line from the exercise library, and the one-time question about lifts it may know */
 .pe-lib{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .pe-lib .sub{flex:1 1 200px;margin:0;font-size:var(--t-sm);overflow-wrap:anywhere}
+.pe-gym{flex:1 1 100%;padding:8px 12px;border-radius:var(--r-ctl);background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn);font-size:var(--t-sm)}
 .pe-match{margin:14px 0 4px;padding:12px;border-radius:var(--r-card);background:var(--tint);display:grid;gap:8px}
 .pe-match .pe-h{margin:0}
 .pe-match ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}

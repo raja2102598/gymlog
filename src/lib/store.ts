@@ -9,14 +9,14 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
 import { addDays, dayMonth, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { createDemoSupabase } from "./demoSupabase";
-import { CATALOGUE, closeMatches, customLift, exerciseFor, libraryLift, libraryNamed, type Exercise } from "./library";
-import { DEFAULT_PLAN, normalizeCustom, normalizePlan, orderBlocks, planBlocks } from "./plan";
+import { CATALOGUE, closeMatches, customLift, EQUIPMENT, exerciseFor, gymCan, gymLacks, libraryLift, libraryNamed, type Equip, type Exercise } from "./library";
+import { DEFAULT_PLAN, normalizeCustom, normalizeGym, normalizePlan, orderBlocks, planBlocks } from "./plan";
 import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
-import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -742,7 +742,7 @@ export class GymStore {
     );
   }
   /** Names to offer when adding a lift: the plan's lifts, anything swapped in, every lift logged, and the exercise
-   *  library's, less `except`. */
+   *  library's that your gym can do, less `except`. */
   liftSuggestions(except: string[] = []): string[] {
     const s = new Set<string>();
     for (const d of this.plan.days) for (const x of d.exercises) s.add(x.name);
@@ -751,7 +751,7 @@ export class GymStore {
         s.add(name);
         if (r?.swap) s.add(r.swap);
       }
-    for (const x of this.library()) s.add(x.name);
+    for (const x of this.library()) if (this.canDo(x)) s.add(x.name);
     for (const x of except) s.delete(x);
     return [...s].sort((a, b) => a.localeCompare(b));
   }
@@ -760,6 +760,32 @@ export class GymStore {
   /** Every lift the library offers: your own, then the catalogue's. */
   library(): Exercise[] {
     return [...(this.plan.custom ?? []).map(customLift), ...CATALOGUE];
+  }
+  /** My gym, as the plan holds it: everything on until it's set. */
+  gym(): Gym {
+    return this.plan.gym ?? { off: [], always: [], never: [] };
+  }
+  /** Whether the library offers lift x: My gym can do it. */
+  canDo(x: Exercise): boolean {
+    return gymCan(x, this.plan.gym);
+  }
+  /** The equipment lift x needs that My gym hasn't got. */
+  lacks(x: Exercise): Equip[] {
+    return gymLacks(x, this.plan.gym);
+  }
+  /** Turns a piece of equipment on or off in My gym: all of it, without one. */
+  setEquip(on: boolean, e?: Equip) {
+    this.editPlan((p) => {
+      const g = normalizeGym(p.gym);
+      p.gym = normalizeGym({ ...g, off: !e ? (on ? [] : Object.keys(EQUIPMENT)) : on ? g.off.filter((x) => x !== e) : [...g.off, e] });
+    });
+  }
+  /** Puts lifts, by library id, on My gym's always or never list and off the other; off both with null. */
+  showLifts(ids: string[], list: "always" | "never" | null) {
+    this.editPlan((p) => {
+      const g = normalizeGym(p.gym), rest = (l: string[]) => l.filter((id) => !ids.includes(id));
+      p.gym = normalizeGym({ off: g.off, always: list === "always" ? [...rest(g.always), ...ids] : rest(g.always), never: list === "never" ? [...rest(g.never), ...ids] : rest(g.never) });
+    });
   }
   /** Whether a name is a library lift's or one of your own exactly: then it says what the lift is, and a plan lift
    *  given it keeps no link to another. */
@@ -931,9 +957,9 @@ export class GymStore {
     const s = new Set<string>();
     for (const d of this.plan.days) for (const x of d.exercises) s.add(x.name);
     for (const k of this.days()) for (const r of Object.values(this.logs[k].exercises || {})) if (r?.swap) s.add(r.swap);
-    // The library's lifts for the same main muscles, when the lift's are known; all of them otherwise.
+    // The library's lifts your gym can do for the same main muscles, when the lift's are known; all of them otherwise.
     const main = this.exerciseOf(exclude)?.primary ?? [];
-    for (const x of this.library()) if (!main.length || x.primary.some((m) => main.includes(m))) s.add(x.name);
+    for (const x of this.library()) if (this.canDo(x) && (!main.length || x.primary.some((m) => main.includes(m)))) s.add(x.name);
     s.delete(exclude);
     return [...s].sort((a, b) => a.localeCompare(b));
   }
@@ -1401,9 +1427,9 @@ export class GymStore {
     this.changed();
   }
   resetPlan() {
-    // Your own lifts stay: they name lifts in your history, whatever the plan.
-    const custom = this.plan.custom;
-    this.plan = { ...copy(DEFAULT_PLAN), ...(custom ? { custom } : {}) };
+    // Your own lifts stay, as they name lifts in your history, and so does My gym, which is where you train.
+    const { custom, gym } = this.plan;
+    this.plan = { ...copy(DEFAULT_PLAN), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}) };
     this.planChanged(true);
   }
   /** Starts the plan over from a template (src/data/templates): its sessions, lifts, warm-ups and tempo. The goals

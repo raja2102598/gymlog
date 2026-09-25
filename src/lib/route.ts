@@ -1,5 +1,5 @@
-/* Where the app is: one of four tabs, a metric's page under Health, a lift's page under Progress, or the plan
- * editor. Each has an address (#health/sleep, #progress/lift/Leg Press), so any screen opens from a link and the
+/* Where the app is: one of four tabs, a metric's page under Health, a lift's page under Progress, the plan
+ * editor or My gym. Each has an address (#health/sleep, #progress/lift/Leg Press), so any screen opens from a link and the
  * phone's Back button walks back the way you came: a page to its tab, a tab to Today, Today out of the app. */
 
 export const TABS = ["today", "health", "progress", "settings"] as const;
@@ -10,7 +10,7 @@ export const METRICS = ["steps", "sleep", "heart", "energy", "exercise", "body",
 export type Metric = (typeof METRICS)[number];
 
 export interface Route {
-  view: Tab | "plan";
+  view: Tab | "plan" | "gym";
   metric?: Metric;
   /** A lift's own page, under Progress; its name, as logged or planned. */
   lift?: string;
@@ -19,6 +19,7 @@ export interface Route {
 export function routeOf(hash: string): Route {
   const h = hash.replace(/^#/, "");
   if (h === "plan") return { view: "plan" };
+  if (h === "gym") return { view: "gym" };
   // #dashboard is the address Progress had before it was a tab.
   if (h === "progress" || h === "dashboard") return { view: "progress" };
   if (h === "settings") return { view: "settings" };
@@ -41,11 +42,12 @@ export const hashOf = (r: Route): string =>
   r.view === "today" ? "" : r.metric ? `#health/${r.metric}` : r.lift ? `#progress/lift/${encodeURIComponent(r.lift)}` : `#${r.view}`;
 export const sameRoute = (a: Route, b: Route) => a.view === b.view && a.metric === b.metric && a.lift === b.lift;
 
-/** How deep a route sits: Today 0, the other tabs 1, a metric's or lift's page or the plan editor 2. */
-export const depthOf = (r: Route): number => (r.view === "today" ? 0 : r.metric || r.lift || r.view === "plan" ? 2 : 1);
+/** How deep a route sits: Today 0, the other tabs 1, a metric's or lift's page, the plan editor or My gym 2. */
+export const depthOf = (r: Route): number => (r.view === "today" ? 0 : r.metric || r.lift || r.view === "plan" || r.view === "gym" ? 2 : 1);
 
-/** The tab a route belongs to, lit in the tab bar. The plan editor opens from Settings. */
-export const tabOf = (r: Route): Tab => (r.view === "plan" ? "settings" : r.view);
+/** The tab a route belongs to, lit in the tab bar. The plan editor and My gym open from Settings. */
+export const tabOf = (r: Route): Tab => (r.view === "plan" || r.view === "gym" ? "settings" : r.view);
 
 /** Where a page's back arrow goes when there's no history to go back through (it was opened from a link). */
-export const parentOf = (r: Route): Route => (r.metric ? { view: "health" } : r.lift ? { view: "progress" } : r.view === "plan" ? { view: "settings" } : { view: "today" });
+export const parentOf = (r: Route): Route =>
+  r.metric ? { view: "health" } : r.lift ? { view: "progress" } : r.view === "plan" || r.view === "gym" ? { view: "settings" } : { view: "today" };

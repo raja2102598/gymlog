@@ -1,7 +1,7 @@
 import planJson from "@/data/plan.json";
 import { DOW } from "./dates";
 import { EQUIPMENT, isEquip, isMuscle, MUSCLES, type Equip, type Muscle } from "./library";
-import type { CustomExercise, Plan } from "./types";
+import type { CustomExercise, Gym, Plan } from "./types";
 
 type Loose = Record<string, unknown> | null | undefined;
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -65,6 +65,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
       };
     }),
     ...(Array.isArray(q.custom) ? { custom: normalizeCustom(q.custom) } : d?.custom ? { custom: normalizeCustom(d.custom) } : {}),
+    ...(q.gym && typeof q.gym === "object" ? { gym: normalizeGym(q.gym) } : d?.gym ? { gym: normalizeGym(d.gym) } : {}),
   };
 }
 
@@ -83,6 +84,14 @@ export function normalizeCustom(v: unknown): CustomExercise[] {
     const primary = inOrder<Muscle>(MUSCLES, isMuscle, c?.primary);
     return [{ name, equip: inOrder<Equip>(EQUIPMENT, isEquip, c?.equip), primary, secondary: inOrder<Muscle>(MUSCLES, isMuscle, c?.secondary).filter((m) => !primary.includes(m)) }];
   });
+}
+
+/** My gym: known equipment only, in order; each lift once, and on one list only (never wins). */
+export function normalizeGym(v: unknown): Gym {
+  const g = (v ?? {}) as Record<string, unknown>;
+  const ids = (l: unknown) => [...new Set((Array.isArray(l) ? l : []).map((s) => str(s).trim()).filter(Boolean))];
+  const never = ids(g.never);
+  return { off: inOrder<Equip>(EQUIPMENT, isEquip, g.off), always: ids(g.always).filter((id) => !never.includes(id)), never };
 }
 
 /** A day's lifts in blocks: lifts joined to the one before them (PlanExercise.superset) make one block, a

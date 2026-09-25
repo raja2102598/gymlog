@@ -9,9 +9,9 @@ html:has(.bars>:not([hidden])){scroll-padding-top:calc(var(--appbar-h, calc(var(
 body{margin:0;background:var(--ground);color:var(--ink);font:var(--t-base)/1.5 var(--body);padding:0 var(--gut-r) calc(32px + var(--sab)) var(--gut-l);-webkit-tap-highlight-color:transparent}
 .wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
 .wrap>*{min-width:0}
-main,#appView,#dashView,#planView,#bootView,#healthView,#settingsView{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
-#healthView,#settingsView{gap:16px}
-main>*,#appView>*,#dashView>*,#planView>*,#healthView>*,#settingsView>*{min-width:0}
+main,#appView,#dashView,#planView,#bootView,#healthView,#settingsView,#gymView{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+#healthView,#settingsView,#gymView{gap:16px}
+main>*,#appView>*,#dashView>*,#planView>*,#healthView>*,#settingsView>*,#gymView>*{min-width:0}
 /* the skip link's target: focus lands here, so it isn't a control and needs no ring */
 #main:focus{outline:none}
 .skip{position:absolute;z-index:20;left:var(--gut-l);top:calc(8px + var(--sat));background:var(--surface);box-shadow:var(--shadow-up)}

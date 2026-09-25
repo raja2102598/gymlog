@@ -10,7 +10,9 @@
 .lib-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .lib-tools select.ghost{background-color:var(--sunken);min-width:0;padding-right:34px}
 .lib-filters select.ghost{width:100%}
-.lib-count{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lib-count{display:flex;align-items:center;gap:8px}
+.lib-count>p{flex:1;min-width:0}
+.lib-gym{min-height:44px;background:var(--sunken)}
 .lib-tools .sub{font-size:var(--t-sm);margin:0}
 .lib-list{list-style:none;margin:0;padding:0 8px;overflow:auto;flex:1;min-height:0;overscroll-behavior:contain;border-top:1px solid var(--line)}
 .lib-list li{border-bottom:1px solid var(--line)}
@@ -24,6 +26,7 @@
 .lib-n{font-weight:600;overflow-wrap:anywhere}
 .lib-t .sub{font-size:var(--t-sm);margin:0}
 .lib-tag{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:99px;background:var(--chip);color:var(--ink);font-size:var(--t-xs);font-weight:600;vertical-align:1px}
+.lib-tag.away{background:var(--warn-soft)}
 .lib-more{margin:8px}
 .lib-list .empty{padding:16px 8px}
 .lib-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;padding:10px 16px;padding-bottom:max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--line)}

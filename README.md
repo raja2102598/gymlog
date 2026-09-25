@@ -61,7 +61,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
 - Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.
 - An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. Start from a blank week or a 3, 4 or 5-day template.
-- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own.
+- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own. My gym leaves out what your equipment can't do.
 
 ## How it works
 

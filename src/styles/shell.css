@@ -52,7 +52,7 @@
 @media (hover:hover){.tab:not(.on):hover .tab-pill{background:var(--sunken)}}
 @media (prefers-reduced-motion:no-preference){
   .tab-pill{transition:background-color var(--fast) var(--ease)}
-  #healthView:not([hidden]),#settingsView:not([hidden]){animation:rise var(--med) var(--ease)}
+  #healthView:not([hidden]),#settingsView:not([hidden]),#gymView:not([hidden]){animation:rise var(--med) var(--ease)}
 }
 
 /* a new account's first screen: the plan templates, a backup to restore instead, then who's signed in, with a way out */

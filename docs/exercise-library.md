@@ -37,7 +37,8 @@ The muscles are free-exercise-db's 17. The app shows them in its own words: *Qua
 ## Equipment
 
 free-exercise-db gives each lift one piece of equipment. The app uses its own list (`EQUIPMENT` in
-`src/lib/library.ts`): it maps free-exercise-db's equipment and adds what a lift's name says it needs.
+`src/lib/library.ts`), the one My gym switches on and off: it maps free-exercise-db's equipment and adds what a
+lift's name says it needs. A lift is offered when My gym has everything it needs.
 
 | free-exercise-db | The app |
 | --- | --- |

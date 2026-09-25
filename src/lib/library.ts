@@ -4,7 +4,7 @@
  * (docs/exercise-model.md): a plan lift points at a library lift with PlanExercise.lib, and a lift of your own is
  * found by its name. */
 import data from "@/data/exercises.json";
-import type { CustomExercise, PlanExercise } from "./types";
+import type { CustomExercise, Gym, PlanExercise } from "./types";
 
 /** Muscles in the library's words, and as the app shows them. */
 export const MUSCLES = {
@@ -49,6 +49,16 @@ export const EQUIPMENT = {
   other: "Other",
 } as const;
 export type Equip = keyof typeof EQUIPMENT;
+
+/** The equipment in groups, as My gym lists it. */
+export const EQUIP_GROUPS: readonly { name: string; equip: readonly Equip[] }[] = [
+  { name: "Free weights", equip: ["dumbbell", "kettlebell", "barbell", "ezbar", "trapbar", "band"] },
+  { name: "Benches and racks", equip: ["bench", "rack"] },
+  { name: "Bodyweight", equip: ["pullupbar", "dipbars"] },
+  { name: "Cable machines", equip: ["cable"] },
+  { name: "Machines", equip: ["machine", "smith"] },
+  { name: "Misc", equip: ["medball", "ball", "foamroll", "other"] },
+];
 
 export const isMuscle = (m: unknown): m is Muscle => typeof m === "string" && Object.hasOwn(MUSCLES, m);
 export const isEquip = (e: unknown): e is Equip => typeof e === "string" && Object.hasOwn(EQUIPMENT, e);
@@ -233,10 +243,26 @@ export function closeMatches(name: string, all: readonly Exercise[] = CATALOGUE,
     .map((m) => m.x);
 }
 
+/* ---------- my gym ---------- */
+
+/** Whether your gym can do a lift: one it never offers, no; one it always offers, or whose equipment it has
+ *  (bodyweight needs none), yes. Everything, with no gym set. */
+export function gymCan(x: Exercise, gym?: Gym | null): boolean {
+  if (!gym) return true;
+  if (gym.never.includes(x.id)) return false;
+  return gym.always.includes(x.id) || !x.equip.some((e) => gym.off.includes(e));
+}
+/** The equipment a lift needs that your gym hasn't got: none for one it always offers. */
+export const gymLacks = (x: Exercise, gym?: Gym | null): Equip[] => (!gym || gym.always.includes(x.id) ? [] : x.equip.filter((e) => gym.off.includes(e)));
+
 /* ---------- how a lift reads ---------- */
 
+/** A label in the middle of a sentence: "trap bar", and still "EZ bar". */
+const lower = (s: string) => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
+/** Equipment in a sentence: "barbell", "barbell or squat rack", "dumbbells, bench or cable machine". */
+export const equipWords = (es: readonly Equip[], or = "or") => es.map((e) => lower(EQUIPMENT[e])).reduce((s, e, i, a) => (i === 0 ? e : i === a.length - 1 ? `${s} ${or} ${e}` : `${s}, ${e}`), "");
 /** "Barbell, bench" or "Bodyweight". */
-export const equipText = (x: Exercise) => (x.equip.length ? x.equip.map((e, i) => (i ? EQUIPMENT[e].toLowerCase() : EQUIPMENT[e])).join(", ") : "Bodyweight");
+export const equipText = (x: Exercise) => (x.equip.length ? x.equip.map((e, i) => (i ? lower(EQUIPMENT[e]) : EQUIPMENT[e])).join(", ") : "Bodyweight");
 /** "Chest, with shoulders and triceps". */
 export function muscleText(x: Exercise): string {
   const list = (ms: Muscle[]) => ms.map((m) => MUSCLES[m].toLowerCase()).reduce((s, m, i, a) => (i === 0 ? m : i === a.length - 1 ? `${s} and ${m}` : `${s}, ${m}`), "");

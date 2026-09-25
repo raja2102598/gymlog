@@ -1,8 +1,9 @@
 "use client";
 import type { PermissionState } from "@capacitor/core";
 import { ArrowSquareOut, CaretRight, DownloadSimple, SignOut, UploadSimple } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Segmented } from "@/components/health/parts";
+import { Group, Text } from "@/components/settings/parts";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
@@ -26,47 +27,19 @@ const native = () => import("@/native/app");
  *  `dataMsg` is what Your data says as it opens: what a backup restored on the first-run screen brought in. In the
  *  demo, whatever needs a real account or the phone (Health Connect, background sync, password, sign out, backup
  *  import, updates) is replaced or hidden instead. */
-export function SettingsView({ onEditPlan, dataMsg = "" }: { onEditPlan: () => void; dataMsg?: string }) {
+export function SettingsView({ onEditPlan, onOpenGym, dataMsg = "" }: { onEditPlan: () => void; onOpenGym: () => void; dataMsg?: string }) {
   const demo = useGym().demo;
   return (
     <>
       {demo ? <HealthDemo /> : isNative() ? <HealthNative /> : <HealthWeb />}
       <Goals />
-      <Training onEditPlan={onEditPlan} />
+      <Training onEditPlan={onEditPlan} onOpenGym={onOpenGym} />
       <Voice />
       <Appearance />
       {demo ? <AccountDemo /> : <Account />}
       <Data first={dataMsg} demo={demo} />
       <About demo={demo} />
     </>
-  );
-}
-
-/** A titled card of rows, as in a phone's settings. */
-function Group({ title, id, children }: { title: string; id: string; children: ReactNode }) {
-  return (
-    <section className="pref" id={id} aria-labelledby={`${id}H`}>
-      <h2 className="pref-h" id={`${id}H`}>
-        {title}
-      </h2>
-      <div className="panel pref-card">{children}</div>
-    </section>
-  );
-}
-
-/** A row's words: its title and, under it, what it does or how it stands. */
-function Text({ title, sub, id }: { title: ReactNode; sub?: ReactNode; id?: string }) {
-  return (
-    <span className="pref-t">
-      <span className="pref-tt" id={id ? `${id}T` : undefined}>
-        {title}
-      </span>
-      {sub ? (
-        <span className="sub" id={id ? `${id}D` : undefined}>
-          {sub}
-        </span>
-      ) : null}
-    </span>
   );
 }
 
@@ -277,14 +250,19 @@ function Goals() {
 /** Plate weights typed separated by commas or spaces: positive numbers, no duplicates, heaviest first. */
 const parsePlates = (s: string): number[] => [...new Set(s.split(/[,\s]+/).map((t) => parseFloat(t)).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
 
-/** The plan editor link, and the bar and plates the plates button and warm-up calculator use, synced with the
- *  plan like the rest of training (a bar and plates belong to your gym, not to this phone). */
-function Training({ onEditPlan }: { onEditPlan: () => void }) {
+/** The plan editor and My gym links, and the bar and plates the plates button and warm-up calculator use, synced
+ *  with the plan like the rest of training (a bar and plates belong to your gym, not to this phone). */
+function Training({ onEditPlan, onOpenGym }: { onEditPlan: () => void; onOpenGym: () => void }) {
   const store = useGym();
+  const all = store.library(), can = all.filter((x) => store.canDo(x)).length;
   return (
     <Group title="Training" id="setTraining">
       <ViewLink className="pref-row pref-tap" id="planBtn" href="#plan" onOpen={onEditPlan}>
         <Text title="Edit plan" sub="Each day’s workout and lifts, warm-ups, tempo, goal weight and knee limit" />
+        <CaretRight className="pref-go" size={18} aria-hidden="true" />
+      </ViewLink>
+      <ViewLink className="pref-row pref-tap" id="gymBtn" href="#gym" onOpen={onOpenGym}>
+        <Text id="gymRow" title="My gym" sub={can === all.length ? "All the equipment: the library offers every lift" : `Your equipment: the library offers ${can} of ${all.length} lifts`} />
         <CaretRight className="pref-go" size={18} aria-hidden="true" />
       </ViewLink>
       <div className="pref-row pref-col">

@@ -7,7 +7,7 @@ import { useLibrary } from "@/components/library/LibraryContext";
 import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
-import { equipText, muscleText, type Exercise } from "@/lib/library";
+import { equipText, equipWords, muscleText, type Exercise } from "@/lib/library";
 import { planBlocks } from "@/lib/plan";
 import type { ProgRule } from "@/lib/stats";
 import type { Plan, PlanExercise } from "@/lib/types";
@@ -302,7 +302,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                   {liftField(x, j, "sets", "Sets", { placeholder: "3" })}
                   {liftField(x, j, "reps", "Reps", { placeholder: "8-10" })}
                 </div>
-                <LibLine x={x} j={j} ex={store.exerciseOf(x.name, x)} onFind={(own) => findInLibrary(x.name.trim(), j, own)} />
+                <LibLine x={x} j={j} onFind={(own) => findInLibrary(x.name.trim(), j, own)} />
                 <label className="field" htmlFor={`pe_x${j}_cue`}>
                   <span>How to do it</span>
                   <textarea id={`pe_x${j}_cue`} data-px={`${j}:cue`} rows={2} defaultValue={x.cue} autoComplete="off" onChange={(ev) => setLift(j, "cue", ev.target.value)} />
@@ -569,9 +569,11 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   );
 }
 
-/** What the exercise library knows of a plan lift: its equipment and muscles, and a way to pick another, or to
- *  give one of your own its muscles (`onFind(true)`). */
-function LibLine({ x, j, ex, onFind }: { x: PlanExercise; j: number; ex: Exercise | null; onFind: (own: boolean) => void }) {
+/** What the exercise library knows of a plan lift: its equipment and muscles, what it needs that My gym hasn't got,
+ *  and a way to pick another, or to give one of your own its muscles (`onFind(true)`). */
+function LibLine({ x, j, onFind }: { x: PlanExercise; j: number; onFind: (own: boolean) => void }) {
+  const store = useGym();
+  const ex = store.exerciseOf(x.name, x), lacks = ex ? store.lacks(ex) : [];
   const what = !ex
     ? "Not in the library yet"
     : ex.custom
@@ -587,6 +589,11 @@ function LibLine({ x, j, ex, onFind }: { x: PlanExercise; j: number; ex: Exercis
       <button className="ghost tiny" data-plib={j} aria-describedby={`pe_x${j}_lib`} onClick={() => onFind(!!ex?.custom)}>
         {ex ? (ex.custom ? "Muscles…" : "Change…") : "Find in library…"}
       </button>
+      {lacks.length ? (
+        <span className="pe-gym" id={`pe_x${j}_gym`}>
+          My gym has no {equipWords(lacks)}.
+        </span>
+      ) : null}
     </div>
   );
 }
