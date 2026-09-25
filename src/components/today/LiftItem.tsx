@@ -1,5 +1,5 @@
 "use client";
-import { CaretDown, DotsThree, Microphone } from "@phosphor-icons/react";
+import { Check, CircleHelp, Ellipsis, Mic, Trophy } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useLibrary } from "@/components/library/LibraryContext";
 import { SyncedInput } from "@/components/ui/SyncedField";
@@ -9,7 +9,7 @@ import type { FocusNext } from "@/hooks/useFocusNext";
 import { useVoice, useVoiceOn } from "@/hooks/useVoice";
 import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
-import { num, setsSummary } from "@/lib/format";
+import { mmss, num, setsSummary } from "@/lib/format";
 import { hashOf } from "@/lib/route";
 import { isWorkingSet, type RecordKind } from "@/lib/stats";
 import {
@@ -29,8 +29,10 @@ import {
 } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, PlanExercise, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
-import { PlatesButton, PlatesInfo } from "./PlateCalc";
+import { PlatesInfo } from "./PlateCalc";
 import { SetMenu, SetNumber } from "./SetMenu";
+import { InsightCallout } from "@/components/ds/parts";
+import { targetWords } from "@/lib/session";
 import type { LiftMenu } from "./types";
 import { WarmupCalc } from "./WarmupCalc";
 
@@ -276,23 +278,36 @@ export function voiceHandler(store: GymStore, sel: DayKey, m: LiftModel, focusNe
   };
 }
 
-/** What was done last time, set by set, so there's something to beat; the arrow shows today's heaviest
- *  set is already heavier. */
-function LastHint({ last, cur }: { last: LastDone | null; cur: number | null }) {
-  if (!last) return <span className="last">First time</span>;
-  const sets = setsOf(last.r).filter(isWorkingSet), top = topKg(sets), up = cur != null && top != null && cur > top;
-  return (
-    <span className={cx("last", up && "up")}>
-      Last {setsSummary(sets)} · {dayMonth(last.day)}
-      {up ? (
-        <>
-          <span aria-hidden="true"> ↑</span>
-          <span className="sr-only"> (heavier than last time)</span>
-        </>
-      ) : null}
-    </span>
-  );
+/** Last time's set `j`, as "30 × 15" (kg × reps), for the set table's Last column. */
+function lastSet(last: LastDone | null, j: number): string {
+  if (!last) return "–";
+  const s = setsOf(last.r).filter(isWorkingSet)[j];
+  if (!s) return "–";
+  return s.kg != null && s.reps != null ? `${s.kg} × ${s.reps}` : s.reps != null ? `${s.reps} reps` : s.kg != null ? `${s.kg} kg` : "–";
 }
+
+/** Logs set `j` as it stands: whatever is typed, and for what isn't, the weight of the set before it today or else
+ *  the suggestion in its box (the next weight), and the target reps. The reps go in last, so the rest timer starts
+ *  on the finished set. With no reps to suggest, the reps box takes focus instead. */
+export function logSet(store: GymStore, m: LiftModel, j: number) {
+  const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = store.placeholders(m.x, m.last, j, m.next);
+  const reps = num(s.reps ?? "") || num(phR);
+  if (!reps || reps <= 0) {
+    document.getElementById(`s${m.i}_${j}_r`)?.focus();
+    return;
+  }
+  if (s.kg == null) {
+    const kg = (j > 0 ? m.sets[j - 1]?.kg : null) ?? num(phK);
+    if (kg != null) m.setField(j, "kg", String(kg));
+  }
+  if (!((s.reps ?? 0) > 0)) m.setField(j, "reps", String(reps));
+}
+
+/** The first working set with no reps yet: the one the workout is on. */
+export const nextSet = (m: LiftModel) => {
+  for (let j = 0; j < m.rows; j++) if (!((m.sets[j]?.reps ?? 0) > 0)) return j;
+  return -1;
+};
 
 /** The next-weight hint, by the lift's progression rule: go up, work at a percentage, deload, or hold for the knee. */
 export function ProgHint({ next }: { next: NextWeight | null }) {
@@ -300,20 +315,24 @@ export function ProgHint({ next }: { next: NextWeight | null }) {
   const w = progWords(next);
   return (
     <div className={cx("prog callout", next.held || next.rule === "deload" ? "hold warn" : "good")} data-rule={next.held ? "hold" : next.rule}>
-      {w.lead}
-      {w.kg ? <b>{w.kg}&nbsp;kg</b> : null}
-      {w.why}
+      <span>
+        {w.lead}
+        {w.kg ? <b>{w.kg}&nbsp;kg</b> : null}
+        {w.why}
+      </span>
     </div>
   );
 }
 
-/** A lift's name with its tick, microphone and ··· menu; what it's asked for and what was done last time; its warning;
- *  and, with the menu open, the day's choices for it: skip, swap, its chart and moving it in the day's order. In a
- *  superset, `tag` (A1, A2) names its place there. */
+/** A lift's heading in the workout: where it is ("Exercise 3 of 5"), its name, what it's asked for (sets × reps, rest,
+ *  tempo) and what was done last time; how-to, voice and ··· buttons; its caution; and, with ··· open, the day's
+ *  choices for it: done, skip, swap, its chart and moving it in the day's order. In a superset, `tag` (A1) names
+ *  its place there. */
 export function LiftHead({
   m,
   sel,
   tag,
+  step,
   menu,
   setMenu,
   focusNext,
@@ -325,6 +344,7 @@ export function LiftHead({
   m: LiftModel;
   sel: DayKey;
   tag?: string;
+  step?: string;
   menu: LiftMenu["mode"] | null;
   setMenu: (m: LiftMenu | null) => void;
   focusNext: FocusNext;
@@ -336,6 +356,7 @@ export function LiftHead({
   const store = useGym();
   const library = useLibrary();
   const { r, i, name, did, x, target, last } = m;
+  const [howOpen, setHowOpen] = useState(false);
 
   const swap = (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault();
@@ -347,21 +368,29 @@ export function LiftHead({
     }, true);
   };
   const what = moves.superset ? `superset ${moves.superset}` : did;
-  const moveButtons = (
-    <>
-      <button className="ghost tiny" data-lmove={`${i}:-1`} disabled={!moves.up} aria-label={`Move ${what} up`} onClick={() => moves.up?.(i)}>
-        ↑ Move up
-      </button>
-      <button className="ghost tiny" data-lmove={`${i}:1`} disabled={!moves.down} aria-label={`Move ${what} down`} onClick={() => moves.down?.(i)}>
-        ↓ Move down
-      </button>
-    </>
-  );
 
   let actions = null;
   if (menu === "menu") {
     actions = (
       <div className="acts">
+        <label className="acts-done" htmlFor={`ex${i}`}>
+          <input
+            type="checkbox"
+            className="tick"
+            id={`ex${i}`}
+            data-i={i}
+            checked={!!r.done}
+            disabled={!!r.skipped}
+            onChange={(ev) => {
+              const on = ev.target.checked;
+              m.edit((r) => {
+                delete r.autoDone;
+                r.done = on;
+              }, true);
+            }}
+          />
+          <span>Done</span>
+        </label>
         {r.skipped ? (
           <>
             <label className="field grow" htmlFor={`reason${i}`}>
@@ -381,7 +410,7 @@ export function LiftHead({
               />
             </label>
             <button
-              className="ghost tiny"
+              className="btn btn-sm"
               data-unskip={i}
               onClick={() => {
                 setMenu(null);
@@ -396,7 +425,7 @@ export function LiftHead({
           </>
         ) : r.swap ? (
           <button
-            className="ghost tiny"
+            className="btn btn-sm"
             data-unswap={i}
             onClick={() => {
               setMenu(null);
@@ -410,7 +439,7 @@ export function LiftHead({
         ) : (
           <>
             <button
-              className="ghost tiny"
+              className="btn btn-sm"
               data-skip={i}
               onClick={() => {
                 m.skipToday();
@@ -421,7 +450,7 @@ export function LiftHead({
               Skip today
             </button>
             <button
-              className="ghost tiny"
+              className="btn btn-sm"
               data-swapopen={i}
               onClick={() => {
                 setMenu({ day: sel, name, mode: "swap" });
@@ -433,7 +462,7 @@ export function LiftHead({
           </>
         )}
         <ViewLink
-          className="ghost tiny"
+          className="btn btn-sm"
           data-chart={i}
           href={hashOf({ view: "progress", lift: did })}
           onOpen={() => {
@@ -443,10 +472,19 @@ export function LiftHead({
         >
           See chart
         </ViewLink>
-        {moves.up || moves.down ? moveButtons : null}
+        {moves.up || moves.down ? (
+          <>
+            <button className="btn btn-sm" data-lmove={`${i}:-1`} disabled={!moves.up} aria-label={`Move ${what} up`} onClick={() => moves.up?.(i)}>
+              Move earlier
+            </button>
+            <button className="btn btn-sm" data-lmove={`${i}:1`} disabled={!moves.down} aria-label={`Move ${what} down`} onClick={() => moves.down?.(i)}>
+              Move later
+            </button>
+          </>
+        ) : null}
         {onRemove ? (
           <button
-            className="ghost tiny danger"
+            className="btn btn-sm btn-danger"
             data-freerm={i}
             onClick={() => {
               const n = m.sets.filter((s) => s.reps != null || s.kg != null).length;
@@ -468,11 +506,11 @@ export function LiftHead({
             <span>Did instead</span>
             <input id={`swap${i}`} list="swapList" placeholder="e.g. Smith machine squat…" autoComplete="off" required />
           </label>
-          <button className="ghost tiny" type="submit">
+          <button className="btn btn-sm" type="submit">
             Swap
           </button>
           <button
-            className="ghost tiny"
+            className="btn btn-sm"
             type="button"
             data-swaplib={i}
             onClick={() =>
@@ -492,7 +530,7 @@ export function LiftHead({
           >
             Library…
           </button>
-          <button className="ghost tiny" type="button" data-actsclose="" onClick={() => setMenu(null)}>
+          <button className="btn btn-sm btn-quiet" type="button" data-actsclose="" onClick={() => setMenu(null)}>
             Cancel
           </button>
         </form>
@@ -505,124 +543,104 @@ export function LiftHead({
     );
   }
 
+  const rest = restSecFor(store.plan, x), tempo = store.plan.tempo.replace(/[:/-]/g, "·");
+  const meta = [target.sets || target.reps ? targetWords(target) : "", m.item.extra ? "" : `rest ${mmss(rest)}`, tempo && !m.item.extra ? `tempo ${tempo}` : ""].filter(Boolean).join(" · ");
+  const lastTop = last ? topKg(setsOf(last.r).filter(isWorkingSet)) : null, cur = r.kg ?? null;
   return (
     <>
-      <div className="lift-head">
-        <label htmlFor={`ex${i}`} className="lift-name">
-          <input
-            type="checkbox"
-            className="tick"
-            id={`ex${i}`}
-            data-i={i}
-            checked={!!r.done}
-            disabled={!!r.skipped}
-            onChange={(ev) => {
-              const on = ev.target.checked;
-              m.edit((r) => {
-                delete r.autoDone;
-                r.done = on;
-              }, true);
-            }}
-          />
-          <span className="nm">
-            {tag ? (
-              <>
-                <span className="sstag">{tag}</span>{" "}
-              </>
-            ) : null}
-            {did}
-            {r.swap ? (
-              <>
-                {" "}
-                <span className="was">instead of {name}</span>
-              </>
-            ) : null}
-          </span>
-        </label>
-        {voice.on ? (
-          <button
-            type="button"
-            className="ghost icon mic"
-            data-voice={i}
-            aria-pressed={voice.listening}
-            aria-label={`Log a set of ${did} by voice`}
-            onClick={() => void voice.listen()}
-          >
-            <Microphone size={22} weight={voice.listening ? "fill" : "bold"} aria-hidden="true" />
+      <div className="ex-head">
+        <div className="ex-t">
+          {step ? <div className="ex-step">{step}</div> : null}
+          <h2 className="ex-name">
+            {tag ? <span className="sstag">{tag}</span> : null}
+            <span className="nm">{did}</span>
+          </h2>
+          {r.swap ? <div className="ex-was">instead of {name}</div> : null}
+          <div className="ex-meta">
+            {meta ? <span className="sr">{meta}</span> : null}
+            {r.skipped ? null : (
+              <span className={cx("last", cur != null && lastTop != null && cur > lastTop && "up")}>
+                {last ? `Last ${setsSummary(setsOf(last.r).filter(isWorkingSet))} · ${dayMonth(last.day)}` : "First time"}
+                {cur != null && lastTop != null && cur > lastTop ? <span className="sr-only"> (heavier than last time)</span> : null}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="ex-btns">
+          {voice.on ? (
+            <button type="button" className="btn btn-icon mic" data-voice={i} aria-pressed={voice.listening} aria-label={`Log a set of ${did} by voice`} onClick={() => void voice.listen()}>
+              <Mic size={20} aria-hidden="true" />
+            </button>
+          ) : null}
+          {m.cue ? (
+            <button type="button" className="btn btn-icon howto" aria-expanded={howOpen} aria-controls={`cue${i}`} aria-label={`How to do ${did}`} onClick={() => setHowOpen(!howOpen)}>
+              <CircleHelp size={22} aria-hidden="true" />
+            </button>
+          ) : null}
+          <button className="btn btn-icon more" data-more={i} aria-expanded={menu ? "true" : "false"} aria-label={`More for ${did}`} onClick={() => setMenu(menu ? null : { day: sel, name, mode: "menu" })}>
+            <Ellipsis size={22} aria-hidden="true" />
           </button>
-        ) : null}
-        <button
-          className="ghost icon more"
-          data-more={i}
-          aria-expanded={menu ? "true" : "false"}
-          aria-label={`More for ${did}`}
-          onClick={() => setMenu(menu ? null : { day: sel, name, mode: "menu" })}
-        >
-          <DotsThree size={22} weight="bold" aria-hidden="true" />
-        </button>
+        </div>
       </div>
-      <div className="lift-meta">
-        {target.sets || target.reps ? (
-          <span className="sr">
-            {target.sets}&nbsp;×&nbsp;{target.reps}
-          </span>
-        ) : null}
-        {r.skipped ? null : (
-          <span className="hint">
-            <LastHint last={last} cur={r.kg ?? null} />
-          </span>
-        )}
-      </div>
-      {x.flag && !r.skipped && !r.swap ? <div className="ch">{x.flag}</div> : null}
-      {m.item.extra ? <div className="ch">Not in this workout</div> : null}
+      {m.cue && howOpen ? (
+        <p className="nt cue" id={`cue${i}`}>
+          {m.cue}
+        </p>
+      ) : null}
+      {x.flag && !r.skipped && !r.swap ? (
+        <div className="ch">
+          <InsightCallout kind="caution">{x.flag}</InsightCallout>
+        </div>
+      ) : null}
+      {m.item.extra ? <p className="note">Not in this workout</p> : null}
       {actions}
     </>
   );
 }
 
-/** One set's row: its number (the button for its menu), reps × kg with last time's numbers as placeholders, the
- *  plates button and a PR badge; then its menu or plates, when open. In a superset, `tag` (A1) stands in the
- *  number's place, and the round it's in gives the set. */
+/** The set table's header row. */
+export function SetHead({ tag }: { tag?: boolean }) {
+  return (
+    <div className="srow shead" aria-hidden="true">
+      <span>{tag ? "" : "Set"}</span>
+      <span>Last</span>
+      <span className="c">kg</span>
+      <span className="c">Reps</span>
+      <span />
+    </div>
+  );
+}
+
+/** One set's row (SetRow spec): its number (the button for its menu: kind, effort and plates), last time's set,
+ *  kg and reps, and a 44px check. Done rows sit on brand-row with a filled check; the active row (the next set) has
+ *  outlined boxes; later ones are muted. The boxes show the suggestion (next weight, target reps) until typed in, and
+ *  the check logs it. In a superset, `tag` (A1) stands in the number's place, and the round it's in gives the set. */
 export function SetRow({
   m,
   j,
   marks,
   tag,
+  active,
   menuOpen,
   onMenu,
-  platesOpen,
-  onPlates,
 }: {
   m: LiftModel;
   j: number;
   marks: Map<string, RecordKind[]>;
   tag?: string;
+  active: boolean;
   menuOpen: boolean;
   onMenu: () => void;
-  platesOpen: boolean;
-  onPlates: () => void;
 }) {
   const store = useGym();
   const { i, did, x, last, next } = m;
   const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = store.placeholders(x, last, j, next), pr = marks.get(`${did}|${j}`);
-  const platesId = `pl${i}_${j}`, menuId = `sm${i}_${j}`;
+  const menuId = `sm${i}_${j}`, done = (s.reps ?? 0) > 0;
   return (
     <>
-      <div className={cx("set", pr && "pr", (s.reps ?? 0) > 0 && "logged")}>
+      <div className={cx("srow set", done ? "done logged" : active ? "active" : "up", pr && "pr")}>
         <SetNumber n={j + 1} tag={tag} s={s} id={menuId} did={did} open={menuOpen} onToggle={onMenu} />
-        <SyncedInput
-          id={`s${i}_${j}_r`}
-          data-set={`${i}:${j}:reps`}
-          type="number"
-          inputMode="numeric"
-          min="0"
-          step="1"
-          placeholder={phR}
-          value={s.reps}
-          aria-label={`${did}, set ${j + 1}, reps`}
-          onChange={(ev) => m.setField(j, "reps", ev.target.value)}
-        />
-        <span className="x">×</span>
+        <span className="last">{lastSet(last, j)}</span>
         <SyncedInput
           id={`s${i}_${j}_k`}
           data-set={`${i}:${j}:kg`}
@@ -635,104 +653,96 @@ export function SetRow({
           aria-label={`${did}, set ${j + 1}, weight in kg`}
           onChange={(ev) => m.setField(j, "kg", ev.target.value)}
         />
-        <span className="u">kg</span>
-        {m.bar != null ? (
-          <PlatesButton id={platesId} label={`Plates for ${did}, set ${j + 1}`} open={platesOpen} disabled={s.kg == null || s.kg <= 0} onToggle={onPlates} />
-        ) : (
-          <span className="plates-none" aria-hidden="true" />
-        )}
+        <SyncedInput
+          id={`s${i}_${j}_r`}
+          data-set={`${i}:${j}:reps`}
+          type="number"
+          inputMode="numeric"
+          min="0"
+          step="1"
+          placeholder={phR}
+          value={s.reps}
+          aria-label={`${did}, set ${j + 1}, reps`}
+          onChange={(ev) => m.setField(j, "reps", ev.target.value)}
+        />
+        <button
+          type="button"
+          className="chk"
+          data-check={`${i}:${j}`}
+          aria-pressed={done}
+          aria-label={done ? `${did}, set ${j + 1} done. Undo` : `Mark ${did}, set ${j + 1} done`}
+          onClick={() => (done ? m.setField(j, "reps", "") : logSet(store, m, j))}
+        >
+          {done ? <Check size={22} strokeWidth={3} aria-hidden="true" /> : null}
+        </button>
         <span className="prb" title={prTitle(pr)}>
+          <Trophy size={12} aria-hidden="true" />
           PR
         </span>
       </div>
-      {menuOpen ? <SetMenu id={menuId} s={s} effort={store.plan.effort} onChange={(patch) => m.setInfo(j, patch)} /> : null}
-      {platesOpen && m.bar != null && s.kg != null && s.kg > 0 ? <PlatesInfo id={platesId} kg={s.kg} barKg={m.bar} plateKgs={store.plan.plateKgs} /> : null}
+      {menuOpen ? (
+        <div className="setmenu-w">
+          <SetMenu id={menuId} s={s} effort={store.plan.effort} onChange={(patch) => m.setInfo(j, patch)} />
+          {m.bar != null && s.kg != null && s.kg > 0 ? <PlatesInfo id={`pl${i}_${j}`} kg={s.kg} barKg={m.bar} plateKgs={store.plan.plateKgs} /> : null}
+        </div>
+      ) : null}
     </>
   );
 }
 
-/** One lift on the day: its sets (reps × kg), last time's numbers, the next-weight hint, and skip or swap. */
-export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext, onOpenLift, moves, onRemove }: Props) {
+/** One lift in the workout (the Active workout board's exercise card): its heading, the next-weight hint, the set
+ *  table, + Add set and Warm-up sets. */
+export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext, onOpenLift, moves, onRemove, step }: Props & { step?: string }) {
   const store = useGym();
   const m = liftModel(store, sel, item, i, entry, (m) => store.startRest(sel, m.did, restSecFor(store.plan, m.x)));
-  const { r, sets, min, rows, cue } = m;
-  const [howOpen, setHowOpen] = useState(false);
-  const [plateRow, setPlateRow] = useState<number | null>(null);
+  const { r, sets, min, rows } = m;
   const [menuRow, setMenuRow] = useState<number | null>(null);
   const voiceOn = useVoiceOn();
   const voice = useVoice(voiceOn && !r.skipped, voiceHandler(store, sel, m, focusNext));
+  const active = nextSet(m);
 
   const body = r.skipped ? (
     <div className="skipnote">Skipped{r.reason ? ` · ${r.reason}` : ""}</div>
   ) : (
     <>
       <ProgHint next={m.next} />
-      <WarmupCalc id={`wset${i}`} barKg={m.bar ?? 0} inc={m.inc} defaultKg={m.defaultWorkingKg} warmSets={m.warmSets} onLog={m.logWarmups} onRemove={m.removeWarmups} />
-      <div className="sets">
+      <div className="sets" role="group" aria-label={`${m.did}, sets`}>
+        <SetHead />
         {Array.from({ length: rows }, (_, j) => (
-          <SetRow
-            key={j}
-            m={m}
-            j={j}
-            marks={marks}
-            menuOpen={menuRow === j}
-            onMenu={() => setMenuRow(menuRow === j ? null : j)}
-            platesOpen={plateRow === j}
-            onPlates={() => setPlateRow(plateRow === j ? null : j)}
-          />
+          <SetRow key={j} m={m} j={j} marks={marks} active={j === active} menuOpen={menuRow === j} onMenu={() => setMenuRow(menuRow === j ? null : j)} />
         ))}
-        <div className="setbtns">
-          <button className="ghost tiny" data-addset={i} onClick={() => m.addSet()}>
-            + Set
-          </button>
-          {sets.length > min ? (
-            <button
-              className="ghost tiny"
-              data-rmset={i}
-              onClick={() => {
-                const said = setsSummary([sets[sets.length - 1]]);
-                if (said && !confirm(`Remove set ${sets.length} (${said})?`)) return;
-                m.dropSet();
-              }}
-            >
-              − Set
-            </button>
-          ) : null}
-          {cue ? (
-            <button type="button" className="ghost tiny howto" aria-expanded={howOpen} aria-controls={`cue${i}`} onClick={() => setHowOpen(!howOpen)}>
-              How to
-              <CaretDown size={14} weight="bold" aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
       </div>
-      {cue && howOpen ? (
-        <p className="nt cue" id={`cue${i}`}>
-          {cue}
-        </p>
-      ) : null}
+      <div className="setbtns">
+        <button className="btn btn-sm" data-addset={i} onClick={() => m.addSet()}>
+          + Add set
+        </button>
+        {sets.length > min ? (
+          <button
+            className="btn btn-sm"
+            data-rmset={i}
+            onClick={() => {
+              const said = setsSummary([sets[sets.length - 1]]);
+              if (said && !confirm(`Remove set ${sets.length} (${said})?`)) return;
+              m.dropSet();
+            }}
+          >
+            − Set
+          </button>
+        ) : null}
+        <WarmupCalc id={`wset${i}`} barKg={m.bar ?? 0} inc={m.inc} defaultKg={m.defaultWorkingKg} warmSets={m.warmSets} onLog={m.logWarmups} onRemove={m.removeWarmups} />
+      </div>
     </>
   );
 
   return (
-    <li className={cx("lift", r.done && "checked", r.skipped && "skipped", r.swap && "swapped")}>
-      <LiftHead
-        m={m}
-        sel={sel}
-        menu={menu}
-        setMenu={setMenu}
-        focusNext={focusNext}
-        onOpenLift={onOpenLift}
-        voice={{ on: voiceOn && !r.skipped, ...voice }}
-        moves={moves}
-        onRemove={onRemove}
-      />
+    <section className={cx("card ex-card lift", r.done && "checked", r.skipped && "skipped", r.swap && "swapped")} aria-label={m.did}>
+      <LiftHead m={m} sel={sel} step={step} menu={menu} setMenu={setMenu} focusNext={focusNext} onOpenLift={onOpenLift} voice={{ on: voiceOn && !r.skipped, ...voice }} moves={moves} onRemove={onRemove} />
       {body}
       {voiceOn ? (
         <p className="said" aria-live="polite">
           {voice.line}
         </p>
       ) : null}
-    </li>
+    </section>
   );
 }

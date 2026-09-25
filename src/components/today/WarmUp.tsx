@@ -1,5 +1,5 @@
 "use client";
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 
 interface Props {
   /** The plan's warm-ups, then any others ticked that day. */
@@ -10,15 +10,18 @@ interface Props {
   onTick: (name: string, on: boolean) => void;
 }
 
-/** The warm-up checklist, folded to one line until it's opened. */
+/** The warm-up checklist: a card that folds to one row until it's opened, each warm-up a chip to tick. */
 export function WarmUp({ all, done, open, onToggle, onTick }: Props) {
   return (
-    <div className="wu">
+    <section className="card wu">
       <button type="button" className="wu-toggle" id="wuToggle" aria-expanded={open} aria-controls="wuChips" onClick={onToggle}>
-        <b>Warm-up</b> <span className="sub">{done.length} of {all.length} done</span> <span className="wu-act">
-          {open ? "Hide" : "Show"}
-          <CaretDown size={14} weight="bold" aria-hidden="true" />
+        <span className="row-t">
+          <span className="row-tt">Warm-up</span>
+          <span className="row-d">
+            {done.length} of {all.length} done
+          </span>
         </span>
+        <ChevronDown className="chev" size={18} aria-hidden="true" />
       </button>
       <div className="chips" id="wuChips" hidden={!open}>
         {all.map((w, i) => (
@@ -28,6 +31,6 @@ export function WarmUp({ all, done, open, onToggle, onTick }: Props) {
           </label>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

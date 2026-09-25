@@ -1,15 +1,16 @@
 "use client";
 import type { PermissionState } from "@capacitor/core";
-import { ArrowSquareOut, CaretRight, DownloadSimple, SignOut, UploadSimple } from "@phosphor-icons/react";
+import { ChevronRight, Download, ExternalLink, LogOut, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { Segmented } from "@/components/health/parts";
+import { SegmentedControl } from "@/components/ds/parts";
+import { firstName } from "@/components/home/HomeView";
 import { Group, NumField, Text } from "@/components/settings/parts";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { useSpeechSupported, useVoicePref } from "@/hooks/useVoice";
 import { backupWords, CSV_COLUMNS, toCsv } from "@/lib/backup";
 import { todayKey } from "@/lib/dates";
-import { plural, syncedWhen } from "@/lib/format";
+import { fmt, plural, syncedWhen } from "@/lib/format";
 import { isNative } from "@/lib/native";
 import { switchVoice } from "@/lib/speech";
 import type { Replacing } from "@/lib/store";
@@ -27,18 +28,76 @@ const native = () => import("@/native/app");
  *  demo, whatever needs a real account or the phone (Health Connect, background sync, password, sign out, backup
  *  import, updates) is replaced or hidden instead. */
 export function SettingsView({ onEditPlan, onOpenGym, dataMsg = "" }: { onEditPlan: () => void; onOpenGym: () => void; dataMsg?: string }) {
-  const demo = useGym().demo;
+  const store = useGym();
+  const demo = store.demo, p = store.plan;
+  const all = store.library(), can = all.filter((x) => store.canDo(x)).length;
+  const k = (v: number) => (v >= 1000 && v % 1000 === 0 ? `${v / 1000}k` : fmt(v));
   return (
-    <>
-      {demo ? <HealthDemo /> : isNative() ? <HealthNative /> : <HealthWeb />}
-      <Goals />
-      <Training onEditPlan={onEditPlan} onOpenGym={onOpenGym} />
-      <Voice />
-      <Appearance />
-      {demo ? <AccountDemo /> : <Account />}
-      <Data first={dataMsg} demo={demo} />
-      <About demo={demo} />
-    </>
+    <div className="screen settings">
+      <Profile />
+      <h2 className="group-h">Training</h2>
+      <ul className="list">
+        <li>
+          <ViewLink className="row set-row" id="planBtn" href="#plan" onOpen={onEditPlan}>
+            <span className="row-t">
+              <span className="row-tt">Plan & schedule</span>
+            </span>
+            <span className="row-v">{`${p.days.filter((d) => d.exercises.length).length} training days`}</span>
+            <ChevronRight className="chev" size={16} aria-hidden="true" />
+          </ViewLink>
+        </li>
+        <li>
+          <ViewLink className="row set-row" id="gymBtn" href="#gym" onOpen={onOpenGym}>
+            <span className="row-t">
+              <span className="row-tt" id="gymRow">
+                My gym
+              </span>
+            </span>
+            <span className="row-v">{can === all.length ? "Every lift" : `${can} of ${all.length} lifts`}</span>
+            <ChevronRight className="chev" size={16} aria-hidden="true" />
+          </ViewLink>
+        </li>
+        <Training />
+        <Voice />
+      </ul>
+      <h2 className="group-h">Health</h2>
+      <ul className="list">
+        {demo ? <HealthDemo /> : isNative() ? <HealthNative /> : <HealthWeb />}
+        <Goals value={`${k(p.stepGoal)} · ${p.exerciseGoalMin} min · ${fmt(p.activeGoalKcal)}`} />
+      </ul>
+      <h2 className="group-h">App & data</h2>
+      <ul className="list">
+        <Appearance />
+        <Data first={dataMsg} demo={demo} />
+        {demo ? <AccountDemo /> : <Account />}
+        <About demo={demo} />
+      </ul>
+      {demo ? null : (
+        <button type="button" className="btn btn-raised btn-danger btn-block signout" id="signOutBtn" onClick={() => void store.signOut()}>
+          <LogOut size={18} aria-hidden="true" />
+          Sign out
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Who's signed in, and how: the avatar, the name (or email), and whether it's synced. */
+function Profile() {
+  const store = useGym();
+  const name = firstName(store.user?.user_metadata), full = (store.user?.user_metadata?.full_name as string | undefined) || name;
+  const google = ((store.user?.app_metadata?.providers as string[] | undefined) ?? []).includes("google");
+  const how = store.demo ? "Sample data · nothing is saved" : `Signed in with ${google ? "Google" : "email"}${store.status ? ` · ${store.status.toLowerCase().replace(/\.$/, "")}` : ""}`;
+  return (
+    <section className="card profile" aria-label="Account">
+      <span className="avatar lg" aria-hidden="true">
+        {(name || store.user?.email || "?").slice(0, 1).toUpperCase()}
+      </span>
+      <span className="row-t">
+        <span className="profile-n">{store.demo ? "Sample data" : full || store.user?.email || "You"}</span>
+        <span className="row-d">{how}</span>
+      </span>
+    </section>
   );
 }
 
@@ -48,7 +107,7 @@ export function SettingsView({ onEditPlan, onOpenGym, dataMsg = "" }: { onEditPl
  *  the phone itself, so neither is offered here. */
 function HealthDemo() {
   return (
-    <Group title="Health Connect" id="setHealth">
+    <Group title="Health Connect" id="setHealth" value="Not in the demo">
       <div className="pref-row">
         <Text title="Health Connect" sub="Not available in the demo. Sign in with a real account to connect it." />
       </div>
@@ -59,7 +118,7 @@ function HealthDemo() {
 function HealthWeb() {
   const at = useGym().healthSyncedAt;
   return (
-    <Group title="Health Connect" id="setHealth">
+    <Group title="Health Connect" id="setHealth" value={at ? "Synced" : "Android app"} valueOk={!!at}>
       <div className="pref-row">
         <Text
           title="From the Android app"
@@ -134,15 +193,15 @@ function HealthNative() {
           ? `On: about every hour, even when Gym Log is closed. ${last}`
           : "About every hour, even when Gym Log is closed.");
   return (
-    <Group title="Health Connect" id="setHealth">
+    <Group title="Health Connect" id="setHealth" value={link.state === "off" ? "Not connected" : link.state === "unavailable" ? "Unavailable" : connected ? "Connected" : ""} valueOk={connected}>
       <div className="pref-row">
         <Text title="Health Connect" sub={<span id="hcStatus" role="status">{status}</span>} />
         {link.state === "off" ? (
-          <button className="ghost" id="hcConnect" onClick={connect}>
+          <button className="btn btn-sm" id="hcConnect" onClick={connect}>
             Connect
           </button>
         ) : connected ? (
-          <button className="ghost" id="hcSync" onClick={sync} disabled={link.state === "syncing"}>
+          <button className="btn btn-sm" id="hcSync" onClick={sync} disabled={link.state === "syncing"}>
             Sync now
           </button>
         ) : null}
@@ -153,7 +212,7 @@ function HealthNative() {
             title={`Allow ${plural(access.missing.length, "more kind")} of data`}
             sub={`Gym Log can also read ${list(access.missing)}, if your phone or watch records them.`}
           />
-          <button className="ghost" id="hcMore" onClick={connect}>
+          <button className="btn btn-sm" id="hcMore" onClick={connect}>
             Allow
           </button>
         </div>
@@ -175,7 +234,7 @@ function HealthNative() {
       {connected ? (
         <button type="button" className="pref-row pref-tap" id="hcManage" onClick={() => void native().then((m) => m.openHealthSettings())}>
           <Text title="Manage in Health Connect" sub={access ? `Gym Log reads ${plural(access.granted.length, "kind")} of data. Choose which there.` : "Choose what Gym Log can read."} />
-          <ArrowSquareOut className="pref-go" size={18} aria-hidden="true" />
+          <ExternalLink className="pref-go" size={18} aria-hidden="true" />
         </button>
       ) : null}
     </Group>
@@ -209,10 +268,10 @@ function Goal({ id, label, k, min, max, step, decimal = false }: { id: string; l
   );
 }
 
-function Goals() {
+function Goals({ value }: { value: string }) {
   const store = useGym();
   return (
-    <Group title="Daily goals" id="setGoals">
+    <Group title="Daily goals" id="setGoals" value={value}>
       <div className="pref-row pref-col">
         <div className="pref-goals">
           <Goal id="goalSteps" label="Steps" k="stepGoal" min={500} max={100000} step={500} />
@@ -231,20 +290,11 @@ function Goals() {
 
 /* ---------- training ---------- */
 
-/** The plan editor and My gym links, and the rest timer's length, synced with the plan like the rest of training. */
-function Training({ onEditPlan, onOpenGym }: { onEditPlan: () => void; onOpenGym: () => void }) {
+/** The rest timer's length and effort per set, synced with the plan like the rest of training. */
+function Training() {
   const store = useGym();
-  const all = store.library(), can = all.filter((x) => store.canDo(x)).length;
   return (
-    <Group title="Training" id="setTraining">
-      <ViewLink className="pref-row pref-tap" id="planBtn" href="#plan" onOpen={onEditPlan}>
-        <Text title="Edit plan" sub="Each day’s workout and lifts, warm-ups, tempo, goal weight and knee limit" />
-        <CaretRight className="pref-go" size={18} aria-hidden="true" />
-      </ViewLink>
-      <ViewLink className="pref-row pref-tap" id="gymBtn" href="#gym" onOpen={onOpenGym}>
-        <Text id="gymRow" title="My gym" sub={`Equipment, bars, plates and weights: the library offers ${can === all.length ? "every lift" : `${can} of ${all.length} lifts`}`} />
-        <CaretRight className="pref-go" size={18} aria-hidden="true" />
-      </ViewLink>
+    <Group title="Rest timer & effort" id="setTraining" value={`${store.plan.restSec} s`}>
       <div className="pref-row pref-col">
         <div className="pref-goals">
           <Goal id="restSec" label="Rest after a set (seconds)" k="restSec" min={5} max={600} step={5} />
@@ -265,7 +315,7 @@ function Training({ onEditPlan, onOpenGym }: { onEditPlan: () => void; onOpenGym
                 : "Not logged. Pick RPE or reps in reserve to add it to each set’s menu."
           }
         />
-        <Segmented
+        <SegmentedControl
           value={store.plan.effort}
           label="Effort per set"
           onChange={(v) =>
@@ -325,7 +375,7 @@ function RestNotifications() {
         }
       />
       {canAsk ? (
-        <button className="ghost" id="restNotifAsk" onClick={ask}>
+        <button className="btn btn-sm" id="restNotifAsk" onClick={ask}>
           Allow
         </button>
       ) : null}
@@ -347,7 +397,7 @@ function Voice() {
       ? "Uses Android’s speech recognition, on the phone where it can. Gym Log keeps only the numbers."
       : "Uses your browser’s speech recognition. In Chrome, what you say is sent to Google to be turned into text; Gym Log keeps only the numbers.";
   return (
-    <Group title="Voice" id="setVoice">
+    <Group title="Voice" id="setVoice" value={on ? "On" : "Off"}>
       <button
         type="button"
         className="pref-row pref-tap"
@@ -375,10 +425,10 @@ function Appearance() {
     if (isNative()) void native().then((m) => m.setBarStyle(t));
   };
   return (
-    <Group title="Appearance" id="setLook">
+    <Group title="Appearance" id="setLook" value={theme === "system" ? "System" : theme === "dark" ? "Dark" : "Light"}>
       <div className="pref-row pref-col">
         <Text title="Theme" sub={theme === "system" ? "Follows the phone’s light or dark setting." : theme === "dark" ? "Always dark." : "Always light."} />
-        <Segmented
+        <SegmentedControl
           value={theme}
           label="Theme"
           onChange={choose}
@@ -400,10 +450,10 @@ function Appearance() {
 function AccountDemo() {
   const store = useGym();
   return (
-    <Group title="Account" id="setAccount">
+    <Group title="Account" id="setAccount" value="Sample data">
       <div className="pref-row">
         <Text title="Trying the sample data" sub="Nothing you do here is saved. Sign in to keep it in your own account." />
-        <button type="button" className="ghost" id="demoAccountSignIn" onClick={() => store.exitDemo()}>
+        <button type="button" className="btn btn-sm" id="demoAccountSignIn" onClick={() => store.exitDemo()}>
           Sign in
         </button>
       </div>
@@ -416,7 +466,7 @@ function Account() {
   // The ways this account signs in, as Supabase records them: "email" (a link or password), "google".
   const google = ((store.user?.app_metadata?.providers as string[] | undefined) ?? []).includes("google");
   return (
-    <Group title="Account" id="setAccount">
+    <Group title="Account" id="setAccount" value={google ? "Google" : "Email"}>
       <div className="pref-row">
         <Text
           title="Signed in as"
@@ -429,12 +479,6 @@ function Account() {
         />
       </div>
       <Password />
-      <button type="button" className="pref-row pref-tap danger" id="signOutBtn" onClick={() => void store.signOut()}>
-        <span className="pref-t">
-          <span className="pref-tt">Sign out</span>
-        </span>
-        <SignOut className="pref-go" size={18} aria-hidden="true" />
-      </button>
     </Group>
   );
 }
@@ -464,7 +508,7 @@ function Password() {
         <Text id="pw" title="Password" sub={has ? "Set. Sign in with it, or with an email link." : "Not set. With one, you can sign in without waiting for an email."} />
         {open ? null : (
           <button
-            className="ghost"
+            className="btn btn-sm"
             id="pwBtn"
             onClick={() => {
               setOpen(true);
@@ -484,10 +528,10 @@ function Password() {
             <input ref={input} id="newPassword" name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
           </label>
           <div className="pref-btns">
-            <button className="primary" type="submit" id="pwSave" disabled={busy}>
+            <button className="btn btn-primary" type="submit" id="pwSave" disabled={busy}>
               {busy ? "Saving…" : "Save password"}
             </button>
-            <button className="ghost" type="button" onClick={() => setOpen(false)}>
+            <button className="btn btn-sm" type="button" onClick={() => setOpen(false)}>
               Cancel
             </button>
           </div>
@@ -545,20 +589,20 @@ function Data({ first, demo }: { first: string; demo: boolean }) {
     if (n === imports.current) setMsg(m);
   };
   return (
-    <Group title="Your data" id="setData">
+    <Group title="Export & backup" id="setData" open={!!first}>
       <button type="button" className="pref-row pref-tap" id="exportBtn" onClick={exportData}>
         <Text title="Export data (.json)" sub="Every day you’ve logged, your plan and Health Connect data, as one file" />
-        <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
+        <Download className="pref-go" size={18} aria-hidden="true" />
       </button>
       {demo ? null : (
         <button type="button" className="pref-row pref-tap" id="importBtn" onClick={() => file.current?.click()}>
           <Text title="Import data (.json)" sub="Reads an export back in. You’re asked before a logged day or your plan is replaced." />
-          <UploadSimple className="pref-go" size={18} aria-hidden="true" />
+          <Upload className="pref-go" size={18} aria-hidden="true" />
         </button>
       )}
       <button type="button" className="pref-row pref-tap" id="csvBtn" onClick={exportCsv}>
         <Text title="Export workouts as CSV" sub="Every set you’ve logged, a row each, for a spreadsheet" />
-        <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
+        <Download className="pref-go" size={18} aria-hidden="true" />
       </button>
       {demo ? null : <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />}
       {/* Focusable, so the app can put you here after a restore on the first-run screen, reading what came in. */}
@@ -577,7 +621,7 @@ function About({ demo }: { demo: boolean }) {
     if (isNative() && !demo) void native().then((m) => m.appVersion().then(setBuild, () => {}));
   }, [demo]);
   return (
-    <Group title="About" id="setAbout">
+    <Group title="About" id="setAbout" value={isNative() ? "Android app" : "Website"}>
       <div className="pref-row">
         <Text title={<span translate="no">Gym Log</span>} sub={isNative() ? `Android app${build ? `, version ${build}` : ""}` : "Website. The Android app adds Health Connect."} />
       </div>
@@ -699,22 +743,22 @@ function UpdateAndroid() {
           }
         />
         {s.kind === "upToDate" || s.kind === "error" ? (
-          <button className="ghost" id="updCheckBtn" onClick={check}>
+          <button className="btn btn-sm" id="updCheckBtn" onClick={check}>
             {s.kind === "error" ? "Retry" : "Check again"}
           </button>
         ) : null}
         {s.kind === "available" ? (
-          <button className="ghost" id="updDownload" onClick={() => download(s.latest)}>
+          <button className="btn btn-sm" id="updDownload" onClick={() => download(s.latest)}>
             Download and install
           </button>
         ) : null}
         {s.kind === "readyToInstall" ? (
-          <button className="ghost" id="updInstall" onClick={() => install(s.latest)}>
+          <button className="btn btn-sm" id="updInstall" onClick={() => install(s.latest)}>
             Install
           </button>
         ) : null}
         {s.kind === "needsPermission" ? (
-          <button className="ghost" id="updOpenSettings" onClick={() => void native().then((m) => m.openInstallSettings())}>
+          <button className="btn btn-sm" id="updOpenSettings" onClick={() => void native().then((m) => m.openInstallSettings())}>
             Open settings
           </button>
         ) : null}
@@ -766,7 +810,7 @@ function UpdateWeb() {
         }
       />
       {s !== "checking" ? (
-        <button className="ghost" id="updCheckWebBtn" onClick={() => void check()}>
+        <button className="btn btn-sm" id="updCheckWebBtn" onClick={() => void check()}>
           {s === "idle" ? "Check for updates" : "Check again"}
         </button>
       ) : null}

@@ -1,27 +1,28 @@
 "use client";
+import { Mail } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { LogoMark } from "@/components/brand/Logo";
 import { useGym } from "@/hooks/useGym";
 import { isNative } from "@/lib/native";
 
 // Seconds before another link can be sent: Supabase refuses sooner, and a new link replaces the last one.
 const WAIT = 60;
 
-/** Google's "G", in its own colours as Google's sign-in button guidelines ask. */
+/** Google's "G", drawn in the button's ink (the outline button in the design system carries no brand colours). */
 function GoogleG() {
   return (
-    <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="currentColor">
+      <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z" />
     </svg>
   );
 }
 
-/** Sign-in: Continue with Google (once it's set up), an emailed link, or a password set in Settings. */
+/** Sign in (Sign in board): the mark and name, then a sheet with Continue with Google (once it's set up), Continue with
+ *  email (an emailed link, or a password set in Settings), and the sample data. */
 export function LoginView({ hidden }: { hidden: boolean }) {
   const store = useGym();
   const [mode, setMode] = useState<"link" | "password">("link");
+  const [emailOpen, setEmailOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [wait, setWait] = useState(0);
@@ -80,53 +81,66 @@ export function LoginView({ hidden }: { hidden: boolean }) {
   }, []);
 
   return (
-    <section className="panel" id="loginView" hidden={hidden}>
-      <h2 className="display">Sign in</h2>
-      {store.googleSignIn ? (
-        <>
-          <button className="gbtn" type="button" id="googleBtn" onClick={() => void google()} disabled={busy}>
+    <section className="signin" id="loginView" hidden={hidden}>
+      <div className="signin-top">
+        <LogoMark size={120} />
+        <h1 className="wordmark" translate="no">
+          Gym Log
+        </h1>
+        <p className="tagline" id="tagline">
+          Lifts, steps and recovery in one place.
+        </p>
+      </div>
+      <div className="sheet">
+        {store.googleSignIn ? (
+          <button className="btn btn-outline btn-block" type="button" id="googleBtn" onClick={() => void google()} disabled={busy}>
             <GoogleG />
             Continue with Google
           </button>
-          <p className="or" aria-hidden="true">
-            <span>or with your email</span>
-          </p>
-        </>
-      ) : null}
-      <p className="sub">
-        {mode === "link"
-          ? "Enter your email to get a sign-in link. No password needed."
-          : "Use the password you set in Settings. No password yet? Sign in with an email link, then Settings → Set a password."}
-      </p>
-      <form id="loginForm" className="login" onSubmit={submit}>
-        <label className="field" htmlFor="email">
-          <span>Email</span>
-          <input id="email" name="email" type="email" autoComplete="email" spellCheck={false} required placeholder="you@example.com" />
-        </label>
-        {mode === "password" ? (
-          <label className="field" htmlFor="password">
-            <span>Password</span>
-            <input id="password" name="password" type="password" autoComplete="current-password" required />
-          </label>
         ) : null}
-        <button className="primary" type="submit" id="loginBtn" disabled={busy || (mode === "link" && wait > 0)}>
-          {mode === "password" ? "Sign in" : wait ? `Send another link in ${wait} s` : "Send sign-in link"}
-        </button>
-        <button className="ghost" type="button" id="loginMode" onClick={switchMode}>
-          {mode === "link" ? "Use a password instead" : "Email me a link instead"}
-        </button>
-      </form>
-      <p className="note" id="loginMsg" aria-live="polite">
-        {store.authMsg || msg}
-      </p>
-      <p className="or" aria-hidden="true">
-        <span>or</span>
-      </p>
-      <div className="login">
-        <button type="button" className="ghost" id="demoBtn" onClick={() => store.startDemo()}>
+        {emailOpen ? (
+          <form id="loginForm" className="login" onSubmit={submit}>
+            <p className="sub" id="loginHow">
+              {mode === "link" ? "A sign-in link comes to your email. No password needed." : "Use the password you set in Settings."}
+            </p>
+            <label className="field" htmlFor="email">
+              <span>Email</span>
+              <input id="email" name="email" type="email" autoComplete="email" spellCheck={false} required placeholder="you@example.com" />
+            </label>
+            {mode === "password" ? (
+              <label className="field" htmlFor="password">
+                <span>Password</span>
+                <input id="password" name="password" type="password" autoComplete="current-password" required />
+              </label>
+            ) : null}
+            <button className="btn btn-primary btn-block" type="submit" id="loginBtn" disabled={busy || (mode === "link" && wait > 0)}>
+              {mode === "password" ? "Sign in" : wait ? `Send another link in ${wait} s` : "Send sign-in link"}
+            </button>
+            <button className="btn btn-quiet btn-block" type="button" id="loginMode" onClick={switchMode}>
+              {mode === "link" ? "Use a password instead" : "Email me a link instead"}
+            </button>
+          </form>
+        ) : (
+          <button
+            className="btn btn-primary btn-block"
+            type="button"
+            id="emailBtn"
+            onClick={() => {
+              setEmailOpen(true);
+              setTimeout(() => document.getElementById("email")?.focus(), 0);
+            }}
+          >
+            <Mail size={20} aria-hidden="true" />
+            Continue with email
+          </button>
+        )}
+        <p className="note" id="loginMsg" aria-live="polite">
+          {store.authMsg || msg}
+        </p>
+        <button type="button" className="btn btn-link btn-block" id="demoBtn" onClick={() => store.startDemo()}>
           Try it with sample data
         </button>
-        <p className="sub">No account needed. Nothing you enter is saved, and reloading ends it.</p>
+        <p className="note sheet-note">Sample mode saves nothing. Reloading ends it.</p>
       </div>
     </section>
   );

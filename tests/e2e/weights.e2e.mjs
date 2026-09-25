@@ -1,7 +1,7 @@
 // My gym's weights (RAJ-64): what each bar weighs and what the rest go up by, under My gym → Weights; a lift
-// given an EZ bar in the plan editor, whose plates and warm-up sets then use the 10 kg bar; and a lift given
-// dumbbells, which takes no plates and goes up by the dumbbells' step, to a weight they make.
-import { K, flat, liftEl, open, openTab, planDone, ready, savedPlan, session, shot, until } from "./harness.mjs";
+// given an EZ bar in the plan editor, whose plates (in a set's menu in the workout) and warm-up sets then use the
+// 10 kg bar; and a lift given dumbbells, which takes no plates and goes up by the dumbbells' step, to a weight they make.
+import { K, flat, open, openTab, openWorkout, planDone, ready, savedPlan, session, shot, until } from "./harness.mjs";
 
 export default async function weights({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000064", "2026-08-26T05:00:00Z", "t@example.com");
@@ -18,7 +18,7 @@ export default async function weights({ browser, base, check }) {
   // --- My gym → Weights
   await openTab(page, "settings");
   await page.click("#gymBtn");
-  await page.waitForSelector("#gymView:not([hidden])");
+  await page.waitForSelector("#gymView");
   const ids = ["#barKg", "#bar_ezbar", "#bar_trapbar", "#bar_smith", "#step_dumbbell", "#step_kettlebell", "#step_machine", "#step_cable", "#step_band"];
   const shown = [];
   for (const id of ids) shown.push(await value(id));
@@ -32,7 +32,7 @@ export default async function weights({ browser, base, check }) {
   await until(() => db.plan?.weights != null);
   check("one in range saves them all with the plan", JSON.stringify(db.plan?.weights) === '{"ezbar":10,"trapbar":20,"smith":0,"dumbbell":2,"kettlebell":4,"machine":2.5,"cable":2.5,"band":5}', JSON.stringify(db.plan?.weights));
   await page.click("#gymDone");
-  await page.waitForSelector("#settingsView:not([hidden])");
+  await page.waitForSelector("#settingsView");
 
   // --- the plan editor: what each lift is loaded with, as the library says until another is picked
   await page.click("#planBtn");
@@ -51,48 +51,69 @@ export default async function weights({ browser, base, check }) {
     const cs = getComputedStyle(s), c = document.createElement("canvas").getContext("2d");
     c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
     const room = s.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    return ["Resistance band (library)", ...[...s.options].map((o) => o.textContent)].filter((t) => c.measureText(t).width > room);
+    return ["Resistance band (library)", ...[...s.options].map((o) => o.textContent)].filter((t) => c.measureText(t).width > room).map((t) => `${t} (${Math.ceil(c.measureText(t).width)}px in ${room}px)`);
   });
   check("Loaded with shows each choice whole", cut.length === 0, cut.join(", "));
   await page.locator("#pe_x6_load").scrollIntoViewIfNeeded();
   await shot(page, "weights-plan");
   await planDone(page);
 
-  // --- Today: the barbell curl on its EZ bar
-  await openTab(page, "today");
-  const curl = liftEl(page, "Barbell Curl");
-  await curl.locator('input[data-set$=":0:kg"]').fill("30");
-  await curl.locator(".set").first().locator(".plates-btn").click();
-  let info = await flat(curl.locator(".plates-info"));
+  // --- the workout: the barbell curl on its EZ bar. Its plates are in the set's menu (its number).
+  await page.click("#backBtn");
+  await page.waitForSelector("#homeView");
+  await openWorkout(page, "Barbell Curl");
+  const card = page.locator("#workoutView section.ex-card");
+  const plates = async () => {
+    await card.locator(".srow.set .sn").first().click();
+    const t = await flat(card.locator(".plates-info"));
+    await card.locator(".srow.set .sn").first().click();
+    return t;
+  };
+  await card.locator('input[data-set$=":0:kg"]').fill("30");
+  let info = await plates();
   check("its plates go on the 10 kg EZ bar", info === "10 kg per side, 10 kg bar: 30 kg.", info);
-  await curl.getByRole("button", { name: "Warm-up sets", exact: true }).click();
-  await curl.locator(".wset-panel input").fill("30");
-  let ladder = await flat(curl.locator(".wset-ladder"));
+  await card.getByRole("button", { name: "Warm-up sets", exact: true }).click();
+  await card.locator(".wset-panel input").fill("30");
+  let ladder = await flat(card.locator(".wset-ladder"));
   check("and so do its warm-up sets: 40, 60 and 80% on the EZ bar", ["8 × 12.5 kg", "5 × 17.5 kg", "3 × 25 kg"].every((s) => ladder.includes(s)), ladder);
   await shot(page, "weights-ez-bar");
 
-  // --- the goblet squat, with dumbbells
-  const squat = liftEl(page, "Goblet Squat");
-  check("dumbbells take no plates", (await squat.locator(".plates-btn").count()) === 0 && (await squat.locator(".plates-none").count()) === 3);
-  const hint = await flat(squat.locator(".prog"));
+  // --- the goblet squat, next, with dumbbells
+  await page.click("#nextEx");
+  await page.locator("#workoutView .ex-name .nm", { hasText: "Goblet Squat" }).waitFor();
+  const hint = await flat(card.locator(".prog"));
   check("it goes up by the dumbbells' 2 kg", /^Go up to 24 kg: every set hit 12 reps last time/.test(hint), hint);
-  check("as the placeholder says", (await squat.locator('input[data-set$=":0:kg"]').getAttribute("placeholder")) === "24");
-  await squat.getByRole("button", { name: "Warm-up sets", exact: true }).click();
-  ladder = await flat(squat.locator(".wset-ladder"));
-  check("its warm-up sets are dumbbells there are", (await squat.locator(".wset-panel input").inputValue()) === "24" && ["8 × 10 kg", "5 × 14 kg", "3 × 20 kg"].every((s) => ladder.includes(s)), ladder);
+  check("as the placeholder says", (await card.locator('input[data-set$=":0:kg"]').getAttribute("placeholder")) === "24");
+  await card.getByRole("button", { name: "Warm-up sets", exact: true }).click();
+  ladder = await flat(card.locator(".wset-ladder"));
+  check("its warm-up sets are dumbbells there are", (await card.locator(".wset-panel input").inputValue()) === "24" && ["8 × 10 kg", "5 × 14 kg", "3 × 20 kg"].every((s) => ladder.includes(s)), ladder);
+  // A set with its weight typed: its menu has no plates for dumbbells (the barbell curl's had).
+  await card.locator('input[data-set$=":0:kg"]').fill("24");
+  await card.locator(".srow.set .sn").first().click();
+  await card.locator(".setmenu").waitFor();
+  check("dumbbells take no plates", (await card.locator(".plates-info").count()) === 0);
+  await card.locator(".srow.set .sn").first().click();
+  await card.locator('input[data-set$=":0:kg"]').fill("");
+  await until(() => db.logs[K(28)]?.exercises?.["Goblet Squat"]?.sets?.[0]?.kg == null);
 
   // --- change the weights, and each lift follows
+  await page.click("#closeWorkout");
   await openTab(page, "settings");
   await page.click("#gymBtn");
-  await page.waitForSelector("#gymView:not([hidden])");
+  await page.waitForSelector("#gymView");
   await page.fill("#bar_ezbar", "7.5");
   await page.fill("#step_dumbbell", "1");
   await until(() => db.plan?.weights?.ezbar === 7.5 && db.plan?.weights?.dumbbell === 1);
   await page.click("#gymDone");
-  await openTab(page, "today");
-  info = await flat(curl.locator(".plates-info"));
+  await page.waitForSelector("#settingsView");
+  await page.click("#backBtn");
+  await page.waitForSelector("#homeView");
+  await openWorkout(page, "Barbell Curl");
+  info = await plates();
   check("a lighter EZ bar takes more plates", info === "10 kg, 1.25 kg per side, 7.5 kg bar: 30 kg.", info);
-  check("smaller dumbbell steps go up less", /^Go up to 23 kg/.test(await flat(squat.locator(".prog"))), await flat(squat.locator(".prog")));
+  await page.click("#nextEx");
+  await page.locator("#workoutView .ex-name .nm", { hasText: "Goblet Squat" }).waitFor();
+  check("smaller dumbbell steps go up less", /^Go up to 23 kg/.test(await flat(card.locator(".prog"))), await flat(card.locator(".prog")));
 
   check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("no console errors", page.errors.length === 0, page.errors.join(" | "));

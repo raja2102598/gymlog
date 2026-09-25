@@ -9,8 +9,8 @@ import { Sparkline } from "./charts";
 /** Is strength holding during the cut? */
 export function StrengthCard({ m, onOpenLift }: { m: StrengthModel; onOpenLift: (name: string) => void }) {
   return (
-    <section className="panel" id="dashStrength">
-      <h2>Strength</h2>
+    <section className="card" id="dashStrength">
+      <h2 className="title-sm">Strength</h2>
       <p className="note">Estimated 1RM of each lift, from sets of 12 reps or fewer. Holding steady is a win during a cut.</p>
       {m.anyLogged ? (
         <ul className="lifts">

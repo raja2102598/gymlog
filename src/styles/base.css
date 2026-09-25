@@ -1,155 +1,179 @@
-/* The page, type, and the controls every screen shares: buttons, cards, fields, tables, the day chips. */
+/* The page, type and the parts every screen shares, from the design system (tokens.css, generated from
+   src/design/tokens.json). Cards are surface on bg with no borders or shadows; buttons, chips and tracks are pills;
+   one family, Nunito, with weight carrying the hierarchy. Colour means data: metric colours never go on chrome. */
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{color-scheme:light;-webkit-text-size-adjust:100%}
-/* while the sync bar or a notice is up, a field reached with Tab scrolls clear of it too, instead of sitting underneath:
-   below the stack's top (8px under the top bar) and its measured height (--bars-h, from GymLog), with 12px to spare */
-html:has(.bars>:not([hidden])){scroll-padding-top:calc(var(--appbar-h, calc(var(--sat) + var(--appbar))) + 20px + var(--bars-h,64px))}
-/* the top bar (shell.css) keeps the page clear of the phone's status bar */
-body{margin:0;background:var(--ground);color:var(--ink);font:var(--t-base)/1.5 var(--body);padding:0 var(--gut-r) calc(32px + var(--sab)) var(--gut-l);-webkit-tap-highlight-color:transparent}
-.wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
-.wrap>*{min-width:0}
-main,#appView,#dashView,#planView,#bootView,#healthView,#settingsView,#gymView{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
-#healthView,#settingsView,#gymView{gap:16px}
-main>*,#appView>*,#dashView>*,#planView>*,#healthView>*,#settingsView>*,#gymView>*{min-width:0}
-/* the skip link's target: focus lands here, so it isn't a control and needs no ring */
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:var(--type-body);font-feature-settings:"tnum" 1;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font-family:inherit;font-feature-settings:"tnum" 1}
+.wrap{max-width:560px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+main{display:flex;flex-direction:column;flex:1 1 auto}
 #main:focus{outline:none}
-.skip{position:absolute;z-index:20;left:var(--gut-l);top:calc(8px + var(--sat));background:var(--surface);box-shadow:var(--shadow-up)}
-.skip:not(:focus){width:1px;height:1px;min-height:0;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.screen{display:flex;flex-direction:column;gap:var(--space-3);padding:0 var(--gut-r) var(--space-6) var(--gut-l)}
+.screen>*{min-width:0}
+.skip{position:absolute;z-index:30;left:var(--gut-l);top:calc(8px + var(--sat));background:var(--surface);color:var(--ink);border-radius:var(--radius-pill);padding:12px 18px;font:var(--type-body-strong);text-decoration:none}
+.skip:not(:focus){width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
-/* type: Oswald capitals for the app name, page and session titles and big numbers, sentence case elsewhere */
-h1,h2,h3{margin:0;text-wrap:balance}
-h1,.display{font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.01em;line-height:1.05}
-h1{font-size:var(--t-xl)}
-h2{font:600 var(--t-md)/1.3 var(--body);letter-spacing:-.005em}
-h2.display{font-size:var(--t-xl);font-family:var(--display);letter-spacing:.01em;line-height:1.05}
-h3{font:600 var(--t-base)/1.3 var(--body)}
-p{max-width:65ch}
-code{font-family:var(--mono);font-size:.9em;background:var(--chip);padding:1px 5px;border-radius:var(--r-mark)}
-.sub{color:var(--muted);margin:2px 0 0}
-.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
-p .num,.sub .num,.plain .num{font-family:var(--body);font-weight:600;color:var(--ink)}
-.note{font-size:var(--t-xs);color:var(--muted)}
-.note:empty{margin:0}
-.empty{color:var(--muted);font-size:14px}
-/* names, notes and emails can be one long word: they wrap instead of pushing the page sideways */
-.sess-title h2,.sess-head .sub,.moved,.catchup p,.lift .nm,.lift .ch,.lift .nt,.skipnote,.prog,.chip span,.kn-head,.hist .hs,#dashFlags li,.lifts .ln,.plain li,.knee-t td,.pe .warn,#whoami,#loginMsg,.tile-s,.sessions li{overflow-wrap:anywhere}
+/* type */
+h1,h2,h3,p{margin:0}
+h1,h2,h3{text-wrap:balance}
+.title-lg{font:var(--type-title-lg)}
+.title-md{font:var(--type-title-md)}
+.title-sm{font:var(--type-title-sm)}
+.hero-t{font:var(--type-hero)}
+.eyebrow{font:var(--type-label);font-size:14px;color:var(--ink-muted)}
+.eyebrow.brand{font-weight:800;color:var(--brand-text)}
+.sub{font:var(--type-body);color:var(--ink-muted)}
+.label{font:var(--type-label);color:var(--ink-muted)}
+.micro{font:var(--type-micro)}
+.muted{color:var(--ink-muted)}
+.note{font:var(--type-label);font-weight:600;color:var(--ink-muted)}
+.note:empty{display:none}
+.empty{font:var(--type-body);color:var(--ink-muted)}
+.num{font-feature-settings:"tnum" 1;white-space:nowrap}
+.u{font:var(--type-label);color:var(--ink-muted)}
+.metric-lg{font:var(--type-metric-lg)}
+.metric-md{font:var(--type-metric-md)}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.top{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap}
+/* names, notes and emails can be one long word */
+.row-t,.card h2,.card h3,.sub,.note,.lift-t,.wk-name,#whoami,#loginMsg{overflow-wrap:anywhere}
+a{color:var(--brand-text);text-decoration:none}
+svg.lucide{flex:none}
 
-/* sync state, the password form and sign-in */
-.status{font-size:var(--t-sm);color:var(--muted);margin-top:2px}
-.status:empty{display:none}
-.pw-form{display:grid;gap:10px;max-width:420px}
-.login{display:grid;gap:12px;max-width:420px;margin-top:16px}
-/* Continue with Google, drawn as Google's guidelines ask: its "G" on white with a grey edge, or on near-black in the
-   dark theme (--gbtn-* in tokens.css) */
-.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:420px;min-height:48px;margin-top:16px;padding:10px 16px;border:1px solid var(--gbtn-edge);border-radius:var(--r-ctl);background:var(--gbtn-bg);color:var(--gbtn-ink);font:500 15px/1.25 var(--body);cursor:pointer}
-.gbtn:disabled{opacity:.6;cursor:default}
-.gbtn svg{flex:none}
-.or{display:flex;align-items:center;gap:12px;max-width:420px;margin:16px 0 0;font-size:var(--t-sm);color:var(--muted)}
-.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--line)}
+/* cards: surface on bg, radius-xl, no border, no shadow */
+.card,.panel{background:var(--surface);border-radius:var(--radius-xl);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+.card.hero{padding:var(--space-5)}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);min-height:24px}
+.card-h h2,.card-h h3{font:var(--type-title-sm)}
+.card-h .label{text-align:right}
+a.card{color:var(--ink)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}
+.stats3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.stat{background:var(--surface);border-radius:var(--radius-lg);padding:14px;min-width:0}
+.stat .v{font:var(--type-metric-lg);font-size:22px;line-height:28px}
+.stat .v .u{font-size:15px}
+.stat .l{font:var(--type-label);color:var(--ink-muted)}
+.card .stat{background:var(--surface-sunken)}
 
-/* cards */
-.panel{background:var(--surface);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow)}
-.panel-h{margin-bottom:12px}
-
-/* buttons: tonal inside cards, raised on the page background; one label per action */
-.ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--sunken);border:0;color:var(--ink);border-radius:var(--r-ctl);padding:10px 14px;min-height:44px;font:500 14px/1.25 var(--body);cursor:pointer;text-decoration:none}
-.top .ghost,header .ghost,.syncbar .ghost{background:var(--surface);box-shadow:var(--shadow)}
-.ghost.tiny{padding:8px 12px;font-size:var(--t-sm)}
-.ghost.icon{min-width:44px;padding:0 10px}
-.ghost.danger{color:var(--warn)}
-.ghost:disabled{opacity:.45;cursor:default}
-.ghost svg,button.primary svg{flex:none}
-button.primary,a.primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--ink);color:var(--ground);border:0;border-radius:var(--r-ctl);padding:12px 18px;min-height:44px;font:600 15px var(--body);cursor:pointer;text-decoration:none}
-button.primary:disabled{opacity:.6}
-a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.dchip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+/* buttons: pills. One primary per screen (brand, 54px); secondary on surface-sunken, raised (surface) on the page */
+.btn,.ghost,button.primary,a.primary{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:var(--touch-min);padding:0 18px;border:0;border-radius:var(--radius-pill);background:var(--surface-sunken);color:var(--ink);font:var(--type-body-strong);text-decoration:none;cursor:pointer;touch-action:manipulation;user-select:none;text-align:center}
+.btn-primary,button.primary,a.primary{background:var(--brand);color:var(--on-brand);min-height:var(--button-lg);font-size:17px;padding:0 24px}
+.btn-lg{min-height:var(--button-lg);font-size:17px}
+.btn-raised{background:var(--surface)}
+.btn-outline{background:transparent;box-shadow:inset 0 0 0 1.5px var(--outline);min-height:var(--button-lg);font-size:17px}
+.btn-block{width:100%}
+.ghost.tiny,.btn-sm{min-height:var(--touch-min);padding:0 14px;font-size:15px}
+.ghost.icon,.btn-icon{width:var(--touch-min);min-width:var(--touch-min);padding:0;border-radius:var(--radius-pill)}
+.btn-icon.tint{background:var(--tint);color:var(--tint-ink)}
+.ghost.danger,.btn-danger{color:var(--danger)}
+.btn-quiet{background:transparent;color:var(--ink-muted)}
+.btn:disabled,.ghost:disabled,button.primary:disabled{background:var(--surface-sunken);color:var(--ink-subtle);cursor:default}
+.btn-link{background:transparent;color:var(--brand-text);min-height:var(--touch-min);padding:0 8px}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}
 button,a,input,select,textarea,label{touch-action:manipulation}
 
-/* form fields: label above, outlined box; a typed value is bold on the card colour, an empty one sits in a well */
-.field{display:grid;gap:6px}
-.field>span{font-size:var(--t-sm);font-weight:500;color:var(--muted)}
-.field input{font:500 17px var(--body);padding:10px 12px;min-height:48px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);width:100%}
-.field input[type=number]{font:500 18px var(--mono)}
-.field input:not(:placeholder-shown){background:var(--surface);font-weight:600}
+/* round icon tiles: a 40px radius-md square in a muscle's or metric's tint */
+.ico-tile{width:40px;height:40px;flex:none;border-radius:var(--radius-md);display:grid;place-items:center;background:var(--tint,var(--brand-tint));color:var(--tint-ink,var(--brand-tint-ink))}
+.t-brand{--tint:var(--brand-tint);--tint-ink:var(--brand-tint-ink)}
+.t-body{--tint:var(--body-tint);--tint-ink:var(--body)}
+.t-success{--tint:var(--success-bg);--tint-ink:var(--success)}
+.t-water{--tint:var(--water-tint);--tint-ink:var(--water)}
+.t-steps{--tint:var(--steps-muted);--tint-ink:var(--ink)}
+.t-info{--tint:var(--info-bg);--tint-ink:var(--info-ink)}
+
+/* form fields: label above, outlined box on the card */
+.field{display:grid;gap:6px;min-width:0}
+.field>span{font:var(--type-label);color:var(--ink-muted)}
+.field input,.field textarea,.field select,select.ghost{width:100%;min-height:48px;padding:10px 14px;border:1.5px solid var(--ink-subtle);border-radius:var(--radius-md);background:var(--surface);color:var(--ink);font:var(--type-body);font-size:16px}
+.field input[type=number]{font:var(--type-input-num);font-size:18px}
+.field textarea{min-height:88px;resize:vertical;field-sizing:content;line-height:1.45}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--brand);outline:none;box-shadow:inset 0 0 0 .5px var(--brand)}
+.field input[aria-invalid="true"]{border-color:var(--danger)}
+.field .err{font:var(--type-label);color:var(--danger)}
 .field.wide{grid-column:1/-1}
-.field textarea{font:var(--t-base)/1.45 var(--body);padding:10px 12px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);width:100%;min-height:88px;resize:vertical;field-sizing:content}
-.field textarea:not(:placeholder-shown){background:var(--surface)}
-.field input[aria-invalid="true"]{border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}
-input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
-select.ghost{appearance:none;-webkit-appearance:none;padding-right:34px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 55%,calc(100% - 12px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;box-shadow:inset 0 0 0 1px var(--edge);text-align:left;max-width:100%;text-overflow:ellipsis}
+input::placeholder,textarea::placeholder{color:var(--ink-muted);opacity:1}
+select.ghost,.field select{appearance:none;-webkit-appearance:none;padding-right:38px;background-repeat:no-repeat;background-image:linear-gradient(45deg,transparent 50%,var(--ink-muted) 50%),linear-gradient(135deg,var(--ink-muted) 50%,transparent 50%);background-position:calc(100% - 20px) 55%,calc(100% - 15px) 55%;background-size:5px 5px,5px 5px;text-align:left;text-overflow:ellipsis;max-width:100%}
+select.ghost{border-radius:var(--radius-pill);min-height:var(--touch-min);font:var(--type-body-strong);font-size:15px;border-color:var(--ink-subtle)}
+input[type=number]{appearance:textfield;-moz-appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.pw-form{display:grid;gap:10px}
+.fields2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 
-/* days of the week, on Today and in the plan editor: the status fills the chip, the selected day is ringed */
-.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
-.dchip{border:0;background:var(--surface);box-shadow:var(--shadow);border-radius:var(--r-ctl);padding:8px 2px;min-height:56px;text-align:center;cursor:pointer;color:var(--ink);font:inherit;display:grid;gap:2px;align-content:center}
-.dchip .dw{font-size:var(--t-xs);color:var(--muted)}
-.dchip .dn{font:600 16px/1.2 var(--mono)}
-.dchip .dp{font-size:var(--t-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-inline:2px}
-.dchip.done{background:var(--good);color:var(--surface);box-shadow:none}
-.dchip.done .dw,.dchip.done .dp{color:inherit}
-.dchip.part{background:var(--good-soft);box-shadow:inset 0 0 0 1.5px var(--good)}
-.dchip.miss{box-shadow:inset 0 0 0 1.5px var(--warn)}
-.dchip.sel{outline:2.5px solid var(--ink);outline-offset:2px}
-/* while the keyboard is on another day, the selected day's ring goes grey, so only the focus ring is ink */
-.week:has(.dchip:focus-visible) .dchip.sel:not(:focus-visible){outline-color:var(--edge)}
-.dchip.today .dn{text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:2px}
+/* chips: 38px pills (44px target with their gap); selected is brand-tint with a brand edge */
+.chips{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:calc(-1 * var(--gut-l)) calc(-1 * var(--gut-r));padding-inline:var(--gut-l) var(--gut-r);padding-block:3px}
+.chips.scroll::-webkit-scrollbar{display:none}
+.chip-b,.chip span{display:inline-flex;align-items:center;gap:var(--space-1);flex:none;min-height:38px;padding:0 14px;border:0;border-radius:var(--radius-pill);background:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--outline);font:var(--type-body-strong);font-size:14px;cursor:pointer;user-select:none}
+.card .chip-b,.card .chip span{background:var(--surface)}
+.chip-b[aria-pressed="true"],.chip input:checked+span{background:var(--brand-tint);color:var(--brand-tint-ink);box-shadow:inset 0 0 0 1.5px var(--brand)}
+.chip{position:relative;display:inline-flex}
+.chip input{position:absolute;opacity:0;width:1px;height:1px}
+.chip input:focus-visible+span{outline:2px solid var(--brand-text);outline-offset:2px}
+/* a small status chip: a delta, a goal, "Added" */
+.pill{display:inline-flex;align-items:center;gap:4px;flex:none;padding:4px 10px;border-radius:10px;background:var(--surface-sunken);color:var(--ink);font:900 13px/18px var(--font-sans);white-space:nowrap}
+.pill.good{background:var(--success-bg);color:var(--success)}
+.pill.brand{background:var(--brand-tint);color:var(--brand-tint-ink)}
+.pill.warn{background:var(--warn-bg);color:var(--warn-ink)}
 
-/* tables */
-table{border-collapse:collapse;width:100%;font-size:var(--t-sm)}
-th,td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
-th{font-size:var(--t-xs);color:var(--muted);font-weight:500}
+/* segmented control: segment-track, 38px segments, the selected one raised */
+.seg{display:grid;grid-auto-columns:minmax(0,1fr);grid-auto-flow:column;gap:4px;padding:4px;border-radius:16px;background:var(--segment-track)}
+.card .seg{background:var(--surface-sunken)}
+.seg-b{min-height:38px;padding:0 6px;border:0;border-radius:12px;background:transparent;color:var(--ink);font:700 14px/1 var(--font-sans);cursor:pointer}
+.seg-b.on,.seg-b[aria-selected="true"],.seg-b[aria-pressed="true"]{background:var(--surface-selected);font-weight:900}
+.card .seg-b.on,.card .seg-b[aria-pressed="true"],.card .seg-b[aria-selected="true"]{background:var(--surface)}
+
+/* callouts: insight (lightbulb, info) and caution (triangle, warn) */
+.callout{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:var(--radius-lg);background:var(--info-bg);color:var(--info-ink);font:700 14px/1.35 var(--font-sans)}
+.callout>svg{color:var(--steps-text)}
+.callout.warn,.callout.caution{padding:10px 12px;border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-ink)}
+.callout.warn>svg,.callout.caution>svg{color:var(--warn-ink)}
+.callout.good{background:var(--success-bg);color:var(--success)}
+.callout.good>svg{color:var(--success)}
+.callout p{margin:0}
+.callout b{font-weight:900}
+button.callout{width:100%;border:0;text-align:left;cursor:pointer}
+
+/* grouped lists: rows on one surface card with line dividers */
+.list{background:var(--surface);border-radius:var(--radius-xl);overflow:hidden;list-style:none;margin:0;padding:0}
+.list>li,.list>.row,.list>a,.list>button{border-bottom:1px solid var(--line)}
+.list>:last-child{border-bottom:0}
+.row{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:8px 12px 8px 14px;border:0;background:transparent;color:var(--ink);text-align:left;font:inherit;text-decoration:none}
+button.row,a.row{cursor:pointer}
+.row-t{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.row-t b,.row-tt{font:var(--type-body-strong)}
+.row-t .sub,.row-d{font:600 13px/18px var(--font-sans);color:var(--ink-muted)}
+.row-v{flex:none;font:700 14px/18px var(--font-sans);color:var(--ink-muted);text-align:right}
+.row-v.ok{color:var(--success)}
+.row .chev{color:var(--ink-subtle)}
+.group-h{padding:16px 12px 6px;font:800 13px/18px var(--font-sans);color:var(--ink-muted)}
+
+/* tables (Progress, lift pages) */
+table{border-collapse:collapse;width:100%;font:600 14px/1.4 var(--font-sans)}
+th,td{padding:10px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font:800 12px/16px var(--font-sans);color:var(--ink-muted)}
 tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
 td.r,th.r{text-align:right}
 td.c,th.c{text-align:center}
 
-/* callouts: a tinted strip with a coloured edge; text stays ink so it reads in both themes */
-.callout{border-radius:var(--r-ctl);padding:10px 12px;font-size:14px;background:var(--sunken);box-shadow:inset 3px 0 0 var(--edge)}
-.callout.good{background:var(--good-soft);box-shadow:inset 3px 0 0 var(--good)}
-.callout.warn{background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn)}
+/* a metric's value against its goal */
+.meter{display:block;height:8px;border-radius:4px;background:color-mix(in srgb,var(--c) 18%,transparent);overflow:hidden}
+.meter>i{display:block;height:100%;border-radius:4px;background:var(--c)}
 
-/* sync trouble, and the placeholder shown while the app starts. The sync bar and the notices share one sticky
-   stack, so one that shows up alongside another sits under it instead of covering its buttons. */
-.bars{position:sticky;top:calc(var(--appbar-h, calc(var(--sat) + var(--appbar))) + 8px);z-index:5;display:grid;gap:8px}
-.bars:not(:has(>:not([hidden]))){display:none}
-.syncbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-radius:var(--r-card);background:var(--warn-soft);box-shadow:inset 4px 0 0 var(--warn),var(--shadow-up);color:var(--ink);font-size:14px}
-.syncbar .ghost{margin-left:auto}
-.syncbar p{margin:0;flex-basis:100%}
-.syncbar .conflict{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px}
-.syncbar .conflict .ghost{margin-left:0;flex:1 1 auto}
-/* a quieter notice, not a warning: a build ready to install, or the site having just updated under you */
-.syncbar.info{background:var(--sunken);box-shadow:inset 4px 0 0 var(--edge),var(--shadow-up)}
-.sk-week i{display:block;height:56px;border-radius:var(--r-ctl);background:var(--surface);box-shadow:var(--shadow)}
-.sk-title{display:grid;gap:10px;padding-top:4px}
-.sk-title i{display:block;height:30px;width:38%;border-radius:var(--r-mark);background:var(--chip)}
-.sk-title i+i{height:14px;width:62%}
-.sk-panel{display:grid;gap:12px}
-.sk-panel i{display:block;height:14px;border-radius:var(--r-mark);background:var(--chip)}
-.sk-panel i:nth-child(1){width:44%;height:20px}
-.sk-panel i:nth-child(2){width:72%}
-.sk-panel i:nth-child(3){height:48px}
+/* the placeholder while the app starts */
+.sk{display:block;border-radius:var(--radius-xl);background:var(--surface)}
+.sk-line{display:block;height:14px;border-radius:7px;background:var(--surface-sunken)}
 
-@media (min-width:560px){.panel{padding:20px}}
-@media (max-width:560px){.dchip .dp{display:none}}
-@media (max-width:359px){th,td{padding-inline:4px}}
-
-/* hover, for a mouse; and a press state for everyone, motion or not */
+/* hover for a mouse; a press for everyone */
 @media (hover:hover){
-  .ghost:hover:not(:disabled){background-color:var(--chip)}
-  .top .ghost:hover:not(:disabled),.syncbar .ghost:hover:not(:disabled){background-color:var(--sunken)}
-  button.primary:hover:not(:disabled),a.primary:hover{background-color:color-mix(in srgb,var(--ink) 85%,var(--ground))}
-  .gbtn:hover:not(:disabled){background-color:var(--gbtn-hover)}
-  .dchip:not(.done):hover{background-color:var(--sunken)}
-  .dchip.done:hover{background-color:color-mix(in srgb,var(--good) 88%,var(--ink))}
+  .btn:hover:not(:disabled),.ghost:hover:not(:disabled){filter:brightness(1.08)}
+  button.row:hover,a.row:hover,a.card:hover{background-color:color-mix(in srgb,var(--ink) 4%,var(--surface))}
+  .chip-b:hover,.chip span:hover{filter:brightness(1.06)}
 }
-.ghost:active:not(:disabled){background-color:var(--chip)}
-.dchip:not(.done):active{background-color:var(--sunken)}
-
-/* motion: feedback only */
-@keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:no-preference){
-  .ghost,button.primary,a.primary,.dchip,.kn,.tick,.chip span,.wu-toggle,.tile,.pref-tap,.act-row,.seg-b,.gbtn{transition:background-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease),color var(--fast) var(--ease),transform var(--fast) var(--ease)}
-  .ghost:active:not(:disabled),button.primary:active:not(:disabled),a.primary:active,.gbtn:active:not(:disabled),.dchip:active,.kn:active,.tile:active{transform:scale(.97)}
-  #appView:not([hidden]),#dashView:not([hidden]),#planView:not([hidden]){animation:rise var(--med) var(--ease)}
+  .btn,.ghost,button.primary,a.primary,.chip-b,.seg-b,.row,a.card{transition:transform var(--press) var(--ease),background-color var(--press) var(--ease),color var(--press) var(--ease)}
+  .btn:active:not(:disabled),.ghost:active:not(:disabled),button.primary:active:not(:disabled),a.primary:active,.chip-b:active,a.card:active{transform:scale(.96)}
+  .seg-b{transition:background-color var(--sheet) var(--ease)}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+/* fields side by side keep their own height, so a meter under one doesn't stretch its neighbour */
+.fields2{align-items:start}

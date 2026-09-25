@@ -1,7 +1,7 @@
-// Weekly sets per muscle on Progress (RAJ-56): four weeks of working sets per muscle from the library's muscles,
-// warm-ups and drop sets left out, a note on last week, untagged lifts listed apart, and a set logged on Today
-// adding to this week's total.
-import { K, flat, liftEl, open, openTab, ready, session, shot, until } from "./harness.mjs";
+// Weekly sets per muscle on Progress → Muscles (RAJ-56): four weeks of working sets per muscle from the library's
+// muscles, warm-ups and drop sets left out, a note on last week, untagged lifts listed apart, and a set logged in the
+// workout adding to this week's total.
+import { K, flat, open, openTab, openWorkout, ready, session, shot, until } from "./harness.mjs";
 
 export default async function muscles({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000056", "2026-08-26T05:00:00Z", "t@example.com");
@@ -29,6 +29,8 @@ export default async function muscles({ browser, base, check }) {
   const cells = async (m) => (await row(m).locator("td").allInnerTexts()).map((t) => t.trim());
 
   await openTab(page, "progress");
+  await page.click('#progTabs [data-seg="muscles"]');
+  await page.waitForSelector("#dashMuscles");
   const heads = (await page.locator("#dashMuscles thead th").allInnerTexts()).map((t) => t.trim());
   check("four weeks, this one last", heads.length === 5 && heads[0] === "Muscle" && heads[4] === "This week", heads.join(" | "));
   check("quads: a swap counts as the lift done, and last week leaves out the warm-up and the drop set", JSON.stringify(await cells("quadriceps")) === '["-","2","6","2"]', JSON.stringify(await cells("quadriceps")));
@@ -50,11 +52,14 @@ export default async function muscles({ browser, base, check }) {
   await shot(page, "muscles-320");
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // A set logged on Today adds to this week's total.
-  await openTab(page, "today");
-  await liftEl(page, "Leg Extension").locator('input[data-set$=":2:reps"]').fill("10");
+  // A set logged in the workout adds to this week's total (Progress remembers its Muscles section).
+  await openWorkout(page, "Leg Extension");
+  await page.locator('#workoutView input[data-set$=":2:reps"]').fill("10");
   await until(() => db.logs[K(28)]?.exercises?.["Leg Extension"]?.sets?.[2]?.reps === 10);
+  await page.click("#closeWorkout");
+  await page.waitForSelector("#trainView");
   await openTab(page, "progress");
+  await page.waitForSelector("#dashMuscles");
   check("a set logged today counts this week", (await cells("quadriceps"))[3] === "3", JSON.stringify(await cells("quadriceps")));
 
   check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));

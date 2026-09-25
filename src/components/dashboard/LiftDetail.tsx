@@ -1,17 +1,19 @@
 "use client";
-import { useState } from "react";
-import { Bars, type Bar } from "@/components/health/Bars";
+import { StepsBarChart } from "@/components/ds/StepsBarChart";
+import { WeightTrendChart } from "@/components/ds/WeightTrendChart";
 import { ChartCard, dayAxis } from "@/components/health/parts";
-import { Trend } from "@/components/health/Trend";
 import { useGym } from "@/hooks/useGym";
 import { liftModel, type LiftModel, type Planned } from "@/lib/dashboard";
 import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
 import { fmt } from "@/lib/format";
 import type { DayKey } from "@/lib/types";
 
-// Progress's one accent (svg.chart .trendline, .wbar.met, .spark polyline elsewhere on this tab), not one of
-// Health's per-kind colours: this isn't Health data.
-const COLOR = "var(--good)";
+/** A point or bar on a lift's chart: its axis label, value, and the point in words. */
+interface Bar {
+  x: string;
+  value: number | null;
+  tip: string;
+}
 const longDay = (k: DayKey) => parseKey(k).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
 /** At most this many calendar days on a chart, ending at the last session: enough to see a trend without
  *  drawing one point a day for a lift trained for years. A lift not done in a while still shows its last
@@ -47,14 +49,14 @@ export function LiftDetail({ name }: { name: string }) {
   const m = liftModel(store, todayKey(), name);
   return (
     <>
-      <section className="panel" id="dashLift">
+      <section className="card" id="dashLift">
         {m.planned.length ? (
           <p className="sub" id="liftPlan">
             {planWords(m.planned)}
           </p>
         ) : null}
         {m.points.length ? (
-          <div className="kpis">
+          <div className="stats3 kpis">
             <div className="kpi">
               <div className="v num">{m.bestTop ? `${m.bestTop[1]} kg` : "-"}</div>
               <div className="l">heaviest set{m.bestTop ? `, ${dm(m.bestTop[0])}` : ""}</div>
@@ -109,23 +111,31 @@ function LiftCharts({ points }: { points: LiftModel["points"] }) {
   );
 }
 
-/** The last point with a value: where a chart's readout starts. */
-const lastWith = (points: Bar[]) => points.reduce((j, p, i) => (p.value != null ? i : j), points.length - 1);
-
 function LiftTrend({ id, title, points, unit }: { id: string; title: string; points: Bar[]; unit: (v: number) => string }) {
-  const [sel, setSel] = useState(() => lastWith(points));
+  const vals = points.filter((p) => p.value != null) as (Bar & { value: number })[];
+  const first = vals[0], last = vals[vals.length - 1];
   return (
-    <ChartCard title={title} readout={points[sel]?.tip} id={id}>
-      {(w) => <Trend points={points} color={COLOR} width={w} label={title} selected={sel} onSelect={setSel} fmt={(v) => unit(v).replace(/ .*/, "")} />}
+    <ChartCard id={id} title={title} caption={last ? `Latest ${unit(last.value)}` : undefined}>
+      {(w) => (
+        <WeightTrendChart
+          points={points.map((p) => ({ value: p.value, tip: p.tip }))}
+          tone="brand"
+          width={w}
+          smoothed={false}
+          axis={[points[0].x || "", "", points[points.length - 1].x || ""]}
+          label={vals.length > 1 ? `${title}: from ${unit(first.value)} to ${unit(last.value)}.` : `${title}: ${unit(first.value)}.`}
+        />
+      )}
     </ChartCard>
   );
 }
 
 function LiftBars({ id, title, points, unit }: { id: string; title: string; points: Bar[]; unit: (v: number) => string }) {
-  const [sel, setSel] = useState(() => lastWith(points));
+  const vals = points.filter((p) => p.value != null) as (Bar & { value: number })[];
+  const best = vals.reduce<(Bar & { value: number }) | null>((b, p) => (!b || p.value > b.value ? p : b), null);
   return (
-    <ChartCard title={title} readout={points[sel]?.tip} id={id}>
-      {(w) => <Bars bars={points} color={COLOR} width={w} label={title} selected={sel} onSelect={setSel} fmt={(v) => unit(v).replace(/ .*/, "")} />}
+    <ChartCard id={id} title={title} caption={best ? `Most ${unit(best.value)}` : undefined}>
+      {(w) => <StepsBarChart bars={points} tone="brand" width={w} height={170} label={`${title}, ${vals.length} sessions${best ? `; the most was ${unit(best.value)}` : ""}.`} />}
     </ChartCard>
   );
 }

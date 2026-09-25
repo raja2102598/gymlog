@@ -1,16 +1,25 @@
 "use client";
+import { ChevronDown } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { SyncedInput } from "@/components/ui/SyncedField";
 
-/** A titled card of rows, as in a phone's settings. */
-export function Group({ title, id, children }: { title: string; id: string; children: ReactNode }) {
+/** A settings row that opens in place (ListRow spec: label, value, chevron): its controls unfold under it. `open`
+ *  starts it unfolded, e.g. Export & backup after a restore. */
+export function Group({ title, id, value, valueOk, open = false, children }: { title: string; id: string; value?: ReactNode; valueOk?: boolean; open?: boolean; children: ReactNode }) {
+  const [shown, setShown] = useState(open);
   return (
-    <section className="pref" id={id} aria-labelledby={`${id}H`}>
-      <h2 className="pref-h" id={`${id}H`}>
-        {title}
-      </h2>
-      <div className="panel pref-card">{children}</div>
-    </section>
+    <li className="pref" id={id}>
+      <button type="button" className="row set-row" id={`${id}H`} aria-expanded={shown} aria-controls={`${id}P`} onClick={() => setShown(!shown)}>
+        <span className="row-t">
+          <span className="row-tt">{title}</span>
+        </span>
+        {value != null && value !== "" ? <span className={valueOk ? "row-v ok" : "row-v"}>{value}</span> : null}
+        <ChevronDown className="chev" size={16} aria-hidden="true" />
+      </button>
+      <div className="pref-card" id={`${id}P`} role="region" aria-labelledby={`${id}H`} hidden={!shown}>
+        {children}
+      </div>
+    </li>
   );
 }
 

@@ -22,24 +22,25 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/today-light.png" width="190" alt="Today: the week strip, the day's session with a card per lift, a PR badge on a set, and the knee score">
-  <img src="docs/screenshots/health-light.png" width="190" alt="Health: activity rings against the daily goals, and tiles for sleep, heart, calories, body, water and exercise">
-  <img src="docs/screenshots/progress-light.png" width="190" alt="Progress: the weight trend with its weekly rate, a chart of four weeks of weigh-ins, and sessions kept">
-  <img src="docs/screenshots/sleep-light.png" width="190" alt="Sleep: a week of nights as bars against the goal and the average, with average bedtime and waking time">
+  <img src="docs/screenshots/home-dark.png" width="190" alt="Home: the week, today's workout with Start workout, the day's activity rings, water and weight">
+  <img src="docs/screenshots/train-dark.png" width="190" alt="Train: the week's days, the selected day's lifts with their sets and weights, and Add exercise">
+  <img src="docs/screenshots/workout-dark.png" width="190" alt="The active workout: one exercise, its set table with a PR on a set, and the rest timer">
+  <img src="docs/screenshots/complete-dark.png" width="190" alt="Workout complete: duration, kg lifted, sets, personal bests and the knee after the session">
 </p>
 <p align="center">
-  <img src="docs/screenshots/today-dark.png" width="190" alt="Today in the dark theme">
-  <img src="docs/screenshots/health-dark.png" width="190" alt="Health in the dark theme">
-  <img src="docs/screenshots/progress-dark.png" width="190" alt="Progress in the dark theme">
-  <img src="docs/screenshots/settings-dark.png" width="190" alt="Settings in the dark theme: Health Connect, daily goals, the plan and the theme">
+  <img src="docs/screenshots/health-dark.png" width="190" alt="Health: activity rings against the daily goals, and tiles for steps, sleep, heart, calories, body and water">
+  <img src="docs/screenshots/steps-dark.png" width="190" alt="Steps: a week of capsule bars against the 10k goal, with total, goal days and best">
+  <img src="docs/screenshots/progress-light.png" width="190" alt="Progress in the light theme: the week in numbers, the weight trend and consistency">
+  <img src="docs/screenshots/settings-light.png" width="190" alt="Settings in the light theme: grouped rows for training, health, and app and data">
 </p>
-<p align="center"><sub>Taken from the app itself with made-up data (<code>npm run screenshots</code>). Light or dark follows the phone, or pick one in Settings.</sub></p>
+<p align="center"><sub>Taken from the app itself with made-up data (<code>npm run screenshots</code>, every screen in both themes). Dark by default; light follows the phone, or pick one in Settings.</sub></p>
 
 ## Features
 
-**Today: the workout, set by set**
-- The day's session from your plan, one card per lift: the target (3 × 8-10), what you did last time, and a row per set for reps and kg. The next set copies the weight you just used.
-- Log a set by voice: tap a lift's microphone and say *10 at 45*, or *again*, *undo*, *done* or *skip*. Once switched on in Settings: in the browser, or in the Android app with the phone's own speech recognition.
+**Home, Train and the workout, set by set**
+- Home shows today at a glance: the week, today's workout with **Start workout**, activity rings, water and weight in one tap. Train has the selected day's lifts, reordered by dragging, and the day's log.
+- The workout goes one exercise at a time: the target (3 × 8-10), what you did last time, and a row per set with kg and reps already suggested, so **Complete set** logs it; then a rest timer, and a summary with your personal bests when you finish.
+- Log a set by voice: tap the microphone and say *10 at 45*, or *again*, *undo*, *done* or *skip*. Once switched on in Settings: in the browser, or in the Android app with the phone's own speech recognition.
 - Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
 - Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.
 - Knee pain scores before, after and the next morning. After a bad session, knee-sensitive lifts hold their weight instead of going up.
@@ -53,7 +54,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 **Progress: is it working?**
 - Weight trend (Holt smoothing, as [TrendWeight](https://github.com/ervwalter/trendweight) does) and the weekly rate, with a goal date and your pace against the target.
 - Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, working sets per muscle each week, and knee scores by session, with notes on anything that needs attention.
-- Tap a lift, in Strength or on Today's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
+- Tap a lift, in Strength or in the workout's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
 
 **Everywhere**
 - **Try it with sample data** on the sign-in screen: no account or database needed, four weeks of made-up history to look around, and nothing you do is saved.

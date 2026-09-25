@@ -1,7 +1,7 @@
 // My gym (RAJ-63): Settings → My gym turns equipment on and off, and lists lifts always or never offered; the
 // library, a swap's suggestions and its library then leave out what the gym can't do, and the plan editor keeps a
 // plan lift that needs what isn't there, saying so.
-import { K, flat, open, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
+import { K, flat, open, openTab, openWorkout, planDone, ready, session, shot, until } from "./harness.mjs";
 
 export default async function gym({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000063", "2026-08-26T05:00:00Z", "t@example.com");
@@ -12,12 +12,14 @@ export default async function gym({ browser, base, check }) {
   const legs = () => db.plan?.days?.[2]?.exercises ?? [];
   const rows = async () => (await page.locator("#libList .lib-n").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
   const switchOn = (e) => page.locator(`[data-equip="${e}"]`).getAttribute("aria-checked");
+  // The library's My gym chip: pressed while it offers only what the gym can do.
+  const gymChip = async () => (await page.locator("#libGym").getAttribute("aria-pressed")) === "true";
 
   // --- Settings → My gym
   await openTab(page, "settings");
-  check("Settings says the gym has everything to begin with", (await flat(page.locator("#gymRowD"))) === "Equipment, bars, plates and weights: the library offers every lift");
+  check("Settings says the gym has everything to begin with", (await flat(page.locator("#gymBtn .row-v"))) === "Every lift", await flat(page.locator("#gymBtn .row-v")));
   await page.click("#gymBtn");
-  await page.waitForSelector("#gymView:not([hidden])");
+  await page.waitForSelector("#gymView");
   check("My gym opens as a page of its own", (await flat(page.locator("#screenTitle"))) === "My gym" && (await page.locator("nav.tabbar").count()) === 0);
   check("everything is on, and every lift offered", (await switchOn("barbell")) === "true" && (await flat(page.locator("#gymCount"))) === "The library offers all 657 of its lifts.");
   check("each piece of equipment says how many lifts use it", /^\d+ lifts use it$/.test(await flat(page.locator("#gq_barbellD"))), await flat(page.locator("#gq_barbellD")));
@@ -28,16 +30,16 @@ export default async function gym({ browser, base, check }) {
 
   // Always and never: picked from every lift, whatever the gym has.
   await page.click('[data-gymadd="always"]');
-  check("Add… shows every lift, with no Create", (await flat(page.locator("#libTitle"))) === "Always offer" && !(await page.isChecked("#libGym")) && (await page.locator("#libCreate").count()) === 0);
+  check("Add… shows every lift, with no Create", (await flat(page.locator("#libTitle"))) === "Always offer" && !(await gymChip()) && (await page.locator("#libCreate").count()) === 0);
   await page.fill("#libSearch", "barbell curl");
-  const tag = page.locator("#libList .lib-row", { has: page.locator('[data-lib="Barbell_Curl"]') }).locator(".lib-tag");
+  const tag = page.locator("#libList .lib-row", { has: page.locator('[data-lib="Barbell_Curl"]') }).locator(".pill");
   check("a lift the gym can't do says so", (await flat(tag)) === "Not in my gym");
-  await page.check('[data-lib="Barbell_Curl"]');
+  await page.click('[data-lib="Barbell_Curl"]');
   await page.click("#libAdd");
   await until(() => db.plan?.gym?.always?.length === 1);
   await page.click('[data-gymadd="never"]');
   await page.fill("#libSearch", "pushups");
-  await page.check('[data-lib="Pushups"]');
+  await page.click('[data-lib="Pushups"]');
   await page.click("#libAdd");
   await until(() => db.plan?.gym?.never?.length === 1);
   check("the lists save with the plan", JSON.stringify(db.plan?.gym) === '{"off":["barbell"],"always":["Barbell_Curl"],"never":["Pushups"]}', JSON.stringify(db.plan?.gym));
@@ -54,24 +56,24 @@ export default async function gym({ browser, base, check }) {
   await page.click('[data-equip="barbell"]');
   await until(() => db.plan?.gym?.off?.length === 1);
   await page.click("#gymDone");
-  await page.waitForSelector("#settingsView:not([hidden])");
-  check("Done goes back to Settings, which says what's offered", (await flat(page.locator("#gymRowD"))) === "Equipment, bars, plates and weights: the library offers 490 of 657 lifts");
+  await page.waitForSelector("#settingsView");
+  check("Done goes back to Settings, which says what's offered", (await flat(page.locator("#gymBtn .row-v"))) === "490 of 657 lifts", await flat(page.locator("#gymBtn .row-v")));
 
   // --- the library in the plan editor
   await page.click("#planBtn");
   await page.click("#pe_lib");
-  check("the library offers what the gym can do, ticked My gym", (await page.isChecked("#libGym")) && (await flat(page.locator("#libCount"))) === "490 lifts");
+  check("the library offers what the gym can do, My gym on", (await gymChip()) && /only what fits my gym · 490 lifts$/.test(await flat(page.locator("#libCount"))), await flat(page.locator("#libCount")));
   await page.fill("#libSearch", "barbell");
   const found = await rows();
   check("no barbell lifts but the one always offered", found.includes("Barbell Curl") && !found.includes("Barbell Squat") && !found.includes("Barbell Deadlift"), found.join(" | "));
   await page.fill("#libSearch", "barbell squat");
-  const more = /^Nothing your gym can do matches: untick My gym for (\d+) lifts that need more\.$/.exec(await flat(page.locator("#libList .empty")));
+  const more = /^Nothing your gym can do matches: turn off My gym for (\d+) lifts that need more\.$/.exec(await flat(page.locator("#libList .empty")));
   check("nothing matching says so, and how many more there are", !!more, await flat(page.locator("#libList .empty")));
-  await page.uncheck("#libGym");
+  await page.click("#libGym");
   const ids = () => page.locator("#libList [data-lib]").evaluateAll((els) => els.map((e) => e.dataset.lib));
-  check("unticked, they're there", (await ids()).length === +more?.[1] && (await ids()).includes("Barbell_Squat") && (await flat(page.locator("#libCount"))) === `${more?.[1]} lifts of 657`, `${(await ids()).join(" | ")} ${await flat(page.locator("#libCount"))}`);
-  check("marked as not in the gym", (await page.locator("#libList .lib-tag.away").count()) === +more?.[1]);
-  await page.check('[data-lib="Barbell_Squat"]');
+  check("with My gym off, they're there", (await ids()).length === +more?.[1] && (await ids()).includes("Barbell_Squat") && (await flat(page.locator("#libCount"))) === `${more?.[1]} lifts of 657`, `${(await ids()).join(" | ")} ${await flat(page.locator("#libCount"))}`);
+  check("marked as not in the gym", (await page.locator("#libList .pill.warn").count()) === +more?.[1]);
+  await page.click('[data-lib="Barbell_Squat"]');
   await page.click("#libAdd");
   await until(() => legs().length === 6);
   check("and can still be added", legs()[5]?.name === "Barbell Squat");
@@ -81,8 +83,10 @@ export default async function gym({ browser, base, check }) {
   check("a plan lift stays, flagged", (await page.locator("#pe_x2_name").inputValue()) === "Hip Thrust (machine or barbell)" && (await flat(page.locator("#pe_x2_gym"))) === "My gym has no barbell.");
   await planDone(page);
 
-  // --- a swap on Today
-  await openTab(page, "today");
+  // --- a swap in the workout, from the lift's ··· menu
+  await page.click("#backBtn");
+  await page.waitForSelector("#homeView");
+  await openWorkout(page, 1);
   await page.click('[data-more="1"]');
   await page.click('[data-swapopen="1"]');
   const offered = await page.locator("#swapList option").evaluateAll((os) => os.map((o) => o.value));

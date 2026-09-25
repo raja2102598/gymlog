@@ -1,8 +1,9 @@
-/* Where the app is: one of four tabs, a metric's page under Health, a lift's page under Progress, the plan
- * editor or My gym. Each has an address (#health/sleep, #progress/lift/Leg Press), so any screen opens from a link and the
- * phone's Back button walks back the way you came: a page to its tab, a tab to Today, Today out of the app. */
+/* Where the app is: one of four tabs (Home, Train, Progress, Health), or a screen pushed over them: Settings (from
+ * the avatar on Home), a metric's page under Health, a lift's page under Progress, the plan editor, My gym, and the
+ * active workout with its Workout complete screen. Each has an address (#health/sleep, #progress/lift/Leg Press,
+ * #workout), so any screen opens from a link and the phone's Back button walks back the way you came. */
 
-export const TABS = ["today", "health", "progress", "settings"] as const;
+export const TABS = ["home", "train", "progress", "health"] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The Health tab's pages, one per kind of data. */
@@ -10,16 +11,21 @@ export const METRICS = ["steps", "sleep", "heart", "energy", "exercise", "body",
 export type Metric = (typeof METRICS)[number];
 
 export interface Route {
-  view: Tab | "plan" | "gym";
+  view: Tab | "settings" | "plan" | "gym" | "workout";
   metric?: Metric;
   /** A lift's own page, under Progress; its name, as logged or planned. */
   lift?: string;
+  /** The workout's summary, once it's finished. */
+  done?: boolean;
 }
 
 export function routeOf(hash: string): Route {
   const h = hash.replace(/^#/, "");
   if (h === "plan") return { view: "plan" };
   if (h === "gym") return { view: "gym" };
+  if (h === "train" || h === "today") return { view: "train" };
+  if (h === "workout") return { view: "workout" };
+  if (h === "workout/done") return { view: "workout", done: true };
   // #dashboard is the address Progress had before it was a tab.
   if (h === "progress" || h === "dashboard") return { view: "progress" };
   if (h === "settings") return { view: "settings" };
@@ -35,19 +41,40 @@ export function routeOf(hash: string): Route {
       return { view: "progress" };
     }
   }
-  return { view: "today" };
+  return { view: "home" };
 }
 
 export const hashOf = (r: Route): string =>
-  r.view === "today" ? "" : r.metric ? `#health/${r.metric}` : r.lift ? `#progress/lift/${encodeURIComponent(r.lift)}` : `#${r.view}`;
-export const sameRoute = (a: Route, b: Route) => a.view === b.view && a.metric === b.metric && a.lift === b.lift;
+  r.view === "home"
+    ? ""
+    : r.metric
+      ? `#health/${r.metric}`
+      : r.lift
+        ? `#progress/lift/${encodeURIComponent(r.lift)}`
+        : r.done
+          ? "#workout/done"
+          : `#${r.view}`;
+export const sameRoute = (a: Route, b: Route) => a.view === b.view && a.metric === b.metric && a.lift === b.lift && !!a.done === !!b.done;
 
-/** How deep a route sits: Today 0, the other tabs 1, a metric's or lift's page, the plan editor or My gym 2. */
-export const depthOf = (r: Route): number => (r.view === "today" ? 0 : r.metric || r.lift || r.view === "plan" || r.view === "gym" ? 2 : 1);
+/** How deep a route sits: Home 0, the other tabs 1, Settings, a metric's page and the workout 2, and 3 for the plan
+ *  editor and My gym (they open from Settings as well as from Train) and a lift's page (it opens from the workout as
+ *  well as from Progress). Opening a deeper screen adds a history entry, so Back returns to wherever it was opened. */
+export const depthOf = (r: Route): number =>
+  r.view === "home" ? 0 : r.lift || r.view === "plan" || r.view === "gym" ? 3 : r.metric || r.view === "settings" || r.view === "workout" ? 2 : 1;
 
-/** The tab a route belongs to, lit in the tab bar. The plan editor and My gym open from Settings. */
-export const tabOf = (r: Route): Tab => (r.view === "plan" || r.view === "gym" ? "settings" : r.view);
+/** A screen pushed over the tabs: a back chevron, and no tab bar. */
+export const isPushed = (r: Route): boolean => depthOf(r) >= 2;
 
-/** Where a page's back arrow goes when there's no history to go back through (it was opened from a link). */
+/** The tab a route belongs to, lit in the tab bar. The plan editor, My gym and the workout open from Train;
+ *  Settings from Home. */
+export const tabOf = (r: Route): Tab => (r.view === "plan" || r.view === "gym" || r.view === "workout" ? "train" : r.view === "settings" ? "home" : r.view);
+
+/** Where a page's back chevron goes when there's no history to go back through (it was opened from a link). */
 export const parentOf = (r: Route): Route =>
-  r.metric ? { view: "health" } : r.lift ? { view: "progress" } : r.view === "plan" || r.view === "gym" ? { view: "settings" } : { view: "today" };
+  r.metric
+    ? { view: "health" }
+    : r.lift
+      ? { view: "progress" }
+      : r.view === "plan" || r.view === "gym" || r.view === "workout"
+        ? { view: "train" }
+        : { view: "home" };

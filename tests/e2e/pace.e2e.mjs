@@ -1,4 +1,4 @@
-// Dashboard pace flags: the weekly loss against the target set in Edit plan.
+// Progress pace flags (Overview): the weekly loss against the target set in the plan editor.
 import { K, open, openTab, ready, session } from "./harness.mjs";
 
 // Daily weigh-ins from 26 Aug to today, changing by `perDay` kg.

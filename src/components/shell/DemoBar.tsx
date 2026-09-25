@@ -8,7 +8,7 @@ export function DemoBar() {
   return (
     <div className="syncbar info" id="demoBar" role="status" hidden={!store.demo}>
       <span id="demoMsg">Sample data. Nothing you do here is saved.</span>
-      <button type="button" className="ghost tiny" id="demoSignIn" onClick={() => store.exitDemo()}>
+      <button type="button" className="btn btn-sm" id="demoSignIn" onClick={() => store.exitDemo()}>
         Sign in
       </button>
     </div>

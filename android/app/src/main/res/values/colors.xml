@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The home-screen widget's own colours, light mode: the same as the web app's tokens.css (its surface, ink,
-     muted and sunken), so the widget looks like part of Gym Log rather than a generic block on the home screen. -->
+<!-- The home-screen widget's own colours, light mode: the same as the design system's tokens (surface, ink,
+     ink-muted and surface-sunken, light), so the widget looks like part of Gym Log rather than a generic block on the home screen. -->
 <resources>
     <color name="widget_background">#FFFFFF</color>
     <color name="widget_ink">#15171B</color>
-    <color name="widget_muted">#5B6270</color>
-    <color name="widget_chip_background">#F3F4F6</color>
+    <color name="widget_muted">#5F6570</color>
+    <color name="widget_chip_background">#F2F3F5</color>
 </resources>

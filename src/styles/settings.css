@@ -1,49 +1,46 @@
-/* Settings: titled groups of rows, as in a phone's settings. A row is its words, then a button, a switch or an
-   arrow; a row that does one thing is itself the button. */
-.pref{display:grid;gap:8px}
-.pref-h{padding-inline:4px;font:600 var(--t-sm)/1.3 var(--body);color:var(--muted)}
-.pref-card{padding:0;overflow:hidden}
-.pref-card>*+*{position:relative}
-/* dividers start where the words do */
-.pref-card>*+*::before{content:"";position:absolute;top:0;left:16px;right:16px;border-top:1px solid var(--line)}
-.pref-row{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:12px 16px;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;text-align:left;text-decoration:none}
+/* Settings (Settings board): a profile card, then grouped lists. A row with a chevron opens a screen; one with a
+   down chevron opens its controls in place. */
+.settings .group-h{padding:16px 12px 6px}
+.settings .list{overflow:visible}
+.profile{flex-direction:row;align-items:center;gap:14px}
+.profile-n{font:900 18px/24px var(--font-sans);overflow-wrap:anywhere}
+.set-row{min-height:56px;padding:8px 14px 8px 16px}
+.pref>.set-row .chev{transition:transform var(--press) var(--ease)}
+.pref>.set-row[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.pref-card{display:grid;margin:0 12px 12px;border-radius:var(--radius-md);background:var(--surface-sunken)}
+.pref-card>*+*{border-top:1px solid var(--line)}
+.pref-row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:12px 14px;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;text-align:left;text-decoration:none}
 .pref-t{flex:1 1 auto;min-width:0;display:grid;gap:2px}
-.pref-tt{font:500 var(--t-base)/1.35 var(--body)}
-.pref-t .sub{margin:0;font-size:var(--t-sm);line-height:1.4;overflow-wrap:anywhere}
-.pref-go{flex:none;color:var(--muted)}
-.pref-row>.ghost{flex:none}
+.pref-tt{font:var(--type-body-strong)}
+.pref-t .sub{font:600 14px/1.4 var(--font-sans);overflow-wrap:anywhere}
+.pref-go{flex:none;color:var(--ink-subtle)}
+.pref-row>.btn{flex:none;background:var(--surface)}
 .pref-tap{cursor:pointer}
 .pref-tap:disabled{cursor:default}
-.pref-tap:disabled .pref-tt{color:var(--muted)}
-.pref-tap:focus-visible{outline:2px solid var(--ink);outline-offset:-4px;border-radius:calc(var(--r-card) - 4px)}
-.pref-row.danger .pref-tt,.pref-row.danger .pref-go{color:var(--warn)}
+.pref-tap:disabled .pref-tt{color:var(--ink-muted)}
+.pref-tap:focus-visible{outline:2px solid var(--brand-text);outline-offset:-3px;border-radius:var(--radius-md)}
 .pref-col{flex-direction:column;align-items:stretch}
 .pref-line{display:flex;align-items:center;gap:12px}
+.pref-line .btn{background:var(--surface)}
 .pref-goals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.pref-goals .field>span{font-size:var(--t-xs)}
 .pref-col>.note{margin:0}
 .pref-btns{display:flex;flex-wrap:wrap;gap:8px}
-/* a download's progress (Settings → About): the same meter as Health's rings, filling the row instead of a tile */
 .pref-row .meter{flex:1 1 auto}
-.pref-msg{margin:0;padding:12px 16px}
-.pref-card>.pref-msg:empty{padding:0}
-.pref-card>.pref-msg:empty::before{display:none}
-.err{font-size:var(--t-xs);font-weight:500;color:var(--warn)}
+.pref-msg{margin:0;padding:12px 14px}
+.pref-card>.pref-msg:empty{display:none}
+.pref-card .seg{background:var(--surface)}
+.pref-card .seg-b.on{background:var(--surface-sunken)}
+.signout{margin-top:var(--space-3);min-height:52px}
 @media (max-width:359px){.pref-goals{grid-template-columns:1fr}.pref-line{flex-wrap:wrap}}
-
-/* the switch: an outlined track with a small thumb when off, a filled track with a large thumb when on */
-.switch{flex:none;position:relative;width:52px;height:32px;border-radius:99px;background:var(--chip);box-shadow:inset 0 0 0 2px var(--edge)}
-.switch::after{content:"";position:absolute;left:8px;top:8px;width:16px;height:16px;border-radius:99px;background:var(--edge)}
-[aria-checked="true"]>.switch{background:var(--good);box-shadow:none}
-[aria-checked="true"]>.switch::after{left:24px;top:4px;width:24px;height:24px;background:var(--surface)}
+/* a switch: an outlined track with a small thumb when off, filled brand with a large thumb when on */
+.switch{flex:none;position:relative;width:52px;height:32px;border-radius:16px;background:var(--surface);box-shadow:inset 0 0 0 2px var(--outline)}
+.switch::after{content:"";position:absolute;left:8px;top:8px;width:16px;height:16px;border-radius:8px;background:var(--outline)}
+[aria-checked="true"]>.switch{background:var(--brand);box-shadow:none}
+[aria-checked="true"]>.switch::after{left:24px;top:4px;width:24px;height:24px;background:var(--on-brand)}
 .pref-tap:disabled>.switch{opacity:.45}
+@media (hover:hover){.pref-tap:hover:not(:disabled){background-color:var(--surface-selected)}}
+@media (prefers-reduced-motion:no-preference){.switch,.switch::after{transition:background-color var(--press) var(--ease),left var(--press) var(--ease),top var(--press) var(--ease),width var(--press) var(--ease),height var(--press) var(--ease)}}
 
-@media (hover:hover){.pref-tap:hover:not(:disabled){background-color:var(--sunken)}}
-.pref-tap:active:not(:disabled){background-color:var(--sunken)}
-@media (prefers-reduced-motion:no-preference){
-  .switch,.switch::after{transition:background-color var(--fast) var(--ease),left var(--fast) var(--ease),top var(--fast) var(--ease),width var(--fast) var(--ease),height var(--fast) var(--ease)}
-}
-
-/* My gym: the lifts always or never offered, each with a way to take it off */
+/* My gym */
 .gym-lifts{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.gym-lifts li{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border-radius:var(--r-ctl);background:var(--sunken)}
+.gym-lifts li{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 14px;border-radius:var(--radius-md);background:var(--surface-sunken);font:700 15px/1.3 var(--font-sans)}

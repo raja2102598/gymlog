@@ -8,7 +8,7 @@ The Android app is the same Gym Log, installed from a file instead of Chrome, an
 
 1. On the phone, open the repo's **Releases** page on GitHub in Chrome, then the latest **Gym Log for Android**, and download `gym-log.apk`.
 2. Open the downloaded file. Android asks once to allow installs from Chrome (or your Files app): allow it, go back and tap **Install**. Google Play Protect may say it doesn't know the developer: tap **More details → Install anyway**.
-3. Sign in. Easiest is **Continue with Google**, once [it's set up](google-sign-in.md), or a password: set one on the website first (**Settings → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
+3. Sign in. Easiest is **Continue with Google**, once [it's set up](google-sign-in.md), or a password: set one on the website first (**Settings → Account → Set a password**), then in the app tap **Use a password instead**. Or ask for an email link and tap it **on the same phone**: it opens a Gym Log page on the site, which opens the app signed in (tap **Open Gym Log** if it doesn't by itself). Each link works once, and only the newest one does.
 4. **Settings → Health Connect → Connect**, then allow what Gym Log asks for, including past data. The first sync reads back to when your log started (30 to 90 days). Only some kinds allowed? **Allow** under it asks for the rest; each newly allowed kind is read back that far too.
 5. For syncing while the app is closed, turn on **Sync in the background** in the same place, and allow Health Connect's *access data in the background* when it asks.
 
@@ -23,21 +23,21 @@ With **Sync in the background** on, Android runs a small job about every hour, e
 
 ## What it does with the data
 
-- Each day's numbers go to your Supabase database, in `health_days`, one row per day, behind the same row-level security as your log. Nothing is sent anywhere else. The website reads them to show the same cards. Only the app writes them, except that restoring a backup (**Settings → Import data**) fills in days the database doesn't have.
+- Each day's numbers go to your Supabase database, in `health_days`, one row per day, behind the same row-level security as your log. Nothing is sent anywhere else. The website reads them to show the same cards. Only the app writes them, except that restoring a backup (**Settings → Export & backup → Import data**) fills in days the database doesn't have.
 - A number you type always wins: Health Connect's steps or weight only show on days you left the box empty, and history, the week so far, Health and Progress use them the same way.
 - To stop: turn off **Sync in the background**, then open Health Connect → **App permissions → Gym Log** (or **Settings → Manage in Health Connect** in the app) and turn its access off, or uninstall the app. Days already synced stay in `health_days`; delete them in Supabase (Table Editor → `health_days`) if you want them gone.
 
 ## Voice logging
 
-With **Settings → Log sets by voice** on, each lift on Today gets a microphone: tap it and say the set, such as *10 at 45*, or *again*, *undo*, *done* or *skip* (the [user guide](user-guide.md#today) has the rest). The app's web view has no speech recognition of its own, so the app's own plugin (`SpeechPlugin.kt`) uses Android's. It listens in English, the language it reads: the phone's own English (English (India), say) when the phone's languages include one, and otherwise US English. Settings shows the switch once the phone says it can turn speech into text, which needs a speech service such as Google's; most phones have one.
+With **Settings → Voice** on, the exercise in the workout gets a microphone: tap it and say the set, such as *10 at 45*, or *again*, *undo*, *done* or *skip* (the [user guide](user-guide.md#the-workout) has the rest). The app's web view has no speech recognition of its own, so the app's own plugin (`SpeechPlugin.kt`) uses Android's. It listens in English, the language it reads: the phone's own English (English (India), say) when the phone's languages include one, and otherwise US English. Settings shows the switch once the phone says it can turn speech into text, which needs a speech service such as Google's; most phones have one.
 
-- **The microphone:** switching it on asks for Android's microphone permission. Refuse it and the switch stays off and says why; to allow it later, open Android's **Settings → Apps → Gym Log → Permissions → Microphone**, then switch it on again. Allowed *only this time*, it asks again when you next tap a lift's microphone. The app listens only after you tap a lift's microphone, for one phrase, and stops if you leave Today or the app.
+- **The microphone:** switching it on asks for Android's microphone permission. Refuse it and the switch stays off and says why; to allow it later, open Android's **Settings → Apps → Gym Log → Permissions → Microphone**, then switch it on again. Allowed *only this time*, it asks again when you next tap the microphone. The app listens only after you tap it, for one phrase, and stops if you leave the workout or the app.
 - **On the phone:** on Android 12 and later, where the phone has on-device speech recognition for that English, what you say is turned into text on the phone itself. Otherwise the phone's speech service does it, with its offline model where it has one, or else on its servers (Google's, on most phones). Gym Log gets only the words, and keeps only the numbers.
 - **To turn it off:** switch off **Log sets by voice**, and the microphones go. To take back the permission too, turn off **Microphone** on that same Android settings page.
 
 ## Home-screen widget
 
-Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, or **Rest day** with none planned, and while a rest timer runs, when it ends. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Today**; the small buttons open **Today** with that field ready to type in, even when the app wasn't running.
+Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, or **Rest day** with none planned, and while a rest timer runs, when it ends. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Home**; the small buttons open **Train** at today with that field ready to type in, even when the app wasn't running.
 
 It updates itself as you log a set, tick a lift or a new day begins, and settles to a plain **Open Gym Log** once the day it was showing has passed, so it never shows yesterday's session as today's.
 
@@ -45,7 +45,7 @@ It updates itself as you log a set, tick a lift or a new day begins, and settles
 
 The rest timer started by logging a set keeps counting with the app in the background or closed: a quiet notification counts down, and when it reaches zero a second one says **Rest over**, with a sound and a buzz. While the timer runs, the home-screen widget adds when it ends (*rest until 10:32*).
 
-- **Notifications:** Android 13 and later ask first. Tap **Allow** on **Settings → Rest timer notifications**. If Android has stopped asking, turn notifications on for Gym Log in the phone's own settings. Older versions allow them when the app is installed.
+- **Notifications:** Android 13 and later ask first. Tap **Allow** under **Settings → Rest timer & effort → Rest timer notifications**. If Android has stopped asking, turn notifications on for Gym Log in the phone's own settings. Older versions allow them when the app is installed.
 - **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 13 and later leave off by default). Without it, Android may deliver it a little late while the phone is idle. The countdown in the app is exact either way.
 - **Two notification channels** in the phone's settings let you silence either: *Rest timer running* for the countdown (never makes a sound) and *Rest over* for the alert.
 

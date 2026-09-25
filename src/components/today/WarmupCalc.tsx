@@ -1,5 +1,5 @@
 "use client";
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { num, plural } from "@/lib/format";
 import { warmupLadder } from "@/lib/stats";
@@ -29,9 +29,9 @@ export function WarmupCalc({ id, barKg, inc, defaultKg, warmSets, onLog, onRemov
   const ladder = kg != null && kg > 0 ? warmupLadder(kg, barKg, inc) : [];
   return (
     <div className="wset">
-      <button type="button" className="ghost tiny" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+      <button type="button" className="btn btn-sm wset-t" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
         Warm-up sets
-        <CaretDown size={14} weight="bold" aria-hidden="true" />
+        <ChevronDown className="chev" size={16} aria-hidden="true" />
       </button>
       {open ? (
         <div className="wset-panel" id={id}>
@@ -61,14 +61,14 @@ export function WarmupCalc({ id, barKg, inc, defaultKg, warmSets, onLog, onRemov
             </ul>
           ) : null}
           {ladder.length ? (
-            <button type="button" className="ghost tiny" onClick={() => onLog(ladder.map((s) => ({ reps: s.reps, kg: s.kg })))}>
+            <button type="button" className="btn btn-sm" onClick={() => onLog(ladder.map((s) => ({ reps: s.reps, kg: s.kg })))}>
               Log warm-up sets
             </button>
           ) : null}
           {warmSets.length ? (
             <div className="wset-done">
               <span>{plural(warmSets.length, "warm-up set")} logged: {warmSets.map((s) => `${s.reps} × ${s.kg} kg`).join(", ")}.</span>
-              <button type="button" className="ghost tiny" onClick={onRemove}>
+              <button type="button" className="btn btn-sm" onClick={onRemove}>
                 Remove warm-up sets
               </button>
             </div>

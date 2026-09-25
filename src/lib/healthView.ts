@@ -20,6 +20,8 @@ export interface HealthSource {
   healthOf(k: DayKey): HealthDay | null;
   stepsOf(k: DayKey): number | null;
   weightOf(k: DayKey): number | null;
+  /** Water, ml: what was logged here, or else Health Connect's. Optional for plain test sources. */
+  waterOf?(k: DayKey): number | null;
   /** Chest, arms, thighs and hips, and body fat (which also takes Health Connect's reading, like weight). */
   measureOf(k: DayKey, field: MeasureField): number | null;
   /** Whether the measurements card has ever been filled in, typed rather than from Health Connect. */
@@ -100,7 +102,7 @@ export function dayNumbers(src: HealthSource, k: DayKey): DayNumbers {
     weight,
     bodyFat: src.measureOf(k, "bodyFat"),
     bmi: weight && height ? Math.round((weight / (height / 100) ** 2) * 10) / 10 : null,
-    waterMl: h.waterMl ?? null,
+    waterMl: src.waterOf ? src.waterOf(k) : (h.waterMl ?? null),
     chest: src.measureOf(k, "chest"),
     arms: src.measureOf(k, "arms"),
     thighs: src.measureOf(k, "thighs"),

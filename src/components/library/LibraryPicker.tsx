@@ -1,9 +1,11 @@
 "use client";
-import { X } from "@phosphor-icons/react";
+import { Bike, Check, ChevronLeft, Dumbbell, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
+import { tintOf } from "@/lib/session";
 import { plural } from "@/lib/format";
+import { Chip } from "@/components/ds/parts";
 import { customLift, EQUIPMENT, equipText, isEquip, isMuscle, muscleText, MUSCLES, searchLibrary, type Equip, type Exercise, type LibQuery, type Muscle } from "@/lib/library";
 
 /** What the library is opened for. */
@@ -93,29 +95,45 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
         }}
       />
     );
+  const muscles = Object.keys(MUSCLES) as Muscle[];
   return (
     <div className="lib-in">
       <div className="lib-head">
-        <h2 id="libTitle">{ask.title}</h2>
-        <button type="button" className="ghost icon" id="libClose" aria-label="Close the library" onClick={onClose}>
-          <X size={20} weight="bold" aria-hidden="true" />
+        <button type="button" className="back" id="libClose" aria-label="Close the library" onClick={onClose}>
+          <ChevronLeft size={22} aria-hidden="true" />
         </button>
+        <h2 id="libTitle">{ask.title}</h2>
       </div>
       <div className="lib-tools">
-        <label className="field" htmlFor="libSearch">
+        <label className="lib-search" htmlFor="libSearch">
+          <Search size={18} aria-hidden="true" />
           <span className="sr-only">Search the library</span>
-          <input id="libSearch" type="search" placeholder={`Search ${all.length} lifts`} autoComplete="off" value={q.text} onChange={(ev) => set({ text: ev.target.value })} />
+          <input id="libSearch" type="search" placeholder={`Search ${all.length} exercises`} autoComplete="off" value={q.text} onChange={(ev) => set({ text: ev.target.value })} />
         </label>
+        <div className="chips scroll" role="group" aria-label="Filter by muscle">
+          {/* With everything in the gym, the chip stays on and changes nothing. */}
+          <Chip
+            id="libGym"
+            on={!every || !gym}
+            disabled={!gym}
+            onClick={() => {
+              setEvery(!every);
+              setShown(SHOWN);
+            }}
+          >
+            My gym
+          </Chip>
+          <Chip on={!q.muscle} data-muscle="" onClick={() => set({ muscle: "" })}>
+            All
+          </Chip>
+          {muscles.map((m) => (
+            <Chip key={m} on={q.muscle === m} data-muscle={m} onClick={() => set({ muscle: q.muscle === m ? "" : m })}>
+              {MUSCLES[m]}
+            </Chip>
+          ))}
+        </div>
         <div className="lib-filters">
-          <select id="libMuscle" className="ghost tiny" aria-label="Muscle" value={q.muscle} onChange={(ev) => set({ muscle: isMuscle(ev.target.value) ? ev.target.value : "" })}>
-            <option value="">All muscles</option>
-            {(Object.keys(MUSCLES) as Muscle[]).map((m) => (
-              <option key={m} value={m}>
-                {MUSCLES[m]}
-              </option>
-            ))}
-          </select>
-          <select id="libEquip" className="ghost tiny" aria-label="Equipment" value={q.equip} onChange={(ev) => set({ equip: isEquip(ev.target.value) ? ev.target.value : "" })}>
+          <select id="libEquip" className="ghost" aria-label="Equipment" value={q.equip} onChange={(ev) => set({ equip: isEquip(ev.target.value) ? ev.target.value : "" })}>
             <option value="">All equipment</option>
             {(Object.keys(EQUIPMENT) as Equip[]).map((e) => (
               <option key={e} value={e}>
@@ -123,73 +141,59 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
               </option>
             ))}
           </select>
-        </div>
-        <div className="lib-count">
-          <p className="sub" id="libCount" role="status">
-            {found.length === pool.length ? plural(pool.length, "lift") : `${plural(found.length, "lift")} of ${pool.length}`}
-          </p>
-          {gym ? (
-            <label className="lib-chip lib-gym" htmlFor="libGym">
-              <input
-                type="checkbox"
-                id="libGym"
-                checked={!every}
-                onChange={(ev) => {
-                  setEvery(!ev.target.checked);
-                  setShown(SHOWN);
-                }}
-              />
-              <span>My gym</span>
-            </label>
-          ) : null}
-          <select id="libSort" className="ghost tiny" aria-label="Order" value={q.sort} onChange={(ev) => set({ sort: ev.target.value === "az" ? "az" : "common" })}>
+          <select id="libSort" className="ghost" aria-label="Order" value={q.sort} onChange={(ev) => set({ sort: ev.target.value === "az" ? "az" : "common" })}>
             <option value="common">Common first</option>
             <option value="az">A to Z</option>
           </select>
         </div>
+        <p className="label" id="libCount" role="status">
+          {[q.muscle ? MUSCLES[q.muscle] : "", !every && gym ? "only what fits my gym" : "", found.length === pool.length ? plural(pool.length, "lift") : `${plural(found.length, "lift")} of ${pool.length}`].filter(Boolean).join(" · ")}
+        </p>
       </div>
-      <ul className="lib-list" id="libList">
+      <ul className="lib-list list" id="libList">
         {found.slice(0, shown).map((x) => {
           const had = have.has(x.name.toLowerCase()), on = chosen.some((c) => c.id === x.id), away = every && gym && !store.canDo(x);
-          const words = (
-            <span className="lib-t">
-              <span className="lib-n">
-                {x.name}
-                {x.custom ? <span className="lib-tag">Yours</span> : null}
-                {had ? <span className="lib-tag">Added</span> : null}
-                {away ? <span className="lib-tag away">Not in my gym</span> : null}
-              </span>
-              <span className="sub">
-                {equipText(x)} · {muscleText(x)}
-              </span>
-            </span>
-          );
+          const added = had || on, cardio = /bike|cycl|rower|rowing machine|treadmill|elliptical/i.test(x.name);
           return (
-            <li key={x.id}>
-              {ask.many ? (
-                <label className={cx("lib-row", on && "on", had && "had")}>
-                  <input type="checkbox" data-lib={x.id} checked={on || had} disabled={had} onChange={() => toggle(x)} />
-                  {words}
-                </label>
-              ) : (
-                <button type="button" className="lib-row" data-lib={x.id} disabled={had} onClick={() => pick([x])}>
-                  {words}
-                </button>
-              )}
+            <li key={x.id} className={cx("lib-row", on && "on", had && "had")}>
+              <span className={cx("ico-tile", cardio ? "t-steps" : tintOf(store, x.name, { lib: x.id }))} aria-hidden="true">
+                {cardio ? <Bike size={20} /> : <Dumbbell size={20} />}
+              </span>
+              <span className="lib-t">
+                <span className="lib-n">
+                  {x.name}
+                  {x.custom ? <span className="pill">Yours</span> : null}
+                  {away ? <span className="pill warn">Not in my gym</span> : null}
+                </span>
+                <span className="row-d">
+                  {equipText(x)} · {muscleText(x)}
+                </span>
+              </span>
+              <button
+                type="button"
+                className={cx("lib-add", added && "on")}
+                data-lib={x.id}
+                aria-pressed={ask.many ? added : undefined}
+                aria-label={had ? `${x.name}, already added` : ask.many ? (on ? `Remove ${x.name}` : `Add ${x.name}`) : `Pick ${x.name}`}
+                disabled={had}
+                onClick={() => (ask.many ? toggle(x) : pick([x]))}
+              >
+                {added ? <Check size={22} strokeWidth={3} aria-hidden="true" /> : <Plus size={22} aria-hidden="true" />}
+              </button>
             </li>
           );
         })}
         {found.length > shown ? (
-          <li>
-            <button type="button" className="ghost tiny lib-more" id="libMore" onClick={() => setShown(shown + SHOWN * 2)}>
+          <li className="lib-more-li">
+            <button type="button" className="btn btn-sm lib-more" id="libMore" onClick={() => setShown(shown + SHOWN * 2)}>
               Show {Math.min(SHOWN * 2, found.length - shown)} more
             </button>
           </li>
         ) : null}
         {found.length ? null : (
-          <li className="empty">
+          <li className="empty lib-empty">
             {elsewhere
-              ? `Nothing your gym can do matches: untick My gym for ${plural(elsewhere, "lift")} that need${elsewhere === 1 ? "s" : ""} more.`
+              ? `Nothing your gym can do matches: turn off My gym for ${plural(elsewhere, "lift")} that need${elsewhere === 1 ? "s" : ""} more.`
               : ask.create === false
                 ? "Nothing matches."
                 : "Nothing matches. Create it as a lift of your own?"}
@@ -200,12 +204,12 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
         {ask.create === false ? (
           <span />
         ) : (
-          <button type="button" className="ghost" id="libCreate" onClick={() => setMaking(true)}>
+          <button type="button" className="btn" id="libCreate" onClick={() => setMaking(true)}>
             Create a lift
           </button>
         )}
         {ask.many ? (
-          <button type="button" className="primary" id="libAdd" disabled={!chosen.length} onClick={() => pick(chosen)}>
+          <button type="button" className="btn btn-primary" id="libAdd" disabled={!chosen.length} onClick={() => pick(chosen)}>
             {chosen.length ? `Add ${chosen.length}` : "Add"}
           </button>
         ) : null}
@@ -242,7 +246,7 @@ function CustomForm({ name, start, onBack, onSaved }: { name?: string; start: st
         </label>
         <label className="field" htmlFor="libNewEquip">
           <span>Equipment</span>
-          <select id="libNewEquip" name="libNewEquip" className="ghost" defaultValue={own?.equip[0] ?? ""}>
+          <select id="libNewEquip" name="libNewEquip" defaultValue={own?.equip[0] ?? ""}>
             <option value="">None: bodyweight</option>
             {(Object.keys(EQUIPMENT) as Equip[]).map((e) => (
               <option key={e} value={e}>
@@ -253,7 +257,7 @@ function CustomForm({ name, start, onBack, onSaved }: { name?: string; start: st
         </label>
         <label className="field" htmlFor="libNewMuscle">
           <span>Main muscle</span>
-          <select id="libNewMuscle" name="libNewMuscle" className="ghost" defaultValue={own?.primary[0] ?? ""}>
+          <select id="libNewMuscle" name="libNewMuscle" defaultValue={own?.primary[0] ?? ""}>
             <option value="">Not sure</option>
             {(Object.keys(MUSCLES) as Muscle[]).map((m) => (
               <option key={m} value={m}>
@@ -265,23 +269,23 @@ function CustomForm({ name, start, onBack, onSaved }: { name?: string; start: st
         <fieldset className="lib-sec">
           <legend>Other muscles it works (optional)</legend>
           {(Object.keys(MUSCLES) as Muscle[]).map((m) => (
-            <label key={m} className="lib-chip">
+            <label key={m} className="chip lib-chip">
               <input type="checkbox" data-libsec={m} checked={second.includes(m)} onChange={(ev) => setSecond(ev.target.checked ? [...second, m] : second.filter((s) => s !== m))} />
               <span>{MUSCLES[m]}</span>
             </label>
           ))}
         </fieldset>
         {msg ? (
-          <p className="warn" id="libNewMsg" role="alert">
+          <p className="callout caution" id="libNewMsg" role="alert">
             {msg}
           </p>
         ) : null}
       </div>
       <div className="lib-foot">
-        <button type="button" className="ghost" id="libNewBack" onClick={onBack}>
+        <button type="button" className="btn" id="libNewBack" onClick={onBack}>
           Back
         </button>
-        <button type="submit" className="primary" id="libNewSave">
+        <button type="submit" className="btn btn-primary" id="libNewSave">
           Save
         </button>
       </div>

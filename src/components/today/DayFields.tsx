@@ -20,13 +20,17 @@ export function DayFields({ entry: e, health, stepGoal, onSteps, onWeight, onNum
   // One line under both boxes says where the grey numbers came from; in the labels it wrapped and put the boxes out of line.
   const from = [hcSteps != null && `${hcSteps.toLocaleString("en-IN")}\u00a0steps`, hcWeight != null && `${hcWeight}\u00a0kg`].filter(Boolean);
   return (
-    <div className="inputs">
+    <section className="card" aria-labelledby="dayFieldsH">
+      <h2 className="title-sm" id="dayFieldsH">
+        Steps, weight and notes
+      </h2>
+      <div className="fields2">
       <label className="field" htmlFor="steps">
         <span>Steps</span>
         <SyncedInput id="steps" type="number" inputMode="numeric" min="0" step="100" placeholder={hcSteps != null ? String(hcSteps) : "0"} aria-describedby={hcSteps != null ? "hcNote" : undefined} value={e.steps} onChange={(ev) => onSteps(ev.target.value)} />
-        <div className="bar">
+        <span className="meter" style={{ ["--c" as string]: "var(--steps)" }} aria-hidden="true">
           <i style={{ width: `${Math.min(100, (steps / stepGoal) * 100)}%` }} />
-        </div>
+        </span>
       </label>
       <label className="field" htmlFor="weight">
         <span>Body weight (kg)</span>
@@ -45,6 +49,7 @@ export function DayFields({ entry: e, health, stepGoal, onSteps, onWeight, onNum
         <span>Notes / extra exercise</span>
         <SyncedTextarea id="note" placeholder="e.g. 65 jumping jacks, knee felt fine…" value={e.note} autoGrow onChange={(ev) => onNote(ev.target.value)} />
       </label>
-    </div>
+      </div>
+    </section>
   );
 }

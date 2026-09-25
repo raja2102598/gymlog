@@ -1,22 +1,28 @@
-// First run: a new account (nothing logged, no plan saved) chooses a plan before Today, blank or a 3, 4 or 5-day
-// template, and never sees Today on a plan that isn't its own first. An account with logs and no saved plan goes
-// to Today on the default plan, as before. And the plan editor can start over from a template.
+// First run: a new account (nothing logged, no plan saved) chooses a plan before Home, blank or a 3, 4 or 5-day
+// template, and never sees Home or Train on a plan that isn't its own first. An account with logs and no saved plan
+// goes to Home on the default plan, as before. And the plan editor can start over from a template.
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
-import { HOST, flat, open, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
+import { HOST, flat, open, openSetting, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
 
 const template = (id) => JSON.parse(fs.readFileSync(new URL(`../../src/data/templates/${id}.json`, import.meta.url), "utf8"));
 const NAMES = "Blank plan|Full body, 3 days|Upper and lower, 4 days|Five-day split";
 const day = (steps) => ({ exercises: {}, warmup: [], cardio: false, steps, weight: null, note: "" });
 
-/** Records in the page which of these screens were ever on show, however briefly. */
+/** Records in the page which of these screens were ever on show, however briefly: `app` for Home or Train (the old
+ *  Today, mounted only while shown), `chooseView` for the plan picker (always there, hidden when not in use). */
 const watchScreens = (page) =>
   page.addInitScript(() => {
     window.__shown = {};
     new MutationObserver(() => {
-      for (const id of ["appView", "chooseView"]) if (document.getElementById(id)?.hidden === false) window.__shown[id] = true;
+      if (document.getElementById("homeView") || document.getElementById("trainView")) window.__shown.app = true;
+      if (document.getElementById("chooseView")?.hidden === false) window.__shown.chooseView = true;
     }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"] });
   });
+/** Home or Train is on screen. */
+const inApp = (page) => page.evaluate(() => !!(document.getElementById("homeView") || document.getElementById("trainView")));
+/** The lifts in Train's session card, by the names their rows show. */
+const trainLifts = (page) => page.$$eval("#liftRows .lrow-main:not(#cardioRow) .row-tt", (els) => els.map((e) => e.textContent.trim()));
 
 /** Holds back Supabase's answer about the account's saved plan until the returned function is called. */
 async function holdPlan(page) {
@@ -33,7 +39,7 @@ async function holdPlan(page) {
 }
 
 export default async function firstRun({ browser, base, check }) {
-  // ---------- A new account: the plan picker, then Today on the plan it picked ----------
+  // ---------- A new account: the plan picker, then Home on the plan it picked ----------
   {
     const db = { logs: {}, plan: null };
     const auth = session("00000000-0000-4000-8000-000000000071", "2026-09-23T06:00:00Z", "new@example.com");
@@ -44,13 +50,13 @@ export default async function firstRun({ browser, base, check }) {
     await page.goto(base);
     await logsBack;
     await page.waitForTimeout(250);
-    const waiting = await page.evaluate(() => ["bootView", "appView", "chooseView"].map((id) => !document.getElementById(id).hidden));
-    check("until Supabase says whether the account has a plan: the loading placeholder, not Today", waiting.join() === "true,false,false", waiting.join());
+    const waiting = await page.evaluate(() => [!document.getElementById("bootView").hidden, !!document.getElementById("homeView"), !document.getElementById("chooseView").hidden]);
+    check("until Supabase says whether the account has a plan: the loading placeholder, not Home", waiting.join() === "true,false,false", waiting.join());
     release();
     await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
     await page.evaluate(() => document.fonts.ready);
-    check("a new account sees Choose a plan instead of Today, with no tabs", (await flat(page.locator("#chooseView h2"))) === "Choose a plan" && (await page.locator("#appView").isHidden()) && (await page.locator(".tabbar").count()) === 0);
-    check("Today never showed first", !(await page.evaluate(() => window.__shown.appView)));
+    check("a new account sees Choose a plan instead of Home, with no tabs", (await flat(page.locator("#chooseView h1"))) === "Choose a plan" && !(await inApp(page)) && (await page.locator(".tabbar").count()) === 0);
+    check("Home never showed first", !(await page.evaluate(() => window.__shown.app)));
     const cards = await page.$$eval("#chooseView .tpl", (els) => els.map((e) => ({ name: e.querySelector("h3").textContent, sub: e.querySelector(".sub").textContent, id: e.querySelector("button").dataset.template })));
     check(
       "one card per template, blank first, each with a summary and a button",
@@ -73,26 +79,32 @@ export default async function firstRun({ browser, base, check }) {
 
     await page.click('#chooseView [data-template="full-body-3"]');
     await ready(page);
-    const lifts = await page.$$eval("#session ul.ex:not(.cardio) .nm", (els) => els.map((e) => e.textContent.trim()));
+    const homeName = await flat(page.locator("#todayName"));
+    const homeKnee = await page.locator("[data-knee], #kneeNote").count();
+    // Home's strip names each day's session in its label; Train has the day's lifts.
+    const mon = await page.locator("#week .wd").nth(0).getAttribute("aria-label"), tue = await page.locator("#week .wd").nth(1).getAttribute("aria-label");
+    await openTab(page, "train");
+    const lifts = await trainLifts(page);
     check(
-      "picking one lands on Today with that plan's session for the day (Wednesday: Full body B)",
-      (await page.locator("#chooseView").isHidden()) && (await page.textContent("#session h2")) === "Full body B" && lifts.join("|") === template("full-body-3").days[2].exercises.map((x) => x.name).join("|"),
-      lifts.join("|"),
+      "picking one lands on Home with that plan's session for the day (Wednesday: Full body B), its lifts in Train",
+      (await page.locator("#chooseView").isHidden()) && homeName === "Full body B" && (await flat(page.locator("#sessName"))) === "Full body B" && lifts.join("|") === template("full-body-3").days[2].exercises.map((x) => x.name).join("|"),
+      `${homeName} / ${lifts.join("|")}`,
     );
-    check("its week shows in the strip: Monday Full body A, Tuesday Rest", (await page.locator("#week .dchip").nth(0).getAttribute("aria-label")).includes(", Full body A") && (await page.locator("#week .dchip").nth(1).getAttribute("aria-label")).includes(", Rest"));
-    check("no knee scores and no tempo note: they aren't part of this plan", (await page.locator("[data-knee]").count()) === 0 && (await page.locator("#tempoNote").isHidden()));
+    check("its week shows in the strip: Monday Full body A, Tuesday Rest", mon.includes(", Full body A") && tue.includes(", Rest") && (await page.locator("#dayChips .dchip").nth(1).getAttribute("aria-label")).includes(", Rest"), `${mon} / ${tue}`);
+    check("no knee scores and no tempo note: they aren't part of this plan", homeKnee === 0 && (await page.locator("[data-knee]").count()) === 0 && (await page.locator("#kneeCard").count()) === 0 && (await page.locator("#tempoNote").count()) === 0);
     await until(() => db.plan != null);
     check("the choice is saved as the account's plan", isDeepStrictEqual(db.plan, template("full-body-3")) && db.writes.plans === 1, JSON.stringify(db.plan)?.slice(0, 200));
     await shot(page, "firstrun-today", { fullPage: true });
 
-    // The next launch: the phone has the account's plan, so Today doesn't wait on Supabase's answer about it.
+    // The next launch: the phone has the account's plan, so Home doesn't wait on Supabase's answer about it.
+    await openTab(page, "home");
     const releaseAgain = await holdPlan(page);
     await page.reload();
     await ready(page);
-    check("the next launch goes straight to Today on the chosen plan, without waiting to hear about it", (await page.textContent("#session h2")) === "Full body B" && !(await page.evaluate(() => window.__shown.chooseView)));
+    check("the next launch goes straight to Home on the chosen plan, without waiting to hear about it", (await flat(page.locator("#todayName"))) === "Full body B" && !(await page.evaluate(() => window.__shown.chooseView)));
     releaseAgain();
     await page.waitForTimeout(300);
-    check("and stays there once Supabase answers", (await page.locator("#appView").isVisible()) && !(await page.evaluate(() => window.__shown.chooseView)));
+    check("and stays there once Supabase answers", (await page.locator("#homeView").isVisible()) && !(await page.evaluate(() => window.__shown.chooseView)));
     check("only the expected endpoints", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
@@ -132,14 +144,14 @@ export default async function firstRun({ browser, base, check }) {
       (await flat(page.locator("#chooseMsg"))) === "That file couldn’t be imported: it isn’t a Gym Log export. Choose a .json file exported from Gym Log." &&
         (await page.getAttribute("#chooseMsg", "role")) === "status" &&
         (await page.locator("#chooseView").isVisible()) &&
-        (await page.locator("#appView").isHidden()),
+        !(await inApp(page)),
       await flat(page.locator("#chooseMsg")),
     );
     check("nothing is saved to plans before a choice, and no days", db.writes.plans === 0 && db.plan === null && db.writes.logs === 0);
 
     // The first exports, a list of days and no plan: the days come in, and the plan stays the default, unsaved
     await page.setInputFiles("#restoreFile", jsonFile([{ day: "2026-09-21", data: day(9000) }]));
-    await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
+    await page.waitForSelector("#settingsView", { timeout: 15000 });
     await until(() => db.logs["2026-09-21"] != null);
     check("an older export: its days restored, and Settings says so", (await page.textContent("#dataMsg")) === "Imported 1 day." && db.logs["2026-09-21"].steps === 9000, await page.textContent("#dataMsg"));
     check("the picker's restore never asks, and a file without a plan saves none", asked === "" && db.writes.plans === 0 && db.plan === null, asked);
@@ -163,38 +175,42 @@ export default async function firstRun({ browser, base, check }) {
     };
     await ctx.setOffline(true);
     await page.setInputFiles("#restoreFile", jsonFile(backup));
-    await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
+    await page.waitForSelector("#settingsView", { timeout: 15000 });
     const partial = "Imported 1 day and the plan. The Health Connect days couldn’t be saved: import the file again when you’re online.";
     await until(async () => (await page.textContent("#dataMsg")) === partial);
+    // Settings is a pushed screen: its header on top, no tab bar below. Export & backup unfolds by itself.
     const where = await page.evaluate(() => {
-      const d = document.getElementById("setData").getBoundingClientRect(), bar = document.querySelector(".appbar").getBoundingClientRect(), tabs = document.querySelector(".tabbar").getBoundingClientRect();
-      return { top: Math.round(d.top), bottom: Math.round(d.bottom), barBottom: Math.round(bar.bottom), tabsTop: Math.round(tabs.top), focused: document.activeElement?.id };
+      const d = document.getElementById("setData").getBoundingClientRect(), bar = document.querySelector("header.push").getBoundingClientRect();
+      return { top: Math.round(d.top), bottom: Math.round(d.bottom), barBottom: Math.round(bar.bottom), vh: innerHeight, focused: document.activeElement?.id, open: document.getElementById("setDataH").getAttribute("aria-expanded") };
     });
     check(
-      "a backup leaves the picker for Settings, at Your data, in view and focused on what came in",
-      where.top >= where.barBottom && where.bottom <= where.tabsTop && where.focused === "dataMsg" && (await page.locator("#chooseView").isHidden()),
+      "a backup leaves the picker for Settings, at Export & backup (open), in view and focused on what came in",
+      where.top >= where.barBottom - 1 && where.bottom <= where.vh && where.focused === "dataMsg" && where.open === "true" && (await page.locator("#chooseView").isHidden()),
       JSON.stringify(where),
     );
     check("the partial result says what came in and what to do about the rest", (await page.textContent("#dataMsg")) === partial, await page.textContent("#dataMsg"));
-    check("on the way, Today never showed, and the picker didn't come back", !(await page.evaluate(() => window.__shown.appView)) && (await page.locator("#chooseView").isHidden()));
+    check("on the way, Home never showed, and the picker didn't come back", !(await page.evaluate(() => window.__shown.app)) && (await page.locator("#chooseView").isHidden()));
     await ctx.setOffline(false);
     await until(() => db.logs["2026-09-21"] != null && db.plan?.days?.[0]?.name === "Upper A", 10000);
     check("back online, the restored day and plan sync", db.logs["2026-09-21"]?.exercises["Flat DB Press"]?.kg === 30 && db.plan?.days?.[0]?.name === "Upper A", JSON.stringify(db.plan?.days?.map((d) => d.name)));
     check("and the partial result is still there to read", (await page.textContent("#dataMsg")) === partial && (await page.locator("#dataMsg").isVisible()), await page.textContent("#dataMsg"));
-    await openTab(page, "today");
+    // Settings is a pushed screen: its back chevron leaves it, for Home.
+    await page.click("#backBtn");
+    await page.waitForSelector("#homeView");
     await openTab(page, "settings");
+    await openSetting(page, "setData");
     check("once read and left, Settings doesn't show it again", (await page.textContent("#dataMsg")) === "", await page.textContent("#dataMsg"));
     await ctx.close();
   }
 
-  // ---------- An account with logs and no saved plan: Today on the default plan, as before ----------
+  // ---------- An account with logs and no saved plan: Home on the default plan, as before ----------
   {
     const db = { logs: { "2026-09-22": day(6000) }, plan: null };
     const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000073"), db, url: null });
     await watchScreens(page);
     await page.goto(base);
     await ready(page);
-    check("an account with logs but no saved plan: Today on the default plan, never the picker", (await page.textContent("#session h2")) === "Legs" && !(await page.evaluate(() => window.__shown.chooseView)));
+    check("an account with logs but no saved plan: Home on the default plan, never the picker", (await flat(page.locator("#todayName"))) === "Legs" && !(await page.evaluate(() => window.__shown.chooseView)));
     check("and nothing is saved to its plan", db.writes.plans === 0 && db.plan === null);
     await ctx.close();
   }
@@ -206,7 +222,7 @@ export default async function firstRun({ browser, base, check }) {
     await ready(page);
     await openTab(page, "settings");
     await page.click("#planBtn");
-    await page.waitForSelector("#planView:not([hidden])");
+    await page.waitForSelector("#planView");
     await page.fill("#pe_goal", "12000"); // a goal of the account's own, which a template keeps
     await until(() => db.plan?.stepGoal === 12000);
     check(
@@ -244,8 +260,18 @@ export default async function firstRun({ browser, base, check }) {
     );
     page.on("dialog", (d) => d.accept());
     await planDone(page);
-    await openTab(page, "today");
-    check("Today follows: Wednesday is now a rest day, Monday Upper A", /Rest day/.test(await page.textContent("#liftPill")) && (await page.locator("#week .dchip").first().getAttribute("aria-label")).includes(", Upper A"));
+    // Done goes back to Settings, and its back chevron to Home.
+    await page.waitForSelector("#settingsView");
+    await page.click("#backBtn");
+    await page.waitForSelector("#homeView");
+    // Today in Home's week strip opens Train at today.
+    await page.click("#week .wd.today");
+    await page.waitForSelector("#trainView");
+    check(
+      "Train follows: Wednesday is now a rest day, Monday Upper A",
+      (await flat(page.locator("#sessName"))) === "Rest day" && (await page.locator("#dayChips .dchip").first().getAttribute("aria-label")).includes(", Upper A"),
+      await flat(page.locator("#sessName")),
+    );
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }

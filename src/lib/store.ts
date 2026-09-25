@@ -16,6 +16,7 @@ import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
+import { keepRunsInMemory } from "./workout";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
@@ -58,6 +59,9 @@ export interface RestTimer {
   /** Reached zero and said so already (vibrated, marked for screen readers): stays true until skipped or a set
    *  restarts it, so that only happens once. */
   ended: boolean;
+  /** Seconds it was started with, for the rest card's ring and "of M:SS". Missing on timers saved before it was
+   *  kept: the card then works it out from the plan. */
+  sec?: number;
 }
 /** What an import would replace: how many logged days the file has differently, and whether its plan differs. */
 export interface Replacing {
@@ -393,6 +397,7 @@ export class GymStore {
   exitDemo() {
     if (!this.demo) return;
     this.demo = false;
+    keepRunsInMemory(false); // the demo's workout clock goes with it: another go at the sample data starts afresh
     this.sb = this.liveSb;
     this.liveSb = null;
     this.onSignedOut();
@@ -977,6 +982,21 @@ export class GymStore {
   weightOf(k: DayKey): number | null {
     return this.logs[k]?.weight ?? this.health[k]?.weight ?? null;
   }
+  /** The day's water, ml: what was logged with + and −, or else Health Connect's. */
+  waterOf(k: DayKey): number | null {
+    return this.logs[k]?.water ?? this.health[k]?.waterMl ?? null;
+  }
+  /** Adds (or with a negative `ml`, takes off) water for the day, starting from what Health Connect had. */
+  addWater(k: DayKey, ml: number) {
+    const from = this.waterOf(k) ?? 0;
+    this.editDay(
+      k,
+      (n) => {
+        n.water = Math.max(0, Math.round(from + ml));
+      },
+      true,
+    );
+  }
   weightSeries(): S.TrendPoint[] {
     const days = [...new Set([...this.days(), ...Object.keys(this.health)])].sort();
     return S.weightTrend(days.filter((k) => this.weightOf(k) != null).map((k) => [k, +(this.weightOf(k) as number)]));
@@ -1204,7 +1224,7 @@ export class GymStore {
   }
   /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx). */
   startRest(day: DayKey, lift: string, sec: number) {
-    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false };
+    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false, sec };
     this.armRest();
     this.persistRest();
     this.changed();
