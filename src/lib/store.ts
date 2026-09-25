@@ -9,14 +9,14 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
 import { addDays, dayMonth, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { createDemoSupabase } from "./demoSupabase";
-import { CATALOGUE, closeMatches, customLift, EQUIPMENT, exerciseFor, gymCan, gymLacks, libraryLift, libraryNamed, type Equip, type Exercise } from "./library";
-import { DEFAULT_PLAN, normalizeCustom, normalizeGym, normalizePlan, orderBlocks, planBlocks } from "./plan";
+import { CATALOGUE, closeMatches, customLift, EQUIPMENT, exerciseFor, gymCan, gymLacks, isBar, libraryLift, libraryNamed, loadOf, type Equip, type Exercise, type Load } from "./library";
+import { DEFAULT_PLAN, DEFAULT_WEIGHTS, normalizeCustom, normalizeGym, normalizePlan, normalizeWeights, orderBlocks, planBlocks } from "./plan";
 import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
-import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -92,10 +92,6 @@ export const performed = (name: string, r?: LiftLog | null) => r?.swap || name;
 const liftHasData = (r?: LiftLog | null) => !!r && (r.done || !!r.skipped || !!r.swap || setsOf(r).some((s) => s.reps != null || s.kg != null));
 /** Whether `min` working sets have reps logged: warm-ups don't move it any closer. */
 export const setsComplete = (sets: SetLog[], min: number) => sets.filter((s) => S.isStraightSet(s) && (s.reps ?? 0) > 0).length >= min;
-export const stepOf = (x: PlanExercise) => {
-  const v = parseFloat(x.step);
-  return v > 0 ? v : 2.5;
-};
 /** A saved rest timer worth bringing back after a reload or a sign-in: not one that ran out over ten minutes ago,
  *  or was left paused for over an hour, which would only show a stale "Rest over" or countdown. */
 export const liveRest = (r: RestTimer | null | undefined, now = Date.now()): RestTimer | null =>
@@ -787,6 +783,50 @@ export class GymStore {
       p.gym = normalizeGym({ off: g.off, always: list === "always" ? [...rest(g.always), ...ids] : rest(g.always), never: list === "never" ? [...rest(g.never), ...ids] : rest(g.never) });
     });
   }
+  /* ---------- weights ---------- */
+  /** My gym's weights beyond the barbell's: each its default until changed. */
+  weights(): Weights {
+    return this.plan.weights ?? DEFAULT_WEIGHTS;
+  }
+  /** Sets one of My gym's weights, kept in range as the plan is read (normalizeWeights). */
+  setWeight(k: keyof Weights, kg: number) {
+    this.editPlan((p) => {
+      p.weights = normalizeWeights({ ...(p.weights ?? DEFAULT_WEIGHTS), [k]: kg });
+    });
+  }
+  /** What lift `name` is loaded with: the plan lift's own pick (PlanExercise.load), else what the library says its
+   *  equipment is; through the plan's lift of that name when `x` isn't given. Null for a lift that isn't known. */
+  loadOf(name: string, x?: Pick<PlanExercise, "lib" | "load"> | null): Load | null {
+    const y = x === undefined ? this.planLift(name) : x;
+    return y?.load ?? loadOf(this.exerciseOf(name, y ?? null));
+  }
+  /** The bar a lift loaded with `l` goes on, kg, for its plates button and warm-up sets: each bar's own, nothing
+   *  for a machine's plates, and null for what isn't loaded with plates (no plates button). A lift that isn't known
+   *  goes on the barbell, as every lift did before My gym had weights. */
+  barFor(l: Load | null): number | null {
+    if (l === null || l === "barbell") return this.plan.barKg;
+    if (l === "ezbar" || l === "trapbar" || l === "smith") return this.weights()[l];
+    return l === "machine" ? 0 : null;
+  }
+  /** What a lift loaded with `l` can weigh: a bar and pairs of the smallest plate, or dumbbells, a stack, a cable or
+   *  bands in their step from nothing. Null for bodyweight and a lift that isn't known, whose weights aren't
+   *  rounded. */
+  gridFor(l: Load | null): S.Grid | null {
+    if (l === null || l === "body") return null;
+    if (!isBar(l)) return { base: 0, inc: this.weights()[l] };
+    const plates = this.plan.plateKgs.filter((p) => p > 0);
+    return { base: this.barFor(l) ?? 0, inc: plates.length ? 2 * Math.min(...plates) : 2.5 };
+  }
+  /** What was done in plan lift x's place is loaded with: x's, or what it was swapped for (`did`). */
+  loadDone(x: PlanExercise, did: string): Load | null {
+    return did === x.name ? this.loadOf(x.name, x) : this.loadOf(did);
+  }
+  /** What lift x goes up by, kg: its own step, else a step of what it's loaded with, else 2.5 kg. */
+  stepFor(x: PlanExercise, l: Load | null = this.loadOf(x.name, x)): number {
+    const v = parseFloat(x.step);
+    return v > 0 ? v : (this.gridFor(l)?.inc ?? 2.5);
+  }
+
   /** Whether a name is a library lift's or one of your own exactly: then it says what the lift is, and a plan lift
    *  given it keeps no link to another. */
   namesALift(name: string): boolean {
@@ -1042,16 +1082,26 @@ export class GymStore {
   // (its own stored target, once it has one) rather than today's plan, so a rep range or sets change doesn't
   // retroactively call an old session incomplete; the step stays today's, since that part is about what to do next,
   // not what was done then. A knee-sensitive lift holds its weight rather than add to it after a session that was
-  // hard on the knee, whatever the rule; a deload, which only takes weight off, still shows.
+  // hard on the knee, whatever the rule; a deload, which only takes weight off, still shows. A lift with no step of
+  // its own goes up by what its equipment does, to a weight that equipment can make (My gym's weights).
   nextWeight(x: PlanExercise, did: string, k: DayKey): NextWeight | null {
-    const L = this.lastDone(did, k), step = stepOf(x), after = parseInt(x.deloadAfter ?? "", 10);
+    const load = this.loadDone(x, did), step = this.stepFor(x, load);
+    const L = this.lastDone(did, k), after = parseInt(x.deloadAfter ?? "", 10);
+    // Without a step of its own, the weight rounds to what the equipment makes: down for a deload, up for more.
+    const grid = parseFloat(x.step) > 0 ? null : this.gridFor(load);
+    const fit = (r: S.NextStep): S.NextStep => {
+      if (!grid) return r;
+      if (r.rule === "deload") return { ...r, to: S.onGrid((r.from ?? r.to) * (1 - (r.off ?? 0) / 100), grid, "down") };
+      if (r.rule === "percent") return { ...r, to: S.onGrid(((r.oneRm ?? 0) * (r.pct ?? 0)) / 100, grid) };
+      return { ...r, to: S.onGrid(r.to, grid, "up") };
+    };
     if (L && after > 0) {
       const sessions = this.doneBefore(did, k, after).map(({ r }): S.Session => {
         const t = targetOf(r, x);
         return { sets: setsOf(r), reps: t.reps, minSets: minSets(t) };
       });
       const d = S.deloadStep(sessions, after, parseFloat(x.deloadPct ?? "") || 10, step);
-      if (d) return { ...d, day: L.day, held: false };
+      if (d) return { ...fit(d), day: L.day, held: false };
     }
     let r: S.NextStep | null = null;
     if (x.prog === "percent") {
@@ -1062,6 +1112,7 @@ export class GymStore {
       r = (x.prog === "linear" ? S.linearStep : S.readyToAdd)(setsOf(L.r), t.reps, minSets(t), step);
     }
     if (!r) return null;
+    r = fit(r);
     return { ...r, day: L?.day ?? k, held: !!x.knee && !!L && this.kneeBad(L.day) && r.from != null && r.to > r.from };
   }
   // Working sets only: a warm-up never sets a record or counts toward volume.
@@ -1427,9 +1478,10 @@ export class GymStore {
     this.changed();
   }
   resetPlan() {
-    // Your own lifts stay, as they name lifts in your history, and so does My gym, which is where you train.
-    const { custom, gym } = this.plan;
-    this.plan = { ...copy(DEFAULT_PLAN), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}) };
+    // Your own lifts stay, as they name lifts in your history, and so does My gym, which is where you train: its
+    // equipment, and its bars, plates and weights.
+    const { custom, gym, weights, barKg, plateKgs } = this.plan;
+    this.plan = { ...copy(DEFAULT_PLAN), barKg, plateKgs: plateKgs.slice(), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}), ...(weights ? { weights } : {}) };
     this.planChanged(true);
   }
   /** Starts the plan over from a template (src/data/templates): its sessions, lifts, warm-ups and tempo. The goals

@@ -67,6 +67,24 @@ From the name:
 - A barbell squat, bench press, military, shoulder or overhead press, good morning, or a lift done from pins or
   a rack adds `rack`.
 
+### What a lift is loaded with
+
+A lift's equipment also says what its weight is loaded with (`loadOf` in `src/lib/library.ts`), for its bar and
+how it goes up (My gym's weights): the first of a Smith machine, trap bar, EZ bar, barbell, dumbbells,
+kettlebell, cable, machine or band it needs, or bodyweight when it needs none of them (a medicine ball or a sled
+counts as bodyweight too). A lift of your own with no muscles yet, and one the library doesn't know, aren't known:
+they keep the barbell's plates and a 2.5 kg step, as every lift did before, with nothing rounded. A plan lift can
+say otherwise (`PlanExercise.load`, **Loaded with** in the plan editor).
+
+- A bar (barbell, EZ bar, trap bar, Smith machine) takes the gym's plates: its plates button and warm-up sets use
+  its weight, and it goes up by a pair of the smallest plate, from the bar.
+- A machine's plates go on no bar; it goes up by the machines' step.
+- Dumbbells, kettlebells, cables and bands take no plates, and go up by their own step, from nothing.
+- Bodyweight takes no plates, and nothing is rounded.
+
+A suggested weight rounds to what the lift's equipment makes: *Go up to* up, a deload down, and a percentage of a
+1RM and warm-up sets to the nearest. A lift with a step of its own goes up by exactly that, with nothing rounded.
+
 ## Updating it
 
 1. Get free-exercise-db at the commit you want:

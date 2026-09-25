@@ -212,6 +212,22 @@ export function deloadStep(sessions: Session[], after: number, off: number, step
   return { rule: "deload", from: kg, to: Math.round(Math.floor((kg * (1 - off / 100)) / s + 1e-9) * s * 100) / 100, top: range[0], fails, off };
 }
 
+/* ---------- what equipment can weigh ---------- */
+
+/** The weights a kind of equipment makes: `base` and every `inc` above it. A bar is its own weight and pairs of the
+ *  smallest plate; dumbbells, a machine's stack or a cable's go up in their step from nothing. */
+export interface Grid {
+  base: number;
+  inc: number;
+}
+
+// `kg` on grid `g`: the nearest weight it makes, or the next one up or down; never under its lightest, the bar
+// alone or one step.
+export function onGrid(kg: number, g: Grid, how: "near" | "up" | "down" = "near"): number {
+  const n = (kg - g.base) / g.inc, k = how === "up" ? Math.ceil(n - 1e-9) : how === "down" ? Math.floor(n + 1e-9) : Math.round(n);
+  return Math.round(Math.max(g.base > 0 ? g.base : g.inc, g.base + k * g.inc) * 100) / 100;
+}
+
 /* ---------- plates ---------- */
 
 export interface PlateBreakdown {
@@ -267,14 +283,15 @@ const WARMUP_STEPS: readonly { pct: number; reps: number }[] = [
   { pct: 80, reps: 3 },
 ];
 
-// Rounded to the nearest 2.5 kg (a plate pair's smallest common step) and never over the working weight. A barbell
-// lift's warm-ups never go under the bar, which can't be loaded any lighter; a working weight under the bar is a
-// dumbbell or machine lift, so the bar doesn't apply there, and a step that rounds to nothing is left out.
-export function warmupLadder(workingKg: number, barKg: number): WarmupStep[] {
-  const bar = barKg > 0 && workingKg >= barKg ? barKg : 0;
-  return WARMUP_STEPS.map(({ pct, reps }) => ({ pct, reps, kg: Math.min(workingKg, Math.max(bar, Math.round((workingKg * pct) / 100 / 2.5) * 2.5)) })).filter(
-    (s) => s.kg > 0,
-  );
+// Rounded to the nearest weight the equipment makes: the bar and pairs of plates, `inc` kg a pair (2.5 kg, a pair
+// of the smallest usual plate, unless the lift's equipment says otherwise), or `inc` kg steps from nothing with no
+// bar; and never over the working weight. A bar lift's warm-ups never go under the bar, which can't be loaded any
+// lighter; a working weight under the bar can't be on it, so the bar doesn't apply there, and a step that rounds
+// to nothing is left out.
+export function warmupLadder(workingKg: number, barKg: number, inc = 2.5): WarmupStep[] {
+  const bar = barKg > 0 && workingKg >= barKg ? barKg : 0, step = inc > 0 ? inc : 2.5;
+  const near = (kg: number) => Math.round((bar + Math.round((kg - bar) / step) * step) * 100) / 100;
+  return WARMUP_STEPS.map(({ pct, reps }) => ({ pct, reps, kg: Math.min(workingKg, Math.max(bar, near((workingKg * pct) / 100))) })).filter((s) => s.kg > 0);
 }
 
 export type RecordKind = "weight" | "e1rm" | "reps";

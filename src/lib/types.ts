@@ -4,7 +4,7 @@
  * data is one row per (user, day) in table `health_days`, shaped like HealthDay, kept apart from what you
  * type so neither overwrites the other. */
 
-import type { Equip, Muscle } from "./library";
+import type { Equip, Load, Muscle } from "./library";
 
 /** "YYYY-MM-DD" in the phone's local time. */
 export type DayKey = string;
@@ -156,7 +156,8 @@ export interface PlanExercise {
   cue: string;
   /** Warning shown under the lift, e.g. a KNEE NOTE. */
   flag: string;
-  /** kg to add when every set reaches the top of the rep range (2.5 when empty). */
+  /** kg to add when every set reaches the top of the rep range. Empty: what it's loaded with goes up by (My gym's
+   *  weights; GymStore.stepFor), with suggested weights rounded to what that can make. */
   step: string;
   knee: boolean;
   /** Seconds to rest after a set, overriding the plan's default (restSecFor in lib/store.ts). Empty or unset: use
@@ -179,6 +180,9 @@ export interface PlanExercise {
   /** The exercise library's lift this is (lib/library.ts), when its name isn't exactly that lift's: its muscles
    *  and equipment. Left out for a lift of your own, or one named as the library names it. */
   lib?: string;
+  /** What it's loaded with, when the plan editor says: its bar and how it goes up (My gym's weights). Left out to go
+   *  by the equipment the library gives it. */
+  load?: Load;
 }
 
 /** A lift of your own in the exercise library, kept with the plan: the same fields as a library lift, found by
@@ -209,7 +213,8 @@ export interface Plan {
   goalWeight: number | null;
   weeklyRatePct: number | null;
   kneeLimit: number;
-  /** For the plates button on a set, and a lift's warm-up sets. */
+  /** The barbell's weight and the gym's plates, for the plates button on a set and a lift's warm-up sets. The other
+   *  bars take the same plates (Weights). */
   barKg: number;
   plateKgs: number[];
   /** The rest timer's default length, seconds, started when a set's reps are logged. A lift can override it. */
@@ -222,6 +227,8 @@ export interface Plan {
   custom?: CustomExercise[];
   /** My gym: what the library offers. Left out until it's set, when the gym has everything. */
   gym?: Gym;
+  /** My gym's weights beyond the barbell's. Left out until one's changed, when each is its default. */
+  weights?: Weights;
 }
 
 /** My gym: the equipment it hasn't got, so equipment the app adds later starts on, and lifts the library always
@@ -230,4 +237,17 @@ export interface Gym {
   off: Equip[];
   always: string[];
   never: string[];
+}
+
+/** My gym's weights, kg: what the EZ bar, trap bar and Smith machine's bar weigh (the barbell's is Plan.barKg), and
+ *  what dumbbells, kettlebells, machines, cables and bands go up by. */
+export interface Weights {
+  ezbar: number;
+  trapbar: number;
+  smith: number;
+  dumbbell: number;
+  kettlebell: number;
+  machine: number;
+  cable: number;
+  band: number;
 }

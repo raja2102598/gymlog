@@ -1,9 +1,12 @@
-// The plate calculator on a set, and a lift's warm-up sets (RAJ-37): Settings' bar and plates, what the
+// The plate calculator on a set, and a lift's warm-up sets (RAJ-37): My gym's bar and plates, what the
 // plates button shows including leftovers and a weight under the bar, and that warm-up sets never tick off
 // a lift, show a PR badge or set a false record, however heavy they are next to a working set.
-import { flat, liftEl, open, openTab, ready, session, until } from "./harness.mjs";
+import { flat, liftEl, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
 export default async function calculators({ browser, base, check }) {
+  // Legs, with a barbell squat added for the barbell's plates: the default plan's Legs are all machines.
+  const plan = savedPlan();
+  plan.days[2].exercises.push({ name: "Barbell Squat", sets: "3", reps: "5", cue: "", flag: "", step: "", knee: false });
   const db = {
     logs: {
       // Last week's Leg Extension: a record to beat (27 kg), so a much heavier warm-up must never look like one.
@@ -17,14 +20,16 @@ export default async function calculators({ browser, base, check }) {
       },
       "2026-09-23": { exercises: {}, warmup: [], cardio: false, steps: 8000, weight: null, note: "" },
     },
-    plan: null,
+    plan,
   };
   const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000060"), db });
   await ready(page);
   check("today is Wednesday, Legs", (await page.locator("#session h2").textContent()) === "Legs");
 
-  // ---------- Settings: bar weight and plates, defaulted, sanitized, saved with the rest of Training ----------
+  // ---------- My gym: bar weight and plates, defaulted, sanitized, saved with the plan ----------
   await openTab(page, "settings");
+  await page.click("#gymBtn");
+  await page.waitForSelector("#gymView:not([hidden])");
   check(
     "bar weight and plates default to a 20 kg bar and a standard plate set",
     (await page.locator("#barKg").inputValue()) === "20" && (await page.locator("#plateKgs").inputValue()) === "25, 20, 15, 10, 5, 2.5, 1.25",
@@ -37,34 +42,42 @@ export default async function calculators({ browser, base, check }) {
   check("typed plates are sanitised: junk dropped, no duplicates, heaviest first", JSON.stringify(db.plan.plateKgs) === JSON.stringify([20, 10, 5]), JSON.stringify(db.plan?.plateKgs));
   await page.fill("#barKg", "15");
   await until(() => db.plan?.barKg === 15);
-  check("bar weight saved with the plan, like the rest of Training", db.plan.barKg === 15);
+  check("bar weight saved with the plan", db.plan.barKg === 15);
+  await page.click("#gymDone");
+  await page.waitForSelector("#settingsView:not([hidden])");
 
   // ---------- the plates button: what can be loaded on the bar and plates just set, and what's left over ----------
   await openTab(page, "today");
-  const curl = liftEl(page, "Hamstring Curl");
-  const kgBox = curl.locator('input[data-set$=":0:kg"]');
-  const platesBtn = curl.locator(".set").first().locator(".plates-btn");
+  const squat = liftEl(page, "Barbell Squat");
+  const kgBox = squat.locator('input[data-set$=":0:kg"]');
+  const platesBtn = squat.locator(".set").first().locator(".plates-btn");
   check("plates button is disabled until a weight is typed", await platesBtn.isDisabled());
   await kgBox.fill("100");
   check(
     "plates button enables once a weight is typed, and is named for the lift and set",
-    !(await platesBtn.isDisabled()) && (await platesBtn.getAttribute("aria-label")) === "Plates for Hamstring Curl, set 1",
+    !(await platesBtn.isDisabled()) && (await platesBtn.getAttribute("aria-label")) === "Plates for Barbell Squat, set 1",
     await platesBtn.getAttribute("aria-label"),
   );
   const pbox = await platesBtn.boundingBox();
   check("plates button meets the 44px touch target", pbox.width >= 44 && pbox.height >= 44, `${Math.round(pbox.width)}x${Math.round(pbox.height)}`);
   await platesBtn.click();
   check("plates button marks itself open", (await platesBtn.getAttribute("aria-expanded")) === "true");
-  let info = await flat(curl.locator(".plates-info"));
+  let info = await flat(squat.locator(".plates-info"));
   check("100 kg on today's 15 kg bar and 20/10/5 plates: what's left over shows too", info === "20 kg × 2 per side, 15 kg bar: 95 kg. 5 kg left over.", info);
   await kgBox.fill("55");
-  info = await flat(curl.locator(".plates-info"));
+  info = await flat(squat.locator(".plates-info"));
   check("55 kg loads exactly: no leftover sentence", info === "20 kg per side, 15 kg bar: 55 kg.", info);
   await kgBox.fill("10");
-  info = await flat(curl.locator(".plates-info"));
+  info = await flat(squat.locator(".plates-info"));
   check("a weight under the bar says so instead of a plate breakdown", info === "The bar alone is 15 kg, more than 10 kg.", info);
   await platesBtn.click();
-  check("plates button closes again, taking its breakdown with it", (await platesBtn.getAttribute("aria-expanded")) === "false" && (await curl.locator(".plates-info").count()) === 0);
+  check("plates button closes again, taking its breakdown with it", (await platesBtn.getAttribute("aria-expanded")) === "false" && (await squat.locator(".plates-info").count()) === 0);
+  // A machine takes plates with no bar.
+  const curl = liftEl(page, "Hamstring Curl");
+  await curl.locator('input[data-set$=":0:kg"]').fill("100");
+  await curl.locator(".set").first().locator(".plates-btn").click();
+  info = await flat(curl.locator(".plates-info"));
+  check("a machine's plates name no bar", info === "20 kg × 2, 10 kg per side: 100 kg.", info);
 
   // ---------- warm-up sets: 40/60/80% of a working weight, logged apart from the working sets ----------
   const ext = liftEl(page, "Leg Extension");

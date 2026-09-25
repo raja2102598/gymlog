@@ -15,7 +15,7 @@ export default async function gym({ browser, base, check }) {
 
   // --- Settings → My gym
   await openTab(page, "settings");
-  check("Settings says the gym has everything to begin with", (await flat(page.locator("#gymRowD"))) === "All the equipment: the library offers every lift");
+  check("Settings says the gym has everything to begin with", (await flat(page.locator("#gymRowD"))) === "Equipment, bars, plates and weights: the library offers every lift");
   await page.click("#gymBtn");
   await page.waitForSelector("#gymView:not([hidden])");
   check("My gym opens as a page of its own", (await flat(page.locator("#screenTitle"))) === "My gym" && (await page.locator("nav.tabbar").count()) === 0);
@@ -55,7 +55,7 @@ export default async function gym({ browser, base, check }) {
   await until(() => db.plan?.gym?.off?.length === 1);
   await page.click("#gymDone");
   await page.waitForSelector("#settingsView:not([hidden])");
-  check("Done goes back to Settings, which says what's offered", (await flat(page.locator("#gymRowD"))) === "Your equipment: the library offers 490 of 657 lifts");
+  check("Done goes back to Settings, which says what's offered", (await flat(page.locator("#gymRowD"))) === "Equipment, bars, plates and weights: the library offers 490 of 657 lifts");
 
   // --- the library in the plan editor
   await page.click("#planBtn");

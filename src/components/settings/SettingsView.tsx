@@ -3,8 +3,7 @@ import type { PermissionState } from "@capacitor/core";
 import { ArrowSquareOut, CaretRight, DownloadSimple, SignOut, UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Segmented } from "@/components/health/parts";
-import { Group, Text } from "@/components/settings/parts";
-import { SyncedInput } from "@/components/ui/SyncedField";
+import { Group, NumField, Text } from "@/components/settings/parts";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { useSpeechSupported, useVoicePref } from "@/hooks/useVoice";
@@ -185,43 +184,28 @@ function HealthNative() {
 
 /* ---------- goals ---------- */
 
-type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl" | "barKg" | "restSec";
+type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl" | "restSec";
 /** Plan fields saved to the nearest half, not the nearest whole number. */
-const HALVES: GoalKey[] = ["sleepGoalH", "barKg"];
+const HALVES: GoalKey[] = ["sleepGoalH"];
 
-/** A number saved straight to the plan: saved as you type once it's in range (the same ranges the plan is read
- *  with, lib/plan.ts). Used for the daily goals, and for the bar weight under Training. */
+/** A number saved straight to the plan: the daily goals, and the rest timer under Training. */
 function Goal({ id, label, k, min, max, step, decimal = false }: { id: string; label: string; k: GoalKey; min: number; max: number; step: number; decimal?: boolean }) {
   const store = useGym();
-  const [bad, setBad] = useState(false);
   return (
-    <label className="field" htmlFor={id}>
-      <span>{label}</span>
-      <SyncedInput
-        id={id}
-        type="number"
-        inputMode={decimal ? "decimal" : "numeric"}
-        min={min}
-        max={max}
-        step={step}
-        value={store.plan[k]}
-        aria-invalid={bad || undefined}
-        aria-describedby={bad ? `${id}Err` : undefined}
-        onChange={(ev) => {
-          const v = +ev.target.value, ok = ev.target.value !== "" && v >= min && v <= max;
-          setBad(!ok);
-          if (ok)
-            store.editPlan((p: Plan) => {
-              p[k] = HALVES.includes(k) ? Math.round(v * 2) / 2 : Math.round(v);
-            });
-        }}
-      />
-      {bad ? (
-        <span className="err" id={`${id}Err`}>
-          From {min.toLocaleString("en-IN")} to {max.toLocaleString("en-IN")}
-        </span>
-      ) : null}
-    </label>
+    <NumField
+      id={id}
+      label={label}
+      value={store.plan[k]}
+      min={min}
+      max={max}
+      step={step}
+      decimal={decimal}
+      onSave={(v) =>
+        store.editPlan((p: Plan) => {
+          p[k] = HALVES.includes(k) ? Math.round(v * 2) / 2 : Math.round(v);
+        })
+      }
+    />
   );
 }
 
@@ -247,11 +231,7 @@ function Goals() {
 
 /* ---------- training ---------- */
 
-/** Plate weights typed separated by commas or spaces: positive numbers, no duplicates, heaviest first. */
-const parsePlates = (s: string): number[] => [...new Set(s.split(/[,\s]+/).map((t) => parseFloat(t)).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
-
-/** The plan editor and My gym links, and the bar and plates the plates button and warm-up calculator use, synced
- *  with the plan like the rest of training (a bar and plates belong to your gym, not to this phone). */
+/** The plan editor and My gym links, and the rest timer's length, synced with the plan like the rest of training. */
 function Training({ onEditPlan, onOpenGym }: { onEditPlan: () => void; onOpenGym: () => void }) {
   const store = useGym();
   const all = store.library(), can = all.filter((x) => store.canDo(x)).length;
@@ -262,31 +242,16 @@ function Training({ onEditPlan, onOpenGym }: { onEditPlan: () => void; onOpenGym
         <CaretRight className="pref-go" size={18} aria-hidden="true" />
       </ViewLink>
       <ViewLink className="pref-row pref-tap" id="gymBtn" href="#gym" onOpen={onOpenGym}>
-        <Text id="gymRow" title="My gym" sub={can === all.length ? "All the equipment: the library offers every lift" : `Your equipment: the library offers ${can} of ${all.length} lifts`} />
+        <Text id="gymRow" title="My gym" sub={`Equipment, bars, plates and weights: the library offers ${can === all.length ? "every lift" : `${can} of ${all.length} lifts`}`} />
         <CaretRight className="pref-go" size={18} aria-hidden="true" />
       </ViewLink>
       <div className="pref-row pref-col">
         <div className="pref-goals">
-          <Goal id="barKg" label="Bar weight (kg)" k="barKg" min={1} max={50} step={0.5} decimal />
           <Goal id="restSec" label="Rest after a set (seconds)" k="restSec" min={5} max={600} step={5} />
-          <label className="field wide" htmlFor="plateKgs">
-            <span>Available plates (kg), separated by commas</span>
-            <SyncedInput
-              id="plateKgs"
-              inputMode="decimal"
-              value={store.plan.plateKgs.join(", ")}
-              onChange={(ev) => {
-                const v = ev.target.value;
-                store.editPlan((p: Plan) => {
-                  p.plateKgs = parsePlates(v);
-                });
-              }}
-            />
-          </label>
         </div>
-        <p className="note" id="gearMsg" aria-live="polite">
-          For the plates button on a set, a lift’s warm-up sets, and the rest timer. A lift can also override the
-          rest length on its own row in the plan editor. {store.planMsg}
+        <p className="note" id="restMsg" aria-live="polite">
+          The rest timer, started when a set’s reps are logged. A lift can override it on its own row in the plan
+          editor. {store.planMsg}
         </p>
       </div>
       <div className="pref-row pref-col">

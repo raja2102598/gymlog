@@ -7,7 +7,9 @@ import type { SetLog } from "@/lib/types";
 
 interface Props {
   id: string;
+  /** The bar the lift goes on (0 for none), and what its weights go up by: My gym's, for what it's loaded with. */
   barKg: number;
+  inc: number;
   /** A working weight to suggest first: the progression hint, or last time's heaviest working set. */
   defaultKg: number | null;
   /** Warm-up sets already logged for this lift today, oldest first. */
@@ -16,14 +18,15 @@ interface Props {
   onRemove: () => void;
 }
 
-/** A lift's warm-up sets: 40, 60 and 80 percent of a working weight you type, with rep counts, and one tap to
- *  log all three as warm-up sets (WU-marked, so they never count toward the planned sets or a record). Folded
- *  to a button until opened, like "How to". */
-export function WarmupCalc({ id, barKg, defaultKg, warmSets, onLog, onRemove }: Props) {
+/** A lift's warm-up sets: 40, 60 and 80 percent of a working weight you type, rounded to what its equipment makes,
+ *  with rep counts, and one tap to log all three as warm-up sets (WU-marked, so they never count toward the planned
+ *  sets or a record). Folded to a button until opened, like "How to". */
+export function WarmupCalc({ id, barKg, inc, defaultKg, warmSets, onLog, onRemove }: Props) {
   const [open, setOpen] = useState(false);
-  const [kgText, setKgText] = useState(() => (defaultKg != null ? String(defaultKg) : ""));
-  const kg = num(kgText);
-  const ladder = kg != null && kg > 0 ? warmupLadder(kg, barKg) : [];
+  // The suggestion, until you type: it follows the lift's next weight, which a change to the plan or My gym moves.
+  const [typed, setTyped] = useState<string | null>(null);
+  const kgText = typed ?? (defaultKg != null ? String(defaultKg) : ""), kg = num(kgText);
+  const ladder = kg != null && kg > 0 ? warmupLadder(kg, barKg, inc) : [];
   return (
     <div className="wset">
       <button type="button" className="ghost tiny" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
@@ -42,7 +45,7 @@ export function WarmupCalc({ id, barKg, defaultKg, warmSets, onLog, onRemove }: 
               step="0.5"
               placeholder="e.g. 60"
               value={kgText}
-              onChange={(ev) => setKgText(ev.target.value)}
+              onChange={(ev) => setTyped(ev.target.value)}
             />
           </label>
           {ladder.length ? (

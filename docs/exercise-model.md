@@ -25,7 +25,8 @@ rewriting every logged day for little gain today. What names cost is handled whe
   Every plan lift of that name points the same way, as they share one history. A lift of your own
   (`Plan.custom`) is found by its name. A lift named exactly as a library lift needs no link, and one neither
   knows is simply untagged. Logged days never hold the link, so pointing a lift elsewhere changes nothing in
-  its history. See [exercise-library.md](exercise-library.md).
+  its history. A plan lift can also say what it's loaded with (`PlanExercise.load`), for its bar and step, when
+  that isn't what the library's equipment says. See [exercise-library.md](exercise-library.md).
 
 **Later.** If two lifts with one name ever need telling apart, or a lift needs following across languages, a
 stable ID can be added to each plan lift and logged entry then, with names kept as the display text. The

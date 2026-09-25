@@ -106,6 +106,8 @@
    stretch the sets either side of it */
 .plates-btn{color:var(--muted)}
 .plates-btn[aria-expanded="true"]{color:var(--ink);background:var(--chip)}
+/* a lift that takes no plates (dumbbells, a cable) keeps the button's column, so its sets line up with others' */
+.plates-none{width:44px}
 /* a set's menu: its kind, and its effort when the plan logs one */
 .setmenu{grid-column:1/-1;display:grid;gap:10px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
 .setmenu .field{max-width:200px}

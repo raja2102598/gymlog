@@ -1,7 +1,7 @@
 import planJson from "@/data/plan.json";
 import { DOW } from "./dates";
-import { EQUIPMENT, isEquip, isMuscle, MUSCLES, type Equip, type Muscle } from "./library";
-import type { CustomExercise, Gym, Plan } from "./types";
+import { EQUIPMENT, isEquip, isLoad, isMuscle, MUSCLES, type Equip, type Muscle } from "./library";
+import type { CustomExercise, Gym, Plan, Weights } from "./types";
 
 type Loose = Record<string, unknown> | null | undefined;
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -14,6 +14,12 @@ const DEFAULT_BAR_KG = 20;
 const DEFAULT_PLATE_KGS = [25, 20, 15, 10, 5, 2.5, 1.25];
 /** The rest timer's default, until Settings says otherwise: long enough for most working sets. */
 export const DEFAULT_REST_SEC = 90;
+/** My gym's weights, until it says otherwise: the usual EZ bar and trap bar, a Smith machine's bar counted as
+ *  nothing (most are counterbalanced), and what dumbbells, kettlebells, machines, cables and bands usually go up by. */
+export const DEFAULT_WEIGHTS: Weights = { ezbar: 10, trapbar: 20, smith: 0, dumbbell: 2, kettlebell: 4, machine: 2.5, cable: 2.5, band: 5 };
+/** What My gym takes for each, kg: a bar from nothing to 50, a step from 0.25 to 20. */
+export const WEIGHT_LIMITS = { bar: [0, 50], step: [0.25, 20] } as const;
+const BAR_KEYS = ["ezbar", "trapbar", "smith"] as const;
 
 // Fills gaps and drops unnamed lifts so a hand-edited or partial plan can't break rendering. `d` is the
 // default plan to fall back on (none while the default itself is being read).
@@ -57,6 +63,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
             ...(x?.prog === "linear" || x?.prog === "percent" ? { prog: x.prog as "linear" | "percent" } : {}),
             ...Object.fromEntries((["oneRm", "pct", "deloadAfter", "deloadPct"] as const).filter((k) => x?.[k] != null).map((k) => [k, str(x?.[k])])),
             ...(typeof x?.lib === "string" && x.lib ? { lib: x.lib } : {}),
+            ...(isLoad(x?.load) ? { load: x.load } : {}),
           }))
           .filter((x) => x.name)
           // The first lift has none before it to be a superset with.
@@ -66,6 +73,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
     }),
     ...(Array.isArray(q.custom) ? { custom: normalizeCustom(q.custom) } : d?.custom ? { custom: normalizeCustom(d.custom) } : {}),
     ...(q.gym && typeof q.gym === "object" ? { gym: normalizeGym(q.gym) } : d?.gym ? { gym: normalizeGym(d.gym) } : {}),
+    ...(q.weights && typeof q.weights === "object" ? { weights: normalizeWeights(q.weights) } : d?.weights ? { weights: normalizeWeights(d.weights) } : {}),
   };
 }
 
@@ -92,6 +100,17 @@ export function normalizeGym(v: unknown): Gym {
   const ids = (l: unknown) => [...new Set((Array.isArray(l) ? l : []).map((s) => str(s).trim()).filter(Boolean))];
   const never = ids(g.never);
   return { off: inOrder<Equip>(EQUIPMENT, isEquip, g.off), always: ids(g.always).filter((id) => !never.includes(id)), never };
+}
+
+/** My gym's weights: each in range (WEIGHT_LIMITS), or its default. */
+export function normalizeWeights(v: unknown): Weights {
+  const w = (v ?? {}) as Record<string, unknown>;
+  return Object.fromEntries(
+    (Object.keys(DEFAULT_WEIGHTS) as (keyof Weights)[]).map((k) => {
+      const [lo, hi] = WEIGHT_LIMITS[(BAR_KEYS as readonly string[]).includes(k) ? "bar" : "step"];
+      return [k, within(w[k], lo, hi) ?? DEFAULT_WEIGHTS[k]];
+    }),
+  ) as unknown as Weights;
 }
 
 /** A day's lifts in blocks: lifts joined to the one before them (PlanExercise.superset) make one block, a

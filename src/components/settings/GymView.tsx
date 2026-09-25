@@ -1,16 +1,96 @@
 "use client";
 import { X } from "@phosphor-icons/react";
 import { useLibrary } from "@/components/library/LibraryContext";
-import { Group, Text } from "@/components/settings/parts";
+import { Group, NumField, Text } from "@/components/settings/parts";
+import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import { plural } from "@/lib/format";
 import { EQUIP_GROUPS, EQUIPMENT, equipText, type Equip, type Exercise } from "@/lib/library";
+import { WEIGHT_LIMITS } from "@/lib/plan";
+import type { Weights } from "@/lib/types";
 
 type List = "always" | "never";
 const LISTS: Record<List, { title: string; sub: string }> = {
   always: { title: "Always offer", sub: "Offered even when your gym hasn’t got what they’re listed with." },
   never: { title: "Never offer", sub: "Not offered, even when your gym has what they need." },
 };
+
+/** The bars beyond the barbell, and what the rest go up by, as My gym's weights list them. */
+const BARS: [keyof Weights, string][] = [
+  ["ezbar", "EZ bar (kg)"],
+  ["trapbar", "Trap bar (kg)"],
+  ["smith", "Smith machine (kg)"],
+];
+const STEPS: [keyof Weights, string][] = [
+  ["dumbbell", "Dumbbells (kg)"],
+  ["kettlebell", "Kettlebells (kg)"],
+  ["machine", "Machines (kg)"],
+  ["cable", "Cables (kg)"],
+  ["band", "Bands (kg)"],
+];
+
+/** Plate weights typed separated by commas or spaces: positive numbers, no duplicates, heaviest first. */
+const parsePlates = (s: string): number[] => [...new Set(s.split(/[,\s]+/).map((t) => parseFloat(t)).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
+
+/** What each kind of equipment can load, saved with the plan: each bar's weight and the gym's plates, for a lift's
+ *  plates and warm-up sets, and what dumbbells, kettlebells, machines, cables and bands go up by. A lift goes up by
+ *  what it's loaded with, unless it has a step of its own, and its suggested weights round to what that makes. */
+function WeightsGroup() {
+  const store = useGym();
+  const w = store.weights(), [bLo, bHi] = WEIGHT_LIMITS.bar, [sLo, sHi] = WEIGHT_LIMITS.step;
+  return (
+    <Group title="Weights" id="gymWeights">
+      <div className="pref-row pref-col">
+        <Text id="gw_bars" title="Bars and plates" sub="What each bar weighs, loaded with the plates your gym has" />
+        <div className="pref-goals">
+          <NumField
+            id="barKg"
+            label="Barbell (kg)"
+            value={store.plan.barKg}
+            min={1}
+            max={50}
+            step={0.5}
+            decimal
+            onSave={(v) =>
+              store.editPlan((p) => {
+                p.barKg = Math.round(v * 2) / 2;
+              })
+            }
+          />
+          {BARS.map(([k, label]) => (
+            <NumField key={k} id={`bar_${k}`} label={label} value={w[k]} min={bLo} max={bHi} step={0.5} decimal onSave={(v) => store.setWeight(k, v)} />
+          ))}
+          <label className="field wide" htmlFor="plateKgs">
+            <span>Plates (kg), separated by commas</span>
+            <SyncedInput
+              id="plateKgs"
+              inputMode="decimal"
+              value={store.plan.plateKgs.join(", ")}
+              onChange={(ev) => {
+                const v = ev.target.value;
+                store.editPlan((p) => {
+                  p.plateKgs = parsePlates(v);
+                });
+              }}
+            />
+          </label>
+        </div>
+        <p className="note" id="gearMsg">
+          For the plates button on a set and a lift’s warm-up sets. A lift on a bar goes up by a pair of the smallest
+          plate. {store.planMsg}
+        </p>
+      </div>
+      <div className="pref-row pref-col">
+        <Text id="gw_steps" title="Steps" sub="What the rest go up by: a lift adds its equipment’s step, unless it has one of its own, and its suggested weights round to it" />
+        <div className="pref-goals">
+          {STEPS.map(([k, label]) => (
+            <NumField key={k} id={`step_${k}`} label={label} value={w[k]} min={sLo} max={sHi} step={0.25} decimal onSave={(v) => store.setWeight(k, v)} />
+          ))}
+        </div>
+      </div>
+    </Group>
+  );
+}
 
 /** My gym: the equipment your gym has, so the exercise library, a swap's suggestions and a free-form workout offer
  *  lifts you can do, and lifts always or never offered whatever the equipment says. Each change saves with the
@@ -81,6 +161,7 @@ export function GymView({ onDone }: { onDone: () => void }) {
           })}
         </Group>
       ))}
+      <WeightsGroup />
       <Group title="Lifts" id="gymLifts">
         {(["always", "never"] as const).map((list) => (
           <div key={list} className="pref-row pref-col" id={`gym_${list}`}>

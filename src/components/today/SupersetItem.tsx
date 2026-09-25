@@ -45,7 +45,7 @@ function SupersetLift({ m, tag, sel, menu, setMenu, focusNext, onOpenLift, moves
       ) : (
         <>
           <ProgHint next={m.next} />
-          <WarmupCalc id={`wset${m.i}`} barKg={store.plan.barKg} defaultKg={m.defaultWorkingKg} warmSets={m.warmSets} onLog={m.logWarmups} onRemove={m.removeWarmups} />
+          <WarmupCalc id={`wset${m.i}`} barKg={m.bar ?? 0} inc={m.inc} defaultKg={m.defaultWorkingKg} warmSets={m.warmSets} onLog={m.logWarmups} onRemove={m.removeWarmups} />
         </>
       )}
       {voiceOn ? (

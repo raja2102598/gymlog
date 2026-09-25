@@ -83,6 +83,10 @@ export interface LiftModel {
   rows: number;
   /** The warm-up calculator's working weight to start from: the progression hint, or last time's top set. */
   defaultWorkingKg: number | null;
+  /** The bar what was done goes on, for its plates and warm-up sets (null: it takes no plates), and what its
+   *  warm-up sets round to: My gym's weights for what it's loaded with. */
+  bar: number | null;
+  inc: number;
   /** How to do the lift, when there's anything to say and it's done as planned. */
   cue: string;
   edit: (fn: (r: LiftLog) => void, immediate: boolean) => void;
@@ -102,6 +106,7 @@ export interface LiftModel {
 export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, entry: DayLog, onReps: (m: LiftModel, j: number) => void): LiftModel {
   const { x, name, extra } = item, r: Partial<LiftLog> = entry.exercises[name] || {};
   const did = performed(name, r as LiftLog), last = store.lastDone(did, sel), next = r.skipped ? null : store.nextWeight(x, did, sel);
+  const load = store.loadDone(x, did);
   // What this lift was actually asked for on this day: its own stored target once logged, so its row count and
   // "sets done" reading don't drift under it if the plan's sets or reps change later; today's plan otherwise.
   const target = targetOf(r, x);
@@ -125,6 +130,8 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
     min,
     rows: Math.max(min, sets.length),
     defaultWorkingKg: next && !next.held ? next.to : last ? topKg(setsOf(last.r)) : null,
+    bar: store.barFor(load),
+    inc: store.gridFor(load)?.inc ?? 2.5,
     // How to do the lift: folded, since it's the same every week. Warnings (e.g. a KNEE NOTE) always show.
     cue: r.skipped || r.swap ? "" : x.cue,
     edit,
@@ -632,13 +639,17 @@ export function SetRow({
           onChange={(ev) => m.setField(j, "kg", ev.target.value)}
         />
         <span className="u">kg</span>
-        <PlatesButton id={platesId} label={`Plates for ${did}, set ${j + 1}`} open={platesOpen} disabled={s.kg == null || s.kg <= 0} onToggle={onPlates} />
+        {m.bar != null ? (
+          <PlatesButton id={platesId} label={`Plates for ${did}, set ${j + 1}`} open={platesOpen} disabled={s.kg == null || s.kg <= 0} onToggle={onPlates} />
+        ) : (
+          <span className="plates-none" aria-hidden="true" />
+        )}
         <span className="prb" title={prTitle(pr)}>
           PR
         </span>
       </div>
       {menuOpen ? <SetMenu id={menuId} s={s} effort={store.plan.effort} onChange={(patch) => m.setInfo(j, patch)} /> : null}
-      {platesOpen && s.kg != null && s.kg > 0 ? <PlatesInfo id={platesId} kg={s.kg} barKg={store.plan.barKg} plateKgs={store.plan.plateKgs} /> : null}
+      {platesOpen && m.bar != null && s.kg != null && s.kg > 0 ? <PlatesInfo id={platesId} kg={s.kg} barKg={m.bar} plateKgs={store.plan.plateKgs} /> : null}
     </>
   );
 }
@@ -659,7 +670,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   ) : (
     <>
       <ProgHint next={m.next} />
-      <WarmupCalc id={`wset${i}`} barKg={store.plan.barKg} defaultKg={m.defaultWorkingKg} warmSets={m.warmSets} onLog={m.logWarmups} onRemove={m.removeWarmups} />
+      <WarmupCalc id={`wset${i}`} barKg={m.bar ?? 0} inc={m.inc} defaultKg={m.defaultWorkingKg} warmSets={m.warmSets} onLog={m.logWarmups} onRemove={m.removeWarmups} />
       <div className="sets">
         {Array.from({ length: rows }, (_, j) => (
           <SetRow

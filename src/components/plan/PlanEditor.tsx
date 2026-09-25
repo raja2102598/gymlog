@@ -7,7 +7,7 @@ import { useLibrary } from "@/components/library/LibraryContext";
 import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
-import { equipText, equipWords, muscleText, type Exercise } from "@/lib/library";
+import { equipText, equipWords, isLoad, loadOf, LOADS, muscleText, type Exercise, type Load } from "@/lib/library";
 import { planBlocks } from "@/lib/plan";
 import type { ProgRule } from "@/lib/stats";
 import type { Plan, PlanExercise } from "@/lib/types";
@@ -87,6 +87,13 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       const x = p.days[editDay].exercises[j];
       if (v === "linear" || v === "percent") x.prog = v;
       else delete x.prog;
+    });
+  // Going by the library's equipment is the default, so it's left out of the plan rather than stored.
+  const setLoad = (j: number, v: string) =>
+    edit((p) => {
+      const x = p.days[editDay].exercises[j];
+      if (isLoad(v)) x.load = v;
+      else delete x.load;
     });
   const setSuperset = (j: number, on: boolean) =>
     edit((p) => {
@@ -309,7 +316,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                 </label>
                 {liftField(x, j, "flag", "Warning note (optional)", { placeholder: "e.g. KNEE NOTE: pain-free range only…" })}
                 <div className="pe-row2">
-                  {liftField(x, j, "step", "Add per increase (kg)", { placeholder: "2.5", inputMode: "decimal" })}
+                  <LoadField x={x} j={j} onPick={(v) => setLoad(j, v)} />
+                  {liftField(x, j, "step", "Add per increase (kg)", { placeholder: String(store.stepFor({ ...x, step: "" })), inputMode: "decimal" })}
                   <label className="pe-check" htmlFor={`pe_x${j}_knee`}>
                     <input
                       type="checkbox"
@@ -566,6 +574,26 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
         />
       </section>
     </>
+  );
+}
+
+/** What a plan lift is loaded with, for its bar and how it goes up (My gym's weights): what the library's equipment
+ *  for it says, until another is picked. */
+function LoadField({ x, j, onPick }: { x: PlanExercise; j: number; onPick: (v: string) => void }) {
+  const store = useGym();
+  const lib = loadOf(store.exerciseOf(x.name, x));
+  return (
+    <label className="field" htmlFor={`pe_x${j}_load`}>
+      <span>Loaded with</span>
+      <select id={`pe_x${j}_load`} data-pload={j} value={x.load ?? ""} onChange={(ev) => onPick(ev.target.value)}>
+        <option value="">{lib ? `${LOADS[lib]} (library)` : "Not set"}</option>
+        {(Object.keys(LOADS) as Load[]).map((l) => (
+          <option key={l} value={l}>
+            {LOADS[l]}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

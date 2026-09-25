@@ -255,6 +255,36 @@ export function gymCan(x: Exercise, gym?: Gym | null): boolean {
 /** The equipment a lift needs that your gym hasn't got: none for one it always offers. */
 export const gymLacks = (x: Exercise, gym?: Gym | null): Equip[] => (!gym || gym.always.includes(x.id) ? [] : x.equip.filter((e) => gym.off.includes(e)));
 
+/* ---------- what a lift is loaded with ---------- */
+
+/** What a lift's weight is loaded with, as the plan editor lists it, for its bar and how it goes up (My gym's
+ *  weights): the bars, which take the gym's plates, then what goes up in steps, then nothing to load. */
+export const LOADS = {
+  barbell: "Barbell",
+  ezbar: "EZ bar",
+  trapbar: "Trap bar",
+  smith: "Smith machine",
+  dumbbell: "Dumbbells",
+  kettlebell: "Kettlebell",
+  machine: "Machine",
+  cable: "Cable",
+  band: "Resistance band",
+  body: "Bodyweight",
+} as const;
+export type Load = keyof typeof LOADS;
+export type Bar = "barbell" | "ezbar" | "trapbar" | "smith";
+export const isLoad = (v: unknown): v is Load => typeof v === "string" && Object.hasOwn(LOADS, v);
+export const isBar = (l: Load | null): l is Bar => l === "barbell" || l === "ezbar" || l === "trapbar" || l === "smith";
+// A lift listed with more than one takes the first: a Smith machine before a machine, dumbbells before a cable.
+const FIRST: readonly Equip[] = ["smith", "trapbar", "ezbar", "barbell", "dumbbell", "kettlebell", "cable", "machine", "band"];
+/** What a lift is loaded with, by its equipment: "body" when it's none of those (bodyweight, a medicine ball, a
+ *  sled). Null when that isn't known: no lift, or one of your own still untagged. */
+export function loadOf(x: Exercise | null | undefined): Load | null {
+  if (!x) return null;
+  const l = FIRST.find((e) => x.equip.includes(e)) as Load | undefined;
+  return l ?? (x.custom && !x.primary.length ? null : "body");
+}
+
 /* ---------- how a lift reads ---------- */
 
 /** A label in the middle of a sentence: "trap bar", and still "EZ bar". */
