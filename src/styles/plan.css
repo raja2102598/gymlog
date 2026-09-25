@@ -16,7 +16,7 @@
 .pe-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 76px;gap:8px}
 .pe-row2{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
 .pe-row2 .field{flex:0 1 160px}
-.pe-row2 .pe-load{flex-basis:228px}
+.pe-row2 .pe-load{flex-basis:252px}
 .pe-prog{display:grid;gap:8px}
 .pe-prog summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;list-style:none;font:var(--type-body-strong);font-size:15px}
 .pe-prog summary::-webkit-details-marker{display:none}

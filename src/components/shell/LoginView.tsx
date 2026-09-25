@@ -101,7 +101,7 @@ export function LoginView({ hidden }: { hidden: boolean }) {
         {emailOpen ? (
           <form id="loginForm" className="login" onSubmit={submit}>
             <p className="sub" id="loginHow">
-              {mode === "link" ? "We’ll email you a sign-in link. No password needed." : "Use the password you set in Settings."}
+              {mode === "link" ? "A sign-in link comes to your email. No password needed." : "Use the password you set in Settings."}
             </p>
             <label className="field" htmlFor="email">
               <span>Email</span>

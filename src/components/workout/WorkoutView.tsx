@@ -186,7 +186,7 @@ export function WorkoutView({ day, startAt, onClose, onFinish, onOpenLift, menu,
           </Button>
           {nextName ? (
             <button type="button" className="btn btn-quiet btn-block" id="nextEx" onClick={() => go(idx + 1)}>
-              Next: {nextName}
+              <span className="nx">Next: {nextName}</span>
               <ChevronRight size={16} aria-hidden="true" />
             </button>
           ) : null}

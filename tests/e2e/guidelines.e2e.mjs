@@ -1,8 +1,9 @@
-// Vercel's Web Interface Guidelines: tabs and pages the Back button understands, landmarks and a skip link,
-// focus rings you can see, long names, empty states, asking before replacing data, a backup that restores an
-// account, and the sticky sync bar keeping clear of a focused field.
+// Vercel's Web Interface Guidelines: tabs (Home, Train, Progress, Health) and pushed pages (Settings from Home's
+// avatar, a Health metric, the plan editor) the Back button understands, landmarks and a skip link, focus rings you
+// can see, long names, empty states, asking before replacing data, a backup that restores an account, and the sticky
+// sync bar keeping clear of a focused field.
 import fs from "node:fs";
-import { K, NOW, flat, open, openTab, ready, session, until } from "./harness.mjs";
+import { K, NOW, flat, open, openSetting, openTab, openWorkout, ready, session, until } from "./harness.mjs";
 
 export const covers = [
   "src/components/health/HealthView.tsx",
@@ -25,18 +26,18 @@ function logs() {
 export default async function guidelines({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000041", "2026-08-26T05:00:00Z", "t@example.com");
 
-  // ---------- A mouse and keyboard: landmarks, focus, hover, and views in the address ----------
+  // ---------- A mouse and keyboard: landmarks, focus, hover, and screens in the address ----------
   {
     const db = { logs: logs(), plan: null };
     const { ctx, page } = await open(browser, base, { auth, db, mobile: false });
     await ready(page);
     const land = await page.evaluate(() => ({
       main: document.querySelectorAll("main").length,
-      banner: document.querySelectorAll("header.appbar h1").length,
+      banner: [...document.querySelectorAll("header.head h1")].filter((e) => e.getClientRects().length).length,
       nav: document.querySelector("nav.tabbar")?.getAttribute("aria-label"),
       current: [...document.querySelectorAll(".tabbar [aria-current=page]")].map((e) => e.id),
     }));
-    check("one main landmark, a header with the screen's name, the tabs a labelled nav with Today current", land.main === 1 && land.banner === 1 && land.nav === "Sections" && land.current.join() === "tabToday", JSON.stringify(land));
+    check("one main landmark, a header with the screen's name, the tabs a labelled nav with Home current", land.main === 1 && land.banner === 1 && land.nav === "Main" && land.current.join() === "tabHome", JSON.stringify(land));
     await page.keyboard.press("Tab");
     const skip = await page.evaluate(() => ({ cls: document.activeElement.className, w: document.activeElement.getBoundingClientRect().width, text: document.activeElement.textContent }));
     check("the first Tab shows a Skip to content link", /\bskip\b/.test(skip.cls) && skip.w > 40 && skip.text === "Skip to content", JSON.stringify(skip));
@@ -44,17 +45,57 @@ export default async function guidelines({ browser, base, check }) {
     check("the skip link moves focus to the main content, without changing the address", (await page.evaluate(() => document.activeElement.id)) === "main" && !page.url().includes("#"), page.url());
     check("the skip link hides again once focus moves on", (await page.$eval(".skip", (e) => e.getBoundingClientRect().width)) <= 1);
 
-    // the selected day is announced as pressed, and keyboard focus on another day doesn't look the same
-    const pressed = await page.$$eval("#week .dchip", (els) => els.map((e) => e.getAttribute("aria-pressed")));
+    // the tabs are links with addresses, and Back walks back the way you came
+    const hrefs = await page.$$eval(".tabbar a", (els) => els.map((e) => e.getAttribute("href")));
+    check("the tabs are real links, and so are Settings (the avatar) and the day's activity", hrefs.join(" ") === "./ #train #progress #health" && (await page.getAttribute("#settingsBtn", "href")) === "#settings" && (await page.getAttribute("#homeActivity", "href")) === "#health", hrefs.join(" "));
+    const entries = await page.evaluate(() => history.length);
+    await openTab(page, "progress");
+    check("Progress: its own address, and its tab marked current", page.url().endsWith("/#progress") && (await page.getAttribute("#tabProgress", "aria-current")) === "page" && (await page.getAttribute("#tabHome", "aria-current")) === null, page.url());
+    await page.goBack();
+    await page.waitForSelector("#homeView");
+    check("Back from a tab returns to Home (it used to close the app)", (await page.locator("#homeView").isVisible()) && !page.url().includes("#"), page.url());
+    await page.goForward();
+    await page.waitForSelector("#dashView");
+    check("Forward opens Progress again", page.url().endsWith("/#progress"));
+    await openTab(page, "health");
+    check("one tab to another replaces it: no pile of entries", page.url().endsWith("/#health") && (await page.evaluate(() => history.length)) === entries + 1, page.url());
+    await page.goBack();
+    await page.waitForSelector("#homeView");
+    check("so Back from the second tab goes to Home, not the first", !page.url().includes("#"), page.url());
+    await page.goForward();
+    await page.waitForSelector("#healthView");
+    await openTab(page, "home");
+    await until(() => !page.url().includes("#"));
+    check("the Home tab steps back rather than adding an entry", (await page.locator("#homeView").isVisible()) && (await page.evaluate(() => history.length)) === entries + 1, page.url());
+    await page.goForward();
+    await page.waitForSelector("#healthView");
+    check("after the Home tab, Forward still reopens the tab you left", page.url().endsWith("/#health"));
+
+    // a page under a tab: its own address, a back arrow, no tabs; Back returns to the tab
+    check("with no Health Connect data, Health says where it comes from", /Gym Log Android app/.test(await flat(page.locator("#healthEmpty"))));
+    await page.goto(base + "#health/sleep");
+    await page.waitForSelector("#healthView #hRange");
+    check("a Health page: its title, a back arrow and no tabs", (await page.textContent("#screenTitle")) === "Sleep" && (await page.locator("#backBtn").isVisible()) && (await page.locator(".tabbar").count()) === 0);
+    await page.click("#backBtn");
+    await page.waitForSelector(".tabbar");
+    check("its back arrow goes to Health", page.url().endsWith("/#health") && (await page.textContent("#screenTitle")) === "Health", page.url());
+
+    // Train: the selected day is announced as pressed, and keyboard focus on another day doesn't look the same
+    await openTab(page, "train");
+    const pressed = await page.$$eval("#dayChips .dchip", (els) => els.map((e) => e.getAttribute("aria-pressed")));
     check("the selected day is marked pressed for screen readers", pressed.filter((p) => p === "true").length === 1 && pressed[2] === "true", pressed.join(","));
-    await page.focus("#week .dchip:nth-child(1)");
+    await page.focus("#dayChips .dchip:nth-child(1)");
     await page.keyboard.press("Tab");
     await page.keyboard.press("Shift+Tab");
     const rings = await page.evaluate(() => {
-      const c = (e) => getComputedStyle(e).outlineColor;
-      return { focused: c(document.activeElement), selected: c(document.querySelector("#week .dchip.sel")), same: document.activeElement === document.querySelector("#week .dchip.sel") };
+      const o = (e) => ({ c: getComputedStyle(e).outlineColor, s: getComputedStyle(e).outlineStyle, w: getComputedStyle(e).outlineWidth, off: getComputedStyle(e).outlineOffset });
+      return { focused: o(document.activeElement), selected: o(document.querySelector("#dayChips .dchip.sel")), same: document.activeElement === document.querySelector("#dayChips .dchip.sel") };
     });
-    check("keyboard focus on another day: ink focus ring, the selected day's ring turns grey", !rings.same && rings.focused === "rgb(21, 23, 27)" && rings.selected === "rgb(138, 145, 156)", JSON.stringify(rings));
+    check(
+      "keyboard focus on another day: a 2px brand focus ring, set off by 2px; the selected day has none",
+      !rings.same && rings.focused.c === "rgb(194, 65, 12)" && rings.focused.s === "solid" && rings.focused.w === "2px" && rings.focused.off === "2px" && rings.selected.s === "none",
+      JSON.stringify(rings),
+    );
 
     // the warm-up row's focus ring isn't clipped by its card
     await page.focus("#wuToggle");
@@ -64,60 +105,31 @@ export default async function guidelines({ browser, base, check }) {
     check("warm-up toggle: its focus ring shows inside the card", wu.overflow === "visible" && wu.offset === "-2px" && wu.style === "solid", JSON.stringify(wu));
 
     // hover and touch
-    const before = await page.$eval("#todayB", (e) => getComputedStyle(e).backgroundColor);
-    await page.hover("#todayB");
+    const look = (e) => `${getComputedStyle(e).backgroundColor} ${getComputedStyle(e).filter}`;
+    const before = await page.$eval("#startBtn", look);
+    await page.hover("#startBtn");
     await page.waitForTimeout(200);
-    const after = await page.$eval("#todayB", (e) => getComputedStyle(e).backgroundColor);
+    const after = await page.$eval("#startBtn", look);
     check("buttons change colour under the mouse", before !== after, `${before} → ${after}`);
-    check("taps don't wait for a double-tap zoom", (await page.$eval("#todayB", (e) => getComputedStyle(e).touchAction)) === "manipulation");
+    check("taps don't wait for a double-tap zoom", (await page.$eval("#startBtn", (e) => getComputedStyle(e).touchAction)) === "manipulation" && (await page.$eval("#dayChips .dchip", (e) => getComputedStyle(e).touchAction)) === "manipulation");
 
-    // the tabs are links with addresses, and Back walks back the way you came
-    const hrefs = await page.$$eval(".tabbar a", (els) => els.map((e) => e.getAttribute("href")));
-    check("the tabs are real links", hrefs.join(" ") === "./ #health #progress #settings" && (await page.getAttribute("#toDash", "href")) === "#progress", hrefs.join(" "));
-    const entries = await page.evaluate(() => history.length);
-    await openTab(page, "progress");
-    check("Progress: its own address, and its tab marked current", page.url().endsWith("/#progress") && (await page.getAttribute("#tabProgress", "aria-current")) === "page" && (await page.getAttribute("#tabToday", "aria-current")) === null, page.url());
-    await page.goBack();
-    await page.waitForSelector("#appView:not([hidden])");
-    check("Back from a tab returns to Today (it used to close the app)", (await page.locator("#appView").isVisible()) && !page.url().includes("#"), page.url());
-    await page.goForward();
-    await page.waitForSelector("#dashView:not([hidden])");
-    check("Forward opens Progress again", page.url().endsWith("/#progress"));
-    await openTab(page, "health");
-    check("one tab to another replaces it: no pile of entries", page.url().endsWith("/#health") && (await page.evaluate(() => history.length)) === entries + 1, page.url());
-    await page.goBack();
-    await page.waitForSelector("#appView:not([hidden])");
-    check("so Back from the second tab goes to Today, not the first", !page.url().includes("#"), page.url());
-    await page.goForward();
-    await page.waitForSelector("#healthView:not([hidden])");
-    await openTab(page, "today");
-    await until(() => !page.url().includes("#"));
-    check("the Today tab steps back rather than adding an entry", (await page.locator("#appView").isVisible()) && (await page.evaluate(() => history.length)) === entries + 1, page.url());
-    await page.goForward();
-    await page.waitForSelector("#healthView:not([hidden])");
-    check("after the Today tab, Forward still reopens the tab you left", page.url().endsWith("/#health"));
-
-    // a page under a tab: its own address, a back arrow, no tabs; Back returns to the tab
-    check("with no Health Connect data, Health says where it comes from", /Gym Log Android app/.test(await flat(page.locator("#healthEmpty"))));
-    await page.goto(base + "#health/sleep");
-    await page.waitForSelector("#healthView:not([hidden])");
-    check("a Health page: its title, a back arrow and no tabs", (await page.textContent("#screenTitle")) === "Sleep" && (await page.locator("#backBtn").isVisible()) && (await page.locator(".tabbar").count()) === 0);
-    await page.click("#backBtn");
-    await page.waitForSelector(".tabbar");
-    check("its back arrow goes to Health", page.url().endsWith("/#health") && (await page.textContent("#screenTitle")) === "Health", page.url());
-
-    // the plan editor: opened from Settings, Back saves and returns there
+    // the plan editor: opened from Settings (Home's avatar), Back saves and returns there
     await openTab(page, "settings");
+    check("Settings is a page with a back arrow to Home, and no tabs", page.url().endsWith("/#settings") && (await page.getAttribute("#backBtn", "aria-label")) === "Back to Home" && (await page.locator(".tabbar").count()) === 0, page.url());
     check("Edit plan is a link to #plan", (await page.getAttribute("#planBtn", "href")) === "#plan");
     await page.click("#planBtn");
-    check("Edit plan has its own address and a back arrow, lit under Settings", page.url().endsWith("/#plan") && (await page.locator("#planView").isVisible()) && (await page.locator("#backBtn").isVisible()), page.url());
+    await page.waitForSelector("#planView");
+    check("Edit plan has its own address and a back arrow", page.url().endsWith("/#plan") && (await page.locator("#planView").isVisible()) && (await page.locator("#backBtn").isVisible()), page.url());
     await page.fill("#pe_tempo", "4:0:1:0");
     await page.goBack();
-    await page.waitForSelector("#settingsView:not([hidden])");
+    await page.waitForSelector("#settingsView");
     await until(() => db.plan?.tempo === "4:0:1:0");
     check("Back from the plan editor returns to Settings and saves the plan", page.url().endsWith("/#settings") && db.plan?.tempo === "4:0:1:0", page.url());
-    await openTab(page, "today");
-    check("the edited plan shows on Today", /4:0:1:0/.test(await page.textContent("#tempoNote")));
+    await page.click("#backBtn");
+    await page.waitForSelector("#homeView");
+    check("Settings' back arrow returns to Home", !page.url().includes("#"), page.url());
+    await openTab(page, "train");
+    check("the edited plan shows in Train", /4:0:1:0/.test(await page.textContent("#tempoNote")));
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
@@ -126,24 +138,24 @@ export default async function guidelines({ browser, base, check }) {
   {
     const db = { logs: logs(), plan: null };
     const { ctx, page } = await open(browser, base, { auth, db, url: base + "#dashboard" });
-    await page.waitForSelector("#dashView:not([hidden])", { timeout: 15000 });
+    await page.waitForSelector("#dashView", { timeout: 15000 });
     check("the old #dashboard address opens Progress after sign-in", (await page.locator("#dashWeight").isVisible()) && (await page.getAttribute("#tabProgress", "aria-current")) === "page");
-    await openTab(page, "today");
+    await openTab(page, "home");
     await until(() => !page.url().includes("#"));
-    check("Today from there cleans the address", (await page.locator("#appView").isVisible()) && !page.url().includes("#"), page.url());
+    check("Home from there cleans the address", (await page.locator("#homeView").isVisible()) && !page.url().includes("#"), page.url());
     await ctx.close();
   }
   {
     const db = { logs: logs(), plan: null, health: { "2026-09-23": { steps: 8421, sleepMin: 432 } } };
     const { ctx, page } = await open(browser, base, { auth, db, url: base + "#health/steps" });
-    await page.waitForSelector("#healthView:not([hidden]) #hChart", { timeout: 15000 });
+    await page.waitForSelector("#healthView #hChart", { timeout: 15000 });
     check("a link to a Health page opens it after sign-in", (await page.textContent("#screenTitle")) === "Steps");
     await page.goBack();
     await page.waitForSelector(".tabbar");
-    check("Back from it goes to Health, then Today, as if you'd tapped your way there", page.url().endsWith("/#health") && (await page.locator("#activity").isVisible()), page.url());
+    check("Back from it goes to Health, then Home, as if you'd tapped your way there", page.url().endsWith("/#health") && (await page.locator("#activity").isVisible()), page.url());
     await page.goBack();
-    await page.waitForSelector("#appView:not([hidden])");
-    check("…and then Today", !page.url().includes("#"), page.url());
+    await page.waitForSelector("#homeView");
+    check("…and then Home", !page.url().includes("#"), page.url());
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
@@ -161,10 +173,23 @@ export default async function guidelines({ browser, base, check }) {
     const db = { logs: l, plan };
     const { ctx, page } = await open(browser, base, { auth, db, width: 360, height: 800 });
     await ready(page);
-    const w = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
-    check("very long names wrap: no sideways scroll at 360px", w.sw <= w.cw, JSON.stringify(w));
+    const wide = () =>
+      page.evaluate(() => ({
+        sw: document.documentElement.scrollWidth,
+        cw: document.documentElement.clientWidth,
+        over: [...document.querySelectorAll("body *")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().right > document.documentElement.clientWidth + 0.5).map((e) => e.id || e.closest("[id]")?.id).slice(0, 2),
+      }));
+    const home = await wide();
+    check("very long names wrap on Home: no sideways scroll at 360px", home.sw <= home.cw && (await page.textContent("#todayName")) === "Legsandglutesandcalvesdayextralongname", JSON.stringify(home));
+    await openTab(page, "train");
+    const train = await wide();
+    check("…and in Train, with the swap and the skip reason", train.sw <= train.cw && /Smithmachinesquat/.test(await flat(page.locator("#liftRows"))) && /machinewasbusy/.test(await flat(page.locator("#liftRows"))), JSON.stringify(train));
     check("a plan with no warm-ups shows no warm-up card", (await page.locator(".wu").count()) === 0);
     check("no tempo, no empty tempo note", await page.locator("#tempoNote").isHidden());
+    await openWorkout(page, 0);
+    const workout = await wide();
+    // (The next exercise, under Complete set, is the swapped lift's long name.)
+    check("…and in the workout", workout.sw <= workout.cw && /Supercalifragilistic/.test(await flat(page.locator(".ex-name"))), JSON.stringify(workout));
     await ctx.close();
   }
 
@@ -174,6 +199,7 @@ export default async function guidelines({ browser, base, check }) {
     const { ctx, page } = await open(browser, base, { auth, db });
     await ready(page);
     await openTab(page, "settings");
+    await openSetting(page, "setData");
     const gap = await page.evaluate(() => Math.round(document.querySelector("#dataMsg").getBoundingClientRect().height));
     check("Settings: no blank row under Import while there's no message", gap === 0, `${gap}px`);
     check("Settings: export and import results are announced", (await page.getAttribute("#dataMsg", "role")) === "status");
@@ -199,9 +225,11 @@ export default async function guidelines({ browser, base, check }) {
     await until(async () => /couldn’t be imported/.test(await page.textContent("#dataMsg")));
     check("import: a wrong file says what to do next", /Choose a \.json file exported from Gym Log\.$/.test(await page.textContent("#dataMsg")), await page.textContent("#dataMsg"));
     page.on("dialog", (d) => d.accept());
-    await openTab(page, "today");
+    await page.click("#backBtn");
+    await page.waitForSelector("#homeView");
 
-    // removing a set asks only when the set has numbers in it
+    // removing a set, in the workout, asks only when the set has numbers in it
+    await openWorkout(page, 0);
     await page.click('[data-addset="0"]');
     let removeAsk = "";
     page.removeAllListeners("dialog");
@@ -241,6 +269,7 @@ export default async function guidelines({ browser, base, check }) {
       const { ctx, page } = await open(browser, base, { auth, db });
       await ready(page);
       await openTab(page, "settings");
+      await openSetting(page, "setData");
       const [json] = await Promise.all([page.waitForEvent("download"), page.click("#exportBtn")]);
       backupText = fs.readFileSync(await json.path(), "utf8");
       const backup = JSON.parse(backupText);
@@ -280,13 +309,13 @@ export default async function guidelines({ browser, base, check }) {
       const db = { logs: {}, plan: null, health: { "2026-09-22": { steps: 7100 } } };
       const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000042", "2026-09-01T00:00:00Z", "new@example.com"), db });
       await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
-      check("a new account: the plan picker, with Restore a backup, and no Health Connect card", (await page.locator("#chooseRestore").isVisible()) && (await page.locator("#healthToday").count()) === 0);
+      check("a new account: the plan picker, with Restore a backup, and no tabs yet", (await page.locator("#chooseRestore").isVisible()) && (await page.locator(".tabbar").count()) === 0);
       page.removeAllListeners("dialog");
       let asked = "";
       page.on("dialog", (d) => ((asked = d.message()), d.accept()));
       const logWrites = db.writes.logs;
       await page.setInputFiles("#restoreFile", jsonFile(backupText));
-      await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
+      await page.waitForSelector("#settingsView", { timeout: 15000 });
       await until(async () => /^Imported/.test(await page.textContent("#dataMsg")));
       await until(() => Object.keys(db.logs).length === 29 && db.plan?.tempo === "4:0:1:0");
       check("import: the picker's restore doesn't ask: a new account has nothing to replace", asked === "", asked);
@@ -301,17 +330,25 @@ export default async function guidelines({ browser, base, check }) {
         db.writes.health === 1 && db.health["2026-09-23"]?.sleepMin === 432 && db.health["2026-09-22"].steps === 7100,
         JSON.stringify(db.health),
       );
-      await openTab(page, "today");
-      check("the restored plan and Health Connect day show on Today", /4:0:1:0/.test(await page.textContent("#tempoNote")) && (await page.locator("#healthToday").count()) === 1 && /7 h 12 min ?asleep/.test(await flat(page.locator("#healthToday"))));
+      // Home's timeline has last night's sleep, from the restored Health Connect day; Train has the plan's tempo.
+      await page.click("#backBtn");
+      await page.waitForSelector("#homeView");
+      const slept = async () => (await page.locator("#timeline").count()) === 1 && /7 h 12 min sleep/.test(await flat(page.locator("#timeline")));
+      check("the restored Health Connect day shows on Home", await slept(), await flat(page.locator("#homeView")));
+      await openTab(page, "train");
+      check("the restored plan shows in Train", /4:0:1:0/.test(await page.textContent("#tempoNote")));
       // It comes back from the database, with this device's copy cleared
       await page.evaluate(() => localStorage.removeItem("gymlog.health.v1"));
       await page.reload();
-      await ready(page);
-      await until(async () => (await page.locator("#healthToday").count()) === 1);
-      check("the restored Health Connect day is still there after a reload, from the database", (await page.locator("#healthToday").count()) === 1 && /7 h 12 min ?asleep/.test(await flat(page.locator("#healthToday"))));
+      await page.waitForSelector("#trainView", { timeout: 15000 });
+      await until(async () => (await page.locator("#status").textContent()) === "Synced");
+      await openTab(page, "home");
+      await until(slept);
+      check("the restored Health Connect day is still there after a reload, from the database", await slept());
 
       // The first exports, a bare list of days, still import, and leave the plan alone
       await openTab(page, "settings");
+      await openSetting(page, "setData");
       await page.setInputFiles("#importFile", jsonFile([{ day: "2026-07-01", data: { exercises: {}, warmup: [], cardio: true, steps: 5000, weight: null, note: "" } }]));
       // Your data says what came in once the write is answered, which is after the database has the day.
       await until(async () => db.logs["2026-07-01"] != null && (await page.textContent("#dataMsg")) !== "");
@@ -326,26 +363,32 @@ export default async function guidelines({ browser, base, check }) {
     const db = { logs: logs(), plan: null };
     const { ctx, page } = await open(browser, base, { auth, db, mobile: false });
     await ready(page);
+    await openTab(page, "train");
     db.failWrites = true;
-    await page.fill("#s0_0_r", "10");
+    await page.fill("#steps", "9000");
     await page.waitForSelector("#syncBar:not([hidden])", { timeout: 8000 });
+    // Steps sits just under the bar; the knee score before it in the tab order (today is a knee day) is under the bar
+    // until the page scrolls.
     await page.evaluate(() => {
-      const el = document.querySelector("#s1_0_r");
-      window.scrollBy(0, el.getBoundingClientRect().top - 150);
+      const el = document.querySelector("#steps"), bar = document.querySelector("#syncBar").getBoundingClientRect();
+      window.scrollBy(0, el.getBoundingClientRect().top - (bar.bottom + 10));
       el.focus({ preventScroll: true });
     });
+    const under = await page.evaluate(() => document.querySelector('[data-knee^="kneeAfter:"][tabindex="0"]').getBoundingClientRect().top < document.querySelector("#syncBar").getBoundingClientRect().bottom);
     await page.keyboard.press("Shift+Tab");
     const r = await page.evaluate(() => {
       const f = document.activeElement.getBoundingClientRect(), b = document.querySelector("#syncBar").getBoundingClientRect();
-      return { focused: document.activeElement.getAttribute("aria-label"), top: Math.round(f.top), barBottom: Math.round(b.bottom) };
+      return { focused: document.activeElement.dataset.knee, top: Math.round(f.top), barBottom: Math.round(b.bottom) };
     });
-    check("Shift+Tab to a control under the sync bar scrolls it into view", r.top >= r.barBottom, JSON.stringify(r));
+    check("Shift+Tab to a control under the sync bar scrolls it into view", under && /^kneeAfter:/.test(r.focused) && r.top >= r.barBottom, JSON.stringify({ under, ...r }));
 
-    // with a mouse, skipping a lift puts the cursor in the reason box
+    // with a mouse, skipping a lift (in the workout's ··· menu) puts the cursor in the reason box
+    db.failWrites = false;
+    await openWorkout(page, 1);
     await page.click('[data-more="1"]');
     await page.click('[data-skip="1"]');
     await until(() => page.evaluate(() => document.activeElement?.dataset.reason !== undefined));
-    check("with a mouse, skipping focuses the reason box", await page.evaluate(() => document.activeElement?.dataset.reason !== undefined));
+    check("with a mouse, skipping focuses the reason box", await page.evaluate(() => document.activeElement?.id === "reason1"));
     await ctx.close();
   }
 
@@ -353,11 +396,14 @@ export default async function guidelines({ browser, base, check }) {
   {
     const { ctx, page } = await open(browser, base, { auth: null, scheme: "dark" });
     await page.waitForSelector("#loginView:not([hidden])");
+    await page.click("#emailBtn");
+    await page.waitForSelector("#loginForm");
     const email = await page.$eval("#email", (e) => ({ name: e.name, spell: e.getAttribute("spellcheck"), auto: e.autocomplete }));
     check("sign-in: the email box has a name, no spellcheck, email autofill", email.name === "email" && email.spell === "false" && email.auto === "email", JSON.stringify(email));
-    check("sign-in: the button says what it does, in the second person", (await flat(page.locator("#loginBtn"))) === "Send sign-in link" && !/\bwe\b/i.test(await flat(page.locator("#loginView"))));
+    const signin = await flat(page.locator("#loginView"));
+    check("sign-in: the button says what it does, in the second person", (await flat(page.locator("#loginBtn"))) === "Send sign-in link" && !/\bwe\b/i.test(signin), signin.match(/[^.]*\bwe\b[^.]*\./i)?.[0] ?? "");
     const colours = await page.evaluate(() => ({ meta: document.querySelector('meta[name="theme-color"][media*="dark"]').content, bg: getComputedStyle(document.body).backgroundColor }));
-    check("dark mode: the browser bar matches the page", colours.meta === "#121417" && colours.bg === "rgb(18, 20, 23)", JSON.stringify(colours));
+    check("dark mode: the browser bar matches the page", colours.meta.toUpperCase() === "#0E0F11" && colours.bg === "rgb(14, 15, 17)", JSON.stringify(colours));
     check("the app's name isn't machine-translated", (await page.getAttribute("h1", "translate")) === "no");
     await ctx.close();
   }

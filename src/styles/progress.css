@@ -51,3 +51,9 @@
 .hist td:first-child{white-space:normal}
 .hist .hs{font:600 12px/16px var(--font-sans);color:var(--ink-muted)}
 #dashMuscles,#dashKnee,#dashStrength{overflow-x:auto}
+/* the whole row opens the lift: its name's link reaches over the sparkline and numbers */
+.lifts li{position:relative}
+.lifts .ln::after{content:"";position:absolute;inset:0}
+/* the muscles table fits a 320px screen: its column headers wrap */
+.musc-t th,.musc-t td{padding:9px 4px}
+.musc-t thead th{white-space:normal}

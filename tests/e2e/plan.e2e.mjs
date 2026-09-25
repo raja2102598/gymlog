@@ -2,7 +2,7 @@
 // name that already has history of its own or clashes with another lift on the same day, and the plain rename
 // when there's no history yet to lose.
 import fs from "node:fs";
-import { K, flat, liftEl, open, openTab, planDone, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until } from "./harness.mjs";
 
 // It opens a renamed lift's page, so it runs with the other suites that do when that page or its charts change.
 export const covers = ["src/components/dashboard/LiftDetail.tsx", "src/components/health/Bars.tsx", "src/components/health/Trend.tsx", "src/lib/scale.ts"];
@@ -63,25 +63,32 @@ export default async function plan({ browser, base, check }) {
   );
   page.on("dialog", (d) => d.accept());
 
-  // --- Today: the renamed lift carries its numbers and its go-up hint, the old name is gone
+  // --- Train and the workout: the renamed lift carries its numbers and its go-up hint, the old name is gone
   await planDone(page);
-  await openTab(page, "today");
-  const renamed = liftEl(page, "Leg Press Machine");
+  await page.click("#backBtn");
+  await page.waitForSelector("#homeView");
+  await openTab(page, "train");
+  const todayNames = (await page.locator("#liftRows .lrow-main").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
+  check("the old name is gone from Train", todayNames.length > 0 && !todayNames.some((t) => /^Leg Press\b(?! Machine)/.test(t)), todayNames.join(", "));
+  await openWorkout(page, "Leg Press Machine");
+  const renamed = page.locator("#workoutView section.ex-card");
   check(
-    "Today shows it under the new name, with last time's sets carried over",
-    /Last 12, 12, 12 × 50 kg · 16\/09/.test(await flat(renamed.locator(".hint"))),
-    await flat(renamed.locator(".hint")),
+    "the workout shows it under the new name, with last time's sets carried over",
+    (await flat(renamed.locator(".ex-name .nm"))) === "Leg Press Machine" && /Last 12, 12, 12 × 50 kg · 16\/09/.test(await flat(renamed.locator(".ex-meta .last"))),
+    await flat(renamed.locator(".ex-meta .last")),
   );
   check(
     "the go-up hint still fires: it reads what that session was actually asked for, not a fresh start",
     /Go up to 52\.5 kg: every set hit 12 reps last time/.test(await flat(renamed.locator(".prog"))),
     await flat(renamed.locator(".prog")),
   );
-  const todayNames = (await page.locator("#session .ex li .nm").allInnerTexts()).map((t) => t.trim());
-  check("the old name is gone from Today", !todayNames.some((t) => /^Leg Press\b(?! Machine)/.test(t)), todayNames.join(", "));
+  await page.click("#closeWorkout");
+  await page.waitForSelector("#trainView");
 
-  // --- Strength and the lift's own page: one continuous history under the new name
+  // --- Progress → Strength and the lift's own page: one continuous history under the new name
   await openTab(page, "progress");
+  await page.click('#progTabs [data-seg="strength"]');
+  await page.waitForSelector("#dashStrength");
   const st = await flat(page.locator("#dashStrength"));
   check("Strength lists it merged under the new name, not as two lifts", st.includes("Leg Press Machine") && !st.includes("Leg Press Legs"), st.slice(0, 300));
   await page.locator("#dashStrength .lifts li", { hasText: "Leg Press Machine" }).first().locator(".ln").click();
@@ -97,11 +104,15 @@ export default async function plan({ browser, base, check }) {
     /50 kg ?heaviest set, 16 Sept/.test(kp) && /0\.8 ?sessions a week on average/.test(kp),
     kp,
   );
-  check("lift page: a dot for each of the three sessions on the chart", (await page.locator("#liftTop svg circle.dot").count()) === 3);
+  // The heaviest-set chart (a trend chart, unsmoothed): one solid dot per session.
+  await until(async () => (await page.locator("#liftTop svg circle.tc-dot").count()) > 0, 3000);
+  check("lift page: a dot for each of the three sessions on the chart", (await page.locator("#liftTop svg circle.tc-dot").count()) === 3, `${await page.locator("#liftTop svg circle.tc-dot").count()} dots`);
   await page.click("#backBtn");
+  await page.waitForSelector("#dashView");
 
-  // --- CSV export: the days logged before the rename export under the new name too
+  // --- CSV export (Settings → Export & backup): the days logged before the rename export under the new name too
   await openTab(page, "settings");
+  await openSetting(page, "setData");
   const [csv] = await Promise.all([page.waitForEvent("download"), page.click("#csvBtn")]);
   const text = fs.readFileSync(await csv.path(), "utf8");
   check(

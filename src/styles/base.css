@@ -175,3 +175,5 @@ td.c,th.c{text-align:center}
   .seg-b{transition:background-color var(--sheet) var(--ease)}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+/* fields side by side keep their own height, so a meter under one doesn't stretch its neighbour */
+.fields2{align-items:start}

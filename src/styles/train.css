@@ -179,3 +179,8 @@
 .ring-sum b{color:var(--success);font-weight:900}
 @media (max-width:360px){.srow{grid-template-columns:26px minmax(0,1fr) 72px 58px 44px;gap:6px}.prb{left:100px}}
 .lrow .row-d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#nextEx{min-width:0;max-width:100%}
+#nextEx .nx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the microphone pulses while it listens, where motion is on */
+@keyframes listen{from{box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 45%,transparent)}to{box-shadow:0 0 0 10px transparent}}
+@media (prefers-reduced-motion:no-preference){.ex-btns .mic[aria-pressed="true"]{animation:listen 1.4s var(--ease) infinite}}
