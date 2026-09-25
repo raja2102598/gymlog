@@ -63,8 +63,10 @@ export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   return write({ ...r, endedAt: r.endedAt ?? now });
 }
 
-export function clearRun() {
-  write(null);
+/** Forgets the run, or with `day`, only a run for that day: a finished workout reviewed later leaves another
+ *  day's running clock alone. */
+export function clearRun(day?: DayKey) {
+  if (day === undefined || runOf(day)) write(null);
 }
 
 /** Seconds a run has lasted, to its end or to now. */

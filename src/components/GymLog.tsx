@@ -290,7 +290,7 @@ export default function GymLog() {
     navigate({ view: "workout", done: true });
   };
   const doneWorkout = () => {
-    clearRun();
+    clearRun(sel);
     navigate(HOME);
   };
   /** Weight or steps from a shortcut or the widget: today's field in Train. */

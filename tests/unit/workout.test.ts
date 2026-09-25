@@ -24,6 +24,14 @@ describe("workout runs", () => {
     expect(runOf("2026-09-23")).toBeNull();
   });
 
+  it("clears only the given day's run: closing a reviewed day leaves another day's clock running", () => {
+    startRun("2026-09-22", 1000);
+    clearRun("2026-09-23");
+    expect(runOf("2026-09-22")?.startedAt).toBe(1000);
+    clearRun("2026-09-22");
+    expect(runOf("2026-09-22")).toBeNull();
+  });
+
   it("never hands one account's unfinished run to another signed in on the same phone", () => {
     startRun("2026-09-23", 1000);
     runsFor("b");

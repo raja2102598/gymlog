@@ -68,8 +68,15 @@ export default async function exercise({ browser, base, check }) {
     await ready(page);
     await openTab(page, "train");
     check("a finished day's button says Review", /Review/.test(await flat(page.locator("#startBtn"))), await flat(page.locator("#startBtn")));
+    // Yesterday's workout was left running.
+    const running = { day: K(27), startedAt: Date.parse("2026-09-22T18:00:00Z"), user: "00000000-0000-4000-8000-00000000e0e0" };
+    await page.evaluate((r) => localStorage.setItem("gymlog.workout.v1", JSON.stringify(r)), running);
     await openWorkout(page);
-    check("reviewing it starts no workout clock", (await page.locator("#workoutView .wclock").count()) === 0 && (await page.evaluate(() => localStorage.getItem("gymlog.workout.v1"))) === null);
+    check("reviewing it starts no workout clock", (await page.locator("#workoutView .wclock").count()) === 0 && JSON.parse(await page.evaluate(() => localStorage.getItem("gymlog.workout.v1"))).day === K(27));
+    await page.click("#finishBtn");
+    await page.click("#doneBtn");
+    await page.waitForSelector("#homeView");
+    check("and closing the review leaves another day's running clock alone", JSON.parse((await page.evaluate(() => localStorage.getItem("gymlog.workout.v1"))) ?? "null")?.startedAt === running.startedAt);
     await ctx.close();
   }
 }
