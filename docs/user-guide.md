@@ -35,14 +35,17 @@ Moving from another copy of Gym Log? Tap **Restore a backup** on that screen and
 - **Records:** a set that beats every earlier session of that lift (heaviest weight, best estimated 1RM, or most reps at that weight or more) gets a **PR** badge as you type it.
 - **Knee:** on days with knee-sensitive lifts, tap your knee pain from 0 to 10 before and after the session, and on waking the next morning. Once scored, the scale folds to one line; **Change** opens it again. If pain goes above your limit (5 unless you change it), or hasn't settled by the morning, knee-sensitive lifts say *Hold … kg* instead of going up next time.
 - **Cardio and waist:** under the cardio finisher, log minutes, speed and incline (entering minutes ticks the finisher). The waist field sits next to body weight; once a week is enough.
+- **Measurements:** a card below logs chest, arms, thighs, hips (cm) and body fat (%); once a week is enough, like waist. A value that isn't a number, or is outside a plausible range, is refused with a message naming the range. Their trends and the change over four weeks show in Health → Body.
 - **Health Connect on Today:** in the [Android app](android.md), steps and body weight from Health Connect show in grey in their boxes until you type your own, and a card under them shows the night's sleep, resting heart rate, active calories and any workouts other apps recorded, with **More in Health** to open the Health tab at that day. The website shows the same numbers once the app has synced them.
 - **Home-screen shortcuts:** once installed, long-press the app icon for *Today*, *Log weight* or *Log steps*.
 
 ## Health
 
-The day's activity as three rings (steps, exercise minutes and active calories against your goals), then a tile for each kind of data: sleep with its stages, heart, calories burned and eaten, body (weight, body fat, BMI), water and exercise. ‹ › moves between days.
+The day's activity as three rings (steps, exercise minutes and active calories against your goals), then a tile for each kind of data: sleep with its stages, heart, calories burned and eaten, body (weight, body fat, BMI, and chest, arms, thighs and hips when you've logged them), water and exercise. ‹ › moves between days.
 
-Tap a ring or a tile for its page: the day in detail (steps by the hour, the night's stages and times, heart rate range and vitals, workouts), or a week or a month as a chart with your goal and average, and the numbers that matter (average, days at the goal, average bedtime, change in weight). Tap a bar or a point, or use the arrow keys, to read its value.
+Tap a ring or a tile for its page: the day in detail (steps by the hour, the night's stages and times, heart rate range and vitals, workouts, the measurements card's fields), or a week or a month as a chart with your goal and average, and the numbers that matter (average, days at the goal, average bedtime, change in weight). Body also gets a trend and the change over four weeks for each measurement you log. Tap a bar or a point, or use the arrow keys, to read its value.
+
+Logging chest, arms, thighs, hips or body fat on Today is enough to open Health here, even before Health Connect has synced anything; the other tiles just show no data yet.
 
 The data comes from Health Connect through the [Android app](android.md). The website shows it too, once the app has synced it.
 

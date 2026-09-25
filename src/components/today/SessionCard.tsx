@@ -5,12 +5,13 @@ import type { FocusNext } from "@/hooks/useFocusNext";
 import { cx } from "@/lib/cx";
 import { addDays, DOW, dm, todayKey, wdIndex } from "@/lib/dates";
 import { num } from "@/lib/format";
-import type { DayKey, DayLog, KneeField, NumField, PlanDay } from "@/lib/types";
+import type { DayKey, DayLog, KneeField, MeasureField, NumField, PlanDay } from "@/lib/types";
 import { CardioFinisher } from "./CardioFinisher";
 import { DayFields } from "./DayFields";
 import { HealthToday } from "./HealthToday";
 import { KneeScale } from "./KneeScale";
 import { LiftItem } from "./LiftItem";
+import { Measurements } from "./Measurements";
 import type { LiftMenu } from "./types";
 import { WarmUp } from "./WarmUp";
 
@@ -43,7 +44,7 @@ function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
 }
 
 /** The selected day: its workout (which can be switched for another weekday's), knee scores, warm-up,
- *  lifts, cardio finisher, steps, weight and note. Keyed by the day, so a new day starts fresh. */
+ *  lifts, cardio finisher, steps, weight, note and other measurements. Keyed by the day, so a new day starts fresh. */
 export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOpen, onKneeChange, onKneeScored, focusNext, onOpenHealth, onOpenLift }: SessionProps) {
   const store = useGym();
   const plan = store.plan, p = store.planFor(sel), e = store.entry(sel), items = store.liftsFor(sel);
@@ -87,6 +88,12 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
       else n[f] = Math.round(v * 10) / 10;
       // Entering cardio minutes ticks the finisher off.
       if (f === "cardioMin" && v != null && v > 0) n.cardio = true;
+    }, false);
+  // The Measurements card already refuses a value out of range, so this only rounds what it's given.
+  const setMeasure = (f: MeasureField, value: string) =>
+    editDay((n) => {
+      if (value === "") delete n[f];
+      else n[f] = Math.round((num(value) as number) * 10) / 10;
     }, false);
   const knee = (field: KneeField, title: string, sub = "", msg = "") => (
     <KneeScale
@@ -204,6 +211,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
           }, false)
         }
       />
+      <Measurements entry={e} onMeasure={setMeasure} />
       <HealthToday sel={sel} onOpenHealth={onOpenHealth} />
     </>
   );

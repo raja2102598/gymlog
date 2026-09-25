@@ -73,6 +73,19 @@ describe("store", () => {
     s.logs["2026-09-23"] = day({ exercises: { "Leg Press": lift([[10, 50], [10, 45]]) } });
     expect([...s.recordsOn("2026-09-23")]).toEqual([["Leg Press|0", ["weight", "e1rm"]]]);
   });
+
+  it("reads chest, arms, thighs and hips as typed only; body fat also takes Health Connect's, like weight", () => {
+    const s = storeWith({ "2026-09-16": day({ chest: 100 }), "2026-09-23": day({ chest: 99, bodyFat: 21 }) });
+    s.health = { "2026-09-16": { bodyFat: 23 }, "2026-09-20": { bodyFat: 22 } };
+    expect(s.measureOf("2026-09-16", "chest")).toBe(100);
+    expect(s.measureOf("2026-09-20", "chest")).toBeNull(); // no such thing as an untyped chest measurement
+    expect(s.measureOf("2026-09-16", "bodyFat")).toBe(23); // nothing typed that day: Health Connect's
+    expect(s.measureOf("2026-09-23", "bodyFat")).toBe(21); // typed wins over Health Connect
+    expect(s.measureReadings("chest")).toEqual([["2026-09-16", 100], ["2026-09-23", 99]]);
+    expect(s.measureReadings("bodyFat")).toEqual([["2026-09-16", 23], ["2026-09-20", 22], ["2026-09-23", 21]]);
+    expect(s.anyMeasured()).toBe(true);
+    expect(storeWith({ "2026-09-16": day() }).anyMeasured()).toBe(false);
+  });
 });
 
 describe("the phone's copy", () => {
@@ -143,6 +156,15 @@ describe("dashboard", () => {
     const m = weightModel(s, "2026-09-23");
     expect(m.flags.map((f) => f.text)).toContain("No weigh-in for 6 days. A few weigh-ins a week keep the trend honest.");
     expect(m.goal).toMatchObject({ kind: "date", goal: 78 });
+  });
+
+  it("gives the latest waist reading and its change from four weeks back", () => {
+    const s = storeWith(series(-0.05, 28));
+    s.logs["2026-08-26"].waist = 96;
+    s.logs["2026-09-23"].waist = 93.5;
+    expect(weightModel(s, "2026-09-23").waist).toEqual({ day: "2026-09-23", cm: 93.5, change: { since: "2026-08-26", cm: -2.5 } });
+    // No waist logged yet: no card.
+    expect(weightModel(storeWith(series(-0.05, 1)), "2026-08-27").waist).toBeNull();
   });
 
   it("lists lifts ready for more weight and knee lifts on hold", () => {

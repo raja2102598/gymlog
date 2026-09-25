@@ -12,7 +12,7 @@ import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
-import { EXTRA_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -562,6 +562,21 @@ export class GymStore {
   weightSeries(): S.TrendPoint[] {
     const days = [...new Set([...this.days(), ...Object.keys(this.health)])].sort();
     return S.weightTrend(days.filter((k) => this.weightOf(k) != null).map((k) => [k, +(this.weightOf(k) as number)]));
+  }
+  /** One of the measurements card's fields for the day: chest, arms, thighs and hips are only ever typed; body
+   *  fat is what you typed, or else Health Connect's own reading, like weight. */
+  measureOf(k: DayKey, field: MeasureField): number | null {
+    return this.logs[k]?.[field] ?? (field === "bodyFat" ? this.health[k]?.bodyFat : undefined) ?? null;
+  }
+  /** Every day with a reading for one measurement, oldest first: body fat's days include Health Connect's, like weight's. */
+  measureReadings(field: MeasureField): [DayKey, number][] {
+    const days = field === "bodyFat" ? [...new Set([...this.days(), ...Object.keys(this.health)])].sort() : this.days();
+    return days.filter((k) => this.measureOf(k, field) != null).map((k) => [k, this.measureOf(k, field) as number]);
+  }
+  /** Whether the measurements card has ever been filled in, so Health → Body has trends to show even before
+   *  Health Connect has synced anything. */
+  anyMeasured(): boolean {
+    return this.days().some((k) => MEASURE_FIELDS.some((f) => this.logs[k][f] != null));
   }
   swapSuggestions(exclude: string): string[] {
     const s = new Set<string>();

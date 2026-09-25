@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTimes, summarize, type HealthSource } from "@/lib/healthView";
+import { anyHealth, clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTimes, summarize, type HealthSource } from "@/lib/healthView";
 import { DEFAULT_PLAN } from "@/lib/plan";
 import { depthOf, hashOf, parentOf, routeOf, tabOf } from "@/lib/route";
 import { niceMax, trendScale } from "@/lib/scale";
 import { signInMethods } from "@/lib/store";
-import type { DayKey, HealthDay } from "@/lib/types";
+import { MEASURE_FIELDS, type DayKey, type HealthDay, type MeasureField } from "@/lib/types";
 
+type Typed = { steps?: number; weight?: number } & Partial<Record<MeasureField, number>>;
 /** The store's side of the Health tab, from plain objects: days typed in the log, and Health Connect's. */
-function source(health: Record<DayKey, HealthDay>, typed: Record<DayKey, { steps?: number; weight?: number }> = {}): HealthSource {
+function source(health: Record<DayKey, HealthDay>, typed: Record<DayKey, Typed> = {}): HealthSource {
   return {
     plan: DEFAULT_PLAN,
     health,
     healthOf: (k) => health[k] ?? null,
     stepsOf: (k) => typed[k]?.steps ?? health[k]?.steps ?? null,
     weightOf: (k) => typed[k]?.weight ?? health[k]?.weight ?? null,
+    measureOf: (k, f) => typed[k]?.[f] ?? (f === "bodyFat" ? health[k]?.bodyFat : undefined) ?? null,
+    anyMeasured: () => Object.values(typed).some((t) => MEASURE_FIELDS.some((f) => t[f] != null)),
   };
 }
 
@@ -42,6 +45,20 @@ describe("a day's numbers", () => {
     expect(metricValue("heart", n)).toBe(60);
     expect(metricValue("exercise", n)).toBeNull();
     expect(metricValue("energy", dayNumbers(source({ k: { activeKcal: 400 } }), "k"))).toBe(400);
+  });
+
+  it("reads chest, arms, thighs and hips as typed, and body fat typed over Health Connect's", () => {
+    const n = dayNumbers(source({ k: { bodyFat: 22 } }, { k: { chest: 100, arms: 34, thighs: 58, hips: 96, bodyFat: 20.5 } }), "k");
+    expect([n.chest, n.arms, n.thighs, n.hips, n.bodyFat]).toEqual([100, 34, 58, 96, 20.5]);
+    // Nothing typed: body fat falls back to Health Connect's, like weight; the tape-measure fields stay null.
+    const m = dayNumbers(source({ k: { bodyFat: 22 } }), "k");
+    expect([m.chest, m.bodyFat]).toEqual([null, 22]);
+  });
+
+  it("opens the Health tab for a typed measurement alone, with Health Connect never connected", () => {
+    expect(anyHealth(source({}))).toBe(false);
+    expect(anyHealth(source({}, { "2026-09-23": { chest: 100 } }))).toBe(true);
+    expect(anyHealth(source({ "2026-09-23": { steps: 8421 } }))).toBe(true);
   });
 });
 

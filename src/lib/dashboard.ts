@@ -63,9 +63,7 @@ export function weightModel(store: GymStore, t: DayKey): WeightModel {
     goalKpi = day ? { kind: "date", goal, day } : { kind: "unknown", goal, why: rate == null ? "needs 2 weeks of weigh-ins" : "not heading there yet" };
   }
   const changes = [7, 14, 28].map((d) => [d / 7, S.trendChange(s, d)]).filter((c): c is [number, number] => c[1] != null);
-  const wd = store.days().filter((k) => store.logs[k].waist != null), wl = wd[wd.length - 1];
-  const w4 = wl ? wd.filter((k) => S.daysBetween(k, wl) >= 28).pop() : undefined;
-  const cm = (k: DayKey) => store.logs[k].waist as number;
+  const waist = S.measureChange(store.days().filter((k) => store.logs[k].waist != null).map((k): [DayKey, number] => [k, store.logs[k].waist as number]));
   return {
     flags,
     series: s,
@@ -76,7 +74,7 @@ export function weightModel(store: GymStore, t: DayKey): WeightModel {
     goal: goalKpi,
     changes,
     chartGoal: goal != null && Math.abs(goal - last.trend) <= 8 ? goal : null,
-    waist: wl ? { day: wl, cm: cm(wl), change: w4 ? { since: w4, cm: cm(wl) - cm(w4) } : null } : null,
+    waist: waist ? { day: waist.day, cm: waist.value, change: waist.change ? { since: waist.change.since, cm: waist.change.value } : null } : null,
   };
 }
 

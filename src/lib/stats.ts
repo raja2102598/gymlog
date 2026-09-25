@@ -1,5 +1,5 @@
-/* Pure calculations for the dashboard, add-weight hints and records. No DOM and no storage, so they can
- * be unit-tested on their own. Days are "YYYY-MM-DD" keys; sets are { reps, kg }. */
+/* Pure calculations for the dashboard, the Health tab's measurements, add-weight hints and records. No DOM and no
+ * storage, so they can be unit-tested on their own. Days are "YYYY-MM-DD" keys; sets are { reps, kg }. */
 import type { DayKey, SetLog } from "./types";
 
 const DAY = 86400000;
@@ -88,6 +88,25 @@ export function goalDate(series: TrendPoint[], rateKgWeek: number | null, goal: 
   if (!perDay || Math.sign(gap) !== Math.sign(perDay)) return null;
   const days = Math.ceil(gap / perDay);
   return days > 0 && days < 3 * 365 ? keyOfNum(dayNum(last.day) + days) : null;
+}
+
+/* ---------- a measurement logged now and then: waist, chest, arms, thighs, hips, body fat ---------- */
+
+export interface MeasureChange {
+  day: DayKey;
+  value: number;
+  change: { since: DayKey; value: number } | null;
+}
+
+// The latest reading and how it has changed from the closest earlier one at least `days` before it (about four
+// weeks by default). Unlike weight, these are typed now and then rather than every day, so there's no daily
+// trend line: just the last reading and what it moved from roughly a month back. Null with no readings at all.
+export function measureChange(readings: [DayKey, number][], days = 28): MeasureChange | null {
+  if (!readings.length) return null;
+  const sorted = [...readings].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  const [day, value] = sorted[sorted.length - 1];
+  const base = sorted.filter(([k]) => daysBetween(k, day) >= days).pop();
+  return { day, value, change: base ? { since: base[0], value: value - base[1] } : null };
 }
 
 /* ---------- lifts ---------- */

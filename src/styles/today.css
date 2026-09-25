@@ -1,5 +1,5 @@
 /* Today: the week strip, the day's session (a card per lift, knee scores, warm-up, cardio), the day's
-   numbers, and the week so far. */
+   numbers, other measurements, and the week so far. */
 .week-head{margin-bottom:10px}
 .week-head h2{font-size:var(--t-md)}
 .nav{display:flex;gap:6px;align-items:center}
@@ -136,6 +136,9 @@
 .hc-list{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:14px;overflow-wrap:anywhere}
 .hc-list .sub{font-size:var(--t-sm)}
 .hc .hc-more{justify-self:start}
+
+/* Measurements: chest, arms, thighs, hips and body fat, a card like Health Connect's with a field grid like the day's numbers */
+.measure-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px}
 
 /* this week so far, and history */
 .stats-h{margin-bottom:14px}

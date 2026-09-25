@@ -67,6 +67,52 @@ describe("weight trend", () => {
   });
 });
 
+describe("a measurement's four-week change", () => {
+  it("is null with nothing logged, and has no change with only one reading", () => {
+    expect(G.measureChange([])).toBeNull();
+    expect(G.measureChange([["2026-09-01", 95]])).toEqual({ day: "2026-09-01", value: 95, change: null });
+  });
+
+  it("compares the latest reading with the closest one at least four weeks before it", () => {
+    // 26 Aug, 9 Sep (14 days back: too soon) and 23 Sept (28 days after 26 Aug): the change is against 26 Aug.
+    const r = G.measureChange([
+      ["2026-08-26", 96],
+      ["2026-09-09", 94.8],
+      ["2026-09-23", 93.5],
+    ]);
+    expect(r).toEqual({ day: "2026-09-23", value: 93.5, change: { since: "2026-08-26", value: -2.5 } });
+  });
+
+  it("picks the nearest reading that still clears the window, not the oldest one", () => {
+    // 29 days and 40 days back both clear 28; 29 is nearer.
+    const r = G.measureChange([
+      ["2026-08-15", 100],
+      ["2026-08-26", 99],
+      ["2026-09-23", 105],
+    ]);
+    expect(r!.change).toEqual({ since: "2026-08-26", value: 6 });
+  });
+
+  it("has no change yet when nothing reaches four weeks back, however the readings are ordered", () => {
+    const r = G.measureChange([
+      ["2026-09-23", 60],
+      ["2026-09-10", 58],
+    ]);
+    expect(r).toEqual({ day: "2026-09-23", value: 60, change: null });
+  });
+
+  it("takes a shorter window when asked, for something logged more often", () => {
+    const r = G.measureChange(
+      [
+        ["2026-09-16", 22],
+        ["2026-09-23", 20.5],
+      ],
+      7,
+    );
+    expect(r!.change).toEqual({ since: "2026-09-16", value: -1.5 });
+  });
+});
+
 describe("lifts", () => {
   it("estimates 1RM (Brzycki) only for 1-12 reps", () => {
     near(G.e1rm(100, 1), 100, 1e-9);

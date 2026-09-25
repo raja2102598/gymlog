@@ -36,6 +36,13 @@ export interface DayLog {
   /** Did another weekday's workout that day (0 = Monday), e.g. a missed one. */
   session?: number;
   waist?: number;
+  /** cm, like waist: once a week is enough. */
+  chest?: number;
+  arms?: number;
+  thighs?: number;
+  hips?: number;
+  /** %: what you type wins over Health Connect's reading, as with weight. */
+  bodyFat?: number;
   cardioMin?: number;
   cardioKmh?: number;
   cardioIncline?: number;
@@ -106,10 +113,14 @@ export interface HealthWorkout {
   source?: string;
 }
 
-export const EXTRA_FIELDS = ["waist", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"] as const;
+export const EXTRA_FIELDS = ["waist", "chest", "arms", "thighs", "hips", "bodyFat", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"] as const;
 export type ExtraField = (typeof EXTRA_FIELDS)[number];
 export type KneeField = "kneeBefore" | "kneeAfter" | "kneeWake";
 export type NumField = "waist" | "cardioMin" | "cardioKmh" | "cardioIncline";
+/** The measurements card on Today, beyond weight and waist: cm for the first four, body fat in %. Each has a
+ *  trend and its change over four weeks in Health → Body. */
+export const MEASURE_FIELDS = ["chest", "arms", "thighs", "hips", "bodyFat"] as const;
+export type MeasureField = (typeof MEASURE_FIELDS)[number];
 
 export interface PlanExercise {
   name: string;

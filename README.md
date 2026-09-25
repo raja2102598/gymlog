@@ -43,7 +43,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
 - Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.
 - Knee pain scores before, after and the next morning. After a bad session, knee-sensitive lifts hold their weight instead of going up.
-- Warm-ups, a cardio finisher (minutes, speed, incline), steps, body weight, waist and notes.
+- Warm-ups, a cardio finisher (minutes, speed, incline), steps, body weight, waist, other measurements (chest, arms, thighs, hips, body fat) and notes.
 
 **Health: what your phone knows, with the Android app**
 - Reads 20 kinds of data from [Health Connect](https://support.google.com/android/answer/12201227): steps by the hour, sleep with its stages, heart rate, HRV, SpO₂, calories burned and eaten, water, weight, body fat, workouts and more. It never writes.
