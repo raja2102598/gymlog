@@ -1,5 +1,6 @@
 "use client";
-import { Fragment } from "react";
+import { Fragment, type FormEvent } from "react";
+import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { cx } from "@/lib/cx";
@@ -56,7 +57,8 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
   const items = blocks.flat().map((l) => l.item);
   const wus = plan.warmups.concat(e.warmup.filter((w) => !plan.warmups.includes(w)));
   const slot = store.slotFor(sel), own = wdIndex(sel), t = todayKey();
-  const missed = !p.exercises.length && sel >= t ? store.missedThisWeek(sel) : [];
+  const free = e.free ?? null;
+  const missed = !p.exercises.length && !free && sel >= t ? store.missedThisWeek(sel) : [];
   const marks = store.recordsOn(sel), kneeHere = store.kneeDay(sel), yest = addDays(sel, -1);
   const wake = store.kneeDay(yest) && (store.worked(yest) || store.entry(yest).kneeAfter != null);
   const wakeMsg = e.kneeWake == null ? "" : store.kneeBad(yest) ? "Not settled since yesterday: knee lifts will hold their weight next time." : "Settled since yesterday.";
@@ -113,6 +115,13 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
     superset,
   });
   let letters = 0;
+  // A lift added to the free-form workout: the field empties and keeps focus, for the next one.
+  const addLift = (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault();
+    const box = ev.currentTarget.elements.namedItem("addLift") as HTMLInputElement;
+    if (store.addFreeLift(sel, box.value)) box.value = "";
+    box.focus();
+  };
   const knee = (field: KneeField, title: string, sub = "", msg = "") => (
     <KneeScale
       field={field}
@@ -148,14 +157,44 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
               })}
           </div>
         ) : null}
-        <div className="sess-pick">
-          <select id="sessionSel" className="ghost tiny" aria-label="Workout for this day" value={slot} onChange={(ev) => switchTo(+ev.target.value)}>
-            {plan.days.map((x, i) => (
-              <option key={i} value={i}>{`${x.name} (${DOW[i]}${i === own ? ", usual" : ""})`}</option>
-            ))}
-          </select>
-          {slot !== own ? <span className="moved">Usually {plan.days[own].name} · changed for this day</span> : null}
-        </div>
+        {free ? (
+          <div className="sess-pick free">
+            <label className="field" htmlFor="freeName">
+              <span>Workout name</span>
+              <SyncedInput id="freeName" value={free.name} placeholder="e.g. Hotel gym…" autoComplete="off" onChange={(ev) => store.setFreeName(sel, ev.target.value)} />
+            </label>
+            <button
+              className="ghost tiny"
+              id="freeEnd"
+              onClick={() => {
+                setMenu(null);
+                store.endFree(sel);
+              }}
+            >
+              Back to {plan.days[slot].name}
+            </button>
+          </div>
+        ) : (
+          <div className="sess-pick">
+            <select id="sessionSel" className="ghost tiny" aria-label="Workout for this day" value={slot} onChange={(ev) => switchTo(+ev.target.value)}>
+              {plan.days.map((x, i) => (
+                <option key={i} value={i}>{`${x.name} (${DOW[i]}${i === own ? ", usual" : ""})`}</option>
+              ))}
+            </select>
+            {slot !== own ? <span className="moved">Usually {plan.days[own].name} · changed for this day</span> : null}
+            <button
+              className="ghost tiny"
+              id="freeStart"
+              onClick={() => {
+                setMenu(null);
+                store.startFree(sel);
+                focusNext("#addLift");
+              }}
+            >
+              Start an empty workout
+            </button>
+          </div>
+        )}
       </div>
       {missed.length ? (
         <div className="catchup">
@@ -216,10 +255,28 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
                 focusNext={focusNext}
                 onOpenLift={onOpenLift}
                 moves={movesFor(bi)}
+                onRemove={free?.lifts.includes(it.name) ? () => store.removeFreeLift(sel, it.name) : undefined}
               />
             );
           })}
         </ul>
+      ) : null}
+      {free ? (
+        <form className="addlift" onSubmit={addLift}>
+          {free.lifts.length ? null : <p className="note">A workout of your own: add each lift as you get to it, and log its sets as usual.</p>}
+          <label className="field grow" htmlFor="addLift">
+            <span>Add a lift</span>
+            <input id="addLift" name="addLift" list="addLiftList" placeholder="e.g. Goblet squat…" autoComplete="off" />
+          </label>
+          <button className="ghost" type="submit">
+            Add
+          </button>
+          <datalist id="addLiftList">
+            {store.liftSuggestions(free.lifts).map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        </form>
       ) : null}
       {kneeHere ? knee("kneeAfter", "Knee pain after the session", "", afterMsg) : null}
       <CardioFinisher

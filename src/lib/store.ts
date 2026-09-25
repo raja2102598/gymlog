@@ -14,7 +14,7 @@ import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
-import { EXTRA_FIELDS, MEASURE_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type DayKey, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -64,6 +64,13 @@ export interface Replacing {
 }
 
 const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 7;
+/** A day's free-form workout, when it has one that reads right: a name and a list of lift names. */
+const freeOf = (d?: Partial<DayLog> | null): FreeWorkout | null => {
+  const f = d?.free as Partial<FreeWorkout> | undefined;
+  return f && typeof f === "object" && typeof f.name === "string" && Array.isArray(f.lifts) && f.lifts.every((n) => typeof n === "string") ? (f as FreeWorkout) : null;
+};
+/** What a free-form workout is called when it isn't given a name. */
+export const FREE_NAME = "Free workout";
 export const minSets = (x: { sets: string }) => {
   const n = parseInt(x.sets, 10);
   return n > 0 ? Math.min(n, 10) : 1;
@@ -135,6 +142,8 @@ function fullDay(d?: Partial<DayLog> | null): DayLog {
   };
   if (isSlot(e.session)) out.session = e.session;
   if (Array.isArray(e.order) && e.order.every((n) => typeof n === "string")) out.order = e.order;
+  const free = freeOf(e);
+  if (free) out.free = free;
   for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
   return out;
 }
@@ -595,8 +604,29 @@ export class GymStore {
     const s = this.logs[k]?.session;
     return isSlot(s) ? s : wdIndex(k);
   }
+  /** The day's workout: its planned session, or its free-form workout as one. A free-form workout's lifts are the
+   *  ones added to it, each with the plan's settings for a lift of that name (its sets and reps, cue, step, knee)
+   *  when the plan has one, and nothing planned otherwise; the cardio finisher stays the usual day's. */
   planFor(k: DayKey): PlanDay {
-    return this.plan.days[this.slotFor(k)];
+    const p = this.plan.days[this.slotFor(k)], f = freeOf(this.logs[k]);
+    if (!f) return p;
+    const blank = (name: string): PlanExercise => ({ name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false });
+    return { weekday: p.weekday, name: f.name.trim() || FREE_NAME, focus: "", exercises: f.lifts.map((name) => this.planLift(name) ?? blank(name)), cardio: p.cardio };
+  }
+  /** Whether day k is a free-form workout rather than a planned session. */
+  isFree(k: DayKey): boolean {
+    return !!freeOf(this.logs[k]);
+  }
+  /** The plan's settings for a lift of this name, on whichever day has it first; never part of a superset. */
+  private planLift(name: string): PlanExercise | null {
+    for (const d of this.plan.days)
+      for (const x of d.exercises)
+        if (x.name === name) {
+          const y = { ...x };
+          delete y.superset;
+          return y;
+        }
+    return null;
   }
   /** The day's lifts as Today shows them, in blocks: a superset of the plan's is one block, its lifts in the plan's
    *  order, and any other lift a block of its own, as is anything logged that day that's no longer in the plan.
@@ -631,6 +661,74 @@ export class GymStore {
       true,
     );
   }
+  /* ---------- a free-form workout ---------- */
+  /** Starts an empty free-form workout on day k, in place of its planned session. */
+  startFree(k: DayKey) {
+    this.editDay(
+      k,
+      (n) => {
+        n.free = { name: "", lifts: [] };
+      },
+      true,
+    );
+  }
+  setFreeName(k: DayKey, name: string) {
+    this.editDay(
+      k,
+      (n) => {
+        if (n.free) n.free.name = name;
+      },
+      false,
+    );
+  }
+  /** Adds a lift to day k's free-form workout, by name: false when there's no name, or it's there already. */
+  addFreeLift(k: DayKey, name: string): boolean {
+    const v = name.trim(), f = freeOf(this.logs[k]);
+    if (!v || !f || f.lifts.includes(v)) return false;
+    this.editDay(
+      k,
+      (n) => {
+        n.free?.lifts.push(v);
+      },
+      true,
+    );
+    return true;
+  }
+  /** Takes a lift out of day k's free-form workout, with anything logged for it. */
+  removeFreeLift(k: DayKey, name: string) {
+    this.editDay(
+      k,
+      (n) => {
+        if (n.free) n.free.lifts = n.free.lifts.filter((x) => x !== name);
+        delete n.exercises[name];
+        if (n.order) n.order = n.order.filter((x) => x !== name);
+      },
+      true,
+    );
+  }
+  /** Back to day k's planned session. What was logged in the free-form workout stays, as lifts outside the plan. */
+  endFree(k: DayKey) {
+    this.editDay(
+      k,
+      (n) => {
+        delete n.free;
+      },
+      true,
+    );
+  }
+  /** Names to offer when adding a lift: the plan's lifts, anything swapped in, and every lift logged, less `except`. */
+  liftSuggestions(except: string[] = []): string[] {
+    const s = new Set<string>();
+    for (const d of this.plan.days) for (const x of d.exercises) s.add(x.name);
+    for (const k of this.days())
+      for (const [name, r] of Object.entries(this.logs[k].exercises || {})) {
+        s.add(name);
+        if (r?.swap) s.add(r.swap);
+      }
+    for (const x of except) s.delete(x);
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }
+
   // Most recent earlier day this exercise was actually done (as planned or as a swap).
   lastDone(name: string, before: DayKey): LastDone | null {
     const ks = this.days();
@@ -658,7 +756,8 @@ export class GymStore {
   // or taken over for today or later.
   missedThisWeek(k: DayKey): number[] {
     const mon = mondayOf(k), t = todayKey(), days = DOW.map((_, i) => addDays(mon, i));
-    const covered = (s: number) => days.some((d) => this.slotFor(d) === s && (this.worked(d) || (d >= t && this.logs[d]?.session === s)));
+    // A free-form workout, even on a planned day, does none of the plan's sessions.
+    const covered = (s: number) => days.some((d) => !this.isFree(d) && this.slotFor(d) === s && (this.worked(d) || (d >= t && this.logs[d]?.session === s)));
     return days.map((d, i) => (d < t && d < k && this.plan.days[i].exercises.length && !covered(i) ? i : -1)).filter((i) => i >= 0);
   }
   // First day worth showing in history: the earliest log or the day the account was created.
@@ -676,12 +775,13 @@ export class GymStore {
     if (n || this.worked(k)) return "part";
     return k < todayKey() ? "miss" : "";
   }
-  // Planned gym sessions done in the week starting `mon`: each counts once, on whichever day it was done.
+  // Planned gym sessions done in the week starting `mon`: each counts once, on whichever day it was done. A free-form
+  // workout with anything logged is an extra, and never one of the planned ones.
   weekSessions(mon: DayKey) {
     const days = DOW.map((_, i) => addDays(mon, i));
     const gym = this.plan.days.map((p, s) => (p.exercises.length ? s : -1)).filter((s) => s >= 0);
-    const done = gym.filter((s) => days.some((k) => this.slotFor(k) === s && this.plan.days[s].exercises.every((x) => this.entry(k).exercises[x.name]?.done))).length;
-    return { days, done, planned: gym.length };
+    const done = gym.filter((s) => days.some((k) => !this.isFree(k) && this.slotFor(k) === s && this.plan.days[s].exercises.every((x) => this.entry(k).exercises[x.name]?.done))).length;
+    return { days, done, planned: gym.length, extra: days.filter((k) => this.isFree(k) && this.worked(k)).length };
   }
   /** Health Connect's data for a day, or null. */
   healthOf(k: DayKey): HealthDay | null {
@@ -746,8 +846,10 @@ export class GymStore {
       const ex = this.logs[k].exercises;
       return from in ex || Object.values(ex).some((r) => r?.swap === from);
     };
-    // A day that only names it in the order its lifts were done in has no history of it, but keeps its place.
-    const days = this.days().filter((k) => logged(k) || !!this.logs[k].order?.includes(from)), carried = days.filter(logged).length;
+    // A day that only names it (in the order its lifts were done in, or a free-form workout it was added to but
+    // not logged in) has no history of it, but keeps its place.
+    const named = (k: DayKey) => !!this.logs[k].order?.includes(from) || !!freeOf(this.logs[k])?.lifts.includes(from);
+    const days = this.days().filter((k) => logged(k) || named(k)), carried = days.filter(logged).length;
     this.editPlan((p) => {
       for (const d of p.days) for (const x of d.exercises) if (x.name === from) x.name = to;
     });
@@ -759,6 +861,7 @@ export class GymStore {
       }
       for (const r of Object.values(n.exercises)) if (r.swap === from) r.swap = to;
       if (n.order) n.order = n.order.map((x) => (x === from ? to : x));
+      if (n.free) n.free.lifts = n.free.lifts.map((x) => (x === from ? to : x));
       this.logs[k] = n;
       this.pending[k] = n;
     }
@@ -768,8 +871,8 @@ export class GymStore {
       this.changed();
       await this.flush();
     }
-    const named = carried === 1 ? "1 day" : `${carried} days`;
-    return { ok: true, msg: carried ? `Carried ${from}’s history over to ${to}: ${named}.` : `${to} is saved. ${from} had no history yet to carry over.`, days: carried };
+    const count = carried === 1 ? "1 day" : `${carried} days`;
+    return { ok: true, msg: carried ? `Carried ${from}’s history over to ${to}: ${count}.` : `${to} is saved. ${from} had no history yet to carry over.`, days: carried };
   }
 
   /* ---------- knee, next weight and records ---------- */

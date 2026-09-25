@@ -15,7 +15,7 @@ export function PlanCard({ m, today }: { m: PlanModel; today: DayKey }) {
           <div className="v num">
             {m.week.done}/{m.week.planned}
           </div>
-          <div className="l">sessions this week</div>
+          <div className="l">sessions this week{m.week.extra ? `, and ${m.week.extra} extra` : ""}</div>
         </div>
         <div className="kpi">
           <div className="v num">{m.streak}</div>

@@ -84,7 +84,8 @@ export type HeatClass = "done" | "part" | "miss" | "todo" | "rest" | "fut" | "pr
 export const HEAT_WORDS: Record<HeatClass, string> = { done: "all lifts done", part: "some lifts done", miss: "missed", todo: "to do", rest: "rest day", fut: "ahead", pre: "before you started" };
 
 export interface PlanModel {
-  week: { done: number; planned: number };
+  /** Planned sessions done this week, of how many; and free-form workouts, which count on their own. */
+  week: { done: number; planned: number; extra: number };
   /** Full weeks in a row; the current week only counts once it's full. */
   streak: number;
   recent: { weeks: number; done: number; planned: number };
@@ -113,7 +114,7 @@ export function planModel(store: GymStore, t: DayKey): PlanModel {
     return n === p.exercises.length ? "done" : n || store.worked(k) ? "part" : k < t ? "miss" : "todo";
   };
   return {
-    week: { done: tw.done, planned: tw.planned },
+    week: { done: tw.done, planned: tw.planned, extra: tw.extra },
     streak,
     recent: { weeks: recent.length, done: sum(recent.map((w) => w.done)), planned: sum(recent.map((w) => w.planned)) },
     cardioDays: wk.filter((k) => store.entry(k).cardio).length,

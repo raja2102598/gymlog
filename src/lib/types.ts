@@ -49,6 +49,9 @@ export interface DayLog {
   note: string;
   /** Did another weekday's workout that day (0 = Monday), e.g. a missed one. */
   session?: number;
+  /** A free-form workout that day, in place of a planned session: its name, and the lifts added to it in the order
+   *  they were added. They log like any lift; Progress counts the workout as an extra session, not a planned one. */
+  free?: FreeWorkout;
   waist?: number;
   /** cm, like waist: once a week is enough. */
   chest?: number;
@@ -67,6 +70,11 @@ export interface DayLog {
   kneeBefore?: number;
   kneeAfter?: number;
   kneeWake?: number;
+}
+
+export interface FreeWorkout {
+  name: string;
+  lifts: string[];
 }
 
 /** One day of Health Connect data, as the Android app saves it to table `health_days`. Only what the phone had. */

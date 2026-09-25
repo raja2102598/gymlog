@@ -19,6 +19,13 @@
 .sess-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px}
 .sess-pick select.ghost{background-color:var(--surface);min-width:0}
 .moved{font-size:var(--t-xs);color:var(--muted)}
+/* a free-form workout: its name in place of the session picker, and a field to add lifts under them */
+.sess-pick.free{align-items:flex-end}
+.sess-pick.free .field{flex:1 1 200px}
+.sess-pick.free .field input{background:var(--surface)}
+.addlift{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;background:var(--surface);border-radius:var(--r-card);padding:14px 16px;box-shadow:var(--shadow)}
+.addlift .note{flex:1 1 100%;margin:0;font-size:14px;color:var(--muted)}
+.addlift .field{flex:1 1 200px}
 .pill{flex:none;font-size:var(--t-xs);font-weight:600;padding:4px 10px;border-radius:99px;background:var(--chip);color:var(--muted);white-space:nowrap}
 .pill.good{background:var(--good-soft);color:var(--good)}
 .pill.part{background:var(--chip);color:var(--ink)}

@@ -55,6 +55,8 @@ interface Props {
   /** Opens a lift's own page, under Progress. */
   onOpenLift: (name: string) => void;
   moves: Moves;
+  /** Takes the lift out of the day's free-form workout, for a lift that's in one. */
+  onRemove?: () => void;
 }
 
 /** One lift on one day, as a card shows it, and the changes a card makes to it: shared by a lift's own card and a
@@ -315,6 +317,7 @@ export function LiftHead({
   onOpenLift,
   voice,
   moves,
+  onRemove,
 }: {
   m: LiftModel;
   sel: DayKey;
@@ -325,6 +328,7 @@ export function LiftHead({
   onOpenLift: (name: string) => void;
   voice: { on: boolean; listening: boolean; listen: () => Promise<void> };
   moves: Moves;
+  onRemove?: () => void;
 }) {
   const store = useGym();
   const { r, i, name, did, x, target, last } = m;
@@ -436,6 +440,20 @@ export function LiftHead({
           See chart
         </ViewLink>
         {moves.up || moves.down ? moveButtons : null}
+        {onRemove ? (
+          <button
+            className="ghost tiny danger"
+            data-freerm={i}
+            onClick={() => {
+              const n = m.sets.filter((s) => s.reps != null || s.kg != null).length;
+              if (n && !confirm(`Remove ${did} and its ${n === 1 ? "set" : `${n} sets`} from this workout?`)) return;
+              setMenu(null);
+              onRemove();
+            }}
+          >
+            Remove from this workout
+          </button>
+        ) : null}
       </div>
     );
   } else if (menu === "swap") {
@@ -605,7 +623,7 @@ export function SetRow({
 }
 
 /** One lift on the day: its sets (reps × kg), last time's numbers, the next-weight hint, and skip or swap. */
-export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext, onOpenLift, moves }: Props) {
+export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext, onOpenLift, moves, onRemove }: Props) {
   const store = useGym();
   const m = liftModel(store, sel, item, i, entry, (m) => store.startRest(sel, m.did, restSecFor(store.plan, m.x)));
   const { r, sets, min, rows, cue } = m;
@@ -669,7 +687,17 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
 
   return (
     <li className={cx("lift", r.done && "checked", r.skipped && "skipped", r.swap && "swapped")}>
-      <LiftHead m={m} sel={sel} menu={menu} setMenu={setMenu} focusNext={focusNext} onOpenLift={onOpenLift} voice={{ on: voiceOn && !r.skipped, ...voice }} moves={moves} />
+      <LiftHead
+        m={m}
+        sel={sel}
+        menu={menu}
+        setMenu={setMenu}
+        focusNext={focusNext}
+        onOpenLift={onOpenLift}
+        voice={{ on: voiceOn && !r.skipped, ...voice }}
+        moves={moves}
+        onRemove={onRemove}
+      />
       {body}
       {voiceOn ? (
         <p className="said" aria-live="polite">
