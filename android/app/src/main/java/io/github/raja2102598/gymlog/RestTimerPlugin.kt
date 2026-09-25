@@ -13,9 +13,10 @@ private const val NOTIFICATIONS = "notifications"
 
 /**
  * The rest timer's alert while Gym Log is backgrounded or closed (src/native/rest.ts). schedule() arms RestAlarm for
- * when a running timer ends; cancel() disarms it. Called from JavaScript on every change to the timer (started,
- * paused, resumed, given more time, skipped, or reaching zero while the app was open), so the native alert always
- * matches what's on screen without a method here for each of those separately. checkPermissions() and
+ * when a running timer ends; cancel() disarms it. Called from JavaScript as the app goes to the background with a
+ * timer running, and again on coming back (where the page counts down and says when rest is over itself) or on any
+ * change to the timer, so the native alert always matches the page's without a method here for each of those
+ * separately. checkPermissions() and
  * requestPermissions() (asking for POST_NOTIFICATIONS, Android 13 and later; older versions grant it on install) are
  * Plugin's own, built from `permissions` below, exactly as SpeechPlugin uses them for the microphone; Settings'
  * "Rest timer notifications" row (SettingsView.tsx) is what calls them.

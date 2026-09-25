@@ -108,9 +108,12 @@ export function dayNumbers(src: HealthSource, k: DayKey): DayNumbers {
   };
 }
 
+/** Whether Health Connect has given anything yet, rather than only the measurements typed on Today. */
+export const fromHealthConnect = (src: HealthSource) => Object.keys(src.health).length > 0;
+
 /** Whether there's anything to show at all: Health Connect data, or a typed measurement. Otherwise the tab says
  *  where the data comes from instead. */
-export const anyHealth = (src: HealthSource) => Object.keys(src.health).length > 0 || src.anyMeasured();
+export const anyHealth = (src: HealthSource) => fromHealthConnect(src) || src.anyMeasured();
 
 /** The days ending at `end`, oldest first. */
 export const daysTo = (end: DayKey, n: number): DayKey[] => Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));

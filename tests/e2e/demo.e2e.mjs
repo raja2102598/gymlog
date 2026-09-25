@@ -3,6 +3,9 @@
 // set, editing the plan, what Settings hides or refuses, the banner, and that a reload ends it.
 import { flat, liftEl, open, openTab, planDone, ready, until } from "./harness.mjs";
 
+// It opens Health, so it runs with the other suites that do when the tab changes.
+export const covers = ["src/components/health/HealthView.tsx", "src/components/health/Rings.tsx"];
+
 export default async function demo({ browser, base, check }) {
   const db = { logs: {}, plan: null };
   const { ctx, page } = await open(browser, base, { auth: null, db });

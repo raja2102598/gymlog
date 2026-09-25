@@ -4,6 +4,9 @@
 import fs from "node:fs";
 import { K, flat, liftEl, open, openTab, planDone, ready, session, until } from "./harness.mjs";
 
+// It opens a renamed lift's page, so it runs with the other suites that do when that page or its charts change.
+export const covers = ["src/components/dashboard/LiftDetail.tsx", "src/components/health/Bars.tsx", "src/components/health/Trend.tsx", "src/lib/scale.ts"];
+
 function history() {
   const logs = {};
   for (let n = 0; n <= 28; n++) logs[K(n)] = { exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "" };

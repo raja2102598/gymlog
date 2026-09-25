@@ -1,6 +1,6 @@
 // Set types and effort (RAJ-53): a set's number opens its menu, where it becomes a set to failure or a drop set
 // and, with Settings' effort switched on, takes an RPE; the lift's tick follows what counts toward its planned
-// sets, and the CSV says both.
+// sets, as it does when a set is cleared or taken off, and the CSV says both.
 import fs from "node:fs";
 import { K, flat, liftEl, open, openTab, ready, session, until } from "./harness.mjs";
 
@@ -84,6 +84,29 @@ export default async function settypes({ browser, base, check }) {
     text.startsWith("day,session,lift,set,reps,kg,type,rpe,rir,") && text.includes(`${K(28)},Legs,Leg Press,1,10,50,working,,,false,,`) && text.includes(`${K(28)},Legs,Leg Press,3,8,50,failure,9.5,,false,,`),
     text,
   );
+
+  // --- a tick the planned sets gave goes when one of them is cleared, or taken off with − Set, and comes back
+  await openTab(page, "today");
+  const reps = (j) => lp.locator(`input[data-set$=":${j}:reps"]`);
+  await reps(1).fill("");
+  await until(() => today()?.sets?.[1]?.reps === null);
+  check("clearing a set's reps takes back the tick the planned sets gave", today()?.done === false && !today()?.autoDone, JSON.stringify(today()));
+  await reps(1).fill("10");
+  await until(() => today()?.done === true);
+  check("logging it again brings the tick back", today()?.done === true && today()?.autoDone === true);
+  // A fourth set, with set 3 then made a drop set: sets 1, 2 and 4 still make the three that count…
+  await lp.locator("[data-addset]").click();
+  await reps(3).fill("12");
+  await lp.locator('input[data-set$=":3:kg"]').fill("30");
+  await until(() => today()?.sets?.[3]?.kg === 30);
+  await sn.click();
+  await menu.locator("button", { hasText: "Drop set" }).click();
+  await until(() => today()?.sets?.[2]?.type === "drop");
+  check("with set 3 a drop set, sets 1, 2 and 4 still tick the lift off", today()?.done === true, JSON.stringify(today()));
+  // …until − Set takes set 4 off (the harness says yes to its question), leaving two.
+  await lp.locator("[data-rmset]").click();
+  await until(() => today()?.sets?.length === 3);
+  check("− Set leaving two sets that count takes the tick back too", today()?.done === false && !today()?.autoDone, JSON.stringify(today()));
 
   check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("no console errors", page.errors.length === 0, page.errors.join(" | "));

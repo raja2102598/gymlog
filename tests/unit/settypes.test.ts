@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { effortValue } from "@/components/today/SetMenu";
+import { liftModel } from "@/lib/dashboard";
 import { setsSummary } from "@/lib/format";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import * as G from "@/lib/stats";
-import { setsComplete } from "@/lib/store";
+import { GymStore, setsComplete } from "@/lib/store";
 import type { SetLog } from "@/lib/types";
 
 // Set types (RAJ-53): warm-ups count toward nothing, drop sets are volume only, sets to failure count as working
@@ -35,6 +36,15 @@ describe("set types", () => {
     expect(found.map((r) => [r.set, r.kinds])).toEqual([[2, ["e1rm", "reps"]]]);
     G.foldDay(best, { day: "2026-09-23", lifts: [{ name: "Leg Press", sets: [set(10, 80, "warmup"), set(30, 20, "drop")] }] });
     expect(best.get("Leg Press")!.kg).toBe(50);
+  });
+
+  it("keep a drop set out of a lift's heaviest set and 1RM on Progress, but not out of its volume", () => {
+    const s = new GymStore();
+    // Heavy triples, then 12 at 80 kg: the drop set's own estimate (115.2 kg) would beat the triples'.
+    const sets = [set(3, 100), set(3, 100), set(3, 100), set(12, 80, "drop")];
+    s.logs = { "2026-09-21": { exercises: { "Leg Press": { done: true, kg: 100, sets } }, warmup: [], cardio: false, steps: null, weight: null, note: "" } };
+    const [p] = liftModel(s, "2026-09-23", "Leg Press").points;
+    expect([p.top, p.topReps, Math.round(p.e1rm! * 10) / 10, p.volume]).toEqual([100, 3, 105.9, 900 + 960]);
   });
 
   it("mark sets to failure and drop sets in history, leaving plain working sets as they read before", () => {

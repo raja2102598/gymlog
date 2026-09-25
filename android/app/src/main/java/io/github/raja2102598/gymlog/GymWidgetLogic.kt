@@ -61,5 +61,12 @@ object GymWidgetLogic {
     /** A widget narrower than this can't fit the Log weight and Log steps buttons next to the session card. */
     private const val MIN_WIDTH_FOR_SHORTCUTS_DP = 180
 
-    fun showsShortcuts(minWidthDp: Int): Boolean = minWidthDp >= MIN_WIDTH_FOR_SHORTCUTS_DP
+    /** Nor one shorter than this, the size the full layout is made for (gym_widget_info.xml's minHeight): the two
+     *  lines, and the 44dp buttons under them. */
+    private const val MIN_HEIGHT_FOR_SHORTCUTS_DP = 110
+
+    /** Whether the full layout fits a widget `widthDp` wide and `heightDp` tall. A launcher that doesn't say how tall
+     *  (0) leaves it to the width alone. */
+    fun showsShortcuts(widthDp: Int, heightDp: Int = 0): Boolean =
+        widthDp >= MIN_WIDTH_FOR_SHORTCUTS_DP && (heightDp <= 0 || heightDp >= MIN_HEIGHT_FOR_SHORTCUTS_DP)
 }

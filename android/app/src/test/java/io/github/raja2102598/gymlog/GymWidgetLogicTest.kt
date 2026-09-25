@@ -110,4 +110,13 @@ class GymWidgetLogicTest {
         assertTrue(GymWidgetLogic.showsShortcuts(180))
         assertTrue(GymWidgetLogic.showsShortcuts(250))
     }
+
+    @Test
+    fun aWideButShortWidgetLeavesTheShortcutsOut() {
+        assertFalse(GymWidgetLogic.showsShortcuts(250, 64))
+        assertFalse(GymWidgetLogic.showsShortcuts(250, 100))
+        assertTrue(GymWidgetLogic.showsShortcuts(250, 110))
+        assertFalse(GymWidgetLogic.showsShortcuts(90, 200))
+        assertTrue(GymWidgetLogic.showsShortcuts(250, 0)) // a launcher that doesn't say how tall: by width, as before
+    }
 }

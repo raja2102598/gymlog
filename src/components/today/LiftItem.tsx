@@ -101,6 +101,19 @@ export interface LiftModel {
   skipToday: () => void;
 }
 
+/** A tick that came from logging the planned working sets (autoDone, saved with the day) follows them: on once
+ *  they're all logged, and off again when one is cleared, taken off or made a drop set. Warm-ups never count, and a
+ *  tick given by hand, with the box or "done", stays. */
+function tickFollows(r: LiftLog, work: SetLog[], min: number) {
+  if (r.done && r.autoDone && !setsComplete(work, min)) {
+    r.done = false;
+    delete r.autoDone;
+  } else if (!r.done && !r.skipped && setsComplete(work, min)) {
+    r.done = true;
+    r.autoDone = true;
+  }
+}
+
 /** A lift's model on a day. `onReps` hears of a set just given its first reps with no later set of the lift logged:
  *  when a rest can start. A lift's own card starts it then; a superset waits for the round. */
 export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, entry: DayLog, onReps: (m: LiftModel, j: number) => void): LiftModel {
@@ -151,16 +164,12 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
         if (f === "reps" && v != null && !hadReps && !work.slice(j + 1).some((s) => s.reps != null)) first = true;
         r.sets = [...warm, ...work];
         r.kg = topKg(r.sets);
-        // Logging the planned number of working sets ticks the lift off; warm-ups never do.
-        if (!r.done && !r.skipped && setsComplete(work, min)) {
-          r.done = true;
-          r.autoDone = true;
-        }
+        tickFollows(r, work, min);
       }, false);
       if (first) onReps(m, j);
     },
     // A set's kind or effort, from its menu. Making a set a drop set, or a working set again, changes how many
-    // count toward the planned sets, so a tick that came from them follows.
+    // count toward the planned sets.
     setInfo(j, patch) {
       edit((r) => {
         const warm = setsOf(r).filter((s) => !isWorkingSet(s));
@@ -170,13 +179,7 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
         for (const k of ["type", "rpe", "rir"] as const) if (next[k] == null) delete next[k];
         work[j] = next;
         r.sets = [...warm, ...work];
-        if (r.done && r.autoDone && !setsComplete(work, min)) {
-          r.done = false;
-          delete r.autoDone;
-        } else if (!r.done && !r.skipped && setsComplete(work, min)) {
-          r.done = true;
-          r.autoDone = true;
-        }
+        tickFollows(r, work, min);
       }, true);
     },
     addSet(upTo) {
@@ -190,9 +193,10 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
     },
     dropSet() {
       edit((r) => {
-        const warm = setsOf(r).filter((s) => !isWorkingSet(s));
-        r.sets = [...warm, ...setsOf(r).filter(isWorkingSet).slice(0, -1)];
+        const warm = setsOf(r).filter((s) => !isWorkingSet(s)), work = setsOf(r).filter(isWorkingSet).slice(0, -1);
+        r.sets = [...warm, ...work];
         r.kg = topKg(r.sets);
+        tickFollows(r, work, min);
       }, true);
     },
     logWarmups(steps) {
@@ -253,16 +257,9 @@ export function voiceHandler(store: GymStore, sel: DayKey, m: LiftModel, focusNe
     if (said.command === "undo") {
       const last = lastLogged();
       if (last < 0) return `${at}. There’s no set to undo.`;
+      // A tick the set gave goes with it, as when it's cleared by hand.
       m.setField(last, "reps", "");
       m.setField(last, "kg", "");
-      // Logging the planned sets ticked the lift off (autoDone, saved with the day), so with fewer the tick goes
-      // too. A tick given by hand, with the box or "done", stays.
-      m.edit((r) => {
-        if (r.done && r.autoDone && !setsComplete(setsOf(r), min)) {
-          r.done = false;
-          delete r.autoDone;
-        }
-      }, false);
       return `${at}: set ${last + 1} cleared.`;
     }
     if (said.command === "done") {

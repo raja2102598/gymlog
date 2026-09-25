@@ -6,7 +6,7 @@ import { hoursMin } from "./health";
 import { MUSCLES, type Muscle } from "./library";
 import * as S from "./stats";
 import { setsOf, topKg, type GymStore } from "./store";
-import type { DayKey, PlanExercise } from "./types";
+import type { DayKey, PlanExercise, SetLog } from "./types";
 
 export interface Flag {
   /** Lower comes first. */
@@ -172,7 +172,7 @@ export function healthModel(store: GymStore, t: DayKey): { flags: Flag[] } {
 
 export interface LiftPoint {
   day: DayKey;
-  /** Heaviest set that day, kg (some old entries hold only a weight, with no reps). */
+  /** Heaviest set that day, kg, leaving out drop sets (some old entries hold only a weight, with no reps). */
   top: number | null;
   /** The most reps done at that weight that day, or null when none were logged with it. */
   topReps: number | null;
@@ -189,18 +189,20 @@ export interface LiftPoint {
 // day's own entries, not today's plan). Renaming a plan exercise starts a fresh name for this to match on;
 // its earlier days stay under the old one (see the note on DayLog in types.ts) and so drop out of a page
 // opened at the new name, the same as they would from a search for the old one.
+const loaded = (sets: SetLog[]) => sets.filter((s): s is { reps: number; kg: number } => s.reps != null && s.kg != null);
 function liftPoints(store: GymStore, days: DayKey[], name: string): LiftPoint[] {
   const out: LiftPoint[] = [];
   for (const k of days) {
     const sets = store.liftSets(k).filter((l) => l.name === name).flatMap((l) => l.sets);
     if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
-    const loaded = sets.filter((s): s is { reps: number; kg: number } => s.reps != null && s.kg != null), top = topKg(sets);
+    // A drop set adds to the volume but, as with records, never to the heaviest set or the 1RM.
+    const straight = sets.filter(S.isStraightSet), top = topKg(straight);
     out.push({
       day: k,
       top,
-      topReps: Math.max(0, ...loaded.filter((s) => s.kg === top).map((s) => s.reps)) || null,
-      e1rm: Math.max(0, ...sets.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
-      volume: sum(loaded.map((s) => s.reps * s.kg)),
+      topReps: Math.max(0, ...loaded(straight).filter((s) => s.kg === top).map((s) => s.reps)) || null,
+      e1rm: Math.max(0, ...straight.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
+      volume: sum(loaded(sets).map((s) => s.reps * s.kg)),
     });
   }
   return out;
@@ -273,22 +275,23 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
     };
   });
   // Lifts ready for more weight next time, knee lifts held back after a sore day, and lifts due a deload. A lift
-  // worked at a percentage of its 1RM is only ready when that's more than it last lifted.
+  // worked at a percentage of its 1RM is only ready when that's more than it last lifted. Each day a lift is on
+  // counts, since two can progress it differently (a deload on one only, say): the same answer twice, as a lift
+  // with the same settings on both gives, shows once, under the first.
   const tomorrow = addDays(t, 1), seen = new Set<string>(), ready: NextUp[] = [], held: NextUp[] = [], deload: NextUp[] = [];
   store.plan.days.forEach((d) =>
     d.exercises.forEach((x: PlanExercise) => {
-      if (seen.has(x.name)) return;
-      seen.add(x.name);
       const nw = store.nextWeight(x, x.name, tomorrow);
       if (!nw || nw.from == null) return;
-      const up = { name: x.name, day: d.name, from: nw.from, to: nw.to };
-      if (nw.rule === "deload") deload.push(up);
-      else if (nw.held) held.push(up);
-      else if (nw.to > nw.from) ready.push(up);
+      const list = nw.rule === "deload" ? deload : nw.held ? held : nw.to > nw.from ? ready : null, key = `${x.name}|${nw.rule === "deload"}|${nw.held}|${nw.to}`;
+      if (!list || seen.has(key)) return;
+      seen.add(key);
+      list.push({ name: x.name, day: d.name, from: nw.from, to: nw.to });
     }),
   );
-  if (ready.length) flags.push({ pri: 4, text: `${ready.length} lift${ready.length === 1 ? " is" : "s are"} ready for more weight. See Strength.` });
-  if (deload.length) flags.push({ pri: 4, text: `${deload.length} lift${deload.length === 1 ? " is" : "s are"} due a deload. See Strength.` });
+  const lifts = (l: NextUp[]) => new Set(l.map((x) => x.name)).size, nReady = lifts(ready), nDeload = lifts(deload);
+  if (nReady) flags.push({ pri: 4, text: `${nReady} lift${nReady === 1 ? " is" : "s are"} ready for more weight. See Strength.` });
+  if (nDeload) flags.push({ pri: 4, text: `${nDeload} lift${nDeload === 1 ? " is" : "s are"} due a deload. See Strength.` });
   return {
     flags,
     anyLogged: days.some((k) => store.liftSets(k).length > 0),

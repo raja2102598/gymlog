@@ -42,7 +42,7 @@ class GymWidgetProvider : AppWidgetProvider() {
         for (id in ids) updateOne(context, mgr, id)
     }
 
-    // A resize can cross the width the buttons need, in either direction, so it picks the layout again.
+    // A resize can cross the size the buttons need, in either direction, so it picks the layout again.
     override fun onAppWidgetOptionsChanged(context: Context, mgr: AppWidgetManager, id: Int, newOptions: Bundle) {
         updateOne(context, mgr, id)
     }
@@ -61,8 +61,10 @@ class GymWidgetProvider : AppWidgetProvider() {
             val snapshot = GymWidgetLogic.parse(GymWidgetStore.read(context))
             val clock = android.text.format.DateFormat.getTimeFormat(context)
             val text = GymWidgetLogic.display(snapshot, LocalDate.now().toString(), System.currentTimeMillis()) { clock.format(java.util.Date(it)) }
-            val minWidth = mgr.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
-            val full = GymWidgetLogic.showsShortcuts(minWidth)
+            // Its size in portrait, as a phone's home screen is: the launcher's narrowest width and tallest height
+            // (in landscape it's the other way round).
+            val size = mgr.getAppWidgetOptions(id)
+            val full = GymWidgetLogic.showsShortcuts(size.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0), size.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0))
             val views = RemoteViews(context.packageName, if (full) R.layout.widget_gymlog else R.layout.widget_gymlog_small)
             views.setTextViewText(R.id.widgetTitle, text.title)
             views.setTextViewText(R.id.widgetSubtitle, text.subtitle)

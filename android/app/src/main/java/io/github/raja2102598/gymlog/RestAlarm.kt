@@ -96,8 +96,8 @@ object RestAlarm {
         }
     }
 
-    /** Cancels the pending alarm and takes down the notification: rest was paused, skipped, or finished while Gym
-     *  Log was open (store.ts's own countdown got there first, so there's nothing left to alert about here). */
+    /** Cancels the pending alarm and takes down the notification: Gym Log is back in front, where store.ts's own
+     *  countdown says when rest is over, or the timer was paused or skipped. */
     fun cancel(ctx: Context) {
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         am.cancel(pendingIntent(ctx, ""))
@@ -126,7 +126,7 @@ object RestAlarm {
 
 /** The rest timer's alarm firing: Gym Log may be backgrounded or not running at all, so this only turns the
  *  notification RestAlarm already posted into "Rest over". The in-page timer (store.ts) keeps its own clock and
- *  isn't touched by this; if it's open and gets there first, it cancels the alarm before this ever runs. */
+ *  isn't touched by this; coming back to Gym Log cancels the alarm, so this never runs with the app in front. */
 class RestTimerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         RestAlarm.show(context, intent.getStringExtra(RestAlarm.EXTRA_LIFT) ?: "", ended = true)

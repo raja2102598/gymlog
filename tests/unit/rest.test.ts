@@ -114,6 +114,15 @@ describe("rest timer", () => {
     expect(navigator.vibrate).not.toHaveBeenCalled();
     expect(saved().rest).toBeNull();
   });
+
+  it("goes on signing out, here and on this phone, so signing back in doesn't bring it back", () => {
+    const s = store();
+    s.startRest("2026-09-23", "Leg Press", 90);
+    expect(saved().rest).not.toBeNull();
+    (s as unknown as { onSignedOut(): void }).onSignedOut();
+    expect(s.rest).toBeNull();
+    expect(localStorage.getItem("gymlog.rest.v1")).toBeNull();
+  });
 });
 
 describe("a saved rest timer, after a reload", () => {

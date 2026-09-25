@@ -15,7 +15,7 @@ import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
-import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
+import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
@@ -500,7 +500,10 @@ export class GymStore {
     this.health = {};
     this.healthSyncedAt = null;
     this.disarmRest();
+    // Taken off this phone too, so signing back in doesn't bring back a timer the sign-out put away. (Removed rather
+    // than saved as none, so leaving the demo, which ends here too, leaves nothing behind.)
     this.rest = null;
+    lsDel(REST_KEY);
     this.logsChanged();
     this.syncTrouble = false;
     this.unsaved.clear();
@@ -1022,7 +1025,19 @@ export class GymStore {
    *  quietly merged into one; a name clash within the day being edited (another lift there already called
    *  `to`) is the plan editor's to catch first, since only it knows which day that is. */
   async renameLift(from: string, to: string): Promise<{ ok: boolean; msg: string; days: number }> {
-    if (this.user && navigator.onLine) await this.pull();
+    // Every device's days first, fetched now: carried over from only this phone's copy, a day logged on another device
+    // that hasn't reached this one would come back later under the old name, splitting the history. So nothing
+    // moves without them, and the lift keeps the plain rename, as when you decline. (The demo's days are all here,
+    // as are the unit tests' with no server.)
+    const online = navigator.onLine, loaded = this.user && online ? await this.pull() : false;
+    if (this.sb && !this.demo && !loaded)
+      return {
+        ok: false,
+        msg: online
+          ? `Couldn’t load every logged day just now, so ${from}’s history stays with ${from}. Type ${from} back, then rename it again in a moment.`
+          : `You’re offline, so ${from}’s history stays with ${from}: a day logged on another device could be left behind. Type ${from} back, then rename it again once you’re online.`,
+        days: 0,
+      };
     if (this.hasHistory(to)) return { ok: false, msg: `“${to}” already has its own history, so ${from}’s can’t be carried over there too.`, days: 0 };
     const logged = (k: DayKey) => {
       const ex = this.logs[k].exercises;
@@ -1428,14 +1443,16 @@ export class GymStore {
     await this.pull();
   }
 
-  async pull(): Promise<void> {
-    if (!this.user || !navigator.onLine || !this.sb) return;
+  /** Loads every logged day, keeping this phone's unsaved edits. Whether it did: not while offline, or when the
+   *  load fails (which the status says). */
+  async pull(): Promise<boolean> {
+    if (!this.user || !navigator.onLine || !this.sb) return false;
     const before = { ...this.bases }, asked = { ...this.conflicts };
     const { data, error } = await this.sb.from("logs").select("day,data,updated_at").order("day", { ascending: true }).limit(5000);
     if (error) {
       this.setStatus("Couldn’t load. Showing saved copy");
       console.warn(error);
-      return;
+      return false;
     }
     const next: Record<DayKey, DayLog> = {}, bases: Record<DayKey, string> = {};
     for (const r of data as { day: DayKey; data: DayLog; updated_at: string }[]) {
@@ -1459,6 +1476,7 @@ export class GymStore {
     this.persistLocal();
     if (!Object.keys(this.pending).length) this.status = "Synced";
     this.changed();
+    return true;
   }
 
   /* ---------- the plan ---------- */

@@ -62,8 +62,14 @@ export default async function measurements({ browser, base, check }) {
   const t = db.logs[K(28)];
   check("all five measurements saved", t.chest === 105.5 && t.arms === 35.5 && t.thighs === 59.5 && t.hips === 97.5 && t.bodyFat === 21, JSON.stringify(t));
 
-  // --- reading them back in Health → Body: a trend and the four-week change for each
+  // --- Health with only typed measurements: the Body tile shows them, and the note says where they came from
   await openTab(page, "health");
+  const tile = await text("#tileBody");
+  check("with no weight, the Body tile shows today's measurements rather than no data", tile === "Body 21% body fat · 4 more", tile);
+  const note = await flat(page.locator("#healthNote"));
+  check("and the note doesn't credit Health Connect with them", /^Only the measurements you’ve typed on Today so far\. Steps, sleep, heart rate and the rest come from Health Connect, through the Gym Log Android app\.$/.test(note), note);
+
+  // --- reading them back in Health → Body: a trend and the four-week change for each
   await page.click("#tileBody");
   await page.waitForSelector("#hChart");
   check("Body opens on the month, where these trends show", (await flat(page.locator(".seg-b.on"))) === "Month");

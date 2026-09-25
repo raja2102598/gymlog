@@ -31,17 +31,17 @@ export function StrengthCard({ m, onOpenLift }: { m: StrengthModel; onOpenLift: 
       {m.ready.length || m.held.length || m.deload.length ? (
         <ul className="plain">
           {m.ready.map((x) => (
-            <li key={x.name}>
+            <li key={`${x.name}|${x.day}`}>
               <b>{x.name}</b> <span className="sub">{x.day}</span>: {x.from} → <b>{x.to}&nbsp;kg</b>
             </li>
           ))}
           {m.held.map((x) => (
-            <li key={x.name}>
+            <li key={`${x.name}|${x.day}`}>
               <b>{x.name}</b> <span className="sub">{x.day}</span>: hold {x.from}&nbsp;kg (knee)
             </li>
           ))}
           {m.deload.map((x) => (
-            <li key={x.name}>
+            <li key={`${x.name}|${x.day}`}>
               <b>{x.name}</b> <span className="sub">{x.day}</span>: {x.from} → <b>{x.to}&nbsp;kg</b> (deload)
             </li>
           ))}

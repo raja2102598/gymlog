@@ -375,25 +375,31 @@ describe("rest timer in the background", () => {
   });
   const appIs = (isActive: boolean) => (app.listeners.appStateChange as unknown as (e: { isActive: boolean }) => void)({ isActive });
 
-  it("schedules the alarm while the timer runs, and takes it down when paused or skipped", async () => {
+  it("arms the alarm for a running timer as the app goes to the background, and takes it down on coming back", async () => {
     const { syncRestNotifications } = await import("@/native/rest");
     const { s } = signedIn();
     syncRestNotifications(s);
-    expect(restTimer.schedule).not.toHaveBeenCalled();
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1); // opening the app takes down whatever an earlier run left
     s.startRest("2026-09-23", "Leg Press", 90);
     const endAt = new Date(2026, 8, 23, 12, 1, 30).getTime();
+    expect(restTimer.schedule).not.toHaveBeenCalled(); // in front, the page says "Rest over" itself
+    appIs(false);
     expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt });
     s.setHealthLink({ state: "ok", msg: "" }); // an unrelated change: nothing sent again
     expect(restTimer.schedule).toHaveBeenCalledTimes(1);
-    s.pauseRest();
-    expect(restTimer.cancel).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(10_000);
-    s.resumeRest();
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 10_000 });
-    s.addRestTime(30);
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 40_000 });
-    s.skipRest();
+    appIs(true);
     expect(restTimer.cancel).toHaveBeenCalledTimes(2);
+    s.addRestTime(30);
+    expect(restTimer.schedule).toHaveBeenCalledTimes(1);
+    // Scheduled afresh each time it goes to the background, so notifications allowed in between still get this
+    // timer's alert.
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 30_000 });
+    appIs(true);
+    s.pauseRest();
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenCalledTimes(2); // a paused timer has nothing to alert about
+    expect(restTimer.cancel).toHaveBeenCalledTimes(3);
   });
 
   it("leaves ‘Rest over’ to the alarm when the app is in the background, and takes it down on coming back", async () => {
@@ -404,12 +410,12 @@ describe("rest timer in the background", () => {
     appIs(false);
     vi.advanceTimersByTime(31_000);
     expect(s.rest?.ended).toBe(true);
-    expect(restTimer.cancel).not.toHaveBeenCalled();
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1); // only opening the app's
     appIs(true);
-    expect(restTimer.cancel).toHaveBeenCalledTimes(1);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(2);
   });
 
-  it("takes the alert down when the timer ends with the app in front, which says so itself", async () => {
+  it("never arms the alarm with the app in front, which says ‘Rest over’ itself", async () => {
     const { syncRestNotifications } = await import("@/native/rest");
     const { s } = signedIn();
     syncRestNotifications(s);
@@ -417,7 +423,9 @@ describe("rest timer in the background", () => {
     s.startRest("2026-09-23", "Leg Press", 30);
     vi.advanceTimersByTime(31_000);
     expect(s.rest?.ended).toBe(true);
-    expect(restTimer.cancel).toHaveBeenCalledTimes(1);
+    expect(restTimer.schedule).not.toHaveBeenCalled();
+    appIs(false); // and going to the background after it's over has nothing to add
+    expect(restTimer.schedule).not.toHaveBeenCalled();
   });
 
   it("puts a running timer's end on the widget, and takes it off when paused", async () => {

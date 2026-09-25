@@ -9,7 +9,8 @@ rewriting every logged day for little gain today. What names cost is handled whe
 
 - **Renaming.** Renaming a lift in the plan editor offers to carry its history over. Every logged day's key,
   and any swap naming the old lift, are rewritten and synced like any other edit, and other plan days using
-  the same name move with it, so a lift kept on two days keeps one history. A name that already has its own
+  the same name move with it, so a lift kept on two days keeps one history. It runs only once every logged day
+  has just loaded, so a day another device logged, not yet on this one, can't be left under the old name. A name that already has its own
   history is refused, so two histories are never merged by accident.
 - **Targets.** Each logged lift stores the sets and reps the plan asked for that day (`LiftLog.target`), so an
   old session still reads against what it was asked, after the plan changes. Entries logged before this, and

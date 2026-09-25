@@ -1,8 +1,8 @@
 /* The rest timer's alert while Gym Log is backgrounded or closed: the app's own RestTimer plugin (RestTimerPlugin.kt)
  * schedules an Android alarm and a notification that counts down on its own for whenever the timer in store.ts ends,
- * and takes both down whenever the timer stops meaning that (paused, skipped, restarted, given more time). Settings
- * asks for POST_NOTIFICATIONS (13+) before this can do anything; older versions grant it on install (see the "Rest
- * timer notifications" row, SettingsView.tsx). */
+ * as the app goes to the background, and takes both down on coming back or whenever the timer stops meaning that.
+ * Settings asks for POST_NOTIFICATIONS (13+) before this can do anything; older versions grant it on install (see the
+ * "Rest timer notifications" row, SettingsView.tsx). */
 import { App } from "@capacitor/app";
 import { registerPlugin, type PermissionState } from "@capacitor/core";
 import type { GymStore } from "@/lib/store";
@@ -25,18 +25,21 @@ export const notificationPermission = async (): Promise<PermissionState> => (awa
  *  notificationPermission's states above. */
 export const requestNotificationPermission = async (): Promise<PermissionState> => (await RestTimer.requestPermissions()).notifications;
 
-/** Follows store.rest: schedules the native alert while it's running, and cancels it the moment it isn't, so the
- *  alarm and notification never say something the page itself no longer does. One exception: a timer that ends
- *  while the app is in the background is left to the alarm, which fires at the same moment and says "Rest over"
- *  there, since that's where you'll see it. Coming back to the app takes that notification down. */
+/** Follows store.rest while the app is out of sight: schedules the native alert for a running timer as Gym Log goes
+ *  to the background, and cancels it on coming back, since in front the page counts down and says "Rest over"
+ *  itself (an alarm as well would sound a second alert just before the page took it down). Nothing is kept from
+ *  while it was in front, so going to the background always schedules afresh: a timer started before notifications
+ *  were allowed gets its alert too. A timer that ends in the background is left to the alarm, which fires at the
+ *  same moment and says "Rest over" there, since that's where you'll see it; coming back takes it down. */
 export function syncRestNotifications(store: GymStore): () => void {
   let active = true;
   // Keyed on what should be scheduled, so an unrelated store change (a set logged on another lift, sync finishing)
-  // doesn't re-arm an alarm that's already exactly right.
-  let last = "";
+  // doesn't re-arm an alarm that's already exactly right. The first pass always sends, so opening the app takes
+  // down whatever an earlier run left scheduled or showing.
+  let last: string | null = null;
   const apply = () => {
     const r = store.rest;
-    const want = r && r.pausedAt == null && !r.ended ? `${r.lift}|${r.endAt}` : r?.ended && !active ? last : "";
+    const want = active || !r || r.pausedAt != null ? "" : r.ended ? (last ?? "") : `${r.lift}|${r.endAt}`;
     if (want === last) return;
     last = want;
     if (want && r) void RestTimer.schedule({ lift: r.lift, endAt: r.endAt });

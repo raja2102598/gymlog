@@ -430,21 +430,30 @@ describe("renaming a lift's history", () => {
     expect(s.plan.days[2].exercises.find((x) => x.name === "Leg Press")).toBeDefined();
   });
 
-  it("queues a rename offline and syncs it once back online", async () => {
+  it("moves nothing offline, or when the days won't load, so none logged on another device is left behind", async () => {
     const f = fakeSupabase();
     f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45) } }));
     const s = await phone(f);
+    // Logged on another device after this phone loaded: carried over from this phone's days alone, it would stay
+    // "Leg Press" once it arrived.
+    f.elsewhere("2026-09-16", day({ exercises: { "Leg Press": lift(10, 50) } }));
     vi.stubGlobal("navigator", { onLine: false });
-    const r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r).toMatchObject({ ok: true, days: 1 });
-    expect(f.sent).toEqual([]); // offline: the pre-emptive pull and the flush both skip the network
-    expect(s.pending["2026-09-09"]!.exercises).toHaveProperty("Leg Press Machine");
-    expect(s.status).toBe("Offline. Saved on this phone, will sync");
-    expect(f.row("2026-09-09")!.data.exercises).toHaveProperty("Leg Press"); // Supabase still has the old name
+    let r = await s.renameLift("Leg Press", "Leg Press Machine");
+    expect(r).toMatchObject({ ok: false, days: 0 });
+    expect(r.msg).toBe("You’re offline, so Leg Press’s history stays with Leg Press: a day logged on another device could be left behind. Type Leg Press back, then rename it again once you’re online.");
+    expect([f.sent, s.pending]).toEqual([[], {}]);
+    expect(s.entry("2026-09-09").exercises).toHaveProperty("Leg Press");
     vi.stubGlobal("navigator", { onLine: true });
-    await s.flush();
+    f.failLoads();
+    r = await s.renameLift("Leg Press", "Leg Press Machine");
+    expect(r).toMatchObject({ ok: false, days: 0, msg: "Couldn’t load every logged day just now, so Leg Press’s history stays with Leg Press. Type Leg Press back, then rename it again in a moment." });
+    expect([f.sent, s.pending]).toEqual([["select logs"], {}]);
+    // Once they load, both days come across.
+    f.failLoads(false);
+    r = await s.renameLift("Leg Press", "Leg Press Machine");
+    expect(r).toMatchObject({ ok: true, days: 2 });
     expect(f.row("2026-09-09")!.data.exercises).toHaveProperty("Leg Press Machine");
-    expect([s.pending, s.status]).toEqual([{}, "Saved"]);
+    expect(f.row("2026-09-16")!.data.exercises).toHaveProperty("Leg Press Machine");
   });
 
   it("keeps an unrelated addition another device made to the same day, since it pulls first", async () => {

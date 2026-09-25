@@ -157,6 +157,21 @@ describe("Strength on Progress", () => {
     expect(strengthModel(s, WED).ready.map((x) => [x.name, x.from, x.to])).toEqual([["Calf Raise", 40, 47.5]]);
   });
 
+  it("follows each day a lift is on, once for the same answer", () => {
+    // Seated Row on Pull and Upper: last week's fell short, which only Upper's settings deload.
+    const s = storeWith({ [LAST]: day({ exercises: { "Seated Row": lift(SHORT) } }) });
+    const [pull, upper] = [s.plan.days[1].exercises[2], s.plan.days[4].exercises[3]];
+    expect([pull.name, upper.name]).toEqual(["Seated Row", "Seated Row"]);
+    upper.deloadAfter = "1";
+    let m = strengthModel(s, WED);
+    expect(m.deload.map((x) => [x.name, x.day, x.from, x.to])).toEqual([["Seated Row", "Upper", 50, 45]]);
+    expect(m.flags.map((f) => f.text)).toEqual(["1 lift is due a deload. See Strength."]);
+    // With the same settings on both, it's one row, under the first day.
+    pull.deloadAfter = "1";
+    m = strengthModel(s, WED);
+    expect(m.deload.map((x) => [x.name, x.day])).toEqual([["Seated Row", "Pull"]]);
+  });
+
   it("leaves out a percentage with no history to go up from", () => {
     const s = storeWith({});
     curl(s, { prog: "percent", oneRm: "60", pct: "75" });

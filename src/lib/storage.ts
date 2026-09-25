@@ -26,4 +26,13 @@ export function lsSet(key: string, value: unknown): boolean {
   }
 }
 
+/** Takes `key` off the phone, as if it had never been kept. */
+export function lsDel(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* blocked storage: nothing was kept to take off */
+  }
+}
+
 export const copy = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
