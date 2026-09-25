@@ -23,7 +23,9 @@ interface WidgetPlugin {
 
 const Widget = registerPlugin<WidgetPlugin>("GymWidget");
 
-let lastWritten = "";
+/** What the widget was last given: a snapshot's JSON, "" once cleared, or null when unknown (before either, this
+ *  run, or after a call to the plugin failed, so the next change, resume or tick tries again). */
+let lastWritten: string | null = null;
 
 // Today's session and lift progress, counted the way Today counts a lift done (SessionCard.tsx's LiftPill).
 function snapshotOf(store: GymStore): WidgetSnapshot {
@@ -32,17 +34,25 @@ function snapshotOf(store: GymStore): WidgetSnapshot {
   return { date, session: p.name, done, planned: p.exercises.length, restEndsAt: null };
 }
 
-/** Writes today's session and progress, if they've changed since the last write. */
+/** Writes today's session and progress, if they've changed since the last write. Signed out, however that came
+ *  about (Sign out, or a session that expired or was revoked), it clears the widget instead. */
 function writeWidget(store: GymStore): void {
+  if (store.auth === "signedOut") {
+    if (lastWritten !== "") clearWidget();
+    return;
+  }
   if (store.auth !== "signedIn") return;
   const snapshot = snapshotOf(store), key = JSON.stringify(snapshot);
   if (key === lastWritten) return;
   lastWritten = key;
-  void Widget.update(snapshot).catch(() => {});
+  void Widget.update(snapshot).catch(() => {
+    if (lastWritten === key) lastWritten = null;
+  });
 }
 
 /** Keeps the widget current: right away, on every change to the store (a set logged, a lift ticked, health data
- *  arriving), coming back to the app, and every few minutes so a new day shows up even with the app merely open. */
+ *  arriving, signing out), coming back to the app, and every few minutes so a new day shows up even with the app
+ *  merely open. */
 export function startWidget(store: GymStore): void {
   writeWidget(store);
   store.subscribe(() => writeWidget(store));
@@ -50,8 +60,10 @@ export function startWidget(store: GymStore): void {
   setInterval(() => writeWidget(store), 5 * 60_000);
 }
 
-/** Signing out: nothing left to show until someone signs in again. */
-export function clearWidget(): void {
+/** Signed out: nothing left to show until someone signs in again. */
+function clearWidget(): void {
   lastWritten = "";
-  void Widget.clear().catch(() => {});
+  void Widget.clear().catch(() => {
+    if (lastWritten === "") lastWritten = null;
+  });
 }

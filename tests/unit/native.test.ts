@@ -280,7 +280,7 @@ describe("home-screen widget", () => {
   });
 
   it("writes today's session and progress once signed in, again only when they change, and clears on sign-out", async () => {
-    const { startWidget, clearWidget } = await import("@/native/widget");
+    const { startWidget } = await import("@/native/widget");
     const s = new GymStore(), today = todayKey();
     s.plan.days[wdIndex(today)] = {
       weekday: "day",
@@ -307,11 +307,37 @@ describe("home-screen widget", () => {
     expect(widget.update).toHaveBeenCalledTimes(2);
     expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 1, planned: 1, restEndsAt: null });
 
-    // Signing out clears it; the same snapshot as the first write counts as new again once cleared.
-    clearWidget();
+    // Signed out, whether by Sign out or by a session that expired or was revoked: cleared, once.
+    s.auth = "signedOut";
+    s.setHealthLink({ state: "off", msg: "" });
+    s.setHealthLink({ state: "off", msg: "Not connected yet." });
     expect(widget.clear).toHaveBeenCalledTimes(1);
-    s.editLift(today, "Bench press", (r) => (r.done = false), true);
+
+    // Signed in again, the same snapshot as before counts as new once cleared.
+    s.auth = "signedIn";
+    s.setHealthLink({ state: "ok", msg: "Up to date." });
     expect(widget.update).toHaveBeenCalledTimes(3);
+  });
+
+  it("tries a write that failed again on the next change, rather than taking it as shown", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const s = new GymStore(), today = todayKey();
+    s.plan.days[wdIndex(today)] = {
+      weekday: "day",
+      name: "Leg day",
+      focus: "",
+      exercises: [{ name: "Squat", sets: "3", reps: "5", cue: "", flag: "", step: "", knee: false }],
+      cardio: { name: "", detail: "" },
+    };
+    s.auth = "signedIn";
+    widget.update.mockRejectedValueOnce(new Error("the bridge dropped it"));
+    startWidget(s);
+    expect(widget.update).toHaveBeenCalledTimes(1);
+    await flush();
+
+    s.setHealthLink({ state: "ok", msg: "Up to date." });
+    expect(widget.update).toHaveBeenCalledTimes(2);
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Leg day", done: 0, planned: 1, restEndsAt: null });
   });
 });
 

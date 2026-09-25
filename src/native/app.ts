@@ -9,7 +9,7 @@ import { checkPhoneSpeech } from "@/lib/speech";
 import type { GymStore } from "@/lib/store";
 import { syncHealth } from "./health";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
-import { clearWidget, startWidget } from "./widget";
+import { startWidget } from "./widget";
 
 export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
@@ -54,11 +54,11 @@ export async function startNative(store: GymStore): Promise<void> {
   await App.addListener("appUrlOpen", ({ url }) => open(url));
   open((await App.getLaunchUrl())?.url);
   await App.addListener("resume", () => void syncHealth(store));
-  // Signing out stops background sync, so this phone's data stops going to the account, and clears the widget.
+  // Signing out stops background sync, so this phone's data stops going to the account.
   store.onSignOut(async () => {
     if ((await backgroundStatus()).on) await turnOffBackground(store);
-    clearWidget();
   });
+  // The widget follows the store, clearing itself on any sign-out.
   startWidget(store);
   // While open, too: a watch's numbers keep arriving through the day. syncHealth skips runs under 5 minutes apart.
   setInterval(() => void syncHealth(store), 15 * 60_000);
