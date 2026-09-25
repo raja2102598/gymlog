@@ -4,6 +4,19 @@
 import fs from "node:fs";
 import { K, NOW, flat, open, openTab, ready, session, until } from "./harness.mjs";
 
+export const covers = [
+  "src/lib/healthView.ts",
+  "src/components/health/HealthView.tsx",
+  "src/components/health/HealthDetail.tsx",
+  "src/components/health/Rings.tsx",
+  "src/components/health/Bars.tsx",
+  "src/components/health/Trend.tsx",
+  "src/components/health/parts.tsx",
+  "src/lib/scale.ts",
+  "src/hooks/useChartWidth.ts",
+  "src/components/shell/LoginView.tsx",
+];
+
 const PLAN = JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
 
 function logs() {

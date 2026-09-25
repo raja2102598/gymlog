@@ -1,6 +1,15 @@
 // Today: sets, skip and swap, the plan editor, switching a day's workout, and history for a new account.
 import { flat, liftEl, open, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
 
+export const covers = [
+  "src/components/dashboard/LiftDetail.tsx",
+  "src/components/health/Bars.tsx",
+  "src/components/health/Trend.tsx",
+  "src/components/health/parts.tsx",
+  "src/lib/scale.ts",
+  "src/hooks/useChartWidth.ts",
+];
+
 // Today's real first entry (older format: one weight per lift, no sets).
 const firstDay = () => ({
   exercises: { "Hack Squat": { done: true, kg: 0 }, "Leg Press": { done: true, kg: 50 }, "Leg Extension": { done: true, kg: 27 }, "Hamstring Curl": { done: true, kg: 27 }, "Calf Raise": { done: true, kg: 17.5 } },

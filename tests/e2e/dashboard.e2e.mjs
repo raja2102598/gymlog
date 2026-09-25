@@ -2,6 +2,15 @@
 // on four weeks of history.
 import { flat, K, liftEl, open, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
 
+export const covers = [
+  "src/components/dashboard/LiftDetail.tsx",
+  "src/components/health/Bars.tsx",
+  "src/components/health/Trend.tsx",
+  "src/components/health/parts.tsx",
+  "src/lib/scale.ts",
+  "src/hooks/useChartWidth.ts",
+];
+
 function history() {
   const logs = {};
   for (let n = 0; n <= 28; n++) {

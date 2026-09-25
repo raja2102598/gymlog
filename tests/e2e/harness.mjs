@@ -240,12 +240,13 @@ export async function shot(target, name, opts = {}) {
   if (process.env.E2E_SHOTS) await target.screenshot({ path: `${process.env.E2E_SHOTS}/${name}.png`, ...opts }).catch(() => {});
 }
 
-/** Collects pass/fail lines for one suite. */
-export function checker(suite) {
+/** Collects pass/fail lines for one suite. `log` gets each formatted line (console.log by default); the
+ *  runner passes one that writes to the suite's own buffer, so parallel suites' output doesn't interleave. */
+export function checker(suite, log = console.log) {
   const results = [];
   const check = (name, ok, detail = "") => {
     results.push({ suite, name, ok: !!ok, detail });
-    console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? "  — " + detail : ""}`);
+    log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? "  — " + detail : ""}`);
   };
   return { check, results };
 }

@@ -20,7 +20,11 @@ npm run lint && npm run typecheck && npm test
 npm run build && npm run test:e2e
 ```
 
-The browser tests need Chromium once: `npx playwright-core install chromium`. A change to the Android app should also pass `./gradlew testReleaseUnitTest assembleDebug` in `android/` ([Building it yourself](docs/android.md#building-it-yourself) has what that needs).
+The browser tests need Chromium once: `npx playwright-core install chromium`. They run in parallel, across a pool of workers that share that one Chromium; `npm run test:e2e -- --workers N` (or `E2E_WORKERS=N`) overrides how many, and each suite's own time (from your last run) decides the order, longest first.
+
+Only touched part of the app? `npm run test:changed` runs the unit tests affected by what changed since `origin/main` (`vitest run --changed`), and `npm run test:e2e -- --changed` does the same for the browser suites: a suite runs again if its own file changed, a file listed in its `covers` changed, or the change is broad enough (most of `src/`, `public/` or `tests/e2e/`, or a shared build file) that every suite needs to. Pass a ref to compare against something other than `origin/main`, e.g. `npm run test:e2e -- --changed HEAD~3`. A suite lists a file in `covers` only when every suite that shows it lists it too, so shared code (the store, the plan, Today, Progress) runs every suite. It's a quick check before pushing: CI runs them all.
+
+A change to the Android app should also pass `./gradlew testReleaseUnitTest assembleDebug` in `android/` ([Building it yourself](docs/android.md#building-it-yourself) has what that needs).
 
 Pull requests from forks build the Android app signed with a throwaway key and don't publish anything. That's expected.
 

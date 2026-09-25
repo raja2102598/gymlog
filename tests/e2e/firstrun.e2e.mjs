@@ -5,6 +5,8 @@ import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { HOST, flat, open, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
 
+export const covers = ["src/components/shell/ChoosePlanView.tsx", "src/data/templates/*", "src/components/shell/LoginView.tsx"];
+
 const template = (id) => JSON.parse(fs.readFileSync(new URL(`../../src/data/templates/${id}.json`, import.meta.url), "utf8"));
 const NAMES = "Blank plan|Full body, 3 days|Upper and lower, 4 days|Five-day split";
 const day = (steps) => ({ exercises: {}, warmup: [], cardio: false, steps, weight: null, note: "" });
