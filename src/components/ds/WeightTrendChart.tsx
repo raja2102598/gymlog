@@ -45,6 +45,9 @@ interface Props {
   goal?: number | null;
   /** Draw the smoothed trend (noisy daily readings), or join the readings as they are. */
   smoothed?: boolean;
+  /** A trend worked out elsewhere, one value per point, drawn as it is instead of smoothing the readings here: so
+   *  the line matches the numbers shown beside it. */
+  trend?: (number | null)[];
 }
 
 /**
@@ -52,12 +55,12 @@ interface Props {
  * caps) over an area fading from 28% to 0, and the latest reading highlighted on a halo. No gridlines, no y-axis:
  * three x labels. Press and drag, or arrow keys, read out a day in a bubble.
  */
-export function WeightTrendChart({ points, tone, width: W, height: H = 130, axis, label, minSpan = 1, goal = null, smoothed = true }: Props) {
+export function WeightTrendChart({ points, tone, width: W, height: H = 130, axis, label, minSpan = 1, goal = null, smoothed = true, trend: given }: Props) {
   const id = useId().replace(/:/g, "");
   const [pick, setPick] = useState<number | null>(null);
   const svg = useRef<SVGSVGElement>(null);
   const vals = points.map((p) => p.value);
-  const trend = smoothed ? smooth(vals) : vals;
+  const trend = given ?? (smoothed ? smooth(vals) : vals);
   const all = [...vals, ...trend, goal].filter((v): v is number => v != null);
   let lo = Math.min(...all), hi = Math.max(...all);
   if (hi - lo < minSpan) {

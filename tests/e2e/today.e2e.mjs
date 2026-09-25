@@ -113,6 +113,7 @@ export default async function today({ browser, base, check }) {
     (await page.locator("#liftTop").count()) === 1 && (await page.locator("#liftE1rm").count()) === 0 && (await page.locator("#liftVolume").count()) === 0,
   );
   // The lift page opened from the workout: Back should return to the workout, where it was opened, on that lift.
+  check("lift page from the workout: the back chevron says it goes back to the workout", (await page.getAttribute("#backBtn", "aria-label")) === "Back to the workout");
   await page.click("#backBtn");
   await page.waitForSelector("#workoutView, #trainView, #dashView");
   check(

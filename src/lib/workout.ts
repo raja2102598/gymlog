@@ -27,6 +27,8 @@ export function keepRunsInMemory(on: boolean) {
 /** The account signed in: runs belong to it. */
 let owner: string | null = null;
 export function runsFor(user: string | null) {
+  // A new sign-in (or a fresh go at the sample data, which always has the same user) starts with no run in memory.
+  if (user !== owner) inMemory = null;
   owner = user;
 }
 const read = () => {

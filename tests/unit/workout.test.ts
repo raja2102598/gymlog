@@ -32,4 +32,18 @@ describe("workout runs", () => {
     runsFor("a");
     expect(runOf("2026-09-23")).toBeNull();
   });
+
+  it("starts each go at the sample data with no run, though every demo has the same user", () => {
+    keepRunsInMemory(true);
+    runsFor("demo");
+    startRun("2026-09-23", 1000);
+    expect(mem.size).toBe(0);
+    keepRunsInMemory(false); // leaving the demo
+    keepRunsInMemory(true);
+    expect(runOf("2026-09-23")).toBeNull();
+    startRun("2026-09-23", 1000);
+    runsFor(null); // signed out, then the sample data again
+    runsFor("demo");
+    expect(runOf("2026-09-23")).toBeNull();
+  });
 });

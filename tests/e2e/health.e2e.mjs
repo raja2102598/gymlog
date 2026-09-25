@@ -119,6 +119,7 @@ export default async function healthSuite({ browser, base, check }) {
   // Edit opens Settings over Health, and its back chevron returns to Health, not Home.
   await page.click("#editGoals");
   await page.waitForSelector("#signOutBtn");
+  check("its back chevron says where it goes", (await page.getAttribute("#backBtn", "aria-label")) === "Back to Health");
   await page.click("#backBtn");
   await page.waitForSelector("#activity");
   check("Settings opened from Health goes back to Health", new URL(page.url()).hash === "#health" && (await page.locator("#homeView").count()) === 0, page.url());

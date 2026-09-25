@@ -16,6 +16,7 @@ import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
+import { keepRunsInMemory } from "./workout";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
@@ -396,6 +397,7 @@ export class GymStore {
   exitDemo() {
     if (!this.demo) return;
     this.demo = false;
+    keepRunsInMemory(false); // the demo's workout clock goes with it: another go at the sample data starts afresh
     this.sb = this.liveSb;
     this.liveSb = null;
     this.onSignedOut();

@@ -39,8 +39,24 @@ import { WorkoutView } from "./workout/WorkoutView";
 
 const HOME: Route = { view: "home" };
 const address = (r: Route) => location.pathname + location.search + hashOf(r);
+/** This app's history entries: how far past Home, and the address of the screen this one was opened from. */
+type Entry = { gymDepth?: number; from?: string } | null;
 /** How many entries deep in the app's history this one is (0: Home), as the app set it. */
-const stackDepth = () => (history.state as { gymDepth?: number } | null)?.gymDepth ?? 0;
+const stackDepth = () => (history.state as Entry)?.gymDepth ?? 0;
+/** A screen's name, as the back chevron's label says it: "Back to Health", "Back to the workout". */
+const placeName = (r: Route): string =>
+  r.metric
+    ? METRIC_TITLE[r.metric]
+    : r.lift
+      ? r.lift
+      : r.done
+        ? "Workout complete"
+        : { home: "Home", train: "Train", progress: "Progress", health: "Health", settings: "Settings", plan: "Edit plan", gym: "My gym", workout: "the workout" }[r.view];
+/** Where the back chevron goes: the screen this one was opened from, or, with nothing behind it, its parent. */
+const backTo = (r: Route): Route => {
+  const from = typeof history === "undefined" ? undefined : (history.state as Entry)?.from;
+  return stackDepth() > 0 && from != null ? routeOf(from) : parentOf(r);
+};
 
 /** A text box has focus, so the page shouldn't move under the person typing. */
 const editing = () => {
@@ -105,7 +121,7 @@ export default function GymLog() {
     if (!d || typeof (history.state as { gymDepth?: number } | null)?.gymDepth === "number") return;
     const up = parentOf(r), chain = d >= 2 && up.view !== "home" ? [up, r] : [r];
     history.replaceState({ gymDepth: 0 }, "", address(HOME));
-    chain.forEach((c, i) => history.pushState({ gymDepth: i + 1 }, "", address(c)));
+    chain.forEach((c, i) => history.pushState({ gymDepth: i + 1, from: i ? hashOf(chain[i - 1]) : "" }, "", address(c)));
   }, []);
 
   // Each sign-in starts on Home. (The first one keeps a screen opened by its address, e.g. #settings.)
@@ -229,8 +245,8 @@ export default function GymLog() {
       if (to.view === "home") {
         if (depth > 0) stepBack(depth);
         else history.replaceState({ gymDepth: 0 }, "", address(HOME));
-      } else if (depthOf(to) > depthOf(route)) history.pushState({ gymDepth: depth + 1 }, "", address(to));
-      else history.replaceState({ gymDepth: depth }, "", address(to));
+      } else if (depthOf(to) > depthOf(route)) history.pushState({ gymDepth: depth + 1, from: hashOf(route) }, "", address(to));
+      else history.replaceState({ gymDepth: depth, from: (history.state as Entry)?.from }, "", address(to));
       leave(route, to);
       setRoute(to);
       window.scrollTo(0, 0);
@@ -348,7 +364,7 @@ export default function GymLog() {
             : route.view === "plan"
               ? "Edit plan"
               : "";
-  const backLabel = `Back to ${route.view === "settings" ? "Home" : parentOf(route).view === "health" ? "Health" : parentOf(route).view === "progress" ? "Progress" : "Train"}`;
+  const backLabel = pushed ? `Back to ${placeName(backTo(route))}` : "";
   const v = route.view;
   return (
     <div className="wrap" data-tabs={tabs ? "" : undefined} data-view={inApp ? v : screen}>
@@ -365,7 +381,7 @@ export default function GymLog() {
       <p className="sr-only" id="status" aria-live="polite">
         {store.status}
       </p>
-      {inApp && pushed && v !== "workout" ? <PushHead title={title} backHref={hashOf(parentOf(route)) || "./"} onBack={goBack} backLabel={backLabel} /> : null}
+      {inApp && pushed && v !== "workout" ? <PushHead title={title} backHref={hashOf(backTo(route)) || "./"} onBack={goBack} backLabel={backLabel} /> : null}
 
       <main id="main" tabIndex={-1}>
         <div className="bars" ref={bars}>

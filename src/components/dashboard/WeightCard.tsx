@@ -44,6 +44,7 @@ export function WeightCard({ m, onSetGoal }: { m: WeightModel; onSetGoal: () => 
           {m.series.length >= 2 ? (
             <WeightTrendChart
               points={m.series.map((p) => ({ value: p.measured ? p.weight : null, tip: `${dm(p.day)} · ${p.measured ? `${p.weight} kg` : `trend ${p.trend.toFixed(1)} kg`}` }))}
+              trend={m.series.map((p) => p.trend)}
               tone="body"
               width={width}
               height={160}
