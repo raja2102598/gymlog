@@ -40,6 +40,7 @@ Moving from another copy of Gym Log? Tap **Restore a backup** on that screen and
 - **Measurements:** a card below logs chest, arms, thighs, hips (cm) and body fat (%); once a week is enough, like waist. A value that isn't a number, or is outside a plausible range, is refused with a message naming the range. Their trends and the change over four weeks show in Health → Body.
 - **Health Connect on Today:** in the [Android app](android.md), steps and body weight from Health Connect show in grey in their boxes until you type your own, and a card under them shows the night's sleep, resting heart rate, active calories and any workouts other apps recorded, with **More in Health** to open the Health tab at that day. The website shows the same numbers once the app has synced them.
 - **Home-screen shortcuts:** once installed, long-press the app icon for *Today*, *Log weight* or *Log steps*.
+- **Home-screen widget:** in the [Android app](android.md#home-screen-widget), add Gym Log from your home screen's widget picker to see today's session and lift count without opening the app. Tap it for Today, or its Log weight and Log steps buttons to jump straight to that field.
 
 ## Health
 

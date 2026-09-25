@@ -35,6 +35,12 @@ With **Settings → Log sets by voice** on, each lift on Today gets a microphone
 - **On the phone:** on Android 12 and later, where the phone has on-device speech recognition for that English, what you say is turned into text on the phone itself. Otherwise the phone's speech service does it, with its offline model where it has one, or else on its servers (Google's, on most phones). Gym Log gets only the words, and keeps only the numbers.
 - **To turn it off:** switch off **Log sets by voice**, and the microphones go. To take back the permission too, turn off **Microphone** on that same Android settings page.
 
+## Home-screen widget
+
+Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, or **Rest day** with none planned. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Today**; the small buttons open **Today** with that field ready to type in, even when the app wasn't running.
+
+It updates itself as you log a set, tick a lift or a new day begins, and settles to a plain **Open Gym Log** once the day it was showing has passed, so it never shows yesterday's session as today's.
+
 ## Updates and the signing key
 
 The app carries its own copy of the site, so changes to the site only reach it in a new APK. Every push to `main` builds one and publishes it as the **android-latest** release (GitHub → Actions → *Android app* shows each build; pull requests get an APK under the run's *Artifacts*), together with a `version.json` naming its version, commit and checksum, which is how the app in the next paragraph tells there's something new.

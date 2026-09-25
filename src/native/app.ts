@@ -4,11 +4,12 @@
  * can listen (speech.ts). */
 import { App } from "@capacitor/app";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
-import { NATIVE_SIGN_IN } from "@/lib/native";
+import { GO_EVENT, NATIVE_GO, NATIVE_SIGN_IN } from "@/lib/native";
 import { checkPhoneSpeech } from "@/lib/speech";
 import type { GymStore } from "@/lib/store";
 import { syncHealth } from "./health";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
+import { clearWidget, startWidget } from "./widget";
 
 export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
@@ -44,17 +45,21 @@ export async function startNative(store: GymStore): Promise<void> {
   started = true;
   // Voice logging: Settings and Today offer it once the phone says it can turn speech into text.
   void checkPhoneSpeech();
-  // A sign-in link opens the app with ...://login?code=…, either starting it or bringing it back.
+  // A sign-in link opens the app with ...://login?code=…, either starting it or bringing it back. The widget's
+  // taps arrive the same way, as .../go/today, weight or steps; GymLog.tsx switches tabs on the window event.
   const open = (url?: string | null) => {
     if (url?.startsWith(NATIVE_SIGN_IN)) void store.finishSignIn(url);
+    else if (url?.startsWith(NATIVE_GO)) window.dispatchEvent(new CustomEvent(GO_EVENT, { detail: url.slice(NATIVE_GO.length) }));
   };
   await App.addListener("appUrlOpen", ({ url }) => open(url));
   open((await App.getLaunchUrl())?.url);
   await App.addListener("resume", () => void syncHealth(store));
-  // Signing out stops background sync, so this phone's data stops going to the account.
+  // Signing out stops background sync, so this phone's data stops going to the account, and clears the widget.
   store.onSignOut(async () => {
     if ((await backgroundStatus()).on) await turnOffBackground(store);
+    clearWidget();
   });
+  startWidget(store);
   // While open, too: a watch's numbers keep arriving through the day. syncHealth skips runs under 5 minutes apart.
   setInterval(() => void syncHealth(store), 15 * 60_000);
   // The first read, as soon as the account is known.

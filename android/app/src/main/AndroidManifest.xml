@@ -24,12 +24,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- The sign-in link in the email opens the app: io.github.raja2102598.gymlog://login?code=… -->
+            <!-- The sign-in link in the email opens the app: io.github.raja2102598.gymlog://login?code=…
+                 The home-screen widget's taps open it the same way: .../go/today, .../go/weight or .../go/steps
+                 (GymWidgetProvider builds them; src/native/app.ts and GymLog.tsx turn one into the matching screen). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="@string/custom_url_scheme" android:host="login" />
+                <!-- One scheme, two hosts: Android combines a data tag's attributes across all of an
+                     intent-filter's data tags, so this scheme applies to both. -->
+                <data android:scheme="@string/custom_url_scheme" />
+                <data android:host="login" />
+                <data android:host="go" />
             </intent-filter>
 
         </activity>
@@ -43,6 +49,21 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- The home-screen widget (GymWidgetProvider): today's session and lift progress, from WidgetPlugin.
+             android:exported="false" is right even so: APPWIDGET_UPDATE is a protected, system-only broadcast, so
+             only Android itself can deliver it, home screens included. -->
+        <receiver
+            android:name=".GymWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/gym_widget_info" />
+        </receiver>
     </application>
 
     <!-- Permissions -->

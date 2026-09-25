@@ -203,4 +203,31 @@ export default async function dashboard({ browser, base, check }) {
     check("no console errors (dark)", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
+
+  // --- the Android widget's taps (native/app.ts turns one into this window event): one that starts the app comes
+  // before sign-in is known, and one can come while another tab is open
+  {
+    const { ctx, page } = await open(browser, base, { auth, db, url: "" });
+    await page.addInitScript(() => {
+      // A cold start: the tap is sent the moment the app listens for it, before sign-in has come back.
+      const add = window.addEventListener;
+      window.addEventListener = function (type, ...rest) {
+        add.call(this, type, ...rest);
+        if (type !== "gymlog:go" || window.__goSent) return;
+        window.__goSent = true;
+        window.dispatchEvent(new CustomEvent("gymlog:go", { detail: "weight" }));
+      };
+    });
+    await page.goto(base);
+    await ready(page);
+    const focused = () => page.evaluate(() => document.activeElement?.id);
+    await until(async () => (await focused()) === "weight");
+    check("widget's Log weight, starting the app, focuses weight", (await focused()) === "weight", await focused());
+    await openTab(page, "progress");
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("gymlog:go", { detail: "steps" })));
+    await until(async () => (await focused()) === "steps");
+    check("widget's Log steps, from Progress, opens Today at steps", (await page.locator("#appView").isVisible()) && (await focused()) === "steps", await focused());
+    check("no console errors (widget taps)", page.errors.length === 0, page.errors.join(" | "));
+    await ctx.close();
+  }
 }

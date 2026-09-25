@@ -34,6 +34,8 @@ vi.mock("@capacitor/app", () => ({ App: app }));
 const googleSignIn = vi.hoisted(() => ({ signIn: vi.fn() }));
 // The app's own Speech plugin, for voice logging: this phone can listen.
 const speech = vi.hoisted(() => ({ available: vi.fn(async () => ({ available: true })) }));
+// The app's own Widget plugin, for the home-screen widget.
+const widget = vi.hoisted(() => ({ update: vi.fn(async () => {}), clear: vi.fn(async () => {}) }));
 // The app's own AppUpdate plugin: a download that lasts until the test ends it, with "progress" on the way.
 const appUpdate = vi.hoisted(() => {
   type Progress = { received: number; total: number };
@@ -52,11 +54,13 @@ const appUpdate = vi.hoisted(() => {
   };
 });
 vi.mock("@capacitor/core", () => ({
-  registerPlugin: (name: string) => (name === "GoogleSignIn" ? googleSignIn : name === "Speech" ? speech : name === "AppUpdate" ? appUpdate : gymSync),
+  registerPlugin: (name: string) =>
+    name === "GoogleSignIn" ? googleSignIn : name === "Speech" ? speech : name === "AppUpdate" ? appUpdate : name === "GymWidget" ? widget : gymSync,
   SystemBars: { setStyle: vi.fn() },
   SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" },
 }));
 
+import { todayKey, wdIndex } from "@/lib/dates";
 import { APP_LOGIN_PAGE, NATIVE_SIGN_IN } from "@/lib/native";
 import { speechSupported } from "@/lib/speech";
 import { GymStore } from "@/lib/store";
@@ -266,6 +270,48 @@ describe("startNative", () => {
     await vi.waitFor(() => expect(speechSupported()).toBe(true));
     await startNative(s);
     expect(speech.available).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("home-screen widget", () => {
+  beforeEach(() => {
+    widget.update.mockClear();
+    widget.clear.mockClear();
+  });
+
+  it("writes today's session and progress once signed in, again only when they change, and clears on sign-out", async () => {
+    const { startWidget, clearWidget } = await import("@/native/widget");
+    const s = new GymStore(), today = todayKey();
+    s.plan.days[wdIndex(today)] = {
+      weekday: "day",
+      name: "Push day",
+      focus: "",
+      exercises: [{ name: "Bench press", sets: "3", reps: "8-10", cue: "", flag: "", step: "", knee: false }],
+      cardio: { name: "", detail: "" },
+    };
+    s.auth = "starting";
+    startWidget(s);
+    expect(widget.update).not.toHaveBeenCalled();
+
+    s.auth = "signedIn";
+    s.setHealthLink({ state: "web", msg: "" }); // any store change tells listeners
+    expect(widget.update).toHaveBeenCalledTimes(1);
+    expect(widget.update).toHaveBeenCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null });
+
+    // A change that touches neither today's session nor its lifts: no second write.
+    s.setHealthLink({ state: "ok", msg: "Up to date." });
+    expect(widget.update).toHaveBeenCalledTimes(1);
+
+    // Ticking the lift changes the count, so it writes again.
+    s.editLift(today, "Bench press", (r) => (r.done = true), true);
+    expect(widget.update).toHaveBeenCalledTimes(2);
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 1, planned: 1, restEndsAt: null });
+
+    // Signing out clears it; the same snapshot as the first write counts as new again once cleared.
+    clearWidget();
+    expect(widget.clear).toHaveBeenCalledTimes(1);
+    s.editLift(today, "Bench press", (r) => (r.done = false), true);
+    expect(widget.update).toHaveBeenCalledTimes(3);
   });
 });
 

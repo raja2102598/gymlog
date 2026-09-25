@@ -7,7 +7,7 @@ import { useKeyboardUp } from "@/hooks/useKeyboardUp";
 import { stopListening } from "@/hooks/useVoice";
 import { addDays, parseKey, todayKey, wdIndex } from "@/lib/dates";
 import { METRIC_TITLE } from "@/lib/healthView";
-import { isNative } from "@/lib/native";
+import { GO_EVENT, isNative } from "@/lib/native";
 import { depthOf, hashOf, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
@@ -187,28 +187,32 @@ export default function GymLog() {
     if (route.view === "today" && !backing.current && routeOf(location.hash).view !== "today") history.replaceState({ gymDepth: 0 }, "", address(TODAY));
   }, [route]);
 
-  const stepBack = (n: number) => {
+  const stepBack = useCallback((n: number) => {
     backing.current = true;
     history.go(-n);
     setTimeout(() => (backing.current = false), 1000); // in case the Back never lands
-  };
+  }, []);
 
   /** Moves to another screen from a tap. Tabs sit one entry after Today and pages one after where they were
    *  opened: going deeper adds an entry, going across replaces it, going to Today steps back to it. So Back
-   *  retraces the way, and never returns to a screen that was closed. */
-  const navigate = (to: Route) => {
-    if (backing.current || sameRoute(to, route)) return false;
-    const depth = stackDepth();
-    if (to.view === "today") {
-      if (depth > 0) stepBack(depth);
-      else history.replaceState({ gymDepth: 0 }, "", address(TODAY));
-    } else if (depthOf(to) > depthOf(route)) history.pushState({ gymDepth: depth + 1 }, "", address(to));
-    else history.replaceState({ gymDepth: depth }, "", address(to));
-    leave(route, to);
-    setRoute(to);
-    if (to.view !== "today") window.scrollTo(0, 0);
-    return true;
-  };
+   *  retraces the way, and never returns to a screen that was closed. Stable except across an actual route
+   *  change, so the widget's "go" listener (below) can depend on it without resubscribing every render. */
+  const navigate = useCallback(
+    (to: Route) => {
+      if (backing.current || sameRoute(to, route)) return false;
+      const depth = stackDepth();
+      if (to.view === "today") {
+        if (depth > 0) stepBack(depth);
+        else history.replaceState({ gymDepth: 0 }, "", address(TODAY));
+      } else if (depthOf(to) > depthOf(route)) history.pushState({ gymDepth: depth + 1 }, "", address(to));
+      else history.replaceState({ gymDepth: depth }, "", address(to));
+      leave(route, to);
+      setRoute(to);
+      if (to.view !== "today") window.scrollTo(0, 0);
+      return true;
+    },
+    [route, leave, stepBack],
+  );
   /** The back arrow: back to wherever this page was opened from, or, with nothing to go back to, its tab. */
   const goBack = () => {
     if (backing.current) return;
@@ -225,6 +229,28 @@ export default function GymLog() {
     if (focus) focusNext(focus, true);
   };
   const openLift = (name: string) => navigate({ view: "progress", lift: name });
+
+  // The home-screen widget's taps (native/app.ts, from a deep link shaped like the sign-in link) open Today,
+  // focusing weight or steps the same way a shortcut does. Unlike a shortcut's ?go=, one can arrive while the
+  // app is already open somewhere else, so it switches tab itself instead of counting on the first render's route.
+  // One that starts the app arrives before sign-in is known, so like a shortcut it waits for that.
+  const goTo = useRef<string | null>(null);
+  const [goTick, setGoTick] = useState(0);
+  useEffect(() => {
+    const onGo = (ev: Event) => {
+      goTo.current = (ev as CustomEvent<string>).detail;
+      setGoTick((n) => n + 1);
+    };
+    window.addEventListener(GO_EVENT, onGo);
+    return () => window.removeEventListener(GO_EVENT, onGo);
+  }, []);
+  useEffect(() => {
+    const target = goTo.current;
+    if (!signedIn || target == null) return;
+    goTo.current = null;
+    navigate(TODAY);
+    if (target === "weight" || target === "steps") focusNext(`#${target}`, true);
+  }, [signedIn, goTick, navigate, focusNext]);
 
   // A new account chooses a plan before Today; until the first load says whether it's new, the loading placeholder.
   // A backup restored there keeps the picker up until it's in, then opens Settings at Your data to say what came in.
