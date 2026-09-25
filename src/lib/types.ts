@@ -51,6 +51,8 @@ export interface DayLog {
   note: string;
   /** Did another weekday's workout that day (0 = Monday), e.g. a missed one. */
   session?: number;
+  /** The day's workout skipped on purpose, with why ("" for no reason given): not missed, and not offered again. */
+  skip?: string;
   /** A free-form workout that day, in place of a planned session: its name, and the lifts added to it in the order
    *  they were added. They log like any lift; Progress counts the workout as an extra session, not a planned one. */
   free?: FreeWorkout;

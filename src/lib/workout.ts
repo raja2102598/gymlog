@@ -50,12 +50,19 @@ export function runOf(day: DayKey): WorkoutRun | null {
   return r && r.day === day && typeof r.startedAt === "number" ? r : null;
 }
 
-/** Starts the day's workout clock, unless it's already running for that day. */
+/** A clock left running this long was left behind (closed without Finish, then opened another day or hours
+ *  later): opening the workout starts it again, rather than carrying on from hours ago. */
+export const STALE_RUN_MS = 3 * 60 * 60 * 1000;
+
+/** Starts the day's workout clock, unless it's already running for that day (and not left running for hours). */
 export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
   const r = runOf(day);
-  if (r && !r.endedAt) return r;
+  if (r && !r.endedAt && now - r.startedAt < STALE_RUN_MS) return r;
   return write({ day, startedAt: now });
 }
+
+/** Starts the day's clock again from 0:00: the top bar's clock, tapped. */
+export const restartRun = (day: DayKey, now = Date.now()): WorkoutRun => write({ day, startedAt: now });
 
 export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);

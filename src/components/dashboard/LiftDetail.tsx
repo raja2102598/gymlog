@@ -48,7 +48,7 @@ function denseDays(from: DayKey, to: DayKey): DayKey[] {
 export function LiftDetail({ name }: { name: string }) {
   const store = useGym();
   const m = liftModel(store, todayKey(), name);
-  const ex = store.exerciseOf(name), libId = ex && !ex.custom ? ex.id : null;
+  const libId = store.mediaIdOf(name);
   return (
     <>
       <section className="card" id="dashLift">

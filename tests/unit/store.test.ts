@@ -61,6 +61,25 @@ describe("store", () => {
     expect(s.missedThisWeek("2026-09-27")).toEqual([1]);
   });
 
+  it("finds the photos and steps for a lift a plan saved before the library never linked, and none for your own", () => {
+    const s = storeWith({});
+    s.plan = normalizePlan({ days: [{ name: "Upper", exercises: [{ name: "Lateral Raises" }, { name: "Leg Extension", lib: "Leg_Extensions" }, { name: "My Odd Lift" }] }] }, DEFAULT_PLAN);
+    expect(s.mediaIdOf("Lateral Raises")).toBe("Side_Lateral_Raise"); // unlinked: the lift picked for that name by hand
+    expect(s.exerciseOf("Lateral Raises")).toBeNull(); // its equipment and weight steps are left as they were
+    expect(s.mediaIdOf("Leg Extension")).toBe("Leg_Extensions");
+    expect(s.mediaIdOf("My Odd Lift")).toBeNull();
+    s.plan.custom = [{ name: "Lateral Raises", equip: [], primary: [], secondary: [] }];
+    expect(s.mediaIdOf("Lateral Raises")).toBeNull(); // kept as your own lift: not the library's
+  });
+
+  it("takes a day skipped on purpose as neither missed nor offered again, and keeps why", () => {
+    const s = storeWith({ "2026-09-21": day({ skip: "travelling" }) }, "2026-09-20T06:00:00Z");
+    expect(s.missedThisWeek("2026-09-24")).toEqual([1]); // Pull (Tue) only: Monday's Push was skipped
+    expect(s.dayState("2026-09-21")).toBe("");
+    expect(s.dayState("2026-09-22")).toBe("miss");
+    expect(s.entry("2026-09-21").skip).toBe("travelling");
+  });
+
   it("colours days like the calendar: done, part, missed, nothing before the account", () => {
     const s = storeWith({
       "2026-09-21": day({ exercises: { "Chest Press Machine": lift([[12, 40]]) } }),

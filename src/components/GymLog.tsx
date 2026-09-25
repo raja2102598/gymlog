@@ -13,6 +13,7 @@ import { mmss } from "@/lib/format";
 import { METRIC_TITLE } from "@/lib/healthView";
 import { GO_EVENT, isNative } from "@/lib/native";
 import { depthOf, hashOf, isPushed, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
+import { onBack } from "@/lib/back";
 import { sessionDone } from "@/lib/session";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
@@ -261,6 +262,21 @@ export default function GymLog() {
     if (stackDepth() > 0) stepBack(1);
     else navigate(parentOf(route));
   };
+  // The phone's Back (lib/back.ts, from the Android app): an open menu closes first, then any screen but Home goes
+  // back the way the chevron does. On Home there's nothing to go back to, and the app goes to the background.
+  const onPhoneBack = useRef<() => boolean>(() => false);
+  useLayoutEffect(() => {
+    onPhoneBack.current = () => {
+      if (menu) {
+        setMenu(null);
+        return true;
+      }
+      if (route.view === "home") return false;
+      goBack();
+      return true;
+    };
+  });
+  useEffect(() => onBack(() => onPhoneBack.current()), []);
   const select = (k: DayKey) => {
     setSel(k);
     setMenu(null);

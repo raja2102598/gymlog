@@ -57,6 +57,11 @@ for (const scheme of ["dark", "light"]) {
   await page.click("#libTile");
   await page.waitForSelector("#libList");
   await snap(page, `library-${scheme}`);
+  // A lift opened in the library: its photos and steps, before adding it.
+  await page.locator("#libList [data-info]").first().click();
+  await page.waitForSelector("#libList .howto-steps li");
+  await page.evaluate(() => Promise.all([...document.querySelectorAll("#libList .howto-photos img")].map((i) => i.decode().catch(() => {}))));
+  await snap(page, `library-how-${scheme}`);
   await page.keyboard.press("Escape");
   // The workout: today's session, how to do its first lift, then a set in, resting.
   await page.click("#startBtn");

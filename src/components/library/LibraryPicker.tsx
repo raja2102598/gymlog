@@ -3,6 +3,7 @@ import { Bike, Check, ChevronLeft, Dumbbell, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useGym } from "@/hooks/useGym";
 import { ExerciseThumb } from "@/components/exercise/ExerciseThumb";
+import { HowTo } from "@/components/exercise/HowTo";
 import { cx } from "@/lib/cx";
 import { tintOf } from "@/lib/session";
 import { plural } from "@/lib/format";
@@ -66,6 +67,8 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
   const [q, setQ] = useState<LibQuery>({ text: ask.text ?? "", muscle: ask.muscle ?? "", equip: "", sort: "common" });
   const [chosen, setChosen] = useState<Exercise[]>([]);
   const [shown, setShown] = useState(SHOWN);
+  /** The lift whose photos and steps are open under its row, to see it before adding it. */
+  const [open, setOpen] = useState<string | null>(null);
   const [making, setMaking] = useState(!!ask.edit);
   const [every, setEvery] = useState(!!ask.everything);
   const have = new Set((ask.have ?? []).map((n) => n.toLowerCase()));
@@ -156,25 +159,37 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
           const had = have.has(x.name.toLowerCase()), on = chosen.some((c) => c.id === x.id), away = every && gym && !store.canDo(x);
           const added = had || on, cardio = /bike|cycl|rower|rowing machine|treadmill|elliptical/i.test(x.name);
           return (
-            <li key={x.id} className={cx("lib-row", on && "on", had && "had")}>
-              <ExerciseThumb
-                id={x.custom ? null : x.id}
-                fallback={
-                  <span className={cx("ico-tile", cardio ? "t-steps" : tintOf(store, x.name, { lib: x.id }))} aria-hidden="true">
-                    {cardio ? <Bike size={20} /> : <Dumbbell size={20} />}
+            <li key={x.id} className={cx("lib-row", on && "on", had && "had", open === x.id && "open")}>
+              {/* A library lift's photo and name open how to do it, under the row; your own lifts have none to show. */}
+              <button
+                type="button"
+                className="lib-info"
+                data-info={x.id}
+                disabled={!!x.custom}
+                aria-expanded={x.custom ? undefined : open === x.id}
+                aria-controls={x.custom ? undefined : `libHow_${x.id}`}
+                onClick={() => setOpen(open === x.id ? null : x.id)}
+              >
+                <ExerciseThumb
+                  id={x.custom ? null : x.id}
+                  fallback={
+                    <span className={cx("ico-tile", cardio ? "t-steps" : tintOf(store, x.name, { lib: x.id }))} aria-hidden="true">
+                      {cardio ? <Bike size={20} /> : <Dumbbell size={20} />}
+                    </span>
+                  }
+                />
+                <span className="lib-t">
+                  <span className="lib-n">
+                    {x.name}
+                    {x.custom ? <span className="pill">Yours</span> : null}
+                    {away ? <span className="pill warn">Not in my gym</span> : null}
                   </span>
-                }
-              />
-              <span className="lib-t">
-                <span className="lib-n">
-                  {x.name}
-                  {x.custom ? <span className="pill">Yours</span> : null}
-                  {away ? <span className="pill warn">Not in my gym</span> : null}
+                  <span className="row-d">
+                    {equipText(x)} · {muscleText(x)}
+                  </span>
+                  {x.custom ? null : <span className="lib-see">{open === x.id ? "Hide how to do it" : "See how to do it"}</span>}
                 </span>
-                <span className="row-d">
-                  {equipText(x)} · {muscleText(x)}
-                </span>
-              </span>
+              </button>
               <button
                 type="button"
                 className={cx("lib-add", added && "on")}
@@ -186,6 +201,11 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
               >
                 {added ? <Check size={22} strokeWidth={3} aria-hidden="true" /> : <Plus size={22} aria-hidden="true" />}
               </button>
+              {open === x.id ? (
+                <div className="lib-how" id={`libHow_${x.id}`}>
+                  <HowTo id={x.id} name={x.name} />
+                </div>
+              ) : null}
             </li>
           );
         })}

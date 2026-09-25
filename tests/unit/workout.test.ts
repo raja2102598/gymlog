@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearRun, endRun, keepRunsInMemory, runOf, runsFor, startRun } from "@/lib/workout";
+import { clearRun, endRun, keepRunsInMemory, restartRun, runOf, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
 
 const mem = new Map<string, string>();
 globalThis.localStorage = {
@@ -22,6 +22,13 @@ describe("workout runs", () => {
     expect(endRun("2026-09-23", 12000)?.endedAt).toBe(9000);
     clearRun();
     expect(runOf("2026-09-23")).toBeNull();
+  });
+
+  it("starts the clock again from 0:00 when asked, or when it was left running for hours", () => {
+    startRun("2026-09-23", 1000);
+    expect(restartRun("2026-09-23", 60_000).startedAt).toBe(60_000);
+    expect(startRun("2026-09-23", 60_000 + STALE_RUN_MS - 1).startedAt).toBe(60_000); // still the same workout
+    expect(startRun("2026-09-23", 60_000 + STALE_RUN_MS).startedAt).toBe(60_000 + STALE_RUN_MS); // left behind
   });
 
   it("clears only the given day's run: closing a reviewed day leaves another day's clock running", () => {

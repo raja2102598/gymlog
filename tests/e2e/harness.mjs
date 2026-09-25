@@ -211,8 +211,8 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
   return { ctx, page, db };
 }
 
-/** In the page: waits for timed animations to end. (The top bar's edge follows the scroll, and never ends.) */
-export const settled = () => Promise.all(document.getAnimations().filter((a) => a.timeline === document.timeline).map((a) => a.finished.catch(() => {})));
+/** In the page: waits for timed animations to end. (The top bar's edge follows the scroll, and the how-to photos loop: neither ends.) */
+export const settled = () => Promise.all(document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {})));
 
 /** Waits for the app to show Home and finish its first sync. */
 export async function ready(page) {

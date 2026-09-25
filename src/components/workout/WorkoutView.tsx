@@ -1,5 +1,5 @@
 "use client";
-import { Check, ChevronRight, Play, X } from "lucide-react";
+import { Check, ChevronRight, Play, RotateCcw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ds/parts";
 import { CardioFinisher } from "@/components/today/CardioFinisher";
@@ -13,7 +13,7 @@ import { wdIndex } from "@/lib/dates";
 import { mmss, num } from "@/lib/format";
 import { performed, restSecFor } from "@/lib/store";
 import type { DayKey, NumField } from "@/lib/types";
-import { clock, runOf, runSeconds } from "@/lib/workout";
+import { clock, restartRun, runOf, runSeconds } from "@/lib/workout";
 
 interface Props {
   day: DayKey;
@@ -233,9 +233,20 @@ function TopBar({ name, day, onClose, onFinish }: { name: string; day: DayKey; o
       <div className="wtop-t">
         <h1 id="screenTitle">{name}</h1>
         {run ? (
-          <span className="wclock" aria-label={`${Math.floor(runSeconds(run) / 60)} minutes in`} role="timer">
+          <button
+            type="button"
+            className="wclock"
+            id="wclock"
+            aria-label={`${Math.floor(runSeconds(run) / 60)} minutes in. Restart the clock`}
+            onClick={() => {
+              if (!confirm("Restart the workout clock from 0:00?")) return;
+              restartRun(day);
+              tick((n) => n + 1);
+            }}
+          >
             {clock(runSeconds(run))}
-          </span>
+            <RotateCcw size={14} strokeWidth={2.5} aria-hidden="true" />
+          </button>
         ) : null}
       </div>
       <button type="button" className="btn btn-raised" id="finishBtn" onClick={onFinish}>

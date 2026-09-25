@@ -145,6 +145,17 @@
 .howto-photos figure{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
 .howto-photos img{width:100%;height:auto;aspect-ratio:3/2;object-fit:cover;border-radius:var(--radius-md);background:var(--surface-sunken)}
 .howto-photos figcaption{font:var(--type-label);color:var(--ink-muted)}
+.howto-loop{display:none}
+.howto-video{align-self:flex-start}
+/* The lift moving: the finish photo fades in over the start and out again, on a loop. Still, side by side, with
+   Reduce motion on. */
+@media (prefers-reduced-motion:no-preference){
+  .howto-photos{grid-template-columns:1fr;position:relative}
+  .howto-photos figure+figure{position:absolute;top:0;left:0;right:0;animation:howtoMove 2.4s var(--ease) infinite}
+  .howto-photos figcaption{display:none}
+  .howto-loop{display:block;font:var(--type-label);color:var(--ink-muted)}
+  @keyframes howtoMove{0%,30%{opacity:0}45%,80%{opacity:1}95%,100%{opacity:0}}
+}
 .howto-tags{display:flex;flex-wrap:wrap;gap:6px;margin:0}
 .howto-steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:var(--space-2);font:var(--type-body);color:var(--ink)}
 .howto-steps li::marker{font-weight:800;color:var(--brand-text)}

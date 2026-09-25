@@ -34,3 +34,5 @@
 .today-card .start-row{flex-wrap:nowrap}
 .today-card .start-row .grow{flex:1 1 auto;min-width:0}
 .today-card .start-row .btn:not(.grow){flex:none}
+/* Skipping today's workout: a quiet line under Start and View lifts, 44px tall to tap. */
+.today-card .skip-today{align-self:center;min-height:var(--touch-min);margin:-6px 0 -8px}
