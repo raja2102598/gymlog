@@ -67,6 +67,22 @@ class GymWidgetLogicTest {
     }
 
     @Test
+    fun displayAddsWhenARunningRestTimerEnds() {
+        val resting = GymWidgetLogic.parse("""{"date":"2026-09-25","session":"Push day","done":2,"planned":5,"restEndsAt":"2026-09-25T10:32:00Z"}""")
+        val ends = java.time.Instant.parse("2026-09-25T10:32:00Z").toEpochMilli()
+        val d = GymWidgetLogic.display(resting, "2026-09-25", ends - 60_000) { "10:32" }
+        assertEquals("2/5 lifts · rest until 10:32", d.subtitle)
+        // Once it's over, the line goes: the rest alarm redraws the widget at that moment.
+        assertEquals("2/5 lifts", GymWidgetLogic.display(resting, "2026-09-25", ends) { "10:32" }.subtitle)
+    }
+
+    @Test
+    fun displayIgnoresARestEndItCantRead() {
+        val odd = GymWidgetLogic.parse("""{"date":"2026-09-25","session":"Push day","done":2,"planned":5,"restEndsAt":"soon"}""")
+        assertEquals("2/5 lifts", GymWidgetLogic.display(odd, "2026-09-25", 0L) { "?" }.subtitle)
+    }
+
+    @Test
     fun displayShowsARestDayWithNothingPlanned() {
         val rest = GymWidgetLogic.parse("""{"date":"2026-09-25","session":"Rest","done":0,"planned":0,"restEndsAt":null}""")
         val d = GymWidgetLogic.display(rest, "2026-09-25")

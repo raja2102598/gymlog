@@ -37,9 +37,17 @@ With **Settings → Log sets by voice** on, each lift on Today gets a microphone
 
 ## Home-screen widget
 
-Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, or **Rest day** with none planned. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Today**; the small buttons open **Today** with that field ready to type in, even when the app wasn't running.
+Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, or **Rest day** with none planned, and while a rest timer runs, when it ends. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Today**; the small buttons open **Today** with that field ready to type in, even when the app wasn't running.
 
 It updates itself as you log a set, tick a lift or a new day begins, and settles to a plain **Open Gym Log** once the day it was showing has passed, so it never shows yesterday's session as today's.
+
+## Rest timer
+
+The rest timer started by logging a set keeps counting with the app in the background or closed: a quiet notification counts down, and when it reaches zero a second one says **Rest over**, with a sound and a buzz. While the timer runs, the home-screen widget adds when it ends (*rest until 10:32*).
+
+- **Notifications:** Android 13 and later ask first. Tap **Allow** on **Settings → Rest timer notifications**. If Android has stopped asking, turn notifications on for Gym Log in the phone's own settings. Older versions allow them when the app is installed.
+- **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 13 and later leave off by default). Without it, Android may deliver it a little late while the phone is idle. The countdown in the app is exact either way.
+- **Two notification channels** in the phone's settings let you silence either: *Rest timer running* for the countdown (never makes a sound) and *Rest over* for the alert.
 
 ## Updates and the signing key
 

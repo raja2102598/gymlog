@@ -1,4 +1,5 @@
 "use client";
+import type { PermissionState } from "@capacitor/core";
 import { ArrowSquareOut, CaretRight, DownloadSimple, SignOut, UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Segmented } from "@/components/health/parts";
@@ -211,7 +212,7 @@ function HealthNative() {
 
 /* ---------- goals ---------- */
 
-type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl" | "barKg";
+type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl" | "barKg" | "restSec";
 /** Plan fields saved to the nearest half, not the nearest whole number. */
 const HALVES: GoalKey[] = ["sleepGoalH", "barKg"];
 
@@ -289,6 +290,7 @@ function Training({ onEditPlan }: { onEditPlan: () => void }) {
       <div className="pref-row pref-col">
         <div className="pref-goals">
           <Goal id="barKg" label="Bar weight (kg)" k="barKg" min={1} max={50} step={0.5} decimal />
+          <Goal id="restSec" label="Rest after a set (seconds)" k="restSec" min={5} max={600} step={5} />
           <label className="field wide" htmlFor="plateKgs">
             <span>Available plates (kg), separated by commas</span>
             <SyncedInput
@@ -305,10 +307,60 @@ function Training({ onEditPlan }: { onEditPlan: () => void }) {
           </label>
         </div>
         <p className="note" id="gearMsg" aria-live="polite">
-          For the plates button on a set, and a lift’s warm-up sets. {store.planMsg}
+          For the plates button on a set, a lift’s warm-up sets, and the rest timer. A lift can also override the
+          rest length on its own row in the plan editor. {store.planMsg}
         </p>
       </div>
+      {isNative() ? <RestNotifications /> : null}
     </Group>
+  );
+}
+
+/* ---------- rest timer notifications ---------- */
+
+/** Android 13 and later ask permission to post notifications; older versions grant it automatically (checked the
+ *  same way either way, RestTimerPlugin.kt). Lets the rest timer notify at zero while Gym Log is backgrounded or
+ *  closed (docs/android.md). The button only shows while asking would actually do something: once Android has
+ *  turned it down for good, only its own settings screen can turn it back on. */
+function RestNotifications() {
+  const [state, setState] = useState<PermissionState | null>(null);
+  useEffect(() => {
+    let live = true;
+    void native().then((m) =>
+      m.notificationPermission().then((s) => {
+        if (live) setState(s);
+      }),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const ask = () =>
+    void native()
+      .then((m) => m.requestNotificationPermission())
+      .then(setState);
+  if (!state) return null;
+  const canAsk = state === "prompt" || state === "prompt-with-rationale";
+  return (
+    <div className="pref-row">
+      <Text
+        title="Rest timer notifications"
+        sub={
+          <span id="restNotifStatus" role="status">
+            {state === "granted"
+              ? "On. Gym Log can notify you when a rest timer ends while it’s backgrounded or closed."
+              : canAsk
+                ? "Off. Gym Log can notify you when a rest timer ends while it’s backgrounded or closed."
+                : "Off, and Android is blocking it. Allow notifications for Gym Log in Android’s settings to get one when a rest timer ends in the background."}
+          </span>
+        }
+      />
+      {canAsk ? (
+        <button className="ghost" id="restNotifAsk" onClick={ask}>
+          Allow
+        </button>
+      ) : null}
+    </div>
   );
 }
 

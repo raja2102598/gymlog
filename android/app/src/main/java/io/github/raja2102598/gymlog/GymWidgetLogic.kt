@@ -9,8 +9,7 @@ import org.json.JSONObject
  */
 object GymWidgetLogic {
     /** Today's session (src/lib/store.ts's planFor), lifts done out of planned counted the way Today counts a
-     *  lift done (SessionCard.tsx's LiftPill), and restEndsAt for the rest timer: a later issue, always null
-     *  until it exists, kept here now so the JSON won't need to change shape when it does. */
+     *  lift done (SessionCard.tsx's LiftPill), and when a running rest timer ends (an ISO instant), or null. */
     data class Snapshot(val date: String, val session: String, val done: Int, val planned: Int, val restEndsAt: String?)
 
     /** Null for anything that isn't this JSON: missing at all, unparsable, or short a required field. */
@@ -46,12 +45,18 @@ object GymWidgetLogic {
     data class Display(val title: String, val subtitle: String)
 
     /** What the widget says: the session and its progress, worded the same as Today's own lift count ("3/5
-     *  lifts", "Rest day"), or a neutral invitation once the data is missing or from a day that's passed. */
-    fun display(s: Snapshot?, today: String): Display {
+     *  lifts", "Rest day"), or a neutral invitation once the data is missing or from a day that's passed. While a
+     *  rest timer is still running at `nowMs`, the progress adds when it ends ("3/5 lifts · rest until 10:32",
+     *  the time as `clock` writes it), since a widget can't count down every second. */
+    fun display(s: Snapshot?, today: String, nowMs: Long = Long.MAX_VALUE, clock: (Long) -> String = { "" }): Display {
         if (s == null || !isCurrent(s, today)) return Display("Gym Log", "Open Gym Log")
         val progress = if (s.planned <= 0) "Rest day" else "${s.done}/${s.planned} lifts"
-        return Display(s.session, progress)
+        val ends = restEndMs(s)
+        return Display(s.session, if (ends != null && ends > nowMs) "$progress · rest until ${clock(ends)}" else progress)
     }
+
+    /** restEndsAt in epoch ms, or null when there's none or it can't be read. */
+    fun restEndMs(s: Snapshot): Long? = s.restEndsAt?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
 
     /** A widget narrower than this can't fit the Log weight and Log steps buttons next to the session card. */
     private const val MIN_WIDTH_FOR_SHORTCUTS_DP = 180

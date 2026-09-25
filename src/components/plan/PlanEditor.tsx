@@ -8,7 +8,7 @@ import { num } from "@/lib/format";
 import type { Plan, PlanExercise } from "@/lib/types";
 import { TemplateList } from "./TemplateList";
 
-type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step";
+type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step" | "rest";
 
 interface Props {
   /** Weekday open in the editor, 0 = Monday. */
@@ -50,7 +50,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   const add = () => {
     const j = d.exercises.length;
     edit((p) => {
-      p.days[editDay].exercises.push({ name: "", sets: "3", reps: "10-12", cue: "", flag: "", step: "", knee: false });
+      p.days[editDay].exercises.push({ name: "", sets: "3", reps: "10-12", cue: "", flag: "", step: "", knee: false, rest: "" });
     }, true);
     focusNext(`#pe_x${j}_name`);
   };
@@ -204,6 +204,9 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                     />{" "}
                     Knee-sensitive
                   </label>
+                </div>
+                <div className="pe-row2">
+                  {liftField(x, j, "rest", "Rest after a set (seconds, optional)", { placeholder: `Plan default (${plan.restSec})`, inputMode: "numeric" })}
                 </div>
                 <div className="pe-btns">
                   <button className="ghost tiny" data-pmove={`${j}:-1`} disabled={j === 0} aria-label={`Move lift ${j + 1} up`} onClick={() => move(j, -1)}>

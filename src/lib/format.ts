@@ -14,6 +14,12 @@ export const avg = (a: number[]) => (a.length ? sum(a) / a.length : null);
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** A countdown in words: "1:30", "0:05". Never negative, however late it's read. */
+export const mmss = (totalSec: number): string => {
+  const s = Math.max(0, Math.round(totalSec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
 /** When something last synced, to follow "synced": "at 10:42 am" today, "yesterday", or "on 23 Sept". */
 export function syncedWhen(iso: string, now = new Date()): string {
   const d = new Date(iso), k = keyOf(d), t = keyOf(now);

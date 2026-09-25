@@ -1,8 +1,7 @@
 /* The home-screen widget (android/.../GymWidgetProvider.kt): a small JSON of today's session and lift progress,
  * written through this plugin whenever they change, so the widget can show them without opening the app. Taps on
  * it open the app the same way a sign-in link does (native.ts's NATIVE_GO, app.ts's appUrlOpen listener).
- * restEndsAt is for the rest timer, a later issue: always null until it exists, so its JSON won't need to change
- * shape when it does. */
+ * restEndsAt is when a running rest timer ends (store.ts's rest), or null. */
 import { registerPlugin } from "@capacitor/core";
 import { todayKey } from "@/lib/dates";
 import type { GymStore } from "@/lib/store";
@@ -31,7 +30,9 @@ let lastWritten: string | null = null;
 function snapshotOf(store: GymStore): WidgetSnapshot {
   const date = todayKey(), p = store.planFor(date), e = store.entry(date);
   const done = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
-  return { date, session: p.name, done, planned: p.exercises.length, restEndsAt: null };
+  // A running rest timer's end, which the widget shows as "rest until 10:32", since it can't tick every second.
+  const r = store.rest, resting = r && r.pausedAt == null && !r.ended;
+  return { date, session: p.name, done, planned: p.exercises.length, restEndsAt: resting ? new Date(r.endAt).toISOString() : null };
 }
 
 /** Writes today's session and progress, if they've changed since the last write. Signed out, however that came

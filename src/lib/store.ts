@@ -13,7 +13,7 @@ import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
-import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
+import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
@@ -40,6 +40,22 @@ export interface NextWeight extends S.NextStep {
   day: DayKey;
   /** Held back because the knee was sore after that session. */
   held: boolean;
+}
+/** The rest timer, shown in the top bar: counts from `endAt` down to zero, not from ticks, so a throttled background
+ *  tab or a reload can't make it drift. Kept on this device only (REST_KEY): a timer only means something where
+ *  you're actually lifting. */
+export interface RestTimer {
+  /** Which lift this rest follows and the day it was logged on, for the top bar's wording only: neither changes
+   *  when a set restarts the timer, and switching screens or days never touches it. */
+  lift: string;
+  day: DayKey;
+  /** Epoch ms it reaches zero, kept up to date whether running or paused (see pausedAt). */
+  endAt: number;
+  /** Epoch ms it was paused, or null while running: what's left is then endAt - pausedAt, frozen until resumed. */
+  pausedAt: number | null;
+  /** Reached zero and said so already (vibrated, marked for screen readers): stays true until skipped or a set
+   *  restarts it, so that only happens once. */
+  ended: boolean;
 }
 /** What an import would replace: how many logged days the file has differently, and whether its plan differs. */
 export interface Replacing {
@@ -70,6 +86,16 @@ export const setsComplete = (sets: SetLog[], min: number) => sets.filter((s) => 
 export const stepOf = (x: PlanExercise) => {
   const v = parseFloat(x.step);
   return v > 0 ? v : 2.5;
+};
+/** A saved rest timer worth bringing back after a reload or a sign-in: not one that ran out over ten minutes ago,
+ *  or was left paused for over an hour, which would only show a stale "Rest over" or countdown. */
+export const liveRest = (r: RestTimer | null | undefined, now = Date.now()): RestTimer | null =>
+  r && (r.pausedAt != null ? now - r.pausedAt < 3_600_000 : now - r.endAt < 600_000) ? r : null;
+/** The rest timer's length for this lift, seconds: its own override (the plan editor's lift row), kept within
+ *  5 s and 10 minutes as the plan's default is, or else the plan's. */
+export const restSecFor = (plan: Plan, x: PlanExercise) => {
+  const v = parseInt(x.rest ?? "", 10);
+  return v > 0 ? Math.min(600, Math.max(5, v)) : plan.restSec;
 };
 export const PR_WORDS: Record<S.RecordKind, string> = { weight: "heaviest yet", e1rm: "best estimated 1RM", reps: "most reps at this weight" };
 export const prTitle = (kinds?: S.RecordKind[]) => (kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : "");
@@ -165,6 +191,8 @@ export class GymStore {
   /** When the Android app last saved Health Connect data (ISO), or null. */
   healthSyncedAt: string | null = null;
   healthLink: HealthLink = { state: "web", msg: "" };
+  /** The rest timer. Null when none is running, paused or waiting to be dismissed. */
+  rest: RestTimer | null = null;
   /** Why the last sign-in link didn't work, for the sign-in screen. */
   authMsg = "";
   user: User | null = null;
@@ -201,6 +229,7 @@ export class GymStore {
   private flushing = false;
   private planTimer: ReturnType<typeof setTimeout> | undefined;
   private planFlushing = false;
+  private restTimeout: ReturnType<typeof setTimeout> | undefined;
   private recBefore: { upTo: DayKey; best: S.RecordFold } | null = null;
   private sorted: { rev: number; keys: DayKey[] } | null = null;
   private logsRev = 0;
@@ -282,7 +311,10 @@ export class GymStore {
       void this.pullHealth();
     };
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) sync();
+      if (!document.hidden) {
+        sync();
+        this.checkRest(); // a background tab can throttle the timer that would otherwise have caught this
+      }
     });
     window.addEventListener("online", () => {
       this.online = true;
@@ -391,10 +423,15 @@ export class GymStore {
     const pend = lsGet<{ user?: string; pending?: Record<DayKey, DayLog> } | null>(PENDING_KEY, null);
     const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean; base?: string | null } | null>(PLAN_KEY, null);
     const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null } | null>(HEALTH_KEY, null);
+    const rc = lsGet<{ user?: string; rest?: RestTimer | null } | null>(REST_KEY, null);
     this.logs = cache && cache.user === u.id ? cache.logs || {} : {};
     this.bases = cache && cache.user === u.id ? cache.bases || {} : {};
     this.health = hc && hc.user === u.id ? hc.health || {} : {};
     this.healthSyncedAt = hc && hc.user === u.id ? hc.at ?? null : null;
+    // A reload or a tab switch keeps the rest timer (this phone only: it never came from Supabase or another device).
+    this.rest = rc && rc.user === u.id ? liveRest(rc.rest) : null;
+    this.armRest();
+    this.checkRest();
     this.authMsg = "";
     this.pending = pend && pend.user === u.id ? pend.pending || {} : {};
     // Not kept: the first save of such a day finds the other device's copy again.
@@ -436,6 +473,8 @@ export class GymStore {
     this.conflicts = {};
     this.health = {};
     this.healthSyncedAt = null;
+    this.disarmRest();
+    this.rest = null;
     this.logsChanged();
     this.syncTrouble = false;
     this.unsaved.clear();
@@ -796,6 +835,85 @@ export class GymStore {
     return x && (x.sets || x.reps) ? { done: false, kg: null, target: { sets: x.sets, reps: x.reps } } : { done: false, kg: null };
   }
 
+  /* ---------- rest timer ---------- */
+  /** Seconds left, counting from endAt so it can't drift: 0 once it's reached zero, whether running or paused. */
+  restRemaining(): number {
+    const r = this.rest;
+    return r ? Math.max(0, Math.round((r.endAt - (r.pausedAt ?? Date.now())) / 1000)) : 0;
+  }
+  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx). */
+  startRest(day: DayKey, lift: string, sec: number) {
+    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false };
+    this.armRest();
+    this.persistRest();
+    this.changed();
+  }
+  pauseRest() {
+    const r = this.rest;
+    if (!r || r.pausedAt != null) return;
+    r.pausedAt = Date.now();
+    this.disarmRest(); // nothing to notify while it isn't counting
+    this.persistRest();
+    this.changed();
+  }
+  resumeRest() {
+    const r = this.rest;
+    if (!r || r.pausedAt == null) return;
+    r.endAt = Date.now() + (r.endAt - r.pausedAt); // what was left, from now
+    r.pausedAt = null;
+    this.armRest();
+    this.persistRest();
+    this.changed();
+  }
+  /** +30 s (or any amount): pushes the end time out, whether running or paused, and un-ends a timer that had
+   *  already reached zero, so tapping it after "Rest over" counts that much down again, from now. */
+  addRestTime(sec: number) {
+    const r = this.rest;
+    if (!r) return;
+    r.endAt = (r.pausedAt == null ? Math.max(r.endAt, Date.now()) : r.endAt) + sec * 1000;
+    r.ended = false;
+    if (r.pausedAt == null) this.armRest();
+    this.persistRest();
+    this.changed();
+  }
+  /** Dismisses the timer without announcing it, as if it had never been needed. */
+  skipRest() {
+    if (!this.rest) return;
+    this.disarmRest();
+    this.rest = null;
+    this.persistRest();
+    this.changed();
+  }
+  /** Schedules checkRest for when the countdown is due, replacing any timer already waiting. A no-op while paused,
+   *  already over, or with nothing running: those need no wake-up. */
+  private armRest() {
+    this.disarmRest();
+    const r = this.rest;
+    if (!r || r.pausedAt != null || r.ended) return;
+    // A little after zero, not exactly on it: setTimeout can fire a beat early, and Date.now() must already be past
+    // endAt below or this re-arms instead of finishing.
+    this.restTimeout = setTimeout(() => this.checkRest(), Math.max(0, r.endAt - Date.now()) + 100);
+  }
+  private disarmRest() {
+    clearTimeout(this.restTimeout);
+    this.restTimeout = undefined;
+  }
+  /** Whether the countdown has reached zero, called by armRest's timer and again whenever the tab comes back to the
+   *  front (background tabs throttle timers, so a reload or a long time away might have missed it). Vibrates and
+   *  marks it over the first time only; safe to call any time after, including while paused. */
+  private checkRest() {
+    const r = this.rest;
+    if (!r || r.ended || r.pausedAt != null) return;
+    if (Date.now() < r.endAt) {
+      this.armRest();
+      return;
+    }
+    r.ended = true;
+    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([300, 150, 300]);
+    this.persistRest();
+    this.changed();
+  }
+
   /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) In the demo, nothing is
    *  kept anywhere: a real sign-in afterwards must never find sample data waiting for it. */
   private saveLocal(key: string, value: unknown) {
@@ -813,6 +931,9 @@ export class GymStore {
   }
   private persistPlan() {
     this.saveLocal(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty, base: this.planBase });
+  }
+  private persistRest() {
+    this.saveLocal(REST_KEY, { user: this.user?.id, rest: this.rest });
   }
 
   /** Days waiting to be saved, leaving out those waiting for you to choose a version. */

@@ -36,6 +36,8 @@ const googleSignIn = vi.hoisted(() => ({ signIn: vi.fn() }));
 const speech = vi.hoisted(() => ({ available: vi.fn(async () => ({ available: true })) }));
 // The app's own Widget plugin, for the home-screen widget.
 const widget = vi.hoisted(() => ({ update: vi.fn(async () => {}), clear: vi.fn(async () => {}) }));
+// The app's own RestTimer plugin: the rest timer's alarm and notification while the app is in the background.
+const restTimer = vi.hoisted(() => ({ schedule: vi.fn(async () => {}), cancel: vi.fn(async () => {}) }));
 // The app's own AppUpdate plugin: a download that lasts until the test ends it, with "progress" on the way.
 const appUpdate = vi.hoisted(() => {
   type Progress = { received: number; total: number };
@@ -55,7 +57,17 @@ const appUpdate = vi.hoisted(() => {
 });
 vi.mock("@capacitor/core", () => ({
   registerPlugin: (name: string) =>
-    name === "GoogleSignIn" ? googleSignIn : name === "Speech" ? speech : name === "AppUpdate" ? appUpdate : name === "GymWidget" ? widget : gymSync,
+    name === "GoogleSignIn"
+      ? googleSignIn
+      : name === "Speech"
+        ? speech
+        : name === "AppUpdate"
+          ? appUpdate
+          : name === "GymWidget"
+            ? widget
+            : name === "RestTimer"
+              ? restTimer
+              : gymSync,
   SystemBars: { setStyle: vi.fn() },
   SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" },
 }));
@@ -349,6 +361,73 @@ describe("home-screen widget", () => {
     s.setHealthLink({ state: "ok", msg: "Up to date." });
     expect(widget.update).toHaveBeenCalledTimes(2);
     expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Leg day", done: 0, planned: 1, restEndsAt: null });
+  });
+});
+
+describe("rest timer in the background", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 23, 12));
+    vi.stubGlobal("navigator", { onLine: true, vibrate: () => true });
+    restTimer.schedule.mockClear();
+    restTimer.cancel.mockClear();
+    widget.update.mockClear();
+  });
+  const appIs = (isActive: boolean) => (app.listeners.appStateChange as unknown as (e: { isActive: boolean }) => void)({ isActive });
+
+  it("schedules the alarm while the timer runs, and takes it down when paused or skipped", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const { s } = signedIn();
+    syncRestNotifications(s);
+    expect(restTimer.schedule).not.toHaveBeenCalled();
+    s.startRest("2026-09-23", "Leg Press", 90);
+    const endAt = new Date(2026, 8, 23, 12, 1, 30).getTime();
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt });
+    s.setHealthLink({ state: "ok", msg: "" }); // an unrelated change: nothing sent again
+    expect(restTimer.schedule).toHaveBeenCalledTimes(1);
+    s.pauseRest();
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(10_000);
+    s.resumeRest();
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 10_000 });
+    s.addRestTime(30);
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 40_000 });
+    s.skipRest();
+    expect(restTimer.cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves ‘Rest over’ to the alarm when the app is in the background, and takes it down on coming back", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const { s } = signedIn();
+    syncRestNotifications(s);
+    s.startRest("2026-09-23", "Leg Press", 30);
+    appIs(false);
+    vi.advanceTimersByTime(31_000);
+    expect(s.rest?.ended).toBe(true);
+    expect(restTimer.cancel).not.toHaveBeenCalled();
+    appIs(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the alert down when the timer ends with the app in front, which says so itself", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const { s } = signedIn();
+    syncRestNotifications(s);
+    appIs(true);
+    s.startRest("2026-09-23", "Leg Press", 30);
+    vi.advanceTimersByTime(31_000);
+    expect(s.rest?.ended).toBe(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts a running timer's end on the widget, and takes it off when paused", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const { s } = signedIn();
+    startWidget(s);
+    s.startRest(todayKey(), "Leg Press", 90);
+    expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: new Date(2026, 8, 23, 12, 1, 30).toISOString() }));
+    s.pauseRest();
+    expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: null }));
   });
 });
 

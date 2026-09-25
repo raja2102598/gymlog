@@ -11,7 +11,7 @@ import { dayMonth } from "@/lib/dates";
 import { num, setsSummary } from "@/lib/format";
 import { hashOf } from "@/lib/route";
 import { isWorkingSet, type RecordKind } from "@/lib/stats";
-import { minSets, performed, prTitle, setsComplete, setsOf, targetOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
+import { minSets, performed, prTitle, restSecFor, setsComplete, setsOf, targetOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
 import { PlatesButton, PlatesInfo } from "./PlateCalc";
@@ -72,15 +72,20 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   const edit = (fn: (r: LiftLog) => void, immediate: boolean) => store.editLift(sel, name, fn, immediate);
   const barKg = store.plan.barKg, plateKgs = store.plan.plateKgs;
 
-  const setField = (j: number, f: "reps" | "kg", value: string) =>
+  const setField = (j: number, f: "reps" | "kg", value: string) => {
+    // Whether these reps start the rest timer: set once inside edit(), against the state just before this change.
+    let startsRest = false;
     edit((r) => {
       const warm = setsOf(r).filter((s) => !isWorkingSet(s));
       const work = setsOf(r).filter(isWorkingSet).map((s) => ({ reps: s.reps ?? null, kg: s.kg ?? null }));
       while (work.length <= j) work.push({ reps: null, kg: null });
-      const v = num(value);
+      const v = num(value), hadReps = work[j].reps != null;
       work[j][f] = v == null ? null : f === "kg" ? Math.round(v * 2) / 2 : Math.max(0, Math.round(v));
       // A new set usually uses the same weight as the one before it.
       if (f === "reps" && v != null && j > 0 && work[j].kg == null && work[j - 1].kg != null) work[j].kg = work[j - 1].kg;
+      // The timer starts when a set gets its reps, whether its kg came first or not: not again as more digits go
+      // in ("1", then "12"), and not for a correction to a set with a later one already logged.
+      if (f === "reps" && v != null && !hadReps && !work.slice(j + 1).some((s) => s.reps != null)) startsRest = true;
       r.sets = [...warm, ...work];
       r.kg = topKg(r.sets);
       // Logging the planned number of working sets ticks the lift off; warm-ups never do.
@@ -89,6 +94,8 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
         r.autoDone = true;
       }
     }, false);
+    if (startsRest) store.startRest(sel, did, restSecFor(store.plan, x));
+  };
   const addSet = () =>
     edit((r) => {
       const warm = setsOf(r).filter((s) => !isWorkingSet(s));

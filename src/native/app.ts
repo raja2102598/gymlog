@@ -8,11 +8,13 @@ import { GO_EVENT, NATIVE_GO, NATIVE_SIGN_IN } from "@/lib/native";
 import { checkPhoneSpeech } from "@/lib/speech";
 import type { GymStore } from "@/lib/store";
 import { syncHealth } from "./health";
+import { syncRestNotifications } from "./rest";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
 import { startWidget } from "./widget";
 
 export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
+export { notificationPermission, requestNotificationPermission } from "./rest";
 export { backgroundStatus, runBackgroundNow, turnOffBackground, turnOnBackground, type SyncStatus } from "./sync";
 export {
   checkUpdate,
@@ -45,6 +47,8 @@ export async function startNative(store: GymStore): Promise<void> {
   started = true;
   // Voice logging: Settings and Today offer it once the phone says it can turn speech into text.
   void checkPhoneSpeech();
+  // The rest timer's native alarm and notification: kept in step with store.rest for as long as the app runs.
+  syncRestNotifications(store);
   // A sign-in link opens the app with ...://login?code=…, either starting it or bringing it back. The widget's
   // taps arrive the same way, as .../go/today, weight or steps; GymLog.tsx switches tabs on the window event.
   const open = (url?: string | null) => {

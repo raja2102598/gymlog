@@ -59,7 +59,8 @@ class GymWidgetProvider : AppWidgetProvider() {
 
         private fun updateOne(context: Context, mgr: AppWidgetManager, id: Int) {
             val snapshot = GymWidgetLogic.parse(GymWidgetStore.read(context))
-            val text = GymWidgetLogic.display(snapshot, LocalDate.now().toString())
+            val clock = android.text.format.DateFormat.getTimeFormat(context)
+            val text = GymWidgetLogic.display(snapshot, LocalDate.now().toString(), System.currentTimeMillis()) { clock.format(java.util.Date(it)) }
             val minWidth = mgr.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
             val full = GymWidgetLogic.showsShortcuts(minWidth)
             val views = RemoteViews(context.packageName, if (full) R.layout.widget_gymlog else R.layout.widget_gymlog_small)

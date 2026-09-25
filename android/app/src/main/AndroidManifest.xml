@@ -64,6 +64,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/gym_widget_info" />
         </receiver>
+        <!-- The rest timer's alarm (RestAlarm.kt, RestTimerPlugin.kt): fires even if Gym Log isn't running, so it's
+             named here rather than only registered in code. Only this app's own PendingIntent triggers it. -->
+        <receiver
+            android:name=".RestTimerReceiver"
+            android:exported="false" />
     </application>
 
     <!-- Permissions -->
@@ -83,6 +88,18 @@
             <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
+
+    <!-- Rest timer (RestTimerPlugin.kt, RestAlarm.kt): a notification at zero while the app is backgrounded or
+         closed. POST_NOTIFICATIONS is Android 13 and later's runtime permission for posting one at all, asked for
+         from the Settings row it's named after; older versions grant it on install. SCHEDULE_EXACT_ALARM lets the
+         alert land on time rather than whenever Doze next lets an inexact one through, which the code falls back to
+         where this isn't granted (from Android 12, only "Alarms & reminders" in the phone's own settings grants it;
+         it isn't automatic there the way it is on 12 itself). USE_EXACT_ALARM would need Gym Log to be an alarm or
+         calendar app, which it isn't, so this is the declaration for the ordinary, sometimes-not-granted kind. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- The page's own buzz at zero (navigator.vibrate) while the app is open: the WebView needs this to do it. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Health Connect: Gym Log only reads. What it reads is READ in src/native/health.ts; older history too. -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />

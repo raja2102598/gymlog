@@ -141,6 +141,9 @@ export interface PlanExercise {
   /** kg to add when every set reaches the top of the rep range (2.5 when empty). */
   step: string;
   knee: boolean;
+  /** Seconds to rest after a set, overriding the plan's default (restSecFor in lib/store.ts). Empty or unset: use
+   *  the plan's. Optional so older plans and the plan templates need no change to keep normalizePlan's round trip. */
+  rest?: string;
 }
 
 export interface PlanDay {
@@ -165,6 +168,8 @@ export interface Plan {
   /** For the plates button on a set, and a lift's warm-up sets. */
   barKg: number;
   plateKgs: number[];
+  /** The rest timer's default length, seconds, started when a set's reps are logged. A lift can override it. */
+  restSec: number;
   warmups: string[];
   days: PlanDay[];
 }

@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SpeechPlugin.class);
         registerPlugin(AppUpdatePlugin.class);
         registerPlugin(WidgetPlugin.class);
+        registerPlugin(RestTimerPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -11,6 +11,8 @@ const within = (v: unknown, lo: number, hi: number) => (v != null && v !== "" &&
 /** A standard bar and plate set, until Settings says otherwise. */
 const DEFAULT_BAR_KG = 20;
 const DEFAULT_PLATE_KGS = [25, 20, 15, 10, 5, 2.5, 1.25];
+/** The rest timer's default, until Settings says otherwise: long enough for most working sets. */
+export const DEFAULT_REST_SEC = 90;
 
 // Fills gaps and drops unnamed lifts so a hand-edited or partial plan can't break rendering. `d` is the
 // default plan to fall back on (none while the default itself is being read).
@@ -34,6 +36,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
       : d
         ? d.plateKgs.slice()
         : DEFAULT_PLATE_KGS.slice(),
+    restSec: within(q.restSec, 5, 600) ?? d?.restSec ?? DEFAULT_REST_SEC,
     warmups: Array.isArray(q.warmups) ? [...new Set((q.warmups as unknown[]).map((w) => str(w).trim()).filter(Boolean))] : d ? d.warmups.slice() : [],
     days: DOW.map((wd, i) => {
       const s = ((days && days[i]) || d?.days[i] || {}) as Record<string, unknown>;
@@ -46,6 +49,8 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
           .map((x) => ({
             name: str(x?.name).trim(), sets: str(x?.sets), reps: str(x?.reps), cue: str(x?.cue), flag: str(x?.flag), step: str(x?.step),
             knee: typeof x?.knee === "boolean" ? (x.knee as boolean) : /knee/i.test(str(x?.flag)), // plan.json marks these with a KNEE NOTE
+            // Left out (not "") when the plan doesn't set one, so a plan with no overrides round-trips unchanged.
+            ...(x?.rest != null ? { rest: str(x.rest) } : {}),
           }))
           .filter((x) => x.name),
         cardio: { name: str(cardio.name), detail: str(cardio.detail) },
