@@ -1,8 +1,8 @@
 /* What the Health tab shows, worked out from the store: one day's numbers for the tiles, and a metric's values
- * across days for its charts. Steps and weight you typed win over Health Connect's, as everywhere else. */
+ * across days for its charts. Steps, weight and body fat you typed win over Health Connect's, as everywhere else. */
 import { addDays } from "./dates";
 import type { Metric } from "./route";
-import type { DayKey, HealthDay, HealthWorkout, Plan } from "./types";
+import type { DayKey, HealthDay, HealthWorkout, MeasureField, Plan } from "./types";
 
 export const METRIC_TITLE: Record<Metric, string> = {
   steps: "Steps",
@@ -20,6 +20,10 @@ export interface HealthSource {
   healthOf(k: DayKey): HealthDay | null;
   stepsOf(k: DayKey): number | null;
   weightOf(k: DayKey): number | null;
+  /** Chest, arms, thighs and hips, and body fat (which also takes Health Connect's reading, like weight). */
+  measureOf(k: DayKey, field: MeasureField): number | null;
+  /** Whether the measurements card has ever been filled in, typed rather than from Health Connect. */
+  anyMeasured(): boolean;
   /** Health Connect days, for the latest height. */
   health: Record<DayKey, HealthDay>;
 }
@@ -52,6 +56,10 @@ export interface DayNumbers {
   bodyFat: number | null;
   bmi: number | null;
   waterMl: number | null;
+  chest: number | null;
+  arms: number | null;
+  thighs: number | null;
+  hips: number | null;
 }
 
 /** The latest height measured on or before `k`, cm. */
@@ -90,14 +98,22 @@ export function dayNumbers(src: HealthSource, k: DayKey): DayNumbers {
     vo2max: h.vo2max ?? null,
     bp: h.bp ?? null,
     weight,
-    bodyFat: h.bodyFat ?? null,
+    bodyFat: src.measureOf(k, "bodyFat"),
     bmi: weight && height ? Math.round((weight / (height / 100) ** 2) * 10) / 10 : null,
     waterMl: h.waterMl ?? null,
+    chest: src.measureOf(k, "chest"),
+    arms: src.measureOf(k, "arms"),
+    thighs: src.measureOf(k, "thighs"),
+    hips: src.measureOf(k, "hips"),
   };
 }
 
-/** Whether Health Connect has anything at all, so the tab can say where the data comes from instead. */
-export const anyHealth = (src: HealthSource) => Object.keys(src.health).length > 0;
+/** Whether Health Connect has given anything yet, rather than only the measurements typed on Today. */
+export const fromHealthConnect = (src: HealthSource) => Object.keys(src.health).length > 0;
+
+/** Whether there's anything to show at all: Health Connect data, or a typed measurement. Otherwise the tab says
+ *  where the data comes from instead. */
+export const anyHealth = (src: HealthSource) => fromHealthConnect(src) || src.anyMeasured();
 
 /** The days ending at `end`, oldest first. */
 export const daysTo = (end: DayKey, n: number): DayKey[] => Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));

@@ -43,7 +43,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
 - Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.
 - Knee pain scores before, after and the next morning. After a bad session, knee-sensitive lifts hold their weight instead of going up.
-- Warm-ups, a cardio finisher (minutes, speed, incline), steps, body weight, waist and notes.
+- Warm-ups, a cardio finisher (minutes, speed, incline), steps, body weight, waist, other measurements (chest, arms, thighs, hips, body fat) and notes.
 
 **Health: what your phone knows, with the Android app**
 - Reads 20 kinds of data from [Health Connect](https://support.google.com/android/answer/12201227): steps by the hour, sleep with its stages, heart rate, HRV, SpO₂, calories burned and eaten, water, weight, body fat, workouts and more. It never writes.
@@ -52,14 +52,16 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 
 **Progress: is it working?**
 - Weight trend (Holt smoothing, as [TrendWeight](https://github.com/ervwalter/trendweight) does) and the weekly rate, with a goal date and your pace against the target.
-- Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, and knee scores by session, with notes on anything that needs attention.
+- Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, working sets per muscle each week, and knee scores by session, with notes on anything that needs attention.
 - Tap a lift, in Strength or on Today's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
 
 **Everywhere**
+- **Try it with sample data** on the sign-in screen: no account or database needed, four weeks of made-up history to look around, and nothing you do is saved.
 - Installable as a PWA from Chrome, or as an Android app. It opens instantly from the phone's cache and works offline; edits queue and sync when you're back online.
 - Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
 - Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.
 - An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. Start from a blank week or a 3, 4 or 5-day template.
+- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own. My gym leaves out what your equipment can't do, and knows what each bar weighs and what dumbbells, machines and cables go up by, so plates, warm-up sets and *Go up to* suggest weights you can load.
 
 ## How it works
 
@@ -131,12 +133,12 @@ src/
   components/      One folder per screen: today/, health/, dashboard/ (Progress), settings/, plan/, shell/, ui/
   lib/             store.ts (the data, offline queue and sync), health.ts, stats.ts, dashboard.ts, route.ts, config.ts
   native/          Only runs in the Android app: Health Connect, background sync, Google sign-in
-  data/plan.json   The default plan
+  data/            plan.json (the default plan), templates/ and exercises.json (the exercise library)
   styles/          Design tokens, then one file per screen
 android/           The Capacitor project, with Kotlin for Health Connect, background sync and Google sign-in
 supabase/          schema.sql: tables, row-level security and functions
 tests/             unit/ (Vitest) and e2e/ (Playwright, Supabase mocked); fixtures shared with the Kotlin tests
-scripts/           The service-worker generator, a static server, the screenshot script
+scripts/           The service-worker generator, a static server, the screenshot script, the exercise library's builder
 .github/           CI: site.yml (lint, types, tests, build, browser tests) and android.yml (APK build and release)
 ```
 
@@ -145,6 +147,7 @@ scripts/           The service-worker generator, a static server, the screenshot
 - [User guide](docs/user-guide.md): every screen, and how the numbers are worked out
 - [Android app and Health Connect](docs/android.md): install, background sync, what happens to the data, building and signing
 - [Continue with Google](docs/google-sign-in.md): the Google Cloud and Supabase set-up
+- [Exercise library](docs/exercise-library.md): where its lifts come from, their licence, and how to update them
 - [Roadmap](docs/roadmap.md): what's planned, in order, and what needs new pieces
 - [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md)
 
@@ -154,4 +157,4 @@ Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the
 
 ## License
 
-[MIT](LICENSE). The fonts, Oswald and IBM Plex, are under the SIL Open Font License, with their licences in `src/fonts/`; the icons are [Phosphor](https://phosphoricons.com) (MIT).
+[MIT](LICENSE). The fonts, Oswald and IBM Plex, are under the SIL Open Font License, with their licences in `src/fonts/`; the icons are [Phosphor](https://phosphoricons.com) (MIT). The exercise library comes from [free-exercise-db](https://github.com/yuhonas/free-exercise-db), itself from [exercises.json](https://github.com/wrkout/exercises.json), both public domain under the Unlicense; see [docs/exercise-library.md](docs/exercise-library.md).

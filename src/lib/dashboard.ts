@@ -3,9 +3,10 @@
 import { addDays, DOW, dm, mondayOf } from "./dates";
 import { avg, signed, sum } from "./format";
 import { hoursMin } from "./health";
+import { MUSCLES, type Muscle } from "./library";
 import * as S from "./stats";
 import { setsOf, topKg, type GymStore } from "./store";
-import type { DayKey, PlanExercise } from "./types";
+import type { DayKey, PlanExercise, SetLog } from "./types";
 
 export interface Flag {
   /** Lower comes first. */
@@ -63,9 +64,7 @@ export function weightModel(store: GymStore, t: DayKey): WeightModel {
     goalKpi = day ? { kind: "date", goal, day } : { kind: "unknown", goal, why: rate == null ? "needs 2 weeks of weigh-ins" : "not heading there yet" };
   }
   const changes = [7, 14, 28].map((d) => [d / 7, S.trendChange(s, d)]).filter((c): c is [number, number] => c[1] != null);
-  const wd = store.days().filter((k) => store.logs[k].waist != null), wl = wd[wd.length - 1];
-  const w4 = wl ? wd.filter((k) => S.daysBetween(k, wl) >= 28).pop() : undefined;
-  const cm = (k: DayKey) => store.logs[k].waist as number;
+  const waist = S.measureChange(store.days().filter((k) => store.logs[k].waist != null).map((k): [DayKey, number] => [k, store.logs[k].waist as number]));
   return {
     flags,
     series: s,
@@ -76,7 +75,7 @@ export function weightModel(store: GymStore, t: DayKey): WeightModel {
     goal: goalKpi,
     changes,
     chartGoal: goal != null && Math.abs(goal - last.trend) <= 8 ? goal : null,
-    waist: wl ? { day: wl, cm: cm(wl), change: w4 ? { since: w4, cm: cm(wl) - cm(w4) } : null } : null,
+    waist: waist ? { day: waist.day, cm: waist.value, change: waist.change ? { since: waist.change.since, cm: waist.change.value } : null } : null,
   };
 }
 
@@ -86,7 +85,8 @@ export type HeatClass = "done" | "part" | "miss" | "todo" | "rest" | "fut" | "pr
 export const HEAT_WORDS: Record<HeatClass, string> = { done: "all lifts done", part: "some lifts done", miss: "missed", todo: "to do", rest: "rest day", fut: "ahead", pre: "before you started" };
 
 export interface PlanModel {
-  week: { done: number; planned: number };
+  /** Planned sessions done this week, of how many; and free-form workouts, which count on their own. */
+  week: { done: number; planned: number; extra: number };
   /** Full weeks in a row; the current week only counts once it's full. */
   streak: number;
   recent: { weeks: number; done: number; planned: number };
@@ -115,7 +115,7 @@ export function planModel(store: GymStore, t: DayKey): PlanModel {
     return n === p.exercises.length ? "done" : n || store.worked(k) ? "part" : k < t ? "miss" : "todo";
   };
   return {
-    week: { done: tw.done, planned: tw.planned },
+    week: { done: tw.done, planned: tw.planned, extra: tw.extra },
     streak,
     recent: { weeks: recent.length, done: sum(recent.map((w) => w.done)), planned: sum(recent.map((w) => w.planned)) },
     cardioDays: wk.filter((k) => store.entry(k).cardio).length,
@@ -172,7 +172,7 @@ export function healthModel(store: GymStore, t: DayKey): { flags: Flag[] } {
 
 export interface LiftPoint {
   day: DayKey;
-  /** Heaviest set that day, kg (some old entries hold only a weight, with no reps). */
+  /** Heaviest set that day, kg, leaving out drop sets (some old entries hold only a weight, with no reps). */
   top: number | null;
   /** The most reps done at that weight that day, or null when none were logged with it. */
   topReps: number | null;
@@ -189,18 +189,20 @@ export interface LiftPoint {
 // day's own entries, not today's plan). Renaming a plan exercise starts a fresh name for this to match on;
 // its earlier days stay under the old one (see the note on DayLog in types.ts) and so drop out of a page
 // opened at the new name, the same as they would from a search for the old one.
+const loaded = (sets: SetLog[]) => sets.filter((s): s is { reps: number; kg: number } => s.reps != null && s.kg != null);
 function liftPoints(store: GymStore, days: DayKey[], name: string): LiftPoint[] {
   const out: LiftPoint[] = [];
   for (const k of days) {
     const sets = store.liftSets(k).filter((l) => l.name === name).flatMap((l) => l.sets);
     if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
-    const loaded = sets.filter((s): s is { reps: number; kg: number } => s.reps != null && s.kg != null), top = topKg(sets);
+    // A drop set adds to the volume but, as with records, never to the heaviest set or the 1RM.
+    const straight = sets.filter(S.isStraightSet), top = topKg(straight);
     out.push({
       day: k,
       top,
-      topReps: Math.max(0, ...loaded.filter((s) => s.kg === top).map((s) => s.reps)) || null,
-      e1rm: Math.max(0, ...sets.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
-      volume: sum(loaded.map((s) => s.reps * s.kg)),
+      topReps: Math.max(0, ...loaded(straight).filter((s) => s.kg === top).map((s) => s.reps)) || null,
+      e1rm: Math.max(0, ...straight.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
+      volume: sum(loaded(sets).map((s) => s.reps * s.kg)),
     });
   }
   return out;
@@ -251,6 +253,8 @@ export interface StrengthModel {
   rows: StrengthRow[];
   ready: NextUp[];
   held: NextUp[];
+  /** Lifts due a deload: enough sessions in a row fell short of the rep range. */
+  deload: NextUp[];
   records: S.LiftRecord[];
 }
 
@@ -270,24 +274,70 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
       change: points.length ? e1rmChange(points) : logged ? "no estimate yet: needs a set with weight and 1-12 reps" : "not logged yet",
     };
   });
-  // Lifts ready for more weight next time, and knee lifts held back after a sore day.
-  const tomorrow = addDays(t, 1), seen = new Set<string>(), ready: NextUp[] = [], held: NextUp[] = [];
+  // Lifts ready for more weight next time, knee lifts held back after a sore day, and lifts due a deload. A lift
+  // worked at a percentage of its 1RM is only ready when that's more than it last lifted. Each day a lift is on
+  // counts, since two can progress it differently (a deload on one only, say): the same answer twice, as a lift
+  // with the same settings on both gives, shows once, under the first.
+  const tomorrow = addDays(t, 1), seen = new Set<string>(), ready: NextUp[] = [], held: NextUp[] = [], deload: NextUp[] = [];
   store.plan.days.forEach((d) =>
     d.exercises.forEach((x: PlanExercise) => {
-      if (seen.has(x.name)) return;
-      seen.add(x.name);
       const nw = store.nextWeight(x, x.name, tomorrow);
-      if (nw) (nw.held ? held : ready).push({ name: x.name, day: d.name, from: nw.from, to: nw.to });
+      if (!nw || nw.from == null) return;
+      const list = nw.rule === "deload" ? deload : nw.held ? held : nw.to > nw.from ? ready : null, key = `${x.name}|${nw.rule === "deload"}|${nw.held}|${nw.to}`;
+      if (!list || seen.has(key)) return;
+      seen.add(key);
+      list.push({ name: x.name, day: d.name, from: nw.from, to: nw.to });
     }),
   );
-  if (ready.length) flags.push({ pri: 4, text: `${ready.length} lift${ready.length === 1 ? " is" : "s are"} ready for more weight. See Strength.` });
+  const lifts = (l: NextUp[]) => new Set(l.map((x) => x.name)).size, nReady = lifts(ready), nDeload = lifts(deload);
+  if (nReady) flags.push({ pri: 4, text: `${nReady} lift${nReady === 1 ? " is" : "s are"} ready for more weight. See Strength.` });
+  if (nDeload) flags.push({ pri: 4, text: `${nDeload} lift${nDeload === 1 ? " is" : "s are"} due a deload. See Strength.` });
   return {
     flags,
     anyLogged: days.some((k) => store.liftSets(k).length > 0),
     rows,
     ready,
     held,
+    deload,
     records: store.recentRecords(t, 30).reverse().slice(0, 8),
+  };
+}
+
+/* ---------- sets per muscle: is each muscle getting enough? ---------- */
+
+export interface MuscleRow {
+  muscle: Muscle;
+  /** Its sets in each of the four weeks, oldest first. */
+  sets: number[];
+  /** Last week under 10 sets or over 20, outside the range most advice gives: under only for a muscle trained on
+   *  purpose (a main muscle of a lift done), and neither before the account's first full week. */
+  note: "under" | "over" | null;
+}
+
+export interface MusclesModel {
+  /** The four weeks' Mondays, oldest first: the last is this week, so far. */
+  weeks: DayKey[];
+  /** Muscles with any sets in them, most first. */
+  rows: MuscleRow[];
+  /** Lifts done in them with no muscles to count (not in the library, or yours with none given), with their sets. */
+  untagged: { name: string; sets: number }[];
+}
+
+export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
+  const mon = mondayOf(t), weeks = [-21, -14, -7, 0].map((n) => addDays(mon, n));
+  const days = store.days().filter((k) => k >= weeks[0] && k <= t).map((k) => ({ day: k, lifts: store.liftSets(k) }));
+  const w = S.muscleWeeks(days, weeks, (name) => {
+    const x = store.exerciseOf(name);
+    return x?.primary.length ? x : null;
+  });
+  const judged = store.firstDay() <= weeks[2];
+  const note = (m: string, n: number): MuscleRow["note"] => (!judged ? null : n > 20 ? "over" : n < 10 && w.main.has(m) ? "under" : null);
+  return {
+    weeks,
+    rows: [...w.muscles]
+      .map(([m, sets]) => ({ muscle: m as Muscle, sets, note: note(m, sets[2]) }))
+      .sort((a, b) => sum(b.sets) - sum(a.sets) || MUSCLES[a.muscle].localeCompare(MUSCLES[b.muscle])),
+    untagged: [...w.untagged].map(([name, sets]) => ({ name, sets: sum(sets) })).sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name)),
   };
 }
 

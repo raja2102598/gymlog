@@ -67,6 +67,52 @@ describe("weight trend", () => {
   });
 });
 
+describe("a measurement's four-week change", () => {
+  it("is null with nothing logged, and has no change with only one reading", () => {
+    expect(G.measureChange([])).toBeNull();
+    expect(G.measureChange([["2026-09-01", 95]])).toEqual({ day: "2026-09-01", value: 95, change: null });
+  });
+
+  it("compares the latest reading with the closest one at least four weeks before it", () => {
+    // 26 Aug, 9 Sep (14 days back: too soon) and 23 Sept (28 days after 26 Aug): the change is against 26 Aug.
+    const r = G.measureChange([
+      ["2026-08-26", 96],
+      ["2026-09-09", 94.8],
+      ["2026-09-23", 93.5],
+    ]);
+    expect(r).toEqual({ day: "2026-09-23", value: 93.5, change: { since: "2026-08-26", value: -2.5 } });
+  });
+
+  it("picks the nearest reading that still clears the window, not the oldest one", () => {
+    // 29 days and 40 days back both clear 28; 29 is nearer.
+    const r = G.measureChange([
+      ["2026-08-15", 100],
+      ["2026-08-26", 99],
+      ["2026-09-23", 105],
+    ]);
+    expect(r!.change).toEqual({ since: "2026-08-26", value: 6 });
+  });
+
+  it("has no change yet when nothing reaches four weeks back, however the readings are ordered", () => {
+    const r = G.measureChange([
+      ["2026-09-23", 60],
+      ["2026-09-10", 58],
+    ]);
+    expect(r).toEqual({ day: "2026-09-23", value: 60, change: null });
+  });
+
+  it("takes a shorter window when asked, for something logged more often", () => {
+    const r = G.measureChange(
+      [
+        ["2026-09-16", 22],
+        ["2026-09-23", 20.5],
+      ],
+      7,
+    );
+    expect(r!.change).toEqual({ since: "2026-09-16", value: -1.5 });
+  });
+});
+
 describe("lifts", () => {
   it("estimates 1RM (Brzycki) only for 1-12 reps", () => {
     near(G.e1rm(100, 1), 100, 1e-9);
@@ -86,12 +132,80 @@ describe("lifts", () => {
 
   it("adds weight when every set reached the top of the range (double progression)", () => {
     const s = (reps: number | null, kg: number): SetLog => ({ reps, kg });
-    expect(G.readyToAdd([s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ from: 50, to: 52.5, top: 10 });
+    expect(G.readyToAdd([s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 10 });
     expect(G.readyToAdd([s(10, 50), s(9, 50), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // one set short
     expect(G.readyToAdd([s(10, 50), s(10, 45), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // mixed weights
     expect(G.readyToAdd([s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // fewer sets than planned
     expect(G.readyToAdd([s(10, 0), s(10, 0), s(10, 0)], "8-10", 3, 2.5)?.to).toBe(2.5); // empty sled
     expect(G.readyToAdd([s(null, 50)], "8-10", 1, 2.5)).toBeNull(); // weight only (older entries)
+  });
+
+  it("ignores warm-up sets when deciding whether to add weight", () => {
+    const w = (reps: number, kg: number): SetLog => ({ reps, kg, type: "warmup" });
+    const s = (reps: number, kg: number): SetLog => ({ reps, kg });
+    // Two warm-ups ahead of the three planned working sets: they don't count toward minSets, and a heavier
+    // warm-up doesn't stop the real top set from being read as the one weight used.
+    expect(G.readyToAdd([w(5, 60), w(3, 70), s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 10 });
+    // All warm-up, no working sets: nothing to progress from.
+    expect(G.readyToAdd([w(8, 20), w(5, 30)], "8-10", 1, 2.5)).toBeNull();
+  });
+});
+
+describe("plates", () => {
+  const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+
+  it("loads the heaviest plates first, per side, on top of the bar", () => {
+    expect(G.platesFor(100, 20, PLATES)).toEqual({ perSide: [{ kg: 25, count: 1 }, { kg: 15, count: 1 }], loaded: 100, shortBy: 0, underBar: false });
+    // Two of the same plate a side.
+    expect(G.platesFor(140, 20, PLATES)).toEqual({ perSide: [{ kg: 25, count: 2 }, { kg: 10, count: 1 }], loaded: 140, shortBy: 0, underBar: false });
+  });
+
+  it("shows what's left over when the weight can't be made exactly", () => {
+    // 101 kg needs 40.5 kg a side; 25 + 15 leaves 0.5 kg a side (1 kg total) the plates can't add.
+    expect(G.platesFor(101, 20, PLATES)).toEqual({ perSide: [{ kg: 25, count: 1 }, { kg: 15, count: 1 }], loaded: 100, shortBy: 1, underBar: false });
+    // Heaviest first would load a 25 and come up 5 kg short a side; two 15s make it exactly.
+    expect(G.platesFor(80, 20, [25, 15])).toEqual({ perSide: [{ kg: 15, count: 2 }], loaded: 80, shortBy: 0, underBar: false });
+    expect(G.platesFor(120, 20, [20, 15])).toEqual({ perSide: [{ kg: 20, count: 1 }, { kg: 15, count: 2 }], loaded: 120, shortBy: 0, underBar: false });
+    // A typed-in typo doesn't hang it: the search stops at 1000 kg a side.
+    expect(G.platesFor(1e7, 20, PLATES).shortBy).toBeGreaterThan(0);
+    // No plate small enough to add anything: the smallest plate is 5, asking for 1 kg over the bar.
+    expect(G.platesFor(21, 20, [25, 20, 15, 10, 5])).toEqual({ perSide: [], loaded: 20, shortBy: 1, underBar: false });
+  });
+
+  it("handles a number below the bar weight", () => {
+    expect(G.platesFor(15, 20, PLATES)).toEqual({ perSide: [], loaded: 20, shortBy: -5, underBar: true });
+    // Right at the bar: no plates needed, and it isn't "under" it.
+    expect(G.platesFor(20, 20, PLATES)).toEqual({ perSide: [], loaded: 20, shortBy: 0, underBar: false });
+  });
+
+  it("works with no plates configured, or a bar of 0", () => {
+    expect(G.platesFor(60, 20, [])).toEqual({ perSide: [], loaded: 20, shortBy: 40, underBar: false });
+    expect(G.platesFor(10, 0, PLATES)).toEqual({ perSide: [{ kg: 5, count: 1 }], loaded: 10, shortBy: 0, underBar: false });
+  });
+});
+
+describe("warm-up ladder", () => {
+  it("is 40, 60 and 80 percent of the working weight, with fewer reps as it climbs", () => {
+    expect(G.warmupLadder(100, 20)).toEqual([
+      { pct: 40, reps: 8, kg: 40 },
+      { pct: 60, reps: 5, kg: 60 },
+      { pct: 80, reps: 3, kg: 80 },
+    ]);
+  });
+
+  it("rounds each step to the nearest 2.5 kg", () => {
+    expect(G.warmupLadder(47, 20).map((s) => s.kg)).toEqual([20, 27.5, 37.5]); // 18.8, 28.2, 37.6 rounded
+  });
+
+  it("never suggests less than the bar for a barbell lift", () => {
+    expect(G.warmupLadder(25, 20).map((s) => s.kg)).toEqual([20, 20, 20]);
+    expect(G.warmupLadder(20, 20).map((s) => s.kg)).toEqual([20, 20, 20]);
+  });
+
+  it("leaves the bar out for a lift lighter than it, and never goes over the working weight", () => {
+    expect(G.warmupLadder(10, 20).map((s) => s.kg)).toEqual([5, 5, 7.5]); // a dumbbell lift: 4, 6, 8 rounded
+    expect(G.warmupLadder(2, 20)).toEqual([{ pct: 80, reps: 3, kg: 2 }]); // 0.8 and 1.2 round to nothing; 1.6 to 2.5, capped
+    expect(G.warmupLadder(0, 20)).toEqual([]);
   });
 });
 
@@ -186,5 +300,15 @@ describe("records", () => {
       { day: "2026-09-23", lifts: [{ name: "Hack Squat", sets: [{ reps: 10, kg: 10 }] }] },
     ]);
     expect(r.map((x) => [x.day, x.kinds.join("+")])).toEqual([["2026-09-23", "weight"]]);
+  });
+
+  it("never gives a warm-up set a record, and never folds one in as a lift's best", () => {
+    const r = G.records([
+      { day: "2026-09-16", lifts: [{ name: "Leg Press", sets: [{ reps: 10, kg: 45 }] }] },
+      // A heavier warm-up than anything worked up to: it must not become the new "best" to beat, or a record itself.
+      { day: "2026-09-23", lifts: [{ name: "Leg Press", sets: [{ reps: 5, kg: 60, type: "warmup" }, { reps: 10, kg: 45 }] }] },
+      { day: "2026-09-30", lifts: [{ name: "Leg Press", sets: [{ reps: 10, kg: 50 }] }] },
+    ]);
+    expect(r.map((x) => [x.day, x.set, x.kg, x.kinds.join("+")])).toEqual([["2026-09-30", 0, 50, "weight+e1rm"]]);
   });
 });

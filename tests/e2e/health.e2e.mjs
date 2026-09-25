@@ -3,6 +3,15 @@
 // pages, and the flags in Progress.
 import { K, flat, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
+export const covers = [
+  "src/components/health/HealthView.tsx",
+  "src/components/health/HealthDetail.tsx",
+  "src/components/health/Rings.tsx",
+  "src/components/health/Bars.tsx",
+  "src/components/health/Trend.tsx",
+  "src/lib/scale.ts",
+];
+
 function data() {
   const logs = {}, health = {};
   for (let n = 0; n <= 28; n++) logs[K(n)] = { exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "" };

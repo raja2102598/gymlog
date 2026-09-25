@@ -7,6 +7,12 @@ export { GOOGLE_WEB_CLIENT_ID } from "./config";
 /** The app's own address for sign-in links: public/app-login.html opens it (and version 1.0.1's links used it). */
 export const NATIVE_SIGN_IN = "io.github.raja2102598.gymlog://login";
 
+/** The home-screen widget's taps open the app the same way: .../go/today, weight or steps (native/app.ts turns
+ *  this into the window event below, since GymLog.tsx, not the plugin, knows how to switch tabs). */
+export const NATIVE_GO = "io.github.raja2102598.gymlog://go/";
+/** Fired on `window` with the target ("today", "weight" or "steps") a widget tap asked to open. */
+export const GO_EVENT = "gymlog:go";
+
 /** Where sign-in links from the Android app land first: a page on the site that hands the link to the app.
  *  Being on the site's address, Supabase accepts it with the link's flow id added (see GymStore.sendLink). */
 export const APP_LOGIN_PAGE = SITE_URL ? `${SITE_URL}/app-login.html` : "";

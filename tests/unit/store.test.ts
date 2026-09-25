@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { kneeModel, liftModel, strengthModel, weightModel } from "@/lib/dashboard";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
-import { GymStore, setsOf } from "@/lib/store";
+import { GymStore, setsComplete, setsOf, targetOf, topKg } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
 
 // Wednesday 23 September 2026, as in the end-to-end tests.
@@ -35,6 +35,17 @@ describe("plan", () => {
   it("marks the default plan's knee lifts", () => {
     expect(DEFAULT_PLAN.days[2].exercises.filter((x) => x.knee).map((x) => x.name)).toEqual(["Hack Squat", "Leg Press", "Leg Extension"]);
   });
+
+  it("gives a 20 kg bar and a standard plate set by default, sanitizing what's typed or restored", () => {
+    const p = normalizePlan({}, DEFAULT_PLAN);
+    expect(p.barKg).toBe(20);
+    expect(p.plateKgs).toEqual([25, 20, 15, 10, 5, 2.5, 1.25]);
+    const q = normalizePlan({ barKg: 15, plateKgs: [10, "20", 0, -5, 10, "not a number"] }, DEFAULT_PLAN);
+    expect(q.barKg).toBe(15);
+    expect(q.plateKgs).toEqual([20, 10]);
+    const r = normalizePlan({ barKg: 0, plateKgs: [] }, q);
+    expect([r.barKg, r.plateKgs]).toEqual([15, []]);
+  });
 });
 
 describe("store", () => {
@@ -58,6 +69,17 @@ describe("store", () => {
     expect(["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-08-25"].map((k) => s.dayState(k))).toEqual(["part", "miss", "done", "", ""]);
   });
 
+  it("doesn't count a day with only warm-up sets as trained, so its session is still offered as missed", () => {
+    const warm: LiftLog = { done: false, kg: null, sets: [{ reps: 8, kg: 20, type: "warmup" }, { reps: 5, kg: 30, type: "warmup" }] };
+    const s = storeWith({ "2026-09-21": day({ exercises: { "Chest Press Machine": warm } }) });
+    expect(s.worked("2026-09-21")).toBe(false);
+    expect(s.dayState("2026-09-21")).toBe("miss");
+    expect(s.missedThisWeek("2026-09-24")).toEqual([0, 1]);
+    s.logs["2026-09-21"].exercises["Chest Press Machine"].sets!.push({ reps: 12, kg: 40 });
+    expect([s.worked("2026-09-21"), s.dayState("2026-09-21")]).toEqual([true, "part"]);
+    expect(s.missedThisWeek("2026-09-24")).toEqual([1]);
+  });
+
   it("suggests more weight when every set hit the top, but holds knee lifts after a sore day", () => {
     const s = storeWith({
       "2026-09-16": day({ exercises: { "Leg Press": lift([[12, 50], [12, 50], [12, 50]]), "Hamstring Curl": lift([[12, 30], [12, 30], [12, 30]]) }, kneeAfter: 6 }),
@@ -72,6 +94,149 @@ describe("store", () => {
     const s = storeWith({ "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 45]]) } }) });
     s.logs["2026-09-23"] = day({ exercises: { "Leg Press": lift([[10, 50], [10, 45]]) } });
     expect([...s.recordsOn("2026-09-23")]).toEqual([["Leg Press|0", ["weight", "e1rm"]]]);
+  });
+
+  it("reads chest, arms, thighs and hips as typed only; body fat also takes Health Connect's, like weight", () => {
+    const s = storeWith({ "2026-09-16": day({ chest: 100 }), "2026-09-23": day({ chest: 99, bodyFat: 21 }) });
+    s.health = { "2026-09-16": { bodyFat: 23 }, "2026-09-20": { bodyFat: 22 } };
+    expect(s.measureOf("2026-09-16", "chest")).toBe(100);
+    expect(s.measureOf("2026-09-20", "chest")).toBeNull(); // no such thing as an untyped chest measurement
+    expect(s.measureOf("2026-09-16", "bodyFat")).toBe(23); // nothing typed that day: Health Connect's
+    expect(s.measureOf("2026-09-23", "bodyFat")).toBe(21); // typed wins over Health Connect
+    expect(s.measureReadings("chest")).toEqual([["2026-09-16", 100], ["2026-09-23", 99]]);
+    expect(s.measureReadings("bodyFat")).toEqual([["2026-09-16", 23], ["2026-09-20", 22], ["2026-09-23", 21]]);
+    expect(s.anyMeasured()).toBe(true);
+    expect(storeWith({ "2026-09-16": day() }).anyMeasured()).toBe(false);
+  });
+
+  it("setsComplete and topKg ignore warm-up sets", () => {
+    const sets = [{ reps: 5, kg: 60, type: "warmup" as const }, { reps: 10, kg: 50 }, { reps: 10, kg: 50 }];
+    expect(setsComplete(sets, 3)).toBe(false);
+    expect(setsComplete(sets, 2)).toBe(true);
+    expect(topKg(sets)).toBe(50);
+  });
+
+  it("lastDone skips a day that only has warm-up sets", () => {
+    const s = storeWith({
+      "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 45]]) } }),
+      "2026-09-20": day({ exercises: { "Leg Press": { done: false, kg: null, sets: [{ reps: 5, kg: 30, type: "warmup" }] } } }),
+    });
+    const last = s.lastDone("Leg Press", "2026-09-23");
+    expect(last?.day).toBe("2026-09-16");
+  });
+
+  it("never lets a warm-up set trigger a false record", () => {
+    const s = storeWith({ "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 45]]) } }) });
+    s.logs["2026-09-23"] = day({ exercises: { "Leg Press": { done: false, kg: null, sets: [{ reps: 5, kg: 70, type: "warmup" }, { reps: 10, kg: 50 }] } } });
+    expect([...s.recordsOn("2026-09-23")]).toEqual([["Leg Press|0", ["weight", "e1rm"]]]);
+  });
+});
+
+describe("stored targets", () => {
+  it("stamps a lift's first entry with the plan's sets and reps, and keeps them once the plan changes", () => {
+    const s = storeWith({});
+    s.editLift("2026-09-23", "Hamstring Curl", (r) => void (r.sets = [{ reps: 10, kg: 30 }]), false);
+    expect(s.logs["2026-09-23"].exercises["Hamstring Curl"].target).toEqual({ sets: "3", reps: "10-12" });
+    s.plan = { ...s.plan, days: s.plan.days.map((d, i) => (i === 2 ? { ...d, exercises: d.exercises.map((x) => (x.name === "Hamstring Curl" ? { ...x, sets: "4", reps: "12-15" } : x)) } : d)) };
+    // Already stamped: logging more sets that day doesn't restamp it against the plan's new numbers.
+    s.editLift("2026-09-23", "Hamstring Curl", (r) => void r.sets!.push({ reps: 10, kg: 30 }), false);
+    expect(s.logs["2026-09-23"].exercises["Hamstring Curl"].target).toEqual({ sets: "3", reps: "10-12" });
+  });
+
+  it("gives no stored target to a lift logged that isn't on that day's plan (an extra)", () => {
+    const s = storeWith({});
+    s.editLift("2026-09-23", "Face Pulls", (r) => void (r.sets = [{ reps: 15, kg: 10 }]), false);
+    expect(s.logs["2026-09-23"].exercises["Face Pulls"].target).toBeUndefined();
+  });
+
+  it("targetOf falls back to today's plan when a lift has no stored target, and otherwise reads its own", () => {
+    const x = { name: "Hamstring Curl", sets: "3", reps: "10-12", cue: "", flag: "", step: "", knee: false };
+    expect(targetOf(undefined, x)).toEqual({ sets: "3", reps: "10-12" });
+    expect(targetOf({ done: true, kg: 30 }, x)).toEqual({ sets: "3", reps: "10-12" });
+    expect(targetOf({ done: true, kg: 30, target: { sets: "4", reps: "8-10" } }, x)).toEqual({ sets: "4", reps: "8-10" });
+  });
+
+  it("checks the go-up rule against what a session was actually asked for, not a later plan change", () => {
+    const s = storeWith({
+      "2026-09-16": day({ exercises: { "Hamstring Curl": { ...lift([[12, 30], [12, 30], [12, 30]]), target: { sets: "3", reps: "10-12" } } } }),
+    });
+    const x = () => s.plan.days[2].exercises.find((e) => e.name === "Hamstring Curl")!;
+    expect(s.nextWeight(x(), "Hamstring Curl", "2026-09-23")).toMatchObject({ from: 30, to: 32.5 });
+    // The plan now asks for more reps than that session gave. Without its own stored target this would no
+    // longer look complete; with it, the session still reads as having met what it was actually asked.
+    s.plan = { ...s.plan, days: s.plan.days.map((d, i) => (i === 2 ? { ...d, exercises: d.exercises.map((e) => (e.name === "Hamstring Curl" ? { ...e, reps: "14-16" } : e)) } : d)) };
+    expect(s.nextWeight(x(), "Hamstring Curl", "2026-09-23")).toMatchObject({ from: 30, to: 32.5 });
+  });
+
+  it("hasHistory finds a lift by its logged key or by a swap, not by name alone in the plan", () => {
+    const s = storeWith({
+      "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 45]]) } }),
+      "2026-09-20": day({ exercises: { "Hack Squat": { done: true, kg: 40, sets: [{ reps: 10, kg: 40 }], swap: "Leg Press Alt" } } }),
+    });
+    expect(s.hasHistory("Leg Press")).toBe(true);
+    expect(s.hasHistory("Leg Press Alt")).toBe(true);
+    expect(s.hasHistory("Calf Raise")).toBe(false); // in the plan, but never logged
+  });
+});
+
+describe("renaming a lift's history", () => {
+  it("carries a lift's logged history to a new name, including anything swapped for it", async () => {
+    const s = storeWith({
+      "2026-09-09": day({ exercises: { "Leg Press": lift([[10, 45]]) } }),
+      "2026-09-16": day({ exercises: { "Hack Squat": { done: true, kg: 40, sets: [{ reps: 10, kg: 40 }], swap: "Leg Press" } } }),
+    });
+    const r = await s.renameLift("Leg Press", "Leg Press Machine");
+    expect(r).toMatchObject({ ok: true, days: 2 });
+    expect(r.msg).toBe("Carried Leg Press’s history over to Leg Press Machine: 2 days.");
+    expect(s.logs["2026-09-09"].exercises["Leg Press"]).toBeUndefined();
+    expect(s.logs["2026-09-09"].exercises["Leg Press Machine"]).toBeDefined();
+    expect(s.logs["2026-09-16"].exercises["Hack Squat"].swap).toBe("Leg Press Machine");
+    expect(s.hasHistory("Leg Press")).toBe(false);
+    // Strength, a lift's own page and "last time" all read the new name's history without a gap.
+    expect(liftModel(s, "2026-09-23", "Leg Press Machine").points.map((p) => p.day)).toEqual(["2026-09-09", "2026-09-16"]);
+    expect(s.lastDone("Leg Press Machine", "2026-09-23")?.day).toBe("2026-09-16");
+    // The plan itself now names the lift "Leg Press Machine" on the day it's on (Legs).
+    expect(s.plan.days[2].exercises.find((x) => x.name === "Leg Press Machine")).toBeDefined();
+    expect(s.plan.days[2].exercises.find((x) => x.name === "Leg Press")).toBeUndefined();
+  });
+
+  it("says '1 day' rather than '1 days' for a single day carried over", async () => {
+    const s = storeWith({ "2026-09-09": day({ exercises: { "Leg Press": lift([[10, 45]]) } }) });
+    const r = await s.renameLift("Leg Press", "Leg Press Machine");
+    expect(r.msg).toBe("Carried Leg Press’s history over to Leg Press Machine: 1 day.");
+  });
+
+  it("renames every plan day sharing the old name, so a lift on two days keeps one shared history", async () => {
+    const s = storeWith({ "2026-09-08": day({ exercises: { "Seated Row": lift([[10, 40]]) } }) }); // Seated Row is on Pull and Upper
+    const r = await s.renameLift("Seated Row", "Cable Row");
+    expect(r.ok).toBe(true);
+    expect(s.plan.days[1].exercises.find((x) => x.name === "Cable Row")).toBeDefined(); // Pull
+    expect(s.plan.days[4].exercises.find((x) => x.name === "Cable Row")).toBeDefined(); // Upper
+    expect(s.plan.days.some((d) => d.exercises.some((x) => x.name === "Seated Row"))).toBe(false);
+    expect(liftModel(s, "2026-09-23", "Cable Row").planned).toEqual([
+      { day: "Pull", reps: [10, 12] },
+      { day: "Upper", reps: [10, 12] },
+    ]);
+  });
+
+  it("refuses to carry history onto a name that already has its own, and changes nothing", async () => {
+    const s = storeWith({
+      "2026-09-09": day({ exercises: { "Leg Press": lift([[10, 45]]) } }),
+      "2026-09-16": day({ exercises: { "Leg Press Machine": lift([[10, 50]]) } }),
+    });
+    const r = await s.renameLift("Leg Press", "Leg Press Machine");
+    expect(r).toMatchObject({ ok: false, days: 0 });
+    expect(r.msg).toBe("“Leg Press Machine” already has its own history, so Leg Press’s can’t be carried over there too.");
+    expect(s.logs["2026-09-09"].exercises["Leg Press"]).toBeDefined();
+    expect(s.logs["2026-09-16"].exercises["Leg Press Machine"].kg).toBe(50);
+    expect(s.plan.days[2].exercises.find((x) => x.name === "Leg Press")).toBeDefined(); // the plan is untouched too
+  });
+
+  it("still renames the plan's occurrences even when there's no logged history yet to carry", async () => {
+    const s = storeWith({});
+    const r = await s.renameLift("Leg Press", "Leg Press Machine");
+    expect(r).toEqual({ ok: true, days: 0, msg: "Leg Press Machine is saved. Leg Press had no history yet to carry over." });
+    expect(s.plan.days[2].exercises.find((x) => x.name === "Leg Press Machine")).toBeDefined();
   });
 });
 
@@ -143,6 +308,15 @@ describe("dashboard", () => {
     const m = weightModel(s, "2026-09-23");
     expect(m.flags.map((f) => f.text)).toContain("No weigh-in for 6 days. A few weigh-ins a week keep the trend honest.");
     expect(m.goal).toMatchObject({ kind: "date", goal: 78 });
+  });
+
+  it("gives the latest waist reading and its change from four weeks back", () => {
+    const s = storeWith(series(-0.05, 28));
+    s.logs["2026-08-26"].waist = 96;
+    s.logs["2026-09-23"].waist = 93.5;
+    expect(weightModel(s, "2026-09-23").waist).toEqual({ day: "2026-09-23", cm: 93.5, change: { since: "2026-08-26", cm: -2.5 } });
+    // No waist logged yet: no card.
+    expect(weightModel(storeWith(series(-0.05, 1)), "2026-08-27").waist).toBeNull();
   });
 
   it("lists lifts ready for more weight and knee lifts on hold", () => {

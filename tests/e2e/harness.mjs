@@ -165,11 +165,14 @@ export function mockSupabase(db) {
 
 /**
  * A phone-sized browser context, signed in as `auth` (a session, or null for signed out), with Supabase
- * answered from `db`. Returns the context and a page that records errors in `page.errors`.
+ * answered from `db`. Returns the context and a page that records errors in `page.errors`. The clock reads NOW
+ * throughout, or, with `clock: "running"`, starts at NOW and runs, so a test can move it on with
+ * page.clock.fastForward.
  */
-export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base } = {}) {
+export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base, clock = "fixed" } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, serviceWorkers: sw, colorScheme: scheme });
-  await ctx.clock.setFixedTime(NOW);
+  if (clock === "running") await ctx.clock.install({ time: NOW });
+  else await ctx.clock.setFixedTime(NOW);
   if (auth) {
     // Only once, so a reload keeps whatever the app did with it.
     await ctx.addInitScript(([k, v]) => {
@@ -240,12 +243,13 @@ export async function shot(target, name, opts = {}) {
   if (process.env.E2E_SHOTS) await target.screenshot({ path: `${process.env.E2E_SHOTS}/${name}.png`, ...opts }).catch(() => {});
 }
 
-/** Collects pass/fail lines for one suite. */
-export function checker(suite) {
+/** Collects pass/fail lines for one suite. `log` gets each formatted line (console.log by default); the
+ *  runner passes one that writes to the suite's own buffer, so parallel suites' output doesn't interleave. */
+export function checker(suite, log = console.log) {
   const results = [];
   const check = (name, ok, detail = "") => {
     results.push({ suite, name, ok: !!ok, detail });
-    console.log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? "  — " + detail : ""}`);
+    log(`${ok ? "PASS" : "FAIL"}  ${name}${!ok && detail ? "  — " + detail : ""}`);
   };
   return { check, results };
 }

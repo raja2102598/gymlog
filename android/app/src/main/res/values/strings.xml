@@ -4,4 +4,10 @@
     <string name="title_activity_main">Gym Log</string>
     <string name="package_name">io.github.raja2102598.gymlog</string>
     <string name="custom_url_scheme">io.github.raja2102598.gymlog</string>
+    <!-- The home-screen widget: its name and blurb in Android's widget picker. The session name, lift count and
+         "Open Gym Log" are GymWidgetLogic's, since what they say depends on the data. -->
+    <string name="widget_label">Gym Log</string>
+    <string name="widget_description">Today\'s session and lift progress.</string>
+    <string name="widget_log_weight">Log weight</string>
+    <string name="widget_log_steps">Log steps</string>
 </resources>

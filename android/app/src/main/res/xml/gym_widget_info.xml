@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GymWidgetProvider's metadata. minWidth/minHeight (roughly 3x2 cells) fit the full layout with its two
+     buttons; it can be resized down to minResizeWidth/Height, where onAppWidgetOptionsChanged switches to the
+     small layout whenever the buttons don't fit (GymWidgetLogic.showsShortcuts). minResizeHeight is the small
+     layout's own height, its two lines and their padding, so no size a launcher allows cuts it off.
+     updatePeriodMillis (Android's own floor) is a staleness fallback: WidgetPlugin.update already pushes a refresh
+     the moment the web side writes new data. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/widget_gymlog"
+    android:minHeight="110dp"
+    android:minResizeHeight="64dp"
+    android:minResizeWidth="110dp"
+    android:minWidth="180dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

@@ -25,6 +25,14 @@ describe("routing", () => {
     expect(tabOf({ view: "progress", lift: "Leg Press" })).toBe("progress");
   });
 
+  it("puts My gym under Settings, as deep as the plan editor", () => {
+    expect(routeOf("#gym")).toEqual({ view: "gym" });
+    expect(hashOf({ view: "gym" })).toBe("#gym");
+    expect(depthOf({ view: "gym" })).toBe(2);
+    expect(parentOf({ view: "gym" })).toEqual({ view: "settings" });
+    expect(tabOf({ view: "gym" })).toBe("settings");
+  });
+
   it("tells a lift's route apart from plain Progress and from another lift", () => {
     const a = { view: "progress" as const, lift: "Leg Press" }, b = { view: "progress" as const, lift: "Bench Press" };
     expect(sameRoute(a, { ...a })).toBe(true);

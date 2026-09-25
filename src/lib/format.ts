@@ -14,6 +14,12 @@ export const avg = (a: number[]) => (a.length ? sum(a) / a.length : null);
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** A countdown in words: "1:30", "0:05". Never negative, however late it's read. */
+export const mmss = (totalSec: number): string => {
+  const s = Math.max(0, Math.round(totalSec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
 /** When something last synced, to follow "synced": "at 10:42 am" today, "yesterday", or "on 23 Sept". */
 export function syncedWhen(iso: string, now = new Date()): string {
   const d = new Date(iso), k = keyOf(d), t = keyOf(now);
@@ -29,10 +35,12 @@ const NB = "\u00a0";
  * changed; "50 kg" for older entries that hold only a weight; "12, 10 reps" with no weight. Lines can
  * break only after the commas.
  */
-export function setsSummary(sets: { reps: number | null; kg: number | null }[]): string {
+const TYPE_MARK: Record<string, string> = { failure: "F", drop: "D" };
+export function setsSummary(sets: { reps: number | null; kg: number | null; type?: string }[]): string {
   const done = sets.filter((s) => s.reps != null || s.kg != null);
   if (!done.length) return "";
-  const reps = (s: { reps: number | null }) => (s.reps == null ? "-" : String(s.reps));
+  // A set to failure or a drop set is marked (F, D) after its reps; a plain working set reads as it always did.
+  const reps = (s: { reps: number | null; type?: string }) => (s.reps == null ? "-" : String(s.reps)) + (TYPE_MARK[s.type ?? ""] ?? "");
   if (done.every((s) => s.reps == null)) return `${Math.max(...done.map((s) => s.kg as number))}${NB}kg`;
   const kgs = new Set(done.map((s) => s.kg));
   if (kgs.size === 1) {

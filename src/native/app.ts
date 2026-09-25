@@ -4,14 +4,17 @@
  * can listen (speech.ts). */
 import { App } from "@capacitor/app";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
-import { NATIVE_SIGN_IN } from "@/lib/native";
+import { GO_EVENT, NATIVE_GO, NATIVE_SIGN_IN } from "@/lib/native";
 import { checkPhoneSpeech } from "@/lib/speech";
 import type { GymStore } from "@/lib/store";
 import { syncHealth } from "./health";
+import { syncRestNotifications } from "./rest";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
+import { startWidget } from "./widget";
 
 export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
+export { notificationPermission, requestNotificationPermission } from "./rest";
 export { backgroundStatus, runBackgroundNow, turnOffBackground, turnOnBackground, type SyncStatus } from "./sync";
 export {
   checkUpdate,
@@ -44,9 +47,13 @@ export async function startNative(store: GymStore): Promise<void> {
   started = true;
   // Voice logging: Settings and Today offer it once the phone says it can turn speech into text.
   void checkPhoneSpeech();
-  // A sign-in link opens the app with ...://login?code=…, either starting it or bringing it back.
+  // The rest timer's native alarm and notification: kept in step with store.rest for as long as the app runs.
+  syncRestNotifications(store);
+  // A sign-in link opens the app with ...://login?code=…, either starting it or bringing it back. The widget's
+  // taps arrive the same way, as .../go/today, weight or steps; GymLog.tsx switches tabs on the window event.
   const open = (url?: string | null) => {
     if (url?.startsWith(NATIVE_SIGN_IN)) void store.finishSignIn(url);
+    else if (url?.startsWith(NATIVE_GO)) window.dispatchEvent(new CustomEvent(GO_EVENT, { detail: url.slice(NATIVE_GO.length) }));
   };
   await App.addListener("appUrlOpen", ({ url }) => open(url));
   open((await App.getLaunchUrl())?.url);
@@ -55,11 +62,14 @@ export async function startNative(store: GymStore): Promise<void> {
   store.onSignOut(async () => {
     if ((await backgroundStatus()).on) await turnOffBackground(store);
   });
+  // The widget follows the store, clearing itself on any sign-out.
+  startWidget(store);
   // While open, too: a watch's numbers keep arriving through the day. syncHealth skips runs under 5 minutes apart.
   setInterval(() => void syncHealth(store), 15 * 60_000);
-  // The first read, as soon as the account is known.
+  // The first read, as soon as the account is known. Not for the demo: it isn't a real account, and Health
+  // Connect and background sync both need one (GymLog's Settings says so and hides the controls).
   const first = () => {
-    if (store.auth !== "signedIn") return;
+    if (store.auth !== "signedIn" || store.demo) return;
     stop();
     void syncHealth(store, true);
     void checkBackgroundOwner(store).catch(() => {});

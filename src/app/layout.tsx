@@ -12,6 +12,7 @@ import "@/styles/dashboard.css";
 import "@/styles/plan.css";
 import "@/styles/health.css";
 import "@/styles/settings.css";
+import "@/styles/library.css";
 
 export const metadata: Metadata = {
   title: "Gym Log",

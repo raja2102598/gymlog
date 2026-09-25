@@ -1,5 +1,5 @@
 /* Today: the week strip, the day's session (a card per lift, knee scores, warm-up, cardio), the day's
-   numbers, and the week so far. */
+   numbers, other measurements, and the week so far. */
 .week-head{margin-bottom:10px}
 .week-head h2{font-size:var(--t-md)}
 .nav{display:flex;gap:6px;align-items:center}
@@ -19,6 +19,13 @@
 .sess-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:4px}
 .sess-pick select.ghost{background-color:var(--surface);min-width:0}
 .moved{font-size:var(--t-xs);color:var(--muted)}
+/* a free-form workout: its name in place of the session picker, and a field to add lifts under them */
+.sess-pick.free{align-items:flex-end}
+.sess-pick.free .field{flex:1 1 200px}
+.sess-pick.free .field input{background:var(--surface)}
+.addlift{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;background:var(--surface);border-radius:var(--r-card);padding:14px 16px;box-shadow:var(--shadow)}
+.addlift .note{flex:1 1 100%;margin:0;font-size:14px;color:var(--muted)}
+.addlift .field{flex:1 1 200px}
 .pill{flex:none;font-size:var(--t-xs);font-weight:600;padding:4px 10px;border-radius:99px;background:var(--chip);color:var(--muted);white-space:nowrap}
 .pill.good{background:var(--good-soft);color:var(--good)}
 .pill.part{background:var(--chip);color:var(--ink)}
@@ -33,14 +40,25 @@
 .lift-name{flex:1 1 auto;min-width:0;min-height:44px;display:flex;align-items:center;gap:12px;cursor:pointer}
 .lift .nm{min-width:0;font-weight:600;font-size:var(--t-md);line-height:1.3}
 .lift .was{font-weight:400;font-size:var(--t-sm);color:var(--muted)}
-.lift.checked .nm{text-decoration:line-through;text-decoration-color:var(--good);text-decoration-thickness:2px}
-.lift.skipped .nm{text-decoration:line-through;color:var(--muted)}
+.lift.checked .nm,.ss-lift.checked .nm{text-decoration:line-through;text-decoration-color:var(--good);text-decoration-thickness:2px}
+.lift.skipped .nm,.ss-lift.skipped .nm{text-decoration:line-through;color:var(--muted)}
 .lift-meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;font:var(--t-sm)/1.45 var(--body);font-variant-numeric:tabular-nums;color:var(--muted);padding-left:40px}
 .lift-meta .sr{color:var(--ink);font-weight:600}
 .lift-meta .last.up{color:var(--good);font-weight:600}
 .lift .ch{font-size:var(--t-xs);font-weight:600;color:var(--warn);padding-left:40px}
 .lift .nt{margin:0;font-size:14px;color:var(--muted);padding-left:40px}
 .lift .more,.lift .mic{flex:none}
+
+/* a superset: one card, its lifts one under another, then their sets in rounds. A lift's place (A1, A2) comes before
+   its name and stands in for the number on its sets' rows. */
+.ss-h{padding-left:40px;font-size:var(--t-xs);color:var(--muted)}
+.ss-h b{font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+.ss-lift{display:grid;gap:10px}
+.ss-lift+.ss-lift{border-top:1px solid var(--line);padding-top:10px}
+.lift .sstag{margin-right:2px;font:600 var(--t-sm) var(--mono);color:var(--muted)}
+.round{display:grid;gap:8px;align-content:start}
+.round-h{font-size:var(--t-xs);font-weight:600;color:var(--muted)}
+.setbtns .howto~.howto{margin-left:0}
 
 /* voice: the microphone fills while it listens (and pulses, where motion is on); what it heard shows under the sets.
    The line's live region stays on the page while empty, so it's announced, but takes no room. */
@@ -59,11 +77,19 @@
 /* hints above the sets */
 .prog{margin-left:40px}
 
-/* sets: reps × kg; a set's number turns green once its reps are in */
-.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:8px 20px;padding-left:40px}
-.set{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1.15fr) auto;align-items:center;gap:6px}
-.set .sn{display:grid;place-items:center;width:24px;height:24px;border-radius:99px;font:600 var(--t-xs) var(--mono);color:var(--muted);background:var(--sunken)}
-.set.logged .sn{background:var(--good);color:var(--surface)}
+/* sets: reps × kg; a set's number turns green once its reps are in. A column is at least 284px where there's room
+   for it, and the whole width where there isn't (a 360px phone leaves 262px), so a set never spills out of its card. */
+.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(284px,100%),1fr));gap:8px 20px;padding-left:40px}
+.set{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1.15fr) auto auto;align-items:center;gap:6px}
+.set .sn{position:relative;display:grid;place-items:center;width:24px;height:44px;padding:0;border:0;background:none;color:var(--muted);cursor:pointer}
+.set .sn>span{display:grid;place-items:center;width:24px;height:24px;border-radius:99px;font:600 var(--t-xs) var(--mono);letter-spacing:-.06em;background:var(--sunken)}
+/* the number opens the set's menu: 44px wide as well as tall, reaching into the sets' left margin rather than under
+   the reps box beside it */
+.set .sn::before{content:"";position:absolute;inset:0 -6px 0 -14px}
+/* 3F to failure, 3D a drop set: a ring says it isn't a plain working set */
+.set .sn[data-kind="failure"]>span,.set .sn[data-kind="drop"]>span{box-shadow:inset 0 0 0 1.5px var(--warn)}
+.set .sn[aria-expanded="true"]>span{outline:2px solid var(--ink);outline-offset:1px}
+.set.logged .sn>span{background:var(--good);color:var(--surface)}
 .set input{width:100%;min-width:0;height:48px;font:500 18px var(--mono);padding:0 8px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);text-align:center;appearance:textfield;-moz-appearance:textfield}
 .set input:not(:placeholder-shown){background:var(--surface);font-weight:600}
 .set input::-webkit-outer-spin-button,.set input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
@@ -75,6 +101,27 @@
 .setbtns .howto{margin-left:auto;color:var(--muted)}
 .howto svg{transition:transform var(--fast) var(--ease)}
 .howto[aria-expanded="true"] svg{transform:rotate(180deg)}
+
+/* the plates button on a set, and the breakdown it opens: a full-width row of its own, so it doesn't
+   stretch the sets either side of it */
+.plates-btn{color:var(--muted)}
+.plates-btn[aria-expanded="true"]{color:var(--ink);background:var(--chip)}
+/* a lift that takes no plates (dumbbells, a cable) keeps the button's column, so its sets line up with others' */
+.plates-none{width:44px}
+/* a set's menu: its kind, and its effort when the plan logs one */
+.setmenu{grid-column:1/-1;display:grid;gap:10px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
+.setmenu .field{max-width:200px}
+.setmenu .note{margin:0}
+.plates-info{grid-column:1/-1;font-size:var(--t-sm);color:var(--ink);padding:10px 12px;border-radius:var(--r-ctl);background:var(--sunken)}
+
+/* a lift's warm-up sets: 40/60/80% of a working weight, one tap to log them, marked so they're not working sets */
+.wset{margin-left:40px;display:grid;gap:8px}
+.wset-panel{display:grid;gap:10px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
+.wset-panel .field{max-width:200px}
+.wset-ladder{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.wset-ladder li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-radius:var(--r-ctl);background:var(--surface);font:500 var(--t-sm) var(--mono)}
+.wset-ladder .wset-pct{color:var(--muted);font-family:var(--body)}
+.wset-done{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:var(--t-sm);color:var(--muted)}
 
 /* skip and swap */
 .acts{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-left:40px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
@@ -137,6 +184,9 @@
 .hc-list .sub{font-size:var(--t-sm)}
 .hc .hc-more{justify-self:start}
 
+/* Measurements: chest, arms, thighs, hips and body fat, a card like Health Connect's with a field grid like the day's numbers */
+.measure-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px}
+
 /* this week so far, and history */
 .stats-h{margin-bottom:14px}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 12px}
@@ -157,7 +207,7 @@
 @media (max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
 @media (min-width:561px){.lift{padding:16px 16px 18px}.inputs,.hc{padding:20px}}
 @media (prefers-reduced-motion:no-preference){
-  .wu .chips:not([hidden]),.acts,.lift .cue{animation:rise var(--med) var(--ease)}
-  .set .sn{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
+  .wu .chips:not([hidden]),.acts,.lift .cue,.wset-panel,.plates-info,.setmenu{animation:rise var(--med) var(--ease)}
+  .set .sn>span{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
   .lift .mic[aria-pressed="true"]{animation:listen 1.4s var(--ease) infinite}
 }

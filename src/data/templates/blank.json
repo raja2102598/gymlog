@@ -8,6 +8,10 @@
   "goalWeight": null,
   "weeklyRatePct": null,
   "kneeLimit": 5,
+  "barKg": 20,
+  "plateKgs": [25, 20, 15, 10, 5, 2.5, 1.25],
+  "restSec": 90,
+  "effort": "off",
   "warmups": [
     "Treadmill walk 5 min",
     "Cycling 5 min",

@@ -27,6 +27,14 @@ export default async function layout({ browser, base, check }) {
     check("top bar: Today and the date, no tagline once signed in", (await page.textContent("#screenTitle")) === "Today" && (await page.locator("#tagline").count()) === 0 && (await page.textContent("#status")) === "Synced");
     const bar = await box(page, ".tabbar"), tabs = await page.$$eval(".tabbar a", (els) => els.map((e) => [e.id, e.getAttribute("aria-current"), Math.round(e.getBoundingClientRect().height)]));
     check("four tabs along the bottom of the screen, Today current", Math.round(bar.y + bar.height) === 800 && tabs.map((t) => t[0]).join() === "tabToday,tabHealth,tabProgress,tabSettings" && tabs[0][1] === "page" && tabs.every((t) => t[2] >= 48), JSON.stringify(tabs));
+    // A lift's sets (reps, kg and the plates button) and its buttons fit inside its card, with no page scrolling sideways.
+    const spill = await page.$$eval(".lift", (lifts) =>
+      lifts.flatMap((l) => {
+        const right = l.getBoundingClientRect().right;
+        return [...l.querySelectorAll("*")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().right > right + 0.5).map((e) => e.className || e.tagName);
+      }),
+    );
+    check("every lift's sets and buttons stay inside its card", spill.length === 0 && (await page.evaluate(() => document.documentElement.scrollWidth)) <= 360, spill.slice(0, 4).join(", "));
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     const last = await page.evaluate(() => [...document.querySelectorAll("#appView > *")].filter((e) => e.getClientRects().length).pop().getBoundingClientRect().bottom);
     check("the end of the page scrolls clear of the tabs", last <= bar.y + 1, `last ${Math.round(last)}, tabs at ${Math.round(bar.y)}`);

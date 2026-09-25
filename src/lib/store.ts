@@ -4,15 +4,19 @@
  * Everything is kept on the phone first (localStorage) and saved to Supabase in the background: `pending`
  * holds days not yet saved, and a failed save retries every 15 seconds. */
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { TEMPLATES } from "@/data/templates";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
-import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
-import { DEFAULT_PLAN, normalizePlan } from "./plan";
+import { addDays, dayMonth, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
+import { createDemoSupabase } from "./demoSupabase";
+import { CATALOGUE, closeMatches, customLift, EQUIPMENT, exerciseFor, gymCan, gymLacks, isBar, libraryLift, libraryNamed, loadOf, type Equip, type Exercise, type Load } from "./library";
+import { DEFAULT_PLAN, DEFAULT_WEIGHTS, normalizeCustom, normalizeGym, normalizePlan, normalizeWeights, orderBlocks, planBlocks } from "./plan";
+import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
-import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY } from "./storage";
-import { EXTRA_FIELDS, type DayKey, type DayLog, type HealthDay, type LiftLog, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
+import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -39,6 +43,22 @@ export interface NextWeight extends S.NextStep {
   /** Held back because the knee was sore after that session. */
   held: boolean;
 }
+/** The rest timer, shown in the top bar: counts from `endAt` down to zero, not from ticks, so a throttled background
+ *  tab or a reload can't make it drift. Kept on this device only (REST_KEY): a timer only means something where
+ *  you're actually lifting. */
+export interface RestTimer {
+  /** Which lift this rest follows and the day it was logged on, for the top bar's wording only: neither changes
+   *  when a set restarts the timer, and switching screens or days never touches it. */
+  lift: string;
+  day: DayKey;
+  /** Epoch ms it reaches zero, kept up to date whether running or paused (see pausedAt). */
+  endAt: number;
+  /** Epoch ms it was paused, or null while running: what's left is then endAt - pausedAt, frozen until resumed. */
+  pausedAt: number | null;
+  /** Reached zero and said so already (vibrated, marked for screen readers): stays true until skipped or a set
+   *  restarts it, so that only happens once. */
+  ended: boolean;
+}
 /** What an import would replace: how many logged days the file has differently, and whether its plan differs. */
 export interface Replacing {
   days: number;
@@ -46,24 +66,57 @@ export interface Replacing {
 }
 
 const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 7;
-export const minSets = (x: PlanExercise) => {
+/** A day's free-form workout, when it has one that reads right: a name and a list of lift names. */
+const freeOf = (d?: Partial<DayLog> | null): FreeWorkout | null => {
+  const f = d?.free as Partial<FreeWorkout> | undefined;
+  return f && typeof f === "object" && typeof f.name === "string" && Array.isArray(f.lifts) && f.lifts.every((n) => typeof n === "string") ? (f as FreeWorkout) : null;
+};
+/** What a free-form workout is called when it isn't given a name. */
+export const FREE_NAME = "Free workout";
+export const minSets = (x: { sets: string }) => {
   const n = parseInt(x.sets, 10);
   return n > 0 ? Math.min(n, 10) : 1;
 };
+/** The sets and reps to check a logged lift against: what it was actually asked for that day, once stored
+ *  (LiftLog.target), else today's plan for it. A lift never logged that day, or logged before targets were
+ *  stored, reads the plan, exactly as every lift did before. */
+export const targetOf = (r: Partial<LiftLog> | null | undefined, x: PlanExercise): { sets: string; reps: string } => r?.target ?? { sets: x.sets, reps: x.reps };
 // Older entries have only one weight per lift: show it as set 1.
 export const setsOf = (r?: LiftLog | null): SetLog[] => (Array.isArray(r?.sets) ? r.sets : r?.kg != null ? [{ reps: null, kg: r.kg }] : []);
+/** Heaviest working set: a warm-up never counts, however heavy. */
 export const topKg = (sets: SetLog[]) => {
-  const ks = sets.map((s) => s.kg).filter((k): k is number => k != null);
+  const ks = sets.filter(S.isWorkingSet).map((s) => s.kg).filter((k): k is number => k != null);
   return ks.length ? Math.max(...ks) : null;
 };
 export const performed = (name: string, r?: LiftLog | null) => r?.swap || name;
 const liftHasData = (r?: LiftLog | null) => !!r && (r.done || !!r.skipped || !!r.swap || setsOf(r).some((s) => s.reps != null || s.kg != null));
-export const stepOf = (x: PlanExercise) => {
-  const v = parseFloat(x.step);
-  return v > 0 ? v : 2.5;
+/** Whether `min` working sets have reps logged: warm-ups don't move it any closer. */
+export const setsComplete = (sets: SetLog[], min: number) => sets.filter((s) => S.isStraightSet(s) && (s.reps ?? 0) > 0).length >= min;
+/** A saved rest timer worth bringing back after a reload or a sign-in: not one that ran out over ten minutes ago,
+ *  or was left paused for over an hour, which would only show a stale "Rest over" or countdown. */
+export const liveRest = (r: RestTimer | null | undefined, now = Date.now()): RestTimer | null =>
+  r && (r.pausedAt != null ? now - r.pausedAt < 3_600_000 : now - r.endAt < 600_000) ? r : null;
+/** The rest timer's length for this lift, seconds: its own override (the plan editor's lift row), kept within
+ *  5 s and 10 minutes as the plan's default is, or else the plan's. */
+export const restSecFor = (plan: Plan, x: PlanExercise) => {
+  const v = parseInt(x.rest ?? "", 10);
+  return v > 0 ? Math.min(600, Math.max(5, v)) : plan.restSec;
 };
 export const PR_WORDS: Record<S.RecordKind, string> = { weight: "heaviest yet", e1rm: "best estimated 1RM", reps: "most reps at this weight" };
 export const prTitle = (kinds?: S.RecordKind[]) => (kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : "");
+/** A lift's next-weight hint, in words that name the rule behind it: what to do, the weight (bold on Today, empty
+ *  for a knee hold, whose weight is in `lead`), and why. */
+export function progWords(n: NextWeight): { lead: string; kg: string; why: string } {
+  const kg = String(n.to);
+  if (n.held) return { lead: `Hold ${n.from}\u00a0kg: your knee was sore after ${dayMonth(n.day)}.`, kg: "", why: "" };
+  if (n.rule === "linear") return { lead: "Go up to ", kg, why: `: linear, +${Math.round((n.to - (n.from ?? n.to)) * 100) / 100}\u00a0kg a session while every set hits ${n.top} reps.` };
+  if (n.rule === "percent") return { lead: "Work at ", kg, why: `: ${n.pct}% of your ${n.oneRm}\u00a0kg 1RM.` };
+  if (n.rule === "deload") {
+    const short = n.fails === 1 ? "last session fell short" : `${n.fails} sessions in a row fell short`;
+    return { lead: "Deload to ", kg, why: `: ${short}, so ${n.off}% off ${n.from}\u00a0kg.` };
+  }
+  return { lead: "Go up to ", kg, why: `: every set hit ${n.top} reps last time.` };
+}
 
 /** Why a sign-in link didn't work, and what to do, from the error Supabase or the auth client gave. */
 function linkTrouble(e: { message: string; code?: string }): string {
@@ -99,6 +152,9 @@ function fullDay(d?: Partial<DayLog> | null): DayLog {
     note: e.note || "",
   };
   if (isSlot(e.session)) out.session = e.session;
+  if (Array.isArray(e.order) && e.order.every((n) => typeof n === "string")) out.order = e.order;
+  const free = freeOf(e);
+  if (free) out.free = free;
   for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
   return out;
 }
@@ -128,6 +184,13 @@ const SAVES_AT_ONCE = 4;
 const writtenAt = (rows: unknown) => (rows as { updated_at?: string }[] | null)?.[0]?.updated_at ?? null;
 /** What the plan editor and Settings say while the plan waits for you to choose a version. */
 const PLAN_HELD = "Not synced yet: the plan was changed on another device too.";
+/** The library lift picked by hand for each name in the plans the app comes with (the default plan and the
+ *  templates), by name in lower case: asked about first when a plan saved before the library uses the name. */
+const SHIPPED = new Map<string, string>();
+for (const p of [DEFAULT_PLAN, ...TEMPLATES.map((t) => t.plan)])
+  for (const d of p.days) for (const x of d.exercises) if (x.lib && !SHIPPED.has(x.name.toLowerCase())) SHIPPED.set(x.name.toLowerCase(), x.lib);
+/** The account a demo shows: not a real one, so nothing here is ever sent anywhere (GymStore.startDemo). */
+const DEMO_USER: User = { id: "00000000-0000-0000-0000-000000000000", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "" };
 
 /** How a session signed in ("password", "otp", …), from its access token's amr claim. */
 export function signInMethods(accessToken: string): string[] {
@@ -154,6 +217,8 @@ export class GymStore {
   /** When the Android app last saved Health Connect data (ISO), or null. */
   healthSyncedAt: string | null = null;
   healthLink: HealthLink = { state: "web", msg: "" };
+  /** The rest timer. Null when none is running, paused or waiting to be dismissed. */
+  rest: RestTimer | null = null;
   /** Why the last sign-in link didn't work, for the sign-in screen. */
   authMsg = "";
   user: User | null = null;
@@ -177,6 +242,11 @@ export class GymStore {
   /** Bumped when the plan's shape changes, so the plan editor's fields reload. */
   planShape = 0;
   sb: SupabaseClient | null = null;
+  /** Trying the app with sample data (GymStore.startDemo): fully signed in, but `sb` is a fake and nothing is
+   *  written to the phone (see saveLocal). Screens use this to hide or refuse whatever needs a real account. */
+  demo = false;
+  /** The real client, set aside while the demo's fake stands in for it, and back on leaving the demo. */
+  private liveSb: SupabaseClient | null = null;
 
   private planRev = 0;
   /** The logged days have been loaded from Supabase since signing in, not only read from this phone's copy. */
@@ -185,6 +255,7 @@ export class GymStore {
   private flushing = false;
   private planTimer: ReturnType<typeof setTimeout> | undefined;
   private planFlushing = false;
+  private restTimeout: ReturnType<typeof setTimeout> | undefined;
   private recBefore: { upTo: DayKey; best: S.RecordFold } | null = null;
   private sorted: { rev: number; keys: DayKey[] } | null = null;
   private logsRev = 0;
@@ -241,6 +312,11 @@ export class GymStore {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce", experimental: { appendPkceFlowIdToRedirects: true } },
     }));
     sb.auth.onAuthStateChange((_event, session) => {
+      // A real sign-in (a link opened in another tab, say) ends the demo; nothing else here concerns it.
+      if (this.demo) {
+        if (!session?.user) return;
+        this.exitDemo();
+      }
       if (session?.user && session.user.id !== this.user?.id) void this.onSignedIn(session.user, session);
       else if (session?.user && this.user && this.notePassword(session)) this.changed();
       else if (!session && this.user) this.onSignedOut();
@@ -261,7 +337,10 @@ export class GymStore {
       void this.pullHealth();
     };
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) sync();
+      if (!document.hidden) {
+        sync();
+        this.checkRest(); // a background tab can throttle the timer that would otherwise have caught this
+      }
     });
     window.addEventListener("online", () => {
       this.online = true;
@@ -272,6 +351,55 @@ export class GymStore {
       this.online = false;
       this.setStatus("Offline. Changes stay on this phone");
     });
+  }
+
+  /* ---------- demo mode ---------- */
+  /** "Try it with sample data": skips Supabase entirely and drops straight into a signed-in, fully usable app,
+   *  seeded like scripts/screenshots.mjs (lib/sampleData.js) with four weeks of history ending today. `sb` becomes
+   *  a small fake (lib/demoSupabase.ts) that answers from this store's own fields, so flush, pull and the rest run
+   *  unchanged and nothing ever reaches a network. Nothing here is written to the phone either (see saveLocal): the
+   *  whole demo lives in memory, and a reload starts over at the sign-in screen. */
+  startDemo() {
+    if (this.demo || this.user) return;
+    this.demo = true;
+    this.liveSb = this.sb;
+    this.sb = createDemoSupabase(this);
+    const today = todayKey();
+    this.user = { ...DEMO_USER, created_at: `${addDays(today, -27)}T05:00:00.000Z` };
+    this.plan = copy(DEFAULT_PLAN);
+    const { logs, health } = sampleDays(today, DEFAULT_PLAN.days);
+    this.logs = logs;
+    this.health = health;
+    this.healthSyncedAt = new Date().toISOString();
+    this.pending = {};
+    this.conflicts = {};
+    this.planConflict = null;
+    this.planDirty = false;
+    this.planSource = "server"; // acts as an account that already has its plan: no "choose a plan" first
+    this.logsLoaded = true;
+    this.firstLoad = false;
+    this.hasPassword = false;
+    this.syncTrouble = false;
+    this.status = "Synced";
+    this.logsChanged();
+    this.planShape++;
+    this.auth = "signedIn";
+    this.changed();
+  }
+
+  /** Leaves the demo for the real sign-in screen, with the real client back in place so signing in works. There was
+   *  never a real session to sign out of, so this is onSignedOut's own reset rather than a sign-out. A build with no
+   *  Supabase project goes back to the setup screen it came from. */
+  exitDemo() {
+    if (!this.demo) return;
+    this.demo = false;
+    this.sb = this.liveSb;
+    this.liveSb = null;
+    this.onSignedOut();
+    if (!this.sb) {
+      this.auth = "setup";
+      this.changed();
+    }
   }
 
   /* ---------- auth ---------- */
@@ -321,10 +449,15 @@ export class GymStore {
     const pend = lsGet<{ user?: string; pending?: Record<DayKey, DayLog> } | null>(PENDING_KEY, null);
     const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean; base?: string | null } | null>(PLAN_KEY, null);
     const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null } | null>(HEALTH_KEY, null);
+    const rc = lsGet<{ user?: string; rest?: RestTimer | null } | null>(REST_KEY, null);
     this.logs = cache && cache.user === u.id ? cache.logs || {} : {};
     this.bases = cache && cache.user === u.id ? cache.bases || {} : {};
     this.health = hc && hc.user === u.id ? hc.health || {} : {};
     this.healthSyncedAt = hc && hc.user === u.id ? hc.at ?? null : null;
+    // A reload or a tab switch keeps the rest timer (this phone only: it never came from Supabase or another device).
+    this.rest = rc && rc.user === u.id ? liveRest(rc.rest) : null;
+    this.armRest();
+    this.checkRest();
     this.authMsg = "";
     this.pending = pend && pend.user === u.id ? pend.pending || {} : {};
     // Not kept: the first save of such a day finds the other device's copy again.
@@ -366,6 +499,11 @@ export class GymStore {
     this.conflicts = {};
     this.health = {};
     this.healthSyncedAt = null;
+    this.disarmRest();
+    // Taken off this phone too, so signing back in doesn't bring back a timer the sign-out put away. (Removed rather
+    // than saved as none, so leaving the demo, which ends here too, leaves nothing behind.)
+    this.rest = null;
+    lsDel(REST_KEY);
     this.logsChanged();
     this.syncTrouble = false;
     this.unsaved.clear();
@@ -400,6 +538,8 @@ export class GymStore {
 
   /** Finishes sign-in from a link that opened the Android app: ...://login?sb_flow_id=…&code=… */
   async finishSignIn(url: string): Promise<void> {
+    // A sign-in link opened during the demo ends it, and signs in.
+    this.exitDemo();
     // Signed in already: the same link again (say, from the app-login page's button) has nothing left to do.
     if (!this.sb || this.user) return;
     const u = new URL(url), q = u.searchParams, h = new URLSearchParams(u.hash.slice(1));
@@ -483,46 +623,323 @@ export class GymStore {
     const s = this.logs[k]?.session;
     return isSlot(s) ? s : wdIndex(k);
   }
+  /** The day's workout: its planned session, or its free-form workout as one. A free-form workout's lifts are the
+   *  ones added to it, each with the plan's settings for a lift of that name (its sets and reps, cue, step, knee)
+   *  when the plan has one, and nothing planned otherwise; the cardio finisher stays the usual day's. */
   planFor(k: DayKey): PlanDay {
-    return this.plan.days[this.slotFor(k)];
+    const p = this.plan.days[this.slotFor(k)], f = freeOf(this.logs[k]);
+    if (!f) return p;
+    const blank = (name: string): PlanExercise => ({ name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false });
+    return { weekday: p.weekday, name: f.name.trim() || FREE_NAME, focus: "", exercises: f.lifts.map((name) => this.planLift(name) ?? blank(name)), cardio: p.cardio };
   }
-  // Planned lifts for the day, plus anything logged that day that is no longer in the plan.
-  liftsFor(k: DayKey): LiftItem[] {
+  /** Whether day k is a free-form workout rather than a planned session. */
+  isFree(k: DayKey): boolean {
+    return !!freeOf(this.logs[k]);
+  }
+  /** The plan's settings for a lift of this name, on whichever day has it first; never part of a superset. */
+  private planLift(name: string): PlanExercise | null {
+    for (const d of this.plan.days)
+      for (const x of d.exercises)
+        if (x.name === name) {
+          const y = { ...x };
+          delete y.superset;
+          return y;
+        }
+    return null;
+  }
+  /** The day's lifts as Today shows them, in blocks: a superset of the plan's is one block, its lifts in the plan's
+   *  order, and any other lift a block of its own, as is anything logged that day that's no longer in the plan.
+   *  Blocks follow the day's own order once a lift was moved (DayLog.order), else the plan's. */
+  liftBlocks(k: DayKey, order: string[] | null = this.entry(k).order ?? null): LiftItem[][] {
     const p = this.planFor(k), e = this.entry(k);
-    const items: LiftItem[] = p.exercises.map((x) => ({ x, name: x.name, extra: false }));
-    const planned = new Set(items.map((it) => it.name));
+    const blocks = planBlocks(p.exercises).map((b) => b.map((x): LiftItem => ({ x, name: x.name, extra: false })));
+    const planned = new Set(p.exercises.map((x) => x.name));
     for (const [name, r] of Object.entries(e.exercises)) {
-      if (!planned.has(name) && liftHasData(r)) items.push({ x: { name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false }, name, extra: true });
+      if (!planned.has(name) && liftHasData(r)) blocks.push([{ x: { name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false }, name, extra: true }]);
     }
-    return items;
+    return order ? orderBlocks(blocks, order) : blocks;
   }
+  // The day's lifts, one after another, in the order they're shown.
+  liftsFor(k: DayKey): LiftItem[] {
+    return this.liftBlocks(k).flat();
+  }
+  /** Moves block `b` of the day's lifts (a lift, or a superset whole) one place up or down, kept with the day as
+   *  the order its lifts were done in. Back in the plan's order, the day keeps none. */
+  moveBlock(k: DayKey, b: number, dir: -1 | 1) {
+    const blocks = this.liftBlocks(k), to = b + dir;
+    if (b < 0 || to < 0 || to >= blocks.length) return;
+    [blocks[b], blocks[to]] = [blocks[to], blocks[b]];
+    const order = blocks.flat().map((it) => it.name);
+    const planOrder = this.liftBlocks(k, null).flat().map((it) => it.name);
+    this.editDay(
+      k,
+      (n) => {
+        if (order.join("\n") === planOrder.join("\n")) delete n.order;
+        else n.order = order;
+      },
+      true,
+    );
+  }
+  /* ---------- a free-form workout ---------- */
+  /** Starts an empty free-form workout on day k, in place of its planned session. */
+  startFree(k: DayKey) {
+    this.editDay(
+      k,
+      (n) => {
+        n.free = { name: "", lifts: [] };
+      },
+      true,
+    );
+  }
+  setFreeName(k: DayKey, name: string) {
+    this.editDay(
+      k,
+      (n) => {
+        if (n.free) n.free.name = name;
+      },
+      false,
+    );
+  }
+  /** Adds a lift to day k's free-form workout, by name: false when there's no name, or it's there already. */
+  addFreeLift(k: DayKey, name: string): boolean {
+    return this.addFreeLifts(k, [name]) > 0;
+  }
+  /** Adds lifts to day k's free-form workout, by name, in one save; says how many were new. */
+  addFreeLifts(k: DayKey, names: string[]): number {
+    const f = freeOf(this.logs[k]);
+    const add = [...new Set(names.map((n) => n.trim()).filter((v) => v && !f?.lifts.includes(v)))];
+    if (!f || !add.length) return 0;
+    this.editDay(
+      k,
+      (n) => {
+        n.free?.lifts.push(...add);
+      },
+      true,
+    );
+    return add.length;
+  }
+  /** Takes a lift out of day k's free-form workout, with anything logged for it. */
+  removeFreeLift(k: DayKey, name: string) {
+    this.editDay(
+      k,
+      (n) => {
+        if (n.free) n.free.lifts = n.free.lifts.filter((x) => x !== name);
+        delete n.exercises[name];
+        if (n.order) n.order = n.order.filter((x) => x !== name);
+      },
+      true,
+    );
+  }
+  /** Back to day k's planned session. What was logged in the free-form workout stays, as lifts outside the plan. */
+  endFree(k: DayKey) {
+    this.editDay(
+      k,
+      (n) => {
+        delete n.free;
+      },
+      true,
+    );
+  }
+  /** Names to offer when adding a lift: the plan's lifts, anything swapped in, every lift logged, and the exercise
+   *  library's that your gym can do, less `except`. */
+  liftSuggestions(except: string[] = []): string[] {
+    const s = new Set<string>();
+    for (const d of this.plan.days) for (const x of d.exercises) s.add(x.name);
+    for (const k of this.days())
+      for (const [name, r] of Object.entries(this.logs[k].exercises || {})) {
+        s.add(name);
+        if (r?.swap) s.add(r.swap);
+      }
+    for (const x of this.library()) if (this.canDo(x)) s.add(x.name);
+    for (const x of except) s.delete(x);
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }
+
+  /* ---------- the exercise library ---------- */
+  /** Every lift the library offers: your own, then the catalogue's. */
+  library(): Exercise[] {
+    return [...(this.plan.custom ?? []).map(customLift), ...CATALOGUE];
+  }
+  /** My gym, as the plan holds it: everything on until it's set. */
+  gym(): Gym {
+    return this.plan.gym ?? { off: [], always: [], never: [] };
+  }
+  /** Whether the library offers lift x: My gym can do it. */
+  canDo(x: Exercise): boolean {
+    return gymCan(x, this.plan.gym);
+  }
+  /** The equipment lift x needs that My gym hasn't got. */
+  lacks(x: Exercise): Equip[] {
+    return gymLacks(x, this.plan.gym);
+  }
+  /** Turns a piece of equipment on or off in My gym: all of it, without one. */
+  setEquip(on: boolean, e?: Equip) {
+    this.editPlan((p) => {
+      const g = normalizeGym(p.gym);
+      p.gym = normalizeGym({ ...g, off: !e ? (on ? [] : Object.keys(EQUIPMENT)) : on ? g.off.filter((x) => x !== e) : [...g.off, e] });
+    });
+  }
+  /** Puts lifts, by library id, on My gym's always or never list and off the other; off both with null. */
+  showLifts(ids: string[], list: "always" | "never" | null) {
+    this.editPlan((p) => {
+      const g = normalizeGym(p.gym), rest = (l: string[]) => l.filter((id) => !ids.includes(id));
+      p.gym = normalizeGym({ off: g.off, always: list === "always" ? [...rest(g.always), ...ids] : rest(g.always), never: list === "never" ? [...rest(g.never), ...ids] : rest(g.never) });
+    });
+  }
+  /* ---------- weights ---------- */
+  /** My gym's weights beyond the barbell's: each its default until changed. */
+  weights(): Weights {
+    return this.plan.weights ?? DEFAULT_WEIGHTS;
+  }
+  /** Sets one of My gym's weights, kept in range as the plan is read (normalizeWeights). */
+  setWeight(k: keyof Weights, kg: number) {
+    this.editPlan((p) => {
+      p.weights = normalizeWeights({ ...(p.weights ?? DEFAULT_WEIGHTS), [k]: kg });
+    });
+  }
+  /** What lift `name` is loaded with: the plan lift's own pick (PlanExercise.load), else what the library says its
+   *  equipment is; through the plan's lift of that name when `x` isn't given. Null for a lift that isn't known. */
+  loadOf(name: string, x?: Pick<PlanExercise, "lib" | "load"> | null): Load | null {
+    const y = x === undefined ? this.planLift(name) : x;
+    return y?.load ?? loadOf(this.exerciseOf(name, y ?? null));
+  }
+  /** The bar a lift loaded with `l` goes on, kg, for its plates button and warm-up sets: each bar's own, nothing
+   *  for a machine's plates, and null for what isn't loaded with plates (no plates button). A lift that isn't known
+   *  goes on the barbell, as every lift did before My gym had weights. */
+  barFor(l: Load | null): number | null {
+    if (l === null || l === "barbell") return this.plan.barKg;
+    if (l === "ezbar" || l === "trapbar" || l === "smith") return this.weights()[l];
+    return l === "machine" ? 0 : null;
+  }
+  /** What a lift loaded with `l` can weigh: a bar and pairs of the smallest plate, or dumbbells, a stack, a cable or
+   *  bands in their step from nothing. Null for bodyweight and a lift that isn't known, whose weights aren't
+   *  rounded. */
+  gridFor(l: Load | null): S.Grid | null {
+    if (l === null || l === "body") return null;
+    if (!isBar(l)) return { base: 0, inc: this.weights()[l] };
+    const plates = this.plan.plateKgs.filter((p) => p > 0);
+    return { base: this.barFor(l) ?? 0, inc: plates.length ? 2 * Math.min(...plates) : 2.5 };
+  }
+  /** What was done in plan lift x's place is loaded with: x's, or what it was swapped for (`did`). */
+  loadDone(x: PlanExercise, did: string): Load | null {
+    return did === x.name ? this.loadOf(x.name, x) : this.loadOf(did);
+  }
+  /** What lift x goes up by, kg: its own step, else a step of what it's loaded with, else 2.5 kg. */
+  stepFor(x: PlanExercise, l: Load | null = this.loadOf(x.name, x)): number {
+    const v = parseFloat(x.step);
+    return v > 0 ? v : (this.gridFor(l)?.inc ?? 2.5);
+  }
+
+  /** Whether a name is a library lift's or one of your own exactly: then it says what the lift is, and a plan lift
+   *  given it keeps no link to another. */
+  namesALift(name: string): boolean {
+    const key = name.trim().toLowerCase();
+    return !!libraryNamed(key) || (this.plan.custom ?? []).some((c) => c.name.toLowerCase() === key);
+  }
+  /** A lift's exercise, when the library or your own lifts know it: through the plan's lift of that name when `x`
+   *  isn't given. Null for an untagged lift. */
+  exerciseOf(name: string, x?: Pick<PlanExercise, "lib"> | null): Exercise | null {
+    return exerciseFor(name, this.plan.custom ?? [], x === undefined ? this.planLift(name) : x);
+  }
+  /** Saves a lift of your own, new or (`again`) changed, and says what's wrong, if anything. Its name stays its
+   *  name: a plan lift of that name takes its muscles and equipment, since your own lifts are found by name. */
+  saveCustom(c: CustomExercise, again = false): string {
+    const name = c.name.trim(), key = name.toLowerCase(), lib = libraryNamed(name);
+    if (!name) return "Give it a name.";
+    if (lib) return `The library has ${lib.name}: pick it from the list instead.`;
+    if (!again && (this.plan.custom ?? []).some((x) => x.name.toLowerCase() === key)) return `You have a lift called ${name} already.`;
+    this.editPlan((p) => {
+      p.custom = normalizeCustom([...(p.custom ?? []).filter((x) => x.name.toLowerCase() !== key), { ...c, name }]);
+      // Your own lift is what a plan lift of that name is now, whatever library lift it pointed at.
+      for (const d of p.days) for (const x of d.exercises) if (x.name.trim().toLowerCase() === key) delete x.lib;
+    });
+    return "";
+  }
+  /** Adds library lifts to plan day `day`, after its others, each with the usual 3 × 10-12 to start from; one
+   *  already on the day, by name or pointed at, isn't added again. */
+  addLibraryLifts(day: number, xs: Exercise[]) {
+    this.editPlan((p) => {
+      const ex = p.days[day].exercises;
+      for (const x of xs)
+        if (!ex.some((y) => y.name === x.name || (!x.custom && y.lib === x.id))) ex.push({ name: x.name, sets: "3", reps: "10-12", cue: "", flag: "", step: "", knee: false, rest: "", ...(x.custom ? {} : { lib: x.id }) });
+    }, true);
+  }
+  /** Points every plan lift called `name` at library lift `x`. Your own lift is found by its name, so one of
+   *  another name lends this one its muscles and equipment, as a lift of your own. */
+  linkLift(name: string, x: Exercise) {
+    if (x.custom && x.name.toLowerCase() !== name.trim().toLowerCase()) {
+      this.saveCustom({ name, equip: x.equip, primary: x.primary, secondary: x.secondary }, true);
+      return;
+    }
+    this.editPlan((p) => {
+      for (const d of p.days)
+        for (const y of d.exercises)
+          if (y.name === name) {
+            if (x.custom) delete y.lib;
+            else y.lib = x.id;
+          }
+    });
+  }
+  /** The plan's lifts to ask about once: each not pointing at the library, not named exactly as one of its lifts
+   *  and not one of your own, with the library lifts close to its name, best first: for a name from the plans the
+   *  app comes with, the one picked for it by hand. Answered with linkLift or keepOwn. */
+  libraryQuestions(): { name: string; like: Exercise[] }[] {
+    const own = new Set((this.plan.custom ?? []).map((c) => c.name.toLowerCase())), all = this.plan.days.flatMap((d) => d.exercises);
+    const names = [...new Set(all.map((x) => x.name.trim()).filter(Boolean))];
+    return names
+      .filter((name) => !own.has(name.toLowerCase()) && !all.some((x) => x.name.trim() === name && x.lib))
+      .map((name) => {
+        const known = libraryLift(SHIPPED.get(name.toLowerCase())), like = closeMatches(name);
+        return { name, like: known ? [known, ...like.filter((x) => x !== known)].slice(0, 3) : like };
+      })
+      .filter((q) => q.like.length);
+  }
+  /** A plan lift that isn't the library's, kept as one of your own (untagged until you give it muscles). */
+  keepOwn(name: string) {
+    const v = name.trim();
+    if (!v || (this.plan.custom ?? []).some((c) => c.name.toLowerCase() === v.toLowerCase())) return;
+    this.editPlan((p) => {
+      p.custom = normalizeCustom([...(p.custom ?? []), { name: v, equip: [], primary: [], secondary: [] }]);
+    });
+  }
+
   // Most recent earlier day this exercise was actually done (as planned or as a swap).
   lastDone(name: string, before: DayKey): LastDone | null {
-    const ks = this.days();
-    for (let i = ks.length - 1; i >= 0; i--) {
+    return this.doneBefore(name, before, 1)[0] ?? null;
+  }
+  // The `n` most recent days before `before` that this exercise was actually done, the latest first.
+  doneBefore(name: string, before: DayKey, n: number): LastDone[] {
+    const ks = this.days(), out: LastDone[] = [];
+    for (let i = ks.length - 1; i >= 0 && out.length < n; i--) {
       const k = ks[i];
       if (k >= before) continue;
       for (const [key, r] of Object.entries(this.logs[k].exercises || {})) {
-        if (r && !r.skipped && performed(key, r) === name && setsOf(r).some((s) => s.reps != null || s.kg != null)) return { day: k, r };
+        if (r && !r.skipped && performed(key, r) === name && setsOf(r).some((s) => S.isWorkingSet(s) && (s.reps != null || s.kg != null))) {
+          out.push({ day: k, r });
+          break;
+        }
       }
     }
-    return null;
+    return out;
   }
   // Placeholders show what you did last time, so there's something to beat; when it's time to add
   // weight, they show the new weight at the bottom of the rep range.
   placeholders(x: PlanExercise, L: LastDone | null, j: number, next: NextWeight | null): [string, string] {
-    if (next && !next.held) return [String(S.repRange(x.reps)![0]), String(next.to)];
-    const ls = L ? setsOf(L.r) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
-    return [String(s.reps ?? (parseInt(x.reps, 10) || "-")), String(s.kg ?? "-")];
+    const ls = L ? setsOf(L.r).filter(S.isWorkingSet) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
+    const reps = String(s.reps ?? (parseInt(x.reps, 10) || "-"));
+    if (next && !next.held) return [String(S.repRange(x.reps)?.[0] ?? reps), String(next.to)];
+    return [reps, String(s.kg ?? "-")];
   }
+  // Warm-ups alone don't count: a workout left after them wasn't done.
   worked(k: DayKey): boolean {
-    return Object.values(this.entry(k).exercises).some((r) => r.done || setsOf(r).some((s) => s.reps != null));
+    return Object.values(this.entry(k).exercises).some((r) => r.done || setsOf(r).some((s) => S.isWorkingSet(s) && s.reps != null));
   }
   // Gym sessions planned for days before today in k's week that no day of that week has done,
   // or taken over for today or later.
   missedThisWeek(k: DayKey): number[] {
     const mon = mondayOf(k), t = todayKey(), days = DOW.map((_, i) => addDays(mon, i));
-    const covered = (s: number) => days.some((d) => this.slotFor(d) === s && (this.worked(d) || (d >= t && this.logs[d]?.session === s)));
+    // A free-form workout, even on a planned day, does none of the plan's sessions.
+    const covered = (s: number) => days.some((d) => !this.isFree(d) && this.slotFor(d) === s && (this.worked(d) || (d >= t && this.logs[d]?.session === s)));
     return days.map((d, i) => (d < t && d < k && this.plan.days[i].exercises.length && !covered(i) ? i : -1)).filter((i) => i >= 0);
   }
   // First day worth showing in history: the earliest log or the day the account was created.
@@ -540,12 +957,13 @@ export class GymStore {
     if (n || this.worked(k)) return "part";
     return k < todayKey() ? "miss" : "";
   }
-  // Planned gym sessions done in the week starting `mon`: each counts once, on whichever day it was done.
+  // Planned gym sessions done in the week starting `mon`: each counts once, on whichever day it was done. A free-form
+  // workout with anything logged is an extra, and never one of the planned ones.
   weekSessions(mon: DayKey) {
     const days = DOW.map((_, i) => addDays(mon, i));
     const gym = this.plan.days.map((p, s) => (p.exercises.length ? s : -1)).filter((s) => s >= 0);
-    const done = gym.filter((s) => days.some((k) => this.slotFor(k) === s && this.plan.days[s].exercises.every((x) => this.entry(k).exercises[x.name]?.done))).length;
-    return { days, done, planned: gym.length };
+    const done = gym.filter((s) => days.some((k) => !this.isFree(k) && this.slotFor(k) === s && this.plan.days[s].exercises.every((x) => this.entry(k).exercises[x.name]?.done))).length;
+    return { days, done, planned: gym.length, extra: days.filter((k) => this.isFree(k) && this.worked(k)).length };
   }
   /** Health Connect's data for a day, or null. */
   healthOf(k: DayKey): HealthDay | null {
@@ -563,12 +981,101 @@ export class GymStore {
     const days = [...new Set([...this.days(), ...Object.keys(this.health)])].sort();
     return S.weightTrend(days.filter((k) => this.weightOf(k) != null).map((k) => [k, +(this.weightOf(k) as number)]));
   }
+  /** One of the measurements card's fields for the day: chest, arms, thighs and hips are only ever typed; body
+   *  fat is what you typed, or else Health Connect's own reading, like weight. */
+  measureOf(k: DayKey, field: MeasureField): number | null {
+    return this.logs[k]?.[field] ?? (field === "bodyFat" ? this.health[k]?.bodyFat : undefined) ?? null;
+  }
+  /** Every day with a reading for one measurement, oldest first: body fat's days include Health Connect's, like weight's. */
+  measureReadings(field: MeasureField): [DayKey, number][] {
+    const days = field === "bodyFat" ? [...new Set([...this.days(), ...Object.keys(this.health)])].sort() : this.days();
+    return days.filter((k) => this.measureOf(k, field) != null).map((k) => [k, this.measureOf(k, field) as number]);
+  }
+  /** Whether the measurements card has ever been filled in, so Health → Body has trends to show even before
+   *  Health Connect has synced anything. */
+  anyMeasured(): boolean {
+    return this.days().some((k) => MEASURE_FIELDS.some((f) => this.logs[k][f] != null));
+  }
   swapSuggestions(exclude: string): string[] {
     const s = new Set<string>();
     for (const d of this.plan.days) for (const x of d.exercises) s.add(x.name);
     for (const k of this.days()) for (const r of Object.values(this.logs[k].exercises || {})) if (r?.swap) s.add(r.swap);
+    // The library's lifts your gym can do for the same main muscles, when the lift's are known; all of them otherwise.
+    const main = this.exerciseOf(exclude)?.primary ?? [];
+    for (const x of this.library()) if (this.canDo(x) && (!main.length || x.primary.some((m) => main.includes(m)))) s.add(x.name);
     s.delete(exclude);
     return [...s].sort((a, b) => a.localeCompare(b));
+  }
+  /** Whether a name is tracked in any day this phone has: the key of a logged lift, or something swapped in
+   *  for one. The plan editor checks this before offering to carry a rename's history over, so renaming to a
+   *  name that already has its own history can be refused rather than merging the two. */
+  hasHistory(name: string): boolean {
+    return this.days().some((k) => {
+      const ex = this.logs[k].exercises;
+      return name in ex || Object.values(ex).some((r) => r?.swap === name);
+    });
+  }
+  /** Carries a lift's history over to a new name: the key in every logged day's exercises, and any lift's swap
+   *  equal to the old name, become the new one, saved the way any day's edit is (pending, then flush, so a
+   *  conflict with another device merges or waits for you to choose exactly as it would for any other edit),
+   *  a batch of days at once, as a restore saves. Every plan day with an exercise still named `from` moves to
+   *  `to` as well, since a lift kept on two plan days (Seated Row on Pull and Upper) shares one history: left
+   *  on the old name, that day's future logging would start a history of its own. Pulls first, so a day this
+   *  phone hasn't loaded yet is caught too. Refuses when `to` already has its own history, so two are never
+   *  quietly merged into one; a name clash within the day being edited (another lift there already called
+   *  `to`) is the plan editor's to catch first, since only it knows which day that is. */
+  async renameLift(from: string, to: string): Promise<{ ok: boolean; msg: string; days: number }> {
+    // Every device's days first, fetched now: carried over from only this phone's copy, a day logged on another device
+    // that hasn't reached this one would come back later under the old name, splitting the history. So nothing
+    // moves without them, and the lift keeps the plain rename, as when you decline. (The demo's days are all here,
+    // as are the unit tests' with no server.)
+    const online = navigator.onLine, loaded = this.user && online ? await this.pull() : false;
+    if (this.sb && !this.demo && !loaded)
+      return {
+        ok: false,
+        msg: online
+          ? `Couldn’t load every logged day just now, so ${from}’s history stays with ${from}. Type ${from} back, then rename it again in a moment.`
+          : `You’re offline, so ${from}’s history stays with ${from}: a day logged on another device could be left behind. Type ${from} back, then rename it again once you’re online.`,
+        days: 0,
+      };
+    if (this.hasHistory(to)) return { ok: false, msg: `“${to}” already has its own history, so ${from}’s can’t be carried over there too.`, days: 0 };
+    const logged = (k: DayKey) => {
+      const ex = this.logs[k].exercises;
+      return from in ex || Object.values(ex).some((r) => r?.swap === from);
+    };
+    // A day that only names it (in the order its lifts were done in, or a free-form workout it was added to but
+    // not logged in) has no history of it, but keeps its place.
+    const named = (k: DayKey) => !!this.logs[k].order?.includes(from) || !!freeOf(this.logs[k])?.lifts.includes(from);
+    const days = this.days().filter((k) => logged(k) || named(k)), carried = days.filter(logged).length;
+    const known = this.namesALift(to);
+    this.editPlan((p) => {
+      for (const d of p.days)
+        for (const x of d.exercises)
+          if (x.name === from) {
+            x.name = to;
+            if (known) delete x.lib;
+          }
+    });
+    for (const k of days) {
+      const n = this.clone(k);
+      if (from in n.exercises) {
+        n.exercises[to] = n.exercises[from];
+        delete n.exercises[from];
+      }
+      for (const r of Object.values(n.exercises)) if (r.swap === from) r.swap = to;
+      if (n.order) n.order = n.order.map((x) => (x === from ? to : x));
+      if (n.free) n.free.lifts = n.free.lifts.map((x) => (x === from ? to : x));
+      this.logs[k] = n;
+      this.pending[k] = n;
+    }
+    if (days.length) {
+      this.logsChanged();
+      this.persistLocal();
+      this.changed();
+      await this.flush();
+    }
+    const count = carried === 1 ? "1 day" : `${carried} days`;
+    return { ok: true, msg: carried ? `Carried ${from}’s history over to ${to}: ${count}.` : `${to} is saved. ${from} had no history yet to carry over.`, days: carried };
   }
 
   /* ---------- knee, next weight and records ---------- */
@@ -584,17 +1091,50 @@ export class GymStore {
     const e = this.entry(k), w = this.entry(addDays(k, 1)).kneeWake, lim = this.plan.kneeLimit;
     return [e.kneeAfter, w].some((v) => v != null && v > lim) || (w != null && e.kneeBefore != null && w > e.kneeBefore);
   }
-  // Double progression from the last time this exercise was done, held back on knee-sensitive lifts
-  // when that session was hard on the knee.
+  // The next weight by the lift's rule (PlanExercise.prog): double progression from the last time it was done, by
+  // default; linear; or a percentage of a stored 1RM. A deload comes first, once enough sessions in a row fell
+  // short. Whether a session reached its rep range is checked against what that session was actually asked for
+  // (its own stored target, once it has one) rather than today's plan, so a rep range or sets change doesn't
+  // retroactively call an old session incomplete; the step stays today's, since that part is about what to do next,
+  // not what was done then. A knee-sensitive lift holds its weight rather than add to it after a session that was
+  // hard on the knee, whatever the rule; a deload, which only takes weight off, still shows. A lift with no step of
+  // its own goes up by what its equipment does, to a weight that equipment can make (My gym's weights).
   nextWeight(x: PlanExercise, did: string, k: DayKey): NextWeight | null {
-    const L = this.lastDone(did, k);
-    const r = L && S.readyToAdd(setsOf(L.r), x.reps, minSets(x), stepOf(x));
-    return r && L ? { ...r, day: L.day, held: !!x.knee && this.kneeBad(L.day) } : null;
+    const load = this.loadDone(x, did), step = this.stepFor(x, load);
+    const L = this.lastDone(did, k), after = parseInt(x.deloadAfter ?? "", 10);
+    // Without a step of its own, the weight rounds to what the equipment makes: down for a deload, up for more.
+    const grid = parseFloat(x.step) > 0 ? null : this.gridFor(load);
+    const fit = (r: S.NextStep): S.NextStep => {
+      if (!grid) return r;
+      if (r.rule === "deload") return { ...r, to: S.onGrid((r.from ?? r.to) * (1 - (r.off ?? 0) / 100), grid, "down") };
+      if (r.rule === "percent") return { ...r, to: S.onGrid(((r.oneRm ?? 0) * (r.pct ?? 0)) / 100, grid) };
+      return { ...r, to: S.onGrid(r.to, grid, "up") };
+    };
+    if (L && after > 0) {
+      const sessions = this.doneBefore(did, k, after).map(({ r }): S.Session => {
+        const t = targetOf(r, x);
+        return { sets: setsOf(r), reps: t.reps, minSets: minSets(t) };
+      });
+      const d = S.deloadStep(sessions, after, parseFloat(x.deloadPct ?? "") || 10, step);
+      if (d) return { ...fit(d), day: L.day, held: false };
+    }
+    let r: S.NextStep | null = null;
+    if (x.prog === "percent") {
+      const oneRm = parseFloat(x.oneRm ?? ""), pct = parseFloat(x.pct ?? "");
+      if (oneRm > 0 && pct > 0 && pct <= 100) r = { rule: "percent", from: L ? topKg(setsOf(L.r).filter(S.isStraightSet)) : null, to: S.percentOf(oneRm, pct, step), top: S.repRange(x.reps)?.[0] ?? 0, pct, oneRm };
+    } else if (L) {
+      const t = targetOf(L.r, x);
+      r = (x.prog === "linear" ? S.linearStep : S.readyToAdd)(setsOf(L.r), t.reps, minSets(t), step);
+    }
+    if (!r) return null;
+    r = fit(r);
+    return { ...r, day: L?.day ?? k, held: !!x.knee && !!L && this.kneeBad(L.day) && r.from != null && r.to > r.from };
   }
+  // Working sets only: a warm-up never sets a record or counts toward volume.
   liftSets(d: DayKey) {
     return Object.entries(this.logs[d]?.exercises || {})
       .filter(([, r]) => r && !r.skipped)
-      .map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r) }));
+      .map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r).filter(S.isWorkingSet) }));
   }
   // Records set in the `n` days up to and including k. Earlier days are only folded in, not checked.
   recentRecords(k: DayKey, n: number): S.LiftRecord[] {
@@ -642,14 +1182,103 @@ export class GymStore {
   /** Applies a change to one lift of a day and saves it. */
   editLift(day: DayKey, name: string, fn: (r: LiftLog) => void, immediate: boolean): LiftLog {
     const n = this.clone(day);
-    const r = n.exercises[name] || (n.exercises[name] = { done: false, kg: null });
+    const r = n.exercises[name] || (n.exercises[name] = this.freshLift(day, name));
     fn(r);
     this.save(day, n, immediate);
     return r;
   }
+  /** A lift's first entry for a day: stamped with the plan's sets and reps for it right now, if it's still in
+   *  the plan for that day, so its history reads right (row count, "sets done", the go-up check) even after the
+   *  plan's targets change later. A lift no longer in the plan when first logged (an "extra") gets none, and
+   *  falls back to the plan like an entry logged before this existed. */
+  private freshLift(day: DayKey, name: string): LiftLog {
+    const x = this.planFor(day).exercises.find((e) => e.name === name);
+    return x && (x.sets || x.reps) ? { done: false, kg: null, target: { sets: x.sets, reps: x.reps } } : { done: false, kg: null };
+  }
 
-  /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) */
+  /* ---------- rest timer ---------- */
+  /** Seconds left, counting from endAt so it can't drift: 0 once it's reached zero, whether running or paused. */
+  restRemaining(): number {
+    const r = this.rest;
+    return r ? Math.max(0, Math.round((r.endAt - (r.pausedAt ?? Date.now())) / 1000)) : 0;
+  }
+  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx). */
+  startRest(day: DayKey, lift: string, sec: number) {
+    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false };
+    this.armRest();
+    this.persistRest();
+    this.changed();
+  }
+  pauseRest() {
+    const r = this.rest;
+    if (!r || r.pausedAt != null) return;
+    r.pausedAt = Date.now();
+    this.disarmRest(); // nothing to notify while it isn't counting
+    this.persistRest();
+    this.changed();
+  }
+  resumeRest() {
+    const r = this.rest;
+    if (!r || r.pausedAt == null) return;
+    r.endAt = Date.now() + (r.endAt - r.pausedAt); // what was left, from now
+    r.pausedAt = null;
+    this.armRest();
+    this.persistRest();
+    this.changed();
+  }
+  /** +30 s (or any amount): pushes the end time out, whether running or paused, and un-ends a timer that had
+   *  already reached zero, so tapping it after "Rest over" counts that much down again, from now. */
+  addRestTime(sec: number) {
+    const r = this.rest;
+    if (!r) return;
+    r.endAt = (r.pausedAt == null ? Math.max(r.endAt, Date.now()) : r.endAt) + sec * 1000;
+    r.ended = false;
+    if (r.pausedAt == null) this.armRest();
+    this.persistRest();
+    this.changed();
+  }
+  /** Dismisses the timer without announcing it, as if it had never been needed. */
+  skipRest() {
+    if (!this.rest) return;
+    this.disarmRest();
+    this.rest = null;
+    this.persistRest();
+    this.changed();
+  }
+  /** Schedules checkRest for when the countdown is due, replacing any timer already waiting. A no-op while paused,
+   *  already over, or with nothing running: those need no wake-up. */
+  private armRest() {
+    this.disarmRest();
+    const r = this.rest;
+    if (!r || r.pausedAt != null || r.ended) return;
+    // A little after zero, not exactly on it: setTimeout can fire a beat early, and Date.now() must already be past
+    // endAt below or this re-arms instead of finishing.
+    this.restTimeout = setTimeout(() => this.checkRest(), Math.max(0, r.endAt - Date.now()) + 100);
+  }
+  private disarmRest() {
+    clearTimeout(this.restTimeout);
+    this.restTimeout = undefined;
+  }
+  /** Whether the countdown has reached zero, called by armRest's timer and again whenever the tab comes back to the
+   *  front (background tabs throttle timers, so a reload or a long time away might have missed it). Vibrates and
+   *  marks it over the first time only; safe to call any time after, including while paused. */
+  private checkRest() {
+    const r = this.rest;
+    if (!r || r.ended || r.pausedAt != null) return;
+    if (Date.now() < r.endAt) {
+      this.armRest();
+      return;
+    }
+    r.ended = true;
+    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([300, 150, 300]);
+    this.persistRest();
+    this.changed();
+  }
+
+  /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) In the demo, nothing is
+   *  kept anywhere: a real sign-in afterwards must never find sample data waiting for it. */
   private saveLocal(key: string, value: unknown) {
+    if (this.demo) return;
     if (lsSet(key, value)) this.unsaved.delete(key);
     else this.unsaved.add(key);
     this.localSaveFailed = this.unsaved.size > 0;
@@ -663,6 +1292,9 @@ export class GymStore {
   }
   private persistPlan() {
     this.saveLocal(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty, base: this.planBase });
+  }
+  private persistRest() {
+    this.saveLocal(REST_KEY, { user: this.user?.id, rest: this.rest });
   }
 
   /** Days waiting to be saved, leaving out those waiting for you to choose a version. */
@@ -811,14 +1443,16 @@ export class GymStore {
     await this.pull();
   }
 
-  async pull(): Promise<void> {
-    if (!this.user || !navigator.onLine || !this.sb) return;
+  /** Loads every logged day, keeping this phone's unsaved edits. Whether it did: not while offline, or when the
+   *  load fails (which the status says). */
+  async pull(): Promise<boolean> {
+    if (!this.user || !navigator.onLine || !this.sb) return false;
     const before = { ...this.bases }, asked = { ...this.conflicts };
     const { data, error } = await this.sb.from("logs").select("day,data,updated_at").order("day", { ascending: true }).limit(5000);
     if (error) {
       this.setStatus("Couldn’t load. Showing saved copy");
       console.warn(error);
-      return;
+      return false;
     }
     const next: Record<DayKey, DayLog> = {}, bases: Record<DayKey, string> = {};
     for (const r of data as { day: DayKey; data: DayLog; updated_at: string }[]) {
@@ -842,6 +1476,7 @@ export class GymStore {
     this.persistLocal();
     if (!Object.keys(this.pending).length) this.status = "Synced";
     this.changed();
+    return true;
   }
 
   /* ---------- the plan ---------- */
@@ -861,7 +1496,10 @@ export class GymStore {
     this.changed();
   }
   resetPlan() {
-    this.plan = copy(DEFAULT_PLAN);
+    // Your own lifts stay, as they name lifts in your history, and so does My gym, which is where you train: its
+    // equipment, and its bars, plates and weights.
+    const { custom, gym, weights, barKg, plateKgs } = this.plan;
+    this.plan = { ...copy(DEFAULT_PLAN), barKg, plateKgs: plateKgs.slice(), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}), ...(weights ? { weights } : {}) };
     this.planChanged(true);
   }
   /** Starts the plan over from a template (src/data/templates): its sessions, lifts, warm-ups and tempo. The goals
@@ -1061,7 +1699,7 @@ export class GymStore {
       healthDays: Object.fromEntries(Object.keys(this.health).sort().map((k) => [k, this.health[k]])),
     };
   }
-  /** Export workouts as CSV: a row for each set with reps or weight, oldest day first and lifts in the plan's order,
+  /** Export workouts as CSV: a row for each set with reps or weight, oldest day first and lifts in the order done,
    *  under CSV_COLUMNS. A lift is its planned name; a swap names what was done instead. */
   workoutRows(): CsvValue[][] {
     const rows: CsvValue[][] = [];
@@ -1069,8 +1707,11 @@ export class GymStore {
       const e = this.entry(day), session = this.planFor(day).name;
       for (const name of new Set(this.liftsFor(day).map((it) => it.name))) {
         const r = e.exercises[name];
-        setsOf(r).forEach((s, j) => {
-          if (s.reps != null || s.kg != null) rows.push([day, session, name, j + 1, s.reps, s.kg, !!r.skipped, r.swap ?? "", e.note]);
+        // Warm-ups and the lift's rows are numbered apart, so set 1 is the first set on Today's rows.
+        let warm = 0, work = 0;
+        setsOf(r).forEach((s) => {
+          const n = s.type === "warmup" ? ++warm : ++work;
+          if (s.reps != null || s.kg != null) rows.push([day, session, name, n, s.reps, s.kg, s.type ?? "working", s.rpe ?? null, s.rir ?? null, !!r.skipped, r.swap ?? "", e.note]);
         });
       }
     }

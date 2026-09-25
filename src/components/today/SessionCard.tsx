@@ -1,16 +1,20 @@
 "use client";
-import { Fragment } from "react";
+import { Fragment, type FormEvent } from "react";
+import { useLibrary } from "@/components/library/LibraryContext";
+import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { cx } from "@/lib/cx";
 import { addDays, DOW, dm, todayKey, wdIndex } from "@/lib/dates";
 import { num } from "@/lib/format";
-import type { DayKey, DayLog, KneeField, NumField, PlanDay } from "@/lib/types";
+import type { DayKey, DayLog, KneeField, MeasureField, NumField, PlanDay } from "@/lib/types";
 import { CardioFinisher } from "./CardioFinisher";
 import { DayFields } from "./DayFields";
 import { HealthToday } from "./HealthToday";
 import { KneeScale } from "./KneeScale";
-import { LiftItem } from "./LiftItem";
+import { LiftItem, type Moves } from "./LiftItem";
+import { Measurements } from "./Measurements";
+import { SupersetItem } from "./SupersetItem";
 import type { LiftMenu } from "./types";
 import { WarmUp } from "./WarmUp";
 
@@ -32,7 +36,8 @@ export interface SessionProps {
 }
 
 function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
-  if (!p.exercises.length) return <span className="pill">Rest day</span>;
+  // A free-form workout begins with no lifts, and isn't a rest day.
+  if (!p.exercises.length) return <span className="pill">{e.free ? "No lifts yet" : "Rest day"}</span>;
   const done = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
   const skipped = p.exercises.filter((x) => e.exercises[x.name]?.skipped).length;
   return (
@@ -43,13 +48,20 @@ function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
 }
 
 /** The selected day: its workout (which can be switched for another weekday's), knee scores, warm-up,
- *  lifts, cardio finisher, steps, weight and note. Keyed by the day, so a new day starts fresh. */
+ *  lifts, cardio finisher, steps, weight, note and other measurements. Keyed by the day, so a new day starts fresh. */
 export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOpen, onKneeChange, onKneeScored, focusNext, onOpenHealth, onOpenLift }: SessionProps) {
   const store = useGym();
-  const plan = store.plan, p = store.planFor(sel), e = store.entry(sel), items = store.liftsFor(sel);
+  const library = useLibrary();
+  const plan = store.plan, p = store.planFor(sel), e = store.entry(sel);
+  // The day's lifts in cards, in the order done: a superset is one card. Each lift keeps its position in the day's
+  // list, which its element ids use.
+  let n = 0;
+  const blocks = store.liftBlocks(sel).map((b) => b.map((item) => ({ item, i: n++ })));
+  const items = blocks.flat().map((l) => l.item);
   const wus = plan.warmups.concat(e.warmup.filter((w) => !plan.warmups.includes(w)));
   const slot = store.slotFor(sel), own = wdIndex(sel), t = todayKey();
-  const missed = !p.exercises.length && sel >= t ? store.missedThisWeek(sel) : [];
+  const free = e.free ?? null;
+  const missed = !p.exercises.length && !free && sel >= t ? store.missedThisWeek(sel) : [];
   const marks = store.recordsOn(sel), kneeHere = store.kneeDay(sel), yest = addDays(sel, -1);
   const wake = store.kneeDay(yest) && (store.worked(yest) || store.entry(yest).kneeAfter != null);
   const wakeMsg = e.kneeWake == null ? "" : store.kneeBad(yest) ? "Not settled since yesterday: knee lifts will hold their weight next time." : "Settled since yesterday.";
@@ -88,6 +100,31 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
       // Entering cardio minutes ticks the finisher off.
       if (f === "cardioMin" && v != null && v > 0) n.cardio = true;
     }, false);
+  // The Measurements card already refuses a value out of range, so this only rounds what it's given.
+  const setMeasure = (f: MeasureField, value: string) =>
+    editDay((n) => {
+      if (value === "") delete n[f];
+      else n[f] = Math.round((num(value) as number) * 10) / 10;
+    }, false);
+  // Moves card b up or down the day's order; focus follows the lift whose menu moved it, to its new position.
+  const move = (b: number, dir: -1 | 1, i: number) => {
+    const to = b + dir, at = i + dir * blocks[to].length, edge = dir < 0 ? to === 0 : to === blocks.length - 1;
+    store.moveBlock(sel, b, dir);
+    focusNext(`[data-lmove="${at}:${edge ? -dir : dir}"]`);
+  };
+  const movesFor = (b: number, superset?: string): Moves => ({
+    up: b > 0 ? (i) => move(b, -1, i) : null,
+    down: b < blocks.length - 1 ? (i) => move(b, 1, i) : null,
+    superset,
+  });
+  let letters = 0;
+  // A lift added to the free-form workout: the field empties and keeps focus, for the next one.
+  const addLift = (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault();
+    const box = ev.currentTarget.elements.namedItem("addLift") as HTMLInputElement;
+    if (store.addFreeLift(sel, box.value)) box.value = "";
+    box.focus();
+  };
   const knee = (field: KneeField, title: string, sub = "", msg = "") => (
     <KneeScale
       field={field}
@@ -115,20 +152,52 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
         {p.exercises.length ? (
           // One segment per planned lift: filled when done, hatched when skipped.
           <div className="segs" aria-hidden="true">
-            {p.exercises.map((x, n) => {
-              const r = e.exercises[x.name];
-              return <i key={n} className={cx(r?.done && "done", r?.skipped && "skip")} />;
-            })}
+            {items
+              .filter((it) => !it.extra)
+              .map((it, n) => {
+                const r = e.exercises[it.name];
+                return <i key={n} className={cx(r?.done && "done", r?.skipped && "skip")} />;
+              })}
           </div>
         ) : null}
-        <div className="sess-pick">
-          <select id="sessionSel" className="ghost tiny" aria-label="Workout for this day" value={slot} onChange={(ev) => switchTo(+ev.target.value)}>
-            {plan.days.map((x, i) => (
-              <option key={i} value={i}>{`${x.name} (${DOW[i]}${i === own ? ", usual" : ""})`}</option>
-            ))}
-          </select>
-          {slot !== own ? <span className="moved">Usually {plan.days[own].name} · changed for this day</span> : null}
-        </div>
+        {free ? (
+          <div className="sess-pick free">
+            <label className="field" htmlFor="freeName">
+              <span>Workout name</span>
+              <SyncedInput id="freeName" value={free.name} placeholder="e.g. Hotel gym…" autoComplete="off" onChange={(ev) => store.setFreeName(sel, ev.target.value)} />
+            </label>
+            <button
+              className="ghost tiny"
+              id="freeEnd"
+              onClick={() => {
+                setMenu(null);
+                store.endFree(sel);
+              }}
+            >
+              Back to {plan.days[slot].name}
+            </button>
+          </div>
+        ) : (
+          <div className="sess-pick">
+            <select id="sessionSel" className="ghost tiny" aria-label="Workout for this day" value={slot} onChange={(ev) => switchTo(+ev.target.value)}>
+              {plan.days.map((x, i) => (
+                <option key={i} value={i}>{`${x.name} (${DOW[i]}${i === own ? ", usual" : ""})`}</option>
+              ))}
+            </select>
+            {slot !== own ? <span className="moved">Usually {plan.days[own].name} · changed for this day</span> : null}
+            <button
+              className="ghost tiny"
+              id="freeStart"
+              onClick={() => {
+                setMenu(null);
+                store.startFree(sel);
+                focusNext("#addLift");
+              }}
+            >
+              Start an empty workout
+            </button>
+          </div>
+        )}
       </div>
       {missed.length ? (
         <div className="catchup">
@@ -154,23 +223,81 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
       {wake ? knee("kneeWake", "Knee on waking", `after ${store.planFor(yest).name} yesterday`, wakeMsg) : null}
       {wus.length && (p.exercises.length || e.warmup.length) ? <WarmUp all={wus} done={e.warmup} open={warmOpen} onToggle={onToggleWarm} onTick={tickWarmUp} /> : null}
       {kneeHere ? knee("kneeBefore", "Knee pain before you start") : null}
-      {items.length ? (
+      {blocks.length ? (
         <ul className="ex">
-          {items.map((it, i) => (
-            <LiftItem
-              key={`${i}|${it.name}`}
-              item={it}
-              i={i}
-              sel={sel}
-              entry={e}
-              marks={marks}
-              menu={menu && menu.day === sel && menu.name === it.name ? menu.mode : null}
-              setMenu={setMenu}
-              focusNext={focusNext}
-              onOpenLift={onOpenLift}
-            />
-          ))}
+          {blocks.map((b, bi) => {
+            if (b.length > 1) {
+              const letter = String.fromCharCode(65 + letters++);
+              return (
+                <SupersetItem
+                  key={`ss|${b.map((l) => l.item.name).join("|")}`}
+                  lifts={b}
+                  letter={letter}
+                  sel={sel}
+                  entry={e}
+                  marks={marks}
+                  menu={menu}
+                  setMenu={setMenu}
+                  focusNext={focusNext}
+                  onOpenLift={onOpenLift}
+                  moves={movesFor(bi, letter)}
+                />
+              );
+            }
+            const [{ item: it, i }] = b;
+            return (
+              <LiftItem
+                key={`${i}|${it.name}`}
+                item={it}
+                i={i}
+                sel={sel}
+                entry={e}
+                marks={marks}
+                menu={menu && menu.day === sel && menu.name === it.name ? menu.mode : null}
+                setMenu={setMenu}
+                focusNext={focusNext}
+                onOpenLift={onOpenLift}
+                moves={movesFor(bi)}
+                onRemove={free?.lifts.includes(it.name) ? () => store.removeFreeLift(sel, it.name) : undefined}
+              />
+            );
+          })}
         </ul>
+      ) : null}
+      {free ? (
+        <form className="addlift" onSubmit={addLift}>
+          {free.lifts.length ? null : <p className="note">A workout of your own: add each lift as you get to it, and log its sets as usual.</p>}
+          <label className="field grow" htmlFor="addLift">
+            <span>Add a lift</span>
+            <input id="addLift" name="addLift" list="addLiftList" placeholder="e.g. Goblet squat…" autoComplete="off" />
+          </label>
+          <button className="ghost" type="submit">
+            Add
+          </button>
+          <button
+            className="ghost"
+            type="button"
+            id="addLiftLib"
+            onClick={() =>
+              library({
+                title: `Add to ${free.name.trim() || "this workout"}`,
+                many: true,
+                have: free.lifts.flatMap((n) => [n, store.exerciseOf(n)?.name ?? n]),
+                onPick: (xs) => {
+                  store.addFreeLifts(sel, xs.map((x) => x.name));
+                  focusNext("#addLift");
+                },
+              })
+            }
+          >
+            Library…
+          </button>
+          <datalist id="addLiftList">
+            {store.liftSuggestions(free.lifts).map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        </form>
       ) : null}
       {kneeHere ? knee("kneeAfter", "Knee pain after the session", "", afterMsg) : null}
       <CardioFinisher
@@ -204,6 +331,7 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
           }, false)
         }
       />
+      <Measurements entry={e} onMeasure={setMeasure} />
       <HealthToday sel={sel} onOpenHealth={onOpenHealth} />
     </>
   );

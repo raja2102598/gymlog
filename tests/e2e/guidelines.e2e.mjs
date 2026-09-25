@@ -4,6 +4,15 @@
 import fs from "node:fs";
 import { K, NOW, flat, open, openTab, ready, session, until } from "./harness.mjs";
 
+export const covers = [
+  "src/components/health/HealthView.tsx",
+  "src/components/health/HealthDetail.tsx",
+  "src/components/health/Rings.tsx",
+  "src/components/health/Bars.tsx",
+  "src/components/health/Trend.tsx",
+  "src/lib/scale.ts",
+];
+
 const PLAN = JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
 
 function logs() {
@@ -245,12 +254,12 @@ export default async function guidelines({ browser, base, check }) {
       const [csv] = await Promise.all([page.waitForEvent("download"), page.click("#csvBtn")]);
       const text = fs.readFileSync(await csv.path(), "utf8"), note = '"Busy, ""leg day"" crowd"';
       const rows = [
-        "day,session,lift,set,reps,kg,skipped,swapped_for,note",
-        ...[10, 10, 8].map((reps, j) => `${K(21)},Legs,Leg Press,${j + 1},${reps},45,false,,`),
-        `${K(26)},"Chest, shoulders",Incline Machine Press,1,10,30,false,Incline DB Press,${note}`,
-        `${K(26)},"Chest, shoulders",Chest Press Machine,1,12,40,false,,${note}`,
-        `${K(26)},"Chest, shoulders",Chest Press Machine,2,10,42.5,false,,${note}`,
-        `${K(26)},"Chest, shoulders",Machine Shoulder Press,1,8,20,true,,${note}`,
+        "day,session,lift,set,reps,kg,type,rpe,rir,skipped,swapped_for,note",
+        ...[10, 10, 8].map((reps, j) => `${K(21)},Legs,Leg Press,${j + 1},${reps},45,working,,,false,,`),
+        `${K(26)},"Chest, shoulders",Incline Machine Press,1,10,30,working,,,false,Incline DB Press,${note}`,
+        `${K(26)},"Chest, shoulders",Chest Press Machine,1,12,40,working,,,false,,${note}`,
+        `${K(26)},"Chest, shoulders",Chest Press Machine,2,10,42.5,working,,,false,,${note}`,
+        `${K(26)},"Chest, shoulders",Machine Shoulder Press,1,8,20,working,,,true,,${note}`,
       ];
       check("CSV: a row for each set, quoted where needed, with the swap and the skip", csv.suggestedFilename() === "gym-log-workouts-2026-09-23.csv" && text === rows.map((r) => r + "\r\n").join(""), JSON.stringify(text.slice(0, 400)));
       check("CSV: says how many sets", (await page.textContent("#dataMsg")) === "Exported 7 sets as CSV.", await page.textContent("#dataMsg"));
@@ -304,7 +313,8 @@ export default async function guidelines({ browser, base, check }) {
       // The first exports, a bare list of days, still import, and leave the plan alone
       await openTab(page, "settings");
       await page.setInputFiles("#importFile", jsonFile([{ day: "2026-07-01", data: { exercises: {}, warmup: [], cardio: true, steps: 5000, weight: null, note: "" } }]));
-      await until(() => db.logs["2026-07-01"] != null);
+      // Your data says what came in once the write is answered, which is after the database has the day.
+      await until(async () => db.logs["2026-07-01"] != null && (await page.textContent("#dataMsg")) !== "");
       check("import: an older export, a list of days, still imports", (await page.textContent("#dataMsg")) === "Imported 1 day." && db.logs["2026-07-01"].steps === 5000 && db.plan.tempo === "4:0:1:0", await page.textContent("#dataMsg"));
       check("no console errors", page.errors.length === 0, page.errors.join(" | "));
       await ctx.close();

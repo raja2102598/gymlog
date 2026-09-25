@@ -4,12 +4,23 @@
  * data is one row per (user, day) in table `health_days`, shaped like HealthDay, kept apart from what you
  * type so neither overwrites the other. */
 
+import type { Equip, Load, Muscle } from "./library";
+
 /** "YYYY-MM-DD" in the phone's local time. */
 export type DayKey = string;
 
+export type SetType = "warmup" | "drop" | "failure";
+export type Effort = "off" | "rpe" | "rir";
 export interface SetLog {
   reps: number | null;
   kg: number | null;
+  /** What kind of set: unset (older sets too) is a working set. A warm-up counts toward nothing: not the planned
+   *  sets, records or volume. A drop set is volume only: it doesn't count toward the planned sets, the go-up rule
+   *  or a record. A set to failure counts as a working set does. */
+  type?: SetType;
+  /** How hard it was, when the plan logs effort (Plan.effort): RPE 1-10, or reps in reserve 0-10. */
+  rpe?: number;
+  rir?: number;
 }
 
 export interface LiftLog {
@@ -24,6 +35,11 @@ export interface LiftLog {
   swap?: string;
   /** The tick came from logging the planned number of sets, not from a hand: voice's "undo" can take it back. */
   autoDone?: boolean;
+  /** The plan's sets and reps for this lift when it was first logged that day (see GymStore.editLift), so its
+   *  row count, "sets done" reading and go-up check still match what was actually asked after the plan's
+   *  targets change. Unset on older entries, and on a lift no longer in the plan when first logged: both fall
+   *  back to today's plan, as every entry did before this. */
+  target?: { sets: string; reps: string };
 }
 
 export interface DayLog {
@@ -35,14 +51,32 @@ export interface DayLog {
   note: string;
   /** Did another weekday's workout that day (0 = Monday), e.g. a missed one. */
   session?: number;
+  /** A free-form workout that day, in place of a planned session: its name, and the lifts added to it in the order
+   *  they were added. They log like any lift; Progress counts the workout as an extra session, not a planned one. */
+  free?: FreeWorkout;
   waist?: number;
+  /** cm, like waist: once a week is enough. */
+  chest?: number;
+  arms?: number;
+  thighs?: number;
+  hips?: number;
+  /** %: what you type wins over Health Connect's reading, as with weight. */
+  bodyFat?: number;
   cardioMin?: number;
   cardioKmh?: number;
   cardioIncline?: number;
+  /** The order the day's lifts were done in, by name, once one was moved on Today: lifts it doesn't name follow
+   *  in the plan's order. Unset while the day keeps the plan's order. */
+  order?: string[];
   /** Knee pain 0-10 around knee-sensitive sessions, and on waking the next morning. */
   kneeBefore?: number;
   kneeAfter?: number;
   kneeWake?: number;
+}
+
+export interface FreeWorkout {
+  name: string;
+  lifts: string[];
 }
 
 /** One day of Health Connect data, as the Android app saves it to table `health_days`. Only what the phone had. */
@@ -106,10 +140,14 @@ export interface HealthWorkout {
   source?: string;
 }
 
-export const EXTRA_FIELDS = ["waist", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"] as const;
+export const EXTRA_FIELDS = ["waist", "chest", "arms", "thighs", "hips", "bodyFat", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"] as const;
 export type ExtraField = (typeof EXTRA_FIELDS)[number];
 export type KneeField = "kneeBefore" | "kneeAfter" | "kneeWake";
 export type NumField = "waist" | "cardioMin" | "cardioKmh" | "cardioIncline";
+/** The measurements card on Today, beyond weight and waist: cm for the first four, body fat in %. Each has a
+ *  trend and its change over four weeks in Health → Body. */
+export const MEASURE_FIELDS = ["chest", "arms", "thighs", "hips", "bodyFat"] as const;
+export type MeasureField = (typeof MEASURE_FIELDS)[number];
 
 export interface PlanExercise {
   name: string;
@@ -118,9 +156,42 @@ export interface PlanExercise {
   cue: string;
   /** Warning shown under the lift, e.g. a KNEE NOTE. */
   flag: string;
-  /** kg to add when every set reaches the top of the rep range (2.5 when empty). */
+  /** kg to add when every set reaches the top of the rep range. Empty: what it's loaded with goes up by (My gym's
+   *  weights; GymStore.stepFor), with suggested weights rounded to what that can make. */
   step: string;
   knee: boolean;
+  /** Seconds to rest after a set, overriding the plan's default (restSecFor in lib/store.ts). Empty or unset: use
+   *  the plan's. Optional so older plans and the plan templates need no change to keep normalizePlan's round trip. */
+  rest?: string;
+  /** Done as a superset with the lift before it: lifts joined this way make one superset (planBlocks in
+   *  lib/plan.ts), shown on Today as one card with their sets taken in rounds. Never on a day's first lift, and
+   *  left out rather than false, as `rest` is. */
+  superset?: boolean;
+  /** How its weight goes up: unset for double progression (every set at the top of the rep range, then add the
+   *  step), "linear" (add the step each session every set reaches the bottom of it), or "percent" (`pct` percent of
+   *  a stored 1RM, `oneRm` kg). Each left out until set, as `rest` is. */
+  prog?: "linear" | "percent";
+  oneRm?: string;
+  pct?: string;
+  /** A simple deload, with any rule: after `deloadAfter` sessions in a row short of the rep range, take
+   *  `deloadPct` percent off (10 when empty). Off while `deloadAfter` is empty. */
+  deloadAfter?: string;
+  deloadPct?: string;
+  /** The exercise library's lift this is (lib/library.ts), when its name isn't exactly that lift's: its muscles
+   *  and equipment. Left out for a lift of your own, or one named as the library names it. */
+  lib?: string;
+  /** What it's loaded with, when the plan editor says: its bar and how it goes up (My gym's weights). Left out to go
+   *  by the equipment the library gives it. */
+  load?: Load;
+}
+
+/** A lift of your own in the exercise library, kept with the plan: the same fields as a library lift, found by
+ *  its name. One with no muscles is untagged. */
+export interface CustomExercise {
+  name: string;
+  equip: Equip[];
+  primary: Muscle[];
+  secondary: Muscle[];
 }
 
 export interface PlanDay {
@@ -142,6 +213,41 @@ export interface Plan {
   goalWeight: number | null;
   weeklyRatePct: number | null;
   kneeLimit: number;
+  /** The barbell's weight and the gym's plates, for the plates button on a set and a lift's warm-up sets. The other
+   *  bars take the same plates (Weights). */
+  barKg: number;
+  plateKgs: number[];
+  /** The rest timer's default length, seconds, started when a set's reps are logged. A lift can override it. */
+  restSec: number;
+  /** An effort field on each set: RPE, reps in reserve, or neither. */
+  effort: Effort;
   warmups: string[];
   days: PlanDay[];
+  /** Lifts of your own for the exercise library. Left out until there's one, so older plans round-trip. */
+  custom?: CustomExercise[];
+  /** My gym: what the library offers. Left out until it's set, when the gym has everything. */
+  gym?: Gym;
+  /** My gym's weights beyond the barbell's. Left out until one's changed, when each is its default. */
+  weights?: Weights;
+}
+
+/** My gym: the equipment it hasn't got, so equipment the app adds later starts on, and lifts the library always
+ *  or never offers whatever the equipment says, by their library id ("custom:" and the name for one of your own). */
+export interface Gym {
+  off: Equip[];
+  always: string[];
+  never: string[];
+}
+
+/** My gym's weights, kg: what the EZ bar, trap bar and Smith machine's bar weigh (the barbell's is Plan.barKg), and
+ *  what dumbbells, kettlebells, machines, cables and bands go up by. */
+export interface Weights {
+  ezbar: number;
+  trapbar: number;
+  smith: number;
+  dumbbell: number;
+  kettlebell: number;
+  machine: number;
+  cable: number;
+  band: number;
 }

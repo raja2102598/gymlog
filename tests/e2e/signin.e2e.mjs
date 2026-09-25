@@ -2,6 +2,8 @@
 // limit, a password instead, setting or changing a password in Settings, and Continue with Google.
 import { flat, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
+export const covers = ["public/app-login.html"];
+
 export default async function signinSuite({ browser, base, check }) {
   // A link, then the wait before another
   {
@@ -37,7 +39,8 @@ export default async function signinSuite({ browser, base, check }) {
     const db = { logs: {}, plan: savedPlan(), google: true };
     const { ctx, page } = await open(browser, base, { auth: null, db });
     await page.waitForSelector("#googleBtn");
-    check("Continue with Google, above the email ways in", (await flat(page.locator("#googleBtn"))) === "Continue with Google" && (await page.locator("#loginView .or").isVisible()));
+    // The first divider is Google's, above the email ways in; the second is the demo's, lower down the screen.
+    check("Continue with Google, above the email ways in", (await flat(page.locator("#googleBtn"))) === "Continue with Google" && (await page.locator("#loginView .or").first().isVisible()));
     await page.click("#googleBtn");
     await ready(page);
     check(
@@ -91,7 +94,8 @@ export default async function signinSuite({ browser, base, check }) {
       "password mode: a password box, a Sign in button, and where the password comes from",
       (await page.locator("#password").isVisible()) &&
         (await flat(page.locator("#loginBtn"))) === "Sign in" &&
-        /Settings → Set a password/.test(await flat(page.locator("#loginView .sub"))) &&
+        // The form's own sub-text, above the demo's further down the screen.
+        /Settings → Set a password/.test(await flat(page.locator("#loginView .sub").first())) &&
         (await page.$eval("#password", (e) => e.autocomplete)) === "current-password",
     );
     await page.fill("#email", "t@example.com");

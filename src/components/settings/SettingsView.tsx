@@ -1,8 +1,9 @@
 "use client";
+import type { PermissionState } from "@capacitor/core";
 import { ArrowSquareOut, CaretRight, DownloadSimple, SignOut, UploadSimple } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Segmented } from "@/components/health/parts";
-import { SyncedInput } from "@/components/ui/SyncedField";
+import { Group, NumField, Text } from "@/components/settings/parts";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { useSpeechSupported, useVoicePref } from "@/hooks/useVoice";
@@ -22,56 +23,38 @@ import type { DownloadProgress, LatestUpdate } from "@/native/update";
 const native = () => import("@/native/app");
 
 /** Settings: Health Connect and background sync, daily goals, the plan, the theme, the account and your data.
- *  `dataMsg` is what Your data says as it opens: what a backup restored on the first-run screen brought in. */
-export function SettingsView({ onEditPlan, dataMsg = "" }: { onEditPlan: () => void; dataMsg?: string }) {
+ *  `dataMsg` is what Your data says as it opens: what a backup restored on the first-run screen brought in. In the
+ *  demo, whatever needs a real account or the phone (Health Connect, background sync, password, sign out, backup
+ *  import, updates) is replaced or hidden instead. */
+export function SettingsView({ onEditPlan, onOpenGym, dataMsg = "" }: { onEditPlan: () => void; onOpenGym: () => void; dataMsg?: string }) {
+  const demo = useGym().demo;
   return (
     <>
-      {isNative() ? <HealthNative /> : <HealthWeb />}
+      {demo ? <HealthDemo /> : isNative() ? <HealthNative /> : <HealthWeb />}
       <Goals />
-      <Group title="Training" id="setTraining">
-        <ViewLink className="pref-row pref-tap" id="planBtn" href="#plan" onOpen={onEditPlan}>
-          <Text title="Edit plan" sub="Each day’s workout and lifts, warm-ups, tempo, goal weight and knee limit" />
-          <CaretRight className="pref-go" size={18} aria-hidden="true" />
-        </ViewLink>
-      </Group>
+      <Training onEditPlan={onEditPlan} onOpenGym={onOpenGym} />
       <Voice />
       <Appearance />
-      <Account />
-      <Data first={dataMsg} />
-      <About />
+      {demo ? <AccountDemo /> : <Account />}
+      <Data first={dataMsg} demo={demo} />
+      <About demo={demo} />
     </>
   );
 }
 
-/** A titled card of rows, as in a phone's settings. */
-function Group({ title, id, children }: { title: string; id: string; children: ReactNode }) {
-  return (
-    <section className="pref" id={id} aria-labelledby={`${id}H`}>
-      <h2 className="pref-h" id={`${id}H`}>
-        {title}
-      </h2>
-      <div className="panel pref-card">{children}</div>
-    </section>
-  );
-}
-
-/** A row's words: its title and, under it, what it does or how it stands. */
-function Text({ title, sub, id }: { title: ReactNode; sub?: ReactNode; id?: string }) {
-  return (
-    <span className="pref-t">
-      <span className="pref-tt" id={id ? `${id}T` : undefined}>
-        {title}
-      </span>
-      {sub ? (
-        <span className="sub" id={id ? `${id}D` : undefined}>
-          {sub}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
 /* ---------- Health Connect ---------- */
+
+/** The demo, in place of HealthNative or HealthWeb: Health Connect needs a real account and, for background sync,
+ *  the phone itself, so neither is offered here. */
+function HealthDemo() {
+  return (
+    <Group title="Health Connect" id="setHealth">
+      <div className="pref-row">
+        <Text title="Health Connect" sub="Not available in the demo. Sign in with a real account to connect it." />
+      </div>
+    </Group>
+  );
+}
 
 function HealthWeb() {
   const at = useGym().healthSyncedAt;
@@ -201,40 +184,28 @@ function HealthNative() {
 
 /* ---------- goals ---------- */
 
-type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl";
+type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl" | "restSec";
+/** Plan fields saved to the nearest half, not the nearest whole number. */
+const HALVES: GoalKey[] = ["sleepGoalH"];
 
-/** A daily goal: saved as you type once it's in range (the same ranges the plan is read with, lib/plan.ts). */
+/** A number saved straight to the plan: the daily goals, and the rest timer under Training. */
 function Goal({ id, label, k, min, max, step, decimal = false }: { id: string; label: string; k: GoalKey; min: number; max: number; step: number; decimal?: boolean }) {
   const store = useGym();
-  const [bad, setBad] = useState(false);
   return (
-    <label className="field" htmlFor={id}>
-      <span>{label}</span>
-      <SyncedInput
-        id={id}
-        type="number"
-        inputMode={decimal ? "decimal" : "numeric"}
-        min={min}
-        max={max}
-        step={step}
-        value={store.plan[k]}
-        aria-invalid={bad || undefined}
-        aria-describedby={bad ? `${id}Err` : undefined}
-        onChange={(ev) => {
-          const v = +ev.target.value, ok = ev.target.value !== "" && v >= min && v <= max;
-          setBad(!ok);
-          if (ok)
-            store.editPlan((p: Plan) => {
-              p[k] = k === "sleepGoalH" ? Math.round(v * 2) / 2 : Math.round(v);
-            });
-        }}
-      />
-      {bad ? (
-        <span className="err" id={`${id}Err`}>
-          From {min.toLocaleString("en-IN")} to {max.toLocaleString("en-IN")}
-        </span>
-      ) : null}
-    </label>
+    <NumField
+      id={id}
+      label={label}
+      value={store.plan[k]}
+      min={min}
+      max={max}
+      step={step}
+      decimal={decimal}
+      onSave={(v) =>
+        store.editPlan((p: Plan) => {
+          p[k] = HALVES.includes(k) ? Math.round(v * 2) / 2 : Math.round(v);
+        })
+      }
+    />
   );
 }
 
@@ -255,6 +226,110 @@ function Goals() {
         </p>
       </div>
     </Group>
+  );
+}
+
+/* ---------- training ---------- */
+
+/** The plan editor and My gym links, and the rest timer's length, synced with the plan like the rest of training. */
+function Training({ onEditPlan, onOpenGym }: { onEditPlan: () => void; onOpenGym: () => void }) {
+  const store = useGym();
+  const all = store.library(), can = all.filter((x) => store.canDo(x)).length;
+  return (
+    <Group title="Training" id="setTraining">
+      <ViewLink className="pref-row pref-tap" id="planBtn" href="#plan" onOpen={onEditPlan}>
+        <Text title="Edit plan" sub="Each day’s workout and lifts, warm-ups, tempo, goal weight and knee limit" />
+        <CaretRight className="pref-go" size={18} aria-hidden="true" />
+      </ViewLink>
+      <ViewLink className="pref-row pref-tap" id="gymBtn" href="#gym" onOpen={onOpenGym}>
+        <Text id="gymRow" title="My gym" sub={`Equipment, bars, plates and weights: the library offers ${can === all.length ? "every lift" : `${can} of ${all.length} lifts`}`} />
+        <CaretRight className="pref-go" size={18} aria-hidden="true" />
+      </ViewLink>
+      <div className="pref-row pref-col">
+        <div className="pref-goals">
+          <Goal id="restSec" label="Rest after a set (seconds)" k="restSec" min={5} max={600} step={5} />
+        </div>
+        <p className="note" id="restMsg" aria-live="polite">
+          The rest timer, started when a set’s reps are logged. A lift can override it on its own row in the plan
+          editor. {store.planMsg}
+        </p>
+      </div>
+      <div className="pref-row pref-col">
+        <Text
+          title="Effort per set"
+          sub={
+            store.plan.effort === "rpe"
+              ? "RPE, 1 to 10, in each set’s menu: tap the set’s number."
+              : store.plan.effort === "rir"
+                ? "Reps in reserve, 0 to 10, in each set’s menu: tap the set’s number."
+                : "Not logged. Pick RPE or reps in reserve to add it to each set’s menu."
+          }
+        />
+        <Segmented
+          value={store.plan.effort}
+          label="Effort per set"
+          onChange={(v) =>
+            store.editPlan((p: Plan) => {
+              p.effort = v;
+            })
+          }
+          options={[
+            ["off", "Off"],
+            ["rpe", "RPE"],
+            ["rir", "RIR"],
+          ]}
+        />
+      </div>
+      {isNative() ? <RestNotifications /> : null}
+    </Group>
+  );
+}
+
+/* ---------- rest timer notifications ---------- */
+
+/** Android 13 and later ask permission to post notifications; older versions grant it automatically (checked the
+ *  same way either way, RestTimerPlugin.kt). Lets the rest timer notify at zero while Gym Log is backgrounded or
+ *  closed (docs/android.md). The button only shows while asking would actually do something: once Android has
+ *  turned it down for good, only its own settings screen can turn it back on. */
+function RestNotifications() {
+  const [state, setState] = useState<PermissionState | null>(null);
+  useEffect(() => {
+    let live = true;
+    void native().then((m) =>
+      m.notificationPermission().then((s) => {
+        if (live) setState(s);
+      }),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const ask = () =>
+    void native()
+      .then((m) => m.requestNotificationPermission())
+      .then(setState);
+  if (!state) return null;
+  const canAsk = state === "prompt" || state === "prompt-with-rationale";
+  return (
+    <div className="pref-row">
+      <Text
+        title="Rest timer notifications"
+        sub={
+          <span id="restNotifStatus" role="status">
+            {state === "granted"
+              ? "On. Gym Log can notify you when a rest timer ends while it’s backgrounded or closed."
+              : canAsk
+                ? "Off. Gym Log can notify you when a rest timer ends while it’s backgrounded or closed."
+                : "Off, and Android is blocking it. Allow notifications for Gym Log in Android’s settings to get one when a rest timer ends in the background."}
+          </span>
+        }
+      />
+      {canAsk ? (
+        <button className="ghost" id="restNotifAsk" onClick={ask}>
+          Allow
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -319,6 +394,22 @@ function Appearance() {
 }
 
 /* ---------- account ---------- */
+
+/** The demo, in place of Account: no password to set and nothing to sign out of, only a way to leave for the real
+ *  sign-in screen (the same one the sync bar's banner offers). */
+function AccountDemo() {
+  const store = useGym();
+  return (
+    <Group title="Account" id="setAccount">
+      <div className="pref-row">
+        <Text title="Trying the sample data" sub="Nothing you do here is saved. Sign in to keep it in your own account." />
+        <button type="button" className="ghost" id="demoAccountSignIn" onClick={() => store.exitDemo()}>
+          Sign in
+        </button>
+      </div>
+    </Group>
+  );
+}
 
 function Account() {
   const store = useGym();
@@ -424,7 +515,7 @@ function download(name: string, type: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-function Data({ first }: { first: string }) {
+function Data({ first, demo }: { first: string; demo: boolean }) {
   const store = useGym();
   const file = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState(first);
@@ -459,15 +550,17 @@ function Data({ first }: { first: string }) {
         <Text title="Export data (.json)" sub="Every day you’ve logged, your plan and Health Connect data, as one file" />
         <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
       </button>
-      <button type="button" className="pref-row pref-tap" id="importBtn" onClick={() => file.current?.click()}>
-        <Text title="Import data (.json)" sub="Reads an export back in. You’re asked before a logged day or your plan is replaced." />
-        <UploadSimple className="pref-go" size={18} aria-hidden="true" />
-      </button>
+      {demo ? null : (
+        <button type="button" className="pref-row pref-tap" id="importBtn" onClick={() => file.current?.click()}>
+          <Text title="Import data (.json)" sub="Reads an export back in. You’re asked before a logged day or your plan is replaced." />
+          <UploadSimple className="pref-go" size={18} aria-hidden="true" />
+        </button>
+      )}
       <button type="button" className="pref-row pref-tap" id="csvBtn" onClick={exportCsv}>
         <Text title="Export workouts as CSV" sub="Every set you’ve logged, a row each, for a spreadsheet" />
         <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
       </button>
-      <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />
+      {demo ? null : <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />}
       {/* Focusable, so the app can put you here after a restore on the first-run screen, reading what came in. */}
       <p className="note pref-msg" id="dataMsg" role="status" tabIndex={-1}>
         {msg}
@@ -478,17 +571,18 @@ function Data({ first }: { first: string }) {
 
 /* ---------- about ---------- */
 
-function About() {
+function About({ demo }: { demo: boolean }) {
   const [build, setBuild] = useState("");
   useEffect(() => {
-    if (isNative()) void native().then((m) => m.appVersion().then(setBuild, () => {}));
-  }, []);
+    if (isNative() && !demo) void native().then((m) => m.appVersion().then(setBuild, () => {}));
+  }, [demo]);
   return (
     <Group title="About" id="setAbout">
       <div className="pref-row">
         <Text title={<span translate="no">Gym Log</span>} sub={isNative() ? `Android app${build ? `, version ${build}` : ""}` : "Website. The Android app adds Health Connect."} />
       </div>
-      {isNative() ? <UpdateAndroid /> : <UpdateWeb />}
+      {/* Updates aren't offered in the demo: nothing here is a real, installed copy to update. */}
+      {demo ? null : isNative() ? <UpdateAndroid /> : <UpdateWeb />}
     </Group>
   );
 }

@@ -36,6 +36,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Cache Playwright's Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Chromium for the browser tests
         run: npx playwright-core install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npm run test:e2e # tests/e2e/run.mjs spreads the suites across a worker pool sized to the runner's CPUs.

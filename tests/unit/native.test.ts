@@ -34,6 +34,10 @@ vi.mock("@capacitor/app", () => ({ App: app }));
 const googleSignIn = vi.hoisted(() => ({ signIn: vi.fn() }));
 // The app's own Speech plugin, for voice logging: this phone can listen.
 const speech = vi.hoisted(() => ({ available: vi.fn(async () => ({ available: true })) }));
+// The app's own Widget plugin, for the home-screen widget.
+const widget = vi.hoisted(() => ({ update: vi.fn(async () => {}), clear: vi.fn(async () => {}) }));
+// The app's own RestTimer plugin: the rest timer's alarm and notification while the app is in the background.
+const restTimer = vi.hoisted(() => ({ schedule: vi.fn(async () => {}), cancel: vi.fn(async () => {}) }));
 // The app's own AppUpdate plugin: a download that lasts until the test ends it, with "progress" on the way.
 const appUpdate = vi.hoisted(() => {
   type Progress = { received: number; total: number };
@@ -52,11 +56,23 @@ const appUpdate = vi.hoisted(() => {
   };
 });
 vi.mock("@capacitor/core", () => ({
-  registerPlugin: (name: string) => (name === "GoogleSignIn" ? googleSignIn : name === "Speech" ? speech : name === "AppUpdate" ? appUpdate : gymSync),
+  registerPlugin: (name: string) =>
+    name === "GoogleSignIn"
+      ? googleSignIn
+      : name === "Speech"
+        ? speech
+        : name === "AppUpdate"
+          ? appUpdate
+          : name === "GymWidget"
+            ? widget
+            : name === "RestTimer"
+              ? restTimer
+              : gymSync,
   SystemBars: { setStyle: vi.fn() },
   SystemBarsStyle: { Dark: "DARK", Light: "LIGHT", Default: "DEFAULT" },
 }));
 
+import { todayKey, wdIndex } from "@/lib/dates";
 import { APP_LOGIN_PAGE, NATIVE_SIGN_IN } from "@/lib/native";
 import { speechSupported } from "@/lib/speech";
 import { GymStore } from "@/lib/store";
@@ -266,6 +282,160 @@ describe("startNative", () => {
     await vi.waitFor(() => expect(speechSupported()).toBe(true));
     await startNative(s);
     expect(speech.available).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("home-screen widget", () => {
+  beforeEach(() => {
+    widget.update.mockClear();
+    widget.clear.mockClear();
+  });
+
+  it("writes today's session and progress once signed in, again only when they change, and clears on sign-out", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const s = new GymStore(), today = todayKey();
+    s.plan.days[wdIndex(today)] = {
+      weekday: "day",
+      name: "Push day",
+      focus: "",
+      exercises: [{ name: "Bench press", sets: "3", reps: "8-10", cue: "", flag: "", step: "", knee: false }],
+      cardio: { name: "", detail: "" },
+    };
+    s.auth = "starting";
+    startWidget(s);
+    expect(widget.update).not.toHaveBeenCalled();
+
+    s.auth = "signedIn";
+    s.setHealthLink({ state: "web", msg: "" }); // any store change tells listeners
+    expect(widget.update).toHaveBeenCalledTimes(1);
+    expect(widget.update).toHaveBeenCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null });
+
+    // A change that touches neither today's session nor its lifts: no second write.
+    s.setHealthLink({ state: "ok", msg: "Up to date." });
+    expect(widget.update).toHaveBeenCalledTimes(1);
+
+    // Ticking the lift changes the count, so it writes again.
+    s.editLift(today, "Bench press", (r) => (r.done = true), true);
+    expect(widget.update).toHaveBeenCalledTimes(2);
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 1, planned: 1, restEndsAt: null });
+
+    // Signed out, whether by Sign out or by a session that expired or was revoked: cleared, once.
+    s.auth = "signedOut";
+    s.setHealthLink({ state: "off", msg: "" });
+    s.setHealthLink({ state: "off", msg: "Not connected yet." });
+    expect(widget.clear).toHaveBeenCalledTimes(1);
+
+    // Signed in again, the same snapshot as before counts as new once cleared.
+    s.auth = "signedIn";
+    s.setHealthLink({ state: "ok", msg: "Up to date." });
+    expect(widget.update).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows nothing from the demo: the widget is for a real account's day", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const s = new GymStore();
+    s.auth = "signedOut";
+    startWidget(s);
+    s.startDemo();
+    s.setHealthLink({ state: "ok", msg: "" });
+    expect(s.demo).toBe(true);
+    expect(widget.update).not.toHaveBeenCalled();
+  });
+
+  it("tries a write that failed again on the next change, rather than taking it as shown", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const s = new GymStore(), today = todayKey();
+    s.plan.days[wdIndex(today)] = {
+      weekday: "day",
+      name: "Leg day",
+      focus: "",
+      exercises: [{ name: "Squat", sets: "3", reps: "5", cue: "", flag: "", step: "", knee: false }],
+      cardio: { name: "", detail: "" },
+    };
+    s.auth = "signedIn";
+    widget.update.mockRejectedValueOnce(new Error("the bridge dropped it"));
+    startWidget(s);
+    expect(widget.update).toHaveBeenCalledTimes(1);
+    await flush();
+
+    s.setHealthLink({ state: "ok", msg: "Up to date." });
+    expect(widget.update).toHaveBeenCalledTimes(2);
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Leg day", done: 0, planned: 1, restEndsAt: null });
+  });
+});
+
+describe("rest timer in the background", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 23, 12));
+    vi.stubGlobal("navigator", { onLine: true, vibrate: () => true });
+    restTimer.schedule.mockClear();
+    restTimer.cancel.mockClear();
+    widget.update.mockClear();
+  });
+  const appIs = (isActive: boolean) => (app.listeners.appStateChange as unknown as (e: { isActive: boolean }) => void)({ isActive });
+
+  it("arms the alarm for a running timer as the app goes to the background, and takes it down on coming back", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const { s } = signedIn();
+    syncRestNotifications(s);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1); // opening the app takes down whatever an earlier run left
+    s.startRest("2026-09-23", "Leg Press", 90);
+    const endAt = new Date(2026, 8, 23, 12, 1, 30).getTime();
+    expect(restTimer.schedule).not.toHaveBeenCalled(); // in front, the page says "Rest over" itself
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt });
+    s.setHealthLink({ state: "ok", msg: "" }); // an unrelated change: nothing sent again
+    expect(restTimer.schedule).toHaveBeenCalledTimes(1);
+    appIs(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(2);
+    s.addRestTime(30);
+    expect(restTimer.schedule).toHaveBeenCalledTimes(1);
+    // Scheduled afresh each time it goes to the background, so notifications allowed in between still get this
+    // timer's alert.
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 30_000 });
+    appIs(true);
+    s.pauseRest();
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenCalledTimes(2); // a paused timer has nothing to alert about
+    expect(restTimer.cancel).toHaveBeenCalledTimes(3);
+  });
+
+  it("leaves ‘Rest over’ to the alarm when the app is in the background, and takes it down on coming back", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const { s } = signedIn();
+    syncRestNotifications(s);
+    s.startRest("2026-09-23", "Leg Press", 30);
+    appIs(false);
+    vi.advanceTimersByTime(31_000);
+    expect(s.rest?.ended).toBe(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1); // only opening the app's
+    appIs(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it("never arms the alarm with the app in front, which says ‘Rest over’ itself", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const { s } = signedIn();
+    syncRestNotifications(s);
+    appIs(true);
+    s.startRest("2026-09-23", "Leg Press", 30);
+    vi.advanceTimersByTime(31_000);
+    expect(s.rest?.ended).toBe(true);
+    expect(restTimer.schedule).not.toHaveBeenCalled();
+    appIs(false); // and going to the background after it's over has nothing to add
+    expect(restTimer.schedule).not.toHaveBeenCalled();
+  });
+
+  it("puts a running timer's end on the widget, and takes it off when paused", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const { s } = signedIn();
+    startWidget(s);
+    s.startRest(todayKey(), "Leg Press", 90);
+    expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: new Date(2026, 8, 23, 12, 1, 30).toISOString() }));
+    s.pauseRest();
+    expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: null }));
   });
 });
 

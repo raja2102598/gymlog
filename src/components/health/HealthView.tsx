@@ -5,7 +5,7 @@ import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { fmt, syncedWhen } from "@/lib/format";
 import { hoursMin, workoutName } from "@/lib/health";
-import { anyHealth, dayNumbers, type DayNumbers } from "@/lib/healthView";
+import { anyHealth, dayNumbers, fromHealthConnect, type DayNumbers } from "@/lib/healthView";
 import { isNative } from "@/lib/native";
 import { hashOf, type Metric } from "@/lib/route";
 import type { DayKey } from "@/lib/types";
@@ -97,7 +97,9 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
         {link("exercise", "tile", <ExerciseTile n={n} />, "tileExercise")}
       </div>
       <p className="note" id="healthNote">
-        From Health Connect{store.healthSyncedAt ? `, synced ${syncedWhen(store.healthSyncedAt)}` : ""}.
+        {fromHealthConnect(store)
+          ? `From Health Connect${store.healthSyncedAt ? `, synced ${syncedWhen(store.healthSyncedAt)}` : ""}.`
+          : `Only the measurements you’ve typed on Today so far. Steps, sleep, heart rate and the rest come from Health Connect, ${isNative() ? "once it’s connected in Settings" : "through the Gym Log Android app"}.`}
       </p>
     </>
   );
@@ -180,6 +182,8 @@ function EnergyTile({ n }: { n: DayNumbers }) {
 }
 
 function BodyTile({ n }: { n: DayNumbers }) {
+  // With no weight for the day, the measurements typed on Today: the first, and how many more.
+  const measured = [n.bodyFat ? ([n.bodyFat, "%", "body fat"] as const) : null, ...CM.map((f) => (n[f] ? ([n[f], "\u00a0cm", f] as const) : null))].filter((m) => m != null);
   return (
     <>
       <Head icon={PersonSimple} color="var(--c-body)" title="Body" />
@@ -191,12 +195,21 @@ function BodyTile({ n }: { n: DayNumbers }) {
           </span>
           <span className="tile-s">{[n.bodyFat ? `${n.bodyFat}% body fat` : "", n.bmi ? `BMI ${n.bmi}` : ""].filter(Boolean).join(" · ") || "body weight"}</span>
         </>
+      ) : measured.length ? (
+        <>
+          <span className="tile-v">
+            {measured[0][0]}
+            <small>{measured[0][1]}</small>
+          </span>
+          <span className="tile-s">{[measured[0][2], measured.length > 1 ? `${measured.length - 1} more` : ""].filter(Boolean).join(" · ")}</span>
+        </>
       ) : (
         <None hint="Weigh in, or type it on Today" />
       )}
     </>
   );
 }
+const CM = ["chest", "arms", "thighs", "hips"] as const;
 
 function WaterTile({ n, goal }: { n: DayNumbers; goal: number }) {
   return (

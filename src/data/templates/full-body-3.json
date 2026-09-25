@@ -8,6 +8,10 @@
   "goalWeight": null,
   "weeklyRatePct": null,
   "kneeLimit": 5,
+  "barKg": 20,
+  "plateKgs": [25, 20, 15, 10, 5, 2.5, 1.25],
+  "restSec": 90,
+  "effort": "off",
   "warmups": [
     "Treadmill walk 5 min",
     "Cycling 5 min",
@@ -35,6 +39,7 @@
         },
         {
           "name": "Flat DB Press",
+          "lib": "Dumbbell_Bench_Press",
           "sets": "3",
           "reps": "8-12",
           "cue": "Shoulder blades back, lower to chest level, press up evenly.",
@@ -44,6 +49,7 @@
         },
         {
           "name": "Lat Pulldown",
+          "lib": "Wide-Grip_Lat_Pulldown",
           "sets": "3",
           "reps": "10-12",
           "cue": "Pull the bar to your upper chest, elbows down to your sides, no swinging.",
@@ -62,6 +68,7 @@
         },
         {
           "name": "Dumbbell Curls",
+          "lib": "Dumbbell_Bicep_Curl",
           "sets": "3",
           "reps": "10-12",
           "cue": "Elbows by your sides, curl up slowly, lower all the way.",
@@ -101,6 +108,7 @@
         },
         {
           "name": "Machine Shoulder Press",
+          "lib": "Leverage_Shoulder_Press",
           "sets": "3",
           "reps": "8-12",
           "cue": "Core braced, lower to chin height, press up without arching your back.",
@@ -110,6 +118,7 @@
         },
         {
           "name": "Seated Row",
+          "lib": "Seated_Cable_Rows",
           "sets": "3",
           "reps": "10-12",
           "cue": "Sit tall, pull the handle to your stomach, squeeze your shoulder blades together.",
@@ -119,6 +128,7 @@
         },
         {
           "name": "Hamstring Curl",
+          "lib": "Lying_Leg_Curls",
           "sets": "3",
           "reps": "10-12",
           "cue": "Hips down on the pad, curl smoothly, lower slowly.",
@@ -128,6 +138,7 @@
         },
         {
           "name": "Cable Triceps Pushdown",
+          "lib": "Triceps_Pushdown",
           "sets": "3",
           "reps": "12-15",
           "cue": "Elbows at your sides, push down to straight arms, control the way back.",
@@ -158,6 +169,7 @@
       "exercises": [
         {
           "name": "Hip Thrust",
+          "lib": "Barbell_Hip_Thrust",
           "sets": "3",
           "reps": "8-12",
           "cue": "Upper back on a bench, drive through your heels, squeeze your glutes at the top.",
@@ -167,6 +179,7 @@
         },
         {
           "name": "Chest Press Machine",
+          "lib": "Leverage_Chest_Press",
           "sets": "3",
           "reps": "10-12",
           "cue": "Handles at chest height, press out smoothly, slow on the way back.",
@@ -176,6 +189,7 @@
         },
         {
           "name": "Chest-Supported Row",
+          "lib": "Lying_T-Bar_Row",
           "sets": "3",
           "reps": "10-12",
           "cue": "Chest on the pad, pull your elbows back, squeeze your shoulder blades.",
@@ -185,6 +199,7 @@
         },
         {
           "name": "Leg Extension",
+          "lib": "Leg_Extensions",
           "sets": "3",
           "reps": "12-15",
           "cue": "Sit back in the seat, straighten your legs smoothly, lower slowly.",
@@ -194,6 +209,7 @@
         },
         {
           "name": "DB Lateral Raises",
+          "lib": "Side_Lateral_Raise",
           "sets": "3",
           "reps": "12-15",
           "cue": "Lead with your elbows, lift to shoulder height, lower slowly.",

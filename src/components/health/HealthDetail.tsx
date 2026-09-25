@@ -1,8 +1,8 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { useGym } from "@/hooks/useGym";
 import { dm, parseKey } from "@/lib/dates";
-import { fmt } from "@/lib/format";
+import { fmt, signed } from "@/lib/format";
 import { hoursMin, workoutName } from "@/lib/health";
 import {
   clockText,
@@ -18,7 +18,8 @@ import {
   type Series,
 } from "@/lib/healthView";
 import type { Metric } from "@/lib/route";
-import type { DayKey, HealthWorkout } from "@/lib/types";
+import { measureChange, type MeasureChange } from "@/lib/stats";
+import type { DayKey, HealthWorkout, MeasureField } from "@/lib/types";
 import { Bars, type Bar } from "./Bars";
 import { ChartCard, DaySwitch, dayAxis, dayWords, Meter, Segmented, StageBar, Stat } from "./parts";
 import { Trend } from "./Trend";
@@ -34,6 +35,14 @@ const COLOR: Record<Metric, string> = {
   body: "var(--c-body)",
   water: "var(--c-water)",
 };
+/** The measurements card's cm fields, each with its own trend chart on the Body page. Body fat is charted next
+ *  to body weight instead, since it also comes from Health Connect. */
+const MEASURES: { field: MeasureField; title: string; chartId: string; noteId: string }[] = [
+  { field: "chest", title: "Chest", chartId: "hChest", noteId: "hChestChange" },
+  { field: "arms", title: "Arms", chartId: "hArms", noteId: "hArmsChange" },
+  { field: "thighs", title: "Thighs", chartId: "hThighs", noteId: "hThighsChange" },
+  { field: "hips", title: "Hips", chartId: "hHips", noteId: "hHipsChange" },
+];
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 const longDay = (k: DayKey) => parseKey(k).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
 const kcal = (v: number) => `${fmt(Math.round(v))} kcal`;
@@ -100,6 +109,23 @@ function SeriesTrend({ s, metric, title, unit, id, minSpan }: { s: Series; metri
 
 function Stats({ children }: { children: ReactNode }) {
   return <div className="hstats">{children}</div>;
+}
+
+/** A measurement's four-week change, under its trend: "Chest 105 cm on 23 Sept · +5.5 cm since 26 Aug". Typed now
+ *  and then rather than every day, so this looks at the closest reading from about a month back, not the chart's
+ *  own range. */
+function ChangeNote({ id, label, suffix, m }: { id: string; label: string; suffix: string; m: MeasureChange }) {
+  return (
+    <p className="sub" id={id}>
+      {label} <span className="num">{m.value}{suffix}</span> on {dm(m.day)}
+      {m.change ? (
+        <>
+          {" "}
+          · <span className="num">{signed(m.change.value)}{suffix}</span> since {dm(m.change.since)}
+        </>
+      ) : null}
+    </p>
+  );
 }
 
 /* ---------- a week or a month ---------- */
@@ -198,6 +224,9 @@ function RangePage({ metric, days }: { metric: Metric; days: DayKey[] }) {
       const fat = seriesOf(store, metric, days, (x) => x.bodyFat), fs = summarize(fat);
       const w = s.filter((x): x is [DayKey, number] => x[1] != null);
       const change = w.length > 1 ? w[w.length - 1][1] - w[0][1] : null;
+      // A note reads up to the period's last day, like its chart, so an earlier month never shows a later reading.
+      const upTo = (r: [DayKey, number][]) => r.filter(([k]) => k <= days[days.length - 1]);
+      const fatChange = measureChange(upTo(store.measureReadings("bodyFat")));
       return (
         <>
           <SeriesTrend s={s} metric="body" title="Body weight" unit={(v) => `${v.toFixed(1)} kg`} id="hChart" minSpan={1} />
@@ -206,7 +235,23 @@ function RangePage({ metric, days }: { metric: Metric; days: DayKey[] }) {
             <Stat v={change != null ? `${change > 0 ? "+" : change < 0 ? "−" : ""}${Math.abs(change).toFixed(1)} kg` : "–"} l={`since ${w.length ? dm(w[0][0]) : "the first weigh-in"}`} id="hChange" />
             <Stat v={`${w.length}`} l={`weigh-ins, ${within}`} />
           </Stats>
-          {fs.n ? <SeriesTrend s={fat} metric="body" title="Body fat" unit={(v) => `${Math.round(v * 10) / 10}%`} id="hFat" minSpan={2} /> : null}
+          {fs.n ? (
+            <>
+              <SeriesTrend s={fat} metric="body" title="Body fat" unit={(v) => `${Math.round(v * 10) / 10}%`} id="hFat" minSpan={2} />
+              {fatChange ? <ChangeNote id="hFatChange" label="Body fat" suffix="%" m={fatChange} /> : null}
+            </>
+          ) : null}
+          {MEASURES.map(({ field, title, chartId, noteId }) => {
+            const ser = seriesOf(store, metric, days, (x) => x[field]);
+            if (!summarize(ser).n) return null;
+            const mc = measureChange(upTo(store.measureReadings(field)));
+            return (
+              <Fragment key={field}>
+                <SeriesTrend s={ser} metric="body" title={title} unit={(v) => `${v} cm`} id={chartId} minSpan={2} />
+                {mc ? <ChangeNote id={noteId} label={title} suffix=" cm" m={mc} /> : null}
+              </Fragment>
+            );
+          })}
           <p className="note">The trend line and your pace to the goal weight are in Progress.</p>
         </>
       );
@@ -317,11 +362,15 @@ function DayPage({ metric, day }: { metric: Metric; day: DayKey }) {
         </>
       );
     case "body":
-      return n.weight || n.bodyFat ? (
+      return n.weight || n.bodyFat || n.chest || n.arms || n.thighs || n.hips ? (
         <Hero value={n.weight ? n.weight.toFixed(1) : "–"} of="kg">
           <Stats>
             {n.bodyFat != null ? <Stat v={`${n.bodyFat}%`} l="body fat" /> : null}
             {n.bmi != null ? <Stat v={`${n.bmi}`} l="body mass index" /> : null}
+            {n.chest != null ? <Stat v={`${n.chest} cm`} l="chest" /> : null}
+            {n.arms != null ? <Stat v={`${n.arms} cm`} l="arms" /> : null}
+            {n.thighs != null ? <Stat v={`${n.thighs} cm`} l="thighs" /> : null}
+            {n.hips != null ? <Stat v={`${n.hips} cm`} l="hips" /> : null}
           </Stats>
         </Hero>
       ) : (

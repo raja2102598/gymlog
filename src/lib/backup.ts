@@ -78,7 +78,7 @@ export function backupWords(days: number, plan: boolean, healthDays: number): st
 
 export type CsvValue = string | number | boolean | null | undefined;
 /** Export workouts as CSV: a row for each logged set. */
-export const CSV_COLUMNS = ["day", "session", "lift", "set", "reps", "kg", "skipped", "swapped_for", "note"];
+export const CSV_COLUMNS = ["day", "session", "lift", "set", "reps", "kg", "type", "rpe", "rir", "skipped", "swapped_for", "note"];
 
 /** A field as CSV writes it: in quotes, with its quotes doubled, when it holds a quote, a comma or a line break. Text
  *  starting with =, +, -, @, a tab or a carriage return gets a ' in front first, so a spreadsheet shows it rather than

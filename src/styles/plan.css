@@ -10,9 +10,32 @@
 .pe-ex{background:var(--sunken);border-radius:var(--r-card);padding:12px;display:grid;gap:10px}
 .pe-ex .field input,.pe-ex .field textarea{background:var(--surface)}
 .pe-ex .ghost{background:var(--surface)}
+/* a superset's lifts: one edge down their side, and closer together */
+.pe-ex.ss{box-shadow:inset 3px 0 0 var(--edge)}
+.pe-ex.ss-join{margin-top:-6px}
+.pe-sstag{font-weight:600;color:var(--ink)}
 .pe-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 76px;gap:8px}
 .pe-row2{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
 .pe-row2 .field{flex:0 1 160px}
+.pe-row2 .pe-load{flex-basis:228px} /* its longest choice, "Resistance band (library)", whole; a 320px screen has 232px */
+/* a lift's progression and deload, folded: its summary names the rule */
+.pe-prog{display:grid;gap:8px}
+.pe-prog[open]{padding-bottom:4px}
+.pe-prog summary{cursor:pointer;font-size:14px;min-height:44px;display:flex;align-items:center;gap:8px;list-style:none}
+.pe-prog summary::-webkit-details-marker{display:none}
+.pe-prog summary svg{flex:none;color:var(--muted);transition:transform .15s}
+.pe-prog[open] summary svg{transform:rotate(180deg)}
+.pe-prog .sub{margin:0;font-size:var(--t-sm)}
+.pe-ex .field select{appearance:none;-webkit-appearance:none;font:15px/1.4 var(--body);color:var(--ink);padding:10px 34px 10px 12px;min-height:48px;width:100%;max-width:320px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--surface) no-repeat;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 55%,calc(100% - 12px) 55%;background-size:5px 5px,5px 5px}
+/* a lift's line from the exercise library, and the one-time question about lifts it may know */
+.pe-lib{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.pe-lib .sub{flex:1 1 200px;margin:0;font-size:var(--t-sm);overflow-wrap:anywhere}
+.pe-gym{flex:1 1 100%;padding:8px 12px;border-radius:var(--r-ctl);background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn);font-size:var(--t-sm)}
+.pe-match{margin:14px 0 4px;padding:12px;border-radius:var(--r-card);background:var(--tint);display:grid;gap:8px}
+.pe-match .pe-h{margin:0}
+.pe-match ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.pe-match p{margin:0 0 6px;overflow-wrap:anywhere}
+.pe-match .ghost{background:var(--surface)}
 .pe-check{display:flex;align-items:center;gap:8px;font-size:14px;min-height:44px;cursor:pointer}
 .pe-check input{width:20px;height:20px;accent-color:var(--good)}
 .pe-stack{display:grid;gap:8px}
