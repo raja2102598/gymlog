@@ -221,6 +221,15 @@ export async function openTab(page, name) {
   } else await page.click(`#tab${name[0].toUpperCase()}${name.slice(1)}`);
   await page.waitForSelector(VIEWS[name]);
 }
+/** Opens the workout at a lift of the selected day in Train (a row's name, or its block's position), from anywhere
+ *  with the tab bar. Without `lift`, Train's Start button: the first lift not done. */
+export async function openWorkout(page, lift) {
+  if (!(await page.locator("#trainView").count())) await openTab(page, "train");
+  if (lift == null) await page.click("#startBtn");
+  else if (typeof lift === "number") await page.click(`.lrow-main[data-lift="${lift}"]`);
+  else await page.locator(".lrow-main").filter({ hasText: lift }).first().click();
+  await page.waitForSelector("#workoutView .ex-card");
+}
 /** Opens a Settings row that unfolds in place (its group's id, e.g. "setData"), unless it's open already. */
 export async function openSetting(page, id) {
   const b = page.locator(`#${id}H`);

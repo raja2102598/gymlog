@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Dark mode: tokens.css's own dark values, so the widget follows the home screen's theme like a well-behaved
+<!-- Dark mode: the design system's dark tokens, so the widget follows the home screen's theme like a well-behaved
      widget should, even though the app's WebView (Settings' own light/dark/system choice) doesn't read this file. -->
 <resources>
-    <color name="widget_background">#1B1E23</color>
-    <color name="widget_ink">#ECEEF1</color>
-    <color name="widget_muted">#9AA2AE</color>
-    <color name="widget_chip_background">#24282E</color>
+    <color name="widget_background">#1B1D21</color>
+    <color name="widget_ink">#F2F3F5</color>
+    <color name="widget_muted">#A1A7B0</color>
+    <color name="widget_chip_background">#2A2D33</color>
 </resources>
