@@ -313,7 +313,8 @@ export default async function guidelines({ browser, base, check }) {
       // The first exports, a bare list of days, still import, and leave the plan alone
       await openTab(page, "settings");
       await page.setInputFiles("#importFile", jsonFile([{ day: "2026-07-01", data: { exercises: {}, warmup: [], cardio: true, steps: 5000, weight: null, note: "" } }]));
-      await until(() => db.logs["2026-07-01"] != null);
+      // Your data says what came in once the write is answered, which is after the database has the day.
+      await until(async () => db.logs["2026-07-01"] != null && (await page.textContent("#dataMsg")) !== "");
       check("import: an older export, a list of days, still imports", (await page.textContent("#dataMsg")) === "Imported 1 day." && db.logs["2026-07-01"].steps === 5000 && db.plan.tempo === "4:0:1:0", await page.textContent("#dataMsg"));
       check("no console errors", page.errors.length === 0, page.errors.join(" | "));
       await ctx.close();
