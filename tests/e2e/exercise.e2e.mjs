@@ -161,9 +161,14 @@ export default async function exercise({ browser, base, check }) {
     check("with why, kept on the day", (await flat(page.locator("#liftPill"))) === "Skipped · travelling");
     await openTab(page, "home");
     check("Home says today was skipped, with Undo", /^Skipped today · travelling$/.test(await flat(page.locator("#todaySub"))) && (await page.locator("#unskipHome").count()) === 1, await flat(page.locator("#todaySub")));
+    check("with no knee question before a session that isn't happening", (await page.locator('[data-knee^="kneeBefore:"]').count()) === 0);
+    const tl = await flat(page.locator("#timeline"));
+    check("and so does the day's timeline, with no workout up next or cardio after it", /Skipped ?Legs workout · travelling/.test(tl) && !/Up next|After lifting/.test(tl), tl);
     await page.click("#unskipHome");
     await until(() => db.logs[K(28)] && db.logs[K(28)].skip === undefined);
     check("Undo puts the workout back", (await page.locator("#startWorkout").count()) === 1 && (await page.locator("#skipHome").count()) === 1);
+    const back = await flat(page.locator("#timeline"));
+    check("on the timeline too, and the knee question is back", /Up next ?Legs workout · 5 lifts/.test(back) && /After lifting ?Cycling/.test(back) && (await page.locator('[data-knee^="kneeBefore:"]').count()) === 11, back);
     await ctx.close();
   }
 

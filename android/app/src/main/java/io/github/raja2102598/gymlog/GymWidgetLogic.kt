@@ -9,8 +9,9 @@ import org.json.JSONObject
  */
 object GymWidgetLogic {
     /** Today's session (src/lib/store.ts's planFor), lifts done out of planned counted the way Today counts a
-     *  lift done (SessionCard.tsx's LiftPill), and when a running rest timer ends (an ISO instant), or null. */
-    data class Snapshot(val date: String, val session: String, val done: Int, val planned: Int, val restEndsAt: String?)
+     *  lift done (SessionCard.tsx's LiftPill), when a running rest timer ends (an ISO instant), or null, and whether
+     *  the day's workout was skipped (false when the snapshot doesn't say, as an older build's doesn't). */
+    data class Snapshot(val date: String, val session: String, val done: Int, val planned: Int, val restEndsAt: String?, val skipped: Boolean = false)
 
     /** Null for anything that isn't this JSON: missing at all, unparsable, or short a required field. */
     fun parse(json: String?): Snapshot? {
@@ -23,19 +24,21 @@ object GymWidgetLogic {
                 done = o.getInt("done"),
                 planned = o.getInt("planned"),
                 restEndsAt = if (o.isNull("restEndsAt")) null else o.getString("restEndsAt"),
+                skipped = o.optBoolean("skipped", false),
             )
         } catch (e: Exception) {
             null
         }
     }
 
-    fun toJson(date: String, session: String, done: Int, planned: Int, restEndsAt: String?): String =
+    fun toJson(date: String, session: String, done: Int, planned: Int, restEndsAt: String?, skipped: Boolean = false): String =
         JSONObject()
             .put("date", date)
             .put("session", session)
             .put("done", done)
             .put("planned", planned)
             .put("restEndsAt", restEndsAt ?: JSONObject.NULL)
+            .put("skipped", skipped)
             .toString()
 
     /** Whether a snapshot is still today's, by the phone's own clock now, not whenever it was written: once a
@@ -45,12 +48,12 @@ object GymWidgetLogic {
     data class Display(val title: String, val subtitle: String)
 
     /** What the widget says: the session and its progress, worded the same as Today's own lift count ("3/5
-     *  lifts", "Rest day"), or a neutral invitation once the data is missing or from a day that's passed. While a
+     *  lifts", "Rest day", "Skipped"), or a neutral invitation once the data is missing or from a day that's passed. While a
      *  rest timer is still running at `nowMs`, the progress adds when it ends ("3/5 lifts · rest until 10:32",
      *  the time as `clock` writes it), since a widget can't count down every second. */
     fun display(s: Snapshot?, today: String, nowMs: Long = Long.MAX_VALUE, clock: (Long) -> String = { "" }): Display {
         if (s == null || !isCurrent(s, today)) return Display("Gym Log", "Open Gym Log")
-        val progress = if (s.planned <= 0) "Rest day" else "${s.done}/${s.planned} lifts"
+        val progress = if (s.planned <= 0) "Rest day" else if (s.skipped) "Skipped" else "${s.done}/${s.planned} lifts"
         val ends = restEndMs(s)
         return Display(s.session, if (ends != null && ends > nowMs) "$progress · rest until ${clock(ends)}" else progress)
     }

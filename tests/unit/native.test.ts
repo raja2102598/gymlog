@@ -308,16 +308,24 @@ describe("home-screen widget", () => {
     s.auth = "signedIn";
     s.setHealthLink({ state: "web", msg: "" }); // any store change tells listeners
     expect(widget.update).toHaveBeenCalledTimes(1);
-    expect(widget.update).toHaveBeenCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null });
+    expect(widget.update).toHaveBeenCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, skipped: false });
 
     // A change that touches neither today's session nor its lifts: no second write.
     s.setHealthLink({ state: "ok", msg: "Up to date." });
     expect(widget.update).toHaveBeenCalledTimes(1);
 
+    // Skipping the day says so, instead of 0/1 lifts; taking the skip back undoes that.
+    s.skipDay(today, "travelling");
+    expect(widget.update).toHaveBeenCalledTimes(2);
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, skipped: true });
+    s.unskipDay(today);
+    expect(widget.update).toHaveBeenCalledTimes(3);
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, skipped: false });
+
     // Ticking the lift changes the count, so it writes again.
     s.editLift(today, "Bench press", (r) => (r.done = true), true);
-    expect(widget.update).toHaveBeenCalledTimes(2);
-    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 1, planned: 1, restEndsAt: null });
+    expect(widget.update).toHaveBeenCalledTimes(4);
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 1, planned: 1, restEndsAt: null, skipped: false });
 
     // Signed out, whether by Sign out or by a session that expired or was revoked: cleared, once.
     s.auth = "signedOut";
@@ -328,7 +336,7 @@ describe("home-screen widget", () => {
     // Signed in again, the same snapshot as before counts as new once cleared.
     s.auth = "signedIn";
     s.setHealthLink({ state: "ok", msg: "Up to date." });
-    expect(widget.update).toHaveBeenCalledTimes(3);
+    expect(widget.update).toHaveBeenCalledTimes(5);
   });
 
   it("shows nothing from the demo: the widget is for a real account's day", async () => {
@@ -360,7 +368,7 @@ describe("home-screen widget", () => {
 
     s.setHealthLink({ state: "ok", msg: "Up to date." });
     expect(widget.update).toHaveBeenCalledTimes(2);
-    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Leg day", done: 0, planned: 1, restEndsAt: null });
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Leg day", done: 0, planned: 1, restEndsAt: null, skipped: false });
   });
 });
 

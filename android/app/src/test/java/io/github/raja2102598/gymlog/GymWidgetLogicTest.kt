@@ -91,6 +91,17 @@ class GymWidgetLogicTest {
     }
 
     @Test
+    fun displaySaysSkippedForASkippedWorkout() {
+        val skipped = GymWidgetLogic.parse(GymWidgetLogic.toJson("2026-09-25", "Upper", 0, 6, null, skipped = true))
+        assertTrue(skipped?.skipped == true)
+        val d = GymWidgetLogic.display(skipped, "2026-09-25")
+        assertEquals("Upper", d.title)
+        assertEquals("Skipped", d.subtitle)
+        // A snapshot written before skipping existed doesn't say, and isn't skipped.
+        assertFalse(GymWidgetLogic.parse(json)!!.skipped)
+    }
+
+    @Test
     fun displayIsNeutralOnceTheDayHasPassed() {
         val d = GymWidgetLogic.display(GymWidgetLogic.parse(json), "2026-09-26")
         assertEquals("Gym Log", d.title)
