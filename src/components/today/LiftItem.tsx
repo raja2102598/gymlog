@@ -2,12 +2,14 @@
 import { CaretDown, DotsThree, Microphone } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
 import { SyncedInput } from "@/components/ui/SyncedField";
+import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useVoice, useVoiceOn } from "@/hooks/useVoice";
 import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
 import { num, setsSummary } from "@/lib/format";
+import { hashOf } from "@/lib/route";
 import type { RecordKind } from "@/lib/stats";
 import { minSets, performed, prTitle, setsOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
@@ -25,6 +27,8 @@ interface Props {
   menu: LiftMenu["mode"] | null;
   setMenu: (m: LiftMenu | null) => void;
   focusNext: FocusNext;
+  /** Opens a lift's own page, under Progress. */
+  onOpenLift: (name: string) => void;
 }
 
 /** What was done last time, set by set, so there's something to beat; the arrow shows today's heaviest
@@ -46,7 +50,7 @@ function LastHint({ last, cur }: { last: LastDone | null; cur: number | null }) 
 }
 
 /** One lift on the day: its sets (reps × kg), last time's numbers, the next-weight hint, and skip or swap. */
-export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext }: Props) {
+export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext, onOpenLift }: Props) {
   const store = useGym();
   const { x, name, extra } = item, r: Partial<LiftLog> = entry.exercises[name] || {};
   const did = performed(name, r as LiftLog), last = store.lastDone(did, sel), next = r.skipped ? null : store.nextWeight(x, did, sel);
@@ -228,6 +232,17 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext 
             </button>
           </>
         )}
+        <ViewLink
+          className="ghost tiny"
+          data-chart={i}
+          href={hashOf({ view: "progress", lift: did })}
+          onOpen={() => {
+            setMenu(null);
+            onOpenLift(did);
+          }}
+        >
+          See chart
+        </ViewLink>
       </div>
     );
   } else if (menu === "swap") {

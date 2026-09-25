@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { kneeModel, strengthModel, weightModel } from "@/lib/dashboard";
+import { kneeModel, liftModel, strengthModel, weightModel } from "@/lib/dashboard";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import { GymStore, setsOf } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
@@ -156,5 +156,69 @@ describe("dashboard", () => {
     const k = kneeModel(s, "2026-09-23");
     expect(k.kind).toBe("table");
     expect(k.flags[0].text).toBe("Knee was above your limit after Legs on 16 Sept. Knee lifts hold their weight until a better session.");
+  });
+
+  it("lists every lift in the plan, not only each day's first, and a lift on two days once, naming both", () => {
+    const m = strengthModel(storeWith({}), "2026-09-23");
+    const names = new Set(DEFAULT_PLAN.days.flatMap((d) => d.exercises.map((x) => x.name)));
+    expect(m.rows).toHaveLength(names.size);
+    expect(m.rows.map((r) => r.name)).toEqual([...names]); // in the plan's order
+    expect(m.rows.find((r) => r.name === "Chest Press Machine")?.day).toBe("Push"); // not that day's first lift
+    expect(m.rows.filter((r) => r.name === "Seated Row").map((r) => r.day)).toEqual(["Pull, Upper"]);
+  });
+});
+
+describe("a lift's own page", () => {
+  it("tracks heaviest set, estimated 1RM and volume per session, and how often, from sets that count", () => {
+    const s = storeWith({
+      "2026-09-09": day({ exercises: { "Leg Press": lift([[10, 45], [10, 45], [8, 45]]) } }),
+      "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 50], [10, 50], [10, 50]]) } }),
+      // A set with only a weight, and one with only reps: neither should add a load or a 1RM, but the
+      // weight-only set still counts as the day's heaviest.
+      "2026-09-23": day({ exercises: { "Leg Press": { done: true, kg: 55, sets: [{ reps: null, kg: 55 }, { reps: 12, kg: null }, { reps: 8, kg: 55 }] } } }),
+    });
+    const m = liftModel(s, "2026-09-23", "Leg Press");
+    expect(m.points.map((p) => [p.day, p.top, p.topReps, p.volume])).toEqual([
+      ["2026-09-09", 45, 10, 1260],
+      ["2026-09-16", 50, 10, 1500],
+      ["2026-09-23", 55, 8, 440], // only the 8 x 55 set has both a weight and reps
+    ]);
+    expect(m.points[0].e1rm).toBeCloseTo(60, 9); // Brzycki, 45 kg x 10
+    expect(m.points[2].e1rm).toBeCloseTo(68.27586, 4); // the 12-rep, weightless set can't estimate one
+    expect(m.bestTop).toEqual(["2026-09-23", 55]);
+    expect(m.bestE1rm?.[0]).toBe("2026-09-23");
+    expect(m.volume).toBe(1260 + 1500 + 440);
+    expect(m.perWeek).toBeCloseTo(1.5, 9); // 3 sessions over the 14 days from the first to today
+    expect(m.planned).toEqual([{ day: "Legs", reps: [10, 12] }]);
+  });
+
+  it("matches a lift by its logged name on any day, not only the plan's usual day for it", () => {
+    // Monday is Push, which has no Leg Press: a day moved, or logged under an older plan, still has to count.
+    const s = storeWith({ "2026-09-21": day({ exercises: { "Leg Press": lift([[10, 40]]) } }) });
+    expect(s.planFor("2026-09-21").name).toBe("Push");
+    expect(liftModel(s, "2026-09-23", "Leg Press").points.map((p) => p.day)).toEqual(["2026-09-21"]);
+  });
+
+  it("keeps a renamed lift's earlier days under its old name; only the new name carries the plan's rep range", () => {
+    const s = storeWith({ "2026-09-09": day({ exercises: { "Leg Press": lift([[10, 45]]) } }) });
+    s.plan = { ...s.plan, days: s.plan.days.map((d, i) => (i === 2 ? { ...d, exercises: d.exercises.map((x) => (x.name === "Leg Press" ? { ...x, name: "Leg Press Machine" } : x)) } : d)) };
+    const old = liftModel(s, "2026-09-23", "Leg Press"), renamed = liftModel(s, "2026-09-23", "Leg Press Machine");
+    expect(old.points).toHaveLength(1);
+    expect(old.planned).toEqual([]);
+    expect(renamed.points).toHaveLength(0);
+    expect(renamed.planned).toEqual([{ day: "Legs", reps: [10, 12] }]);
+  });
+
+  it("names every day the plan has a lift on, each with its rep range there", () => {
+    const s = storeWith({});
+    expect(liftModel(s, "2026-09-23", "Seated Row").planned).toEqual([
+      { day: "Pull", reps: [10, 12] },
+      { day: "Upper", reps: [10, 12] },
+    ]);
+  });
+
+  it("has nothing to show for a lift that's never been logged and isn't in the plan", () => {
+    const m = liftModel(storeWith({}), "2026-09-23", "Nonexistent Lift");
+    expect(m).toMatchObject({ points: [], bestTop: null, bestE1rm: null, volume: 0, perWeek: null, planned: [] });
   });
 });

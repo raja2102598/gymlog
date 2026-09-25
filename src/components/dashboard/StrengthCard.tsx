@@ -1,22 +1,24 @@
 "use client";
+import { ViewLink } from "@/components/ui/ViewLink";
 import type { StrengthModel } from "@/lib/dashboard";
 import { dayMonth } from "@/lib/dates";
+import { hashOf } from "@/lib/route";
 import { PR_WORDS } from "@/lib/store";
 import { Sparkline } from "./charts";
 
 /** Is strength holding during the cut? */
-export function StrengthCard({ m }: { m: StrengthModel }) {
+export function StrengthCard({ m, onOpenLift }: { m: StrengthModel; onOpenLift: (name: string) => void }) {
   return (
     <section className="panel" id="dashStrength">
       <h2>Strength</h2>
-      <p className="note">Estimated 1RM of each day’s first lift, from sets of 12 reps or fewer. Holding steady is a win during a cut.</p>
+      <p className="note">Estimated 1RM of each lift, from sets of 12 reps or fewer. Holding steady is a win during a cut.</p>
       {m.anyLogged ? (
         <ul className="lifts">
           {m.rows.map((r) => (
-            <li key={`${r.day}|${r.name}`}>
-              <span className="ln">
+            <li key={r.name}>
+              <ViewLink className="ln" href={hashOf({ view: "progress", lift: r.name })} onOpen={() => onOpenLift(r.name)}>
                 {r.name} <span className="sub">{r.day}</span>
-              </span>
+              </ViewLink>
               <Sparkline vals={r.points.map((p) => p[1])} />{" "}
               <span className="lv num">{r.points.length ? `${Math.round(r.points[r.points.length - 1][1])} kg` : "-"}</span> <span className="lc">{r.change}</span>
             </li>

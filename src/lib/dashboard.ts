@@ -170,6 +170,65 @@ export function healthModel(store: GymStore, t: DayKey): { flags: Flag[] } {
 
 /* ---------- strength: is it holding during the cut? ---------- */
 
+export interface LiftPoint {
+  day: DayKey;
+  /** Heaviest set that day, kg (some old entries hold only a weight, with no reps). */
+  top: number | null;
+  /** The most reps done at that weight that day, or null when none were logged with it. */
+  topReps: number | null;
+  /** Best estimated 1RM that day (Brzycki, from sets of 1-12 reps: see e1rm in stats.ts), or null when no
+   *  set qualifies. */
+  e1rm: number | null;
+  /** That day's sets with both a weight and reps, kg × reps summed: a set missing either adds nothing, so
+   *  it can't inflate the load. */
+  volume: number;
+}
+
+// Every day this lift has anything logged for it, oldest first: not only the days the plan currently puts it
+// on, so a lift moved to another day, or a day logged under an older plan, still counts (liftSets reads the
+// day's own entries, not today's plan). Renaming a plan exercise starts a fresh name for this to match on;
+// its earlier days stay under the old one (see the note on DayLog in types.ts) and so drop out of a page
+// opened at the new name, the same as they would from a search for the old one.
+function liftPoints(store: GymStore, days: DayKey[], name: string): LiftPoint[] {
+  const out: LiftPoint[] = [];
+  for (const k of days) {
+    const sets = store.liftSets(k).filter((l) => l.name === name).flatMap((l) => l.sets);
+    if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
+    const loaded = sets.filter((s): s is { reps: number; kg: number } => s.reps != null && s.kg != null), top = topKg(sets);
+    out.push({
+      day: k,
+      top,
+      topReps: Math.max(0, ...loaded.filter((s) => s.kg === top).map((s) => s.reps)) || null,
+      e1rm: Math.max(0, ...sets.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
+      volume: sum(loaded.map((s) => s.reps * s.kg)),
+    });
+  }
+  return out;
+}
+
+/** "+17% since 31 Aug", "holding since …", or "first session", from a lift's 1RM points (oldest first, at
+ *  least one). */
+function e1rmChange(points: [DayKey, number][]): string {
+  if (points.length < 2) return "first session";
+  const [lk, lv] = points[points.length - 1], base = points.filter(([k]) => S.daysBetween(k, lk) >= 28).pop() || points[0], pc = ((lv - base[1]) / base[1]) * 100;
+  return Math.abs(pc) < 2.5 ? `holding since ${dm(base[0])}` : `${signed(pc, 0)}% since ${dm(base[0])}`;
+}
+
+/** Where a lift is in the plan: the days it's on, with its rep range on each. */
+export type Planned = { day: string; reps: [number, number] | null }[];
+
+/** Each lift in the plan, in the plan's order, with the days it's on (a day listing it twice counts once). */
+function plannedDays(store: GymStore): Map<string, Planned> {
+  const out = new Map<string, Planned>();
+  for (const d of store.plan.days)
+    for (const x of d.exercises) {
+      const on = out.get(x.name) ?? [];
+      if (!on.some((p) => p.day === d.name)) on.push({ day: d.name, reps: S.repRange(x.reps) });
+      out.set(x.name, on);
+    }
+  return out;
+}
+
 export interface StrengthRow {
   name: string;
   day: string;
@@ -195,27 +254,20 @@ export interface StrengthModel {
 
 export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
   const flags: Flag[] = [], days = store.days().filter((k) => k <= t);
-  // Each gym day's first lift stands in for that day.
-  const rows = store.plan.days
-    .filter((d) => d.exercises.length)
-    .map((d): StrengthRow => {
-      const x = d.exercises[0];
-      const points = days
-        .map((k): [DayKey, number] => [k, Math.max(0, ...store.liftSets(k).filter((l) => l.name === x.name).flatMap((l) => l.sets.map((s) => S.e1rm(s.kg, s.reps) || 0)))])
-        .filter(([, v]) => v > 0);
-      let change = "";
-      if (points.length >= 2) {
-        const [lk, lv] = points[points.length - 1], base = points.filter(([k]) => S.daysBetween(k, lk) >= 28).pop() || points[0], pc = ((lv - base[1]) / base[1]) * 100;
-        change = Math.abs(pc) < 2.5 ? `holding since ${dm(base[0])}` : `${signed(pc, 0)}% since ${dm(base[0])}`;
-      }
-      const logged = points.length > 0 || days.some((k) => store.liftSets(k).some((l) => l.name === x.name));
-      return {
-        name: x.name,
-        day: d.name,
-        points,
-        change: points.length ? change || "first session" : logged ? "no estimate yet: needs a set with weight and 1-12 reps" : "not logged yet",
-      };
-    });
+  // Every lift in the plan, not only each day's first. A lift on two days (Seated Row on Pull and Upper) is one
+  // row naming both: its history is matched by name, so it's the same history whichever day it was done on.
+  const rows = [...plannedDays(store)].map(([name, on]): StrengthRow => {
+    const points = liftPoints(store, days, name)
+      .filter((p) => p.e1rm != null)
+      .map((p): [DayKey, number] => [p.day, p.e1rm as number]);
+    const logged = points.length > 0 || days.some((k) => store.liftSets(k).some((l) => l.name === name));
+    return {
+      name,
+      day: on.map((p) => p.day).join(", "),
+      points,
+      change: points.length ? e1rmChange(points) : logged ? "no estimate yet: needs a set with weight and 1-12 reps" : "not logged yet",
+    };
+  });
   // Lifts ready for more weight next time, and knee lifts held back after a sore day.
   const tomorrow = addDays(t, 1), seen = new Set<string>(), ready: NextUp[] = [], held: NextUp[] = [];
   store.plan.days.forEach((d) =>
@@ -234,6 +286,44 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
     ready,
     held,
     records: store.recentRecords(t, 30).reverse().slice(0, 8),
+  };
+}
+
+/* ---------- one lift: its own page, opened from Strength or a lift's card ---------- */
+
+export interface LiftModel {
+  name: string;
+  /** The plan's days for it, with its rep range on each, while this is still a lift in the current plan
+   *  (matched by name, so a lift renamed or dropped from the plan has none). */
+  planned: Planned;
+  /** One entry per session logged for this lift, oldest first; empty when it's never been logged. */
+  points: LiftPoint[];
+  /** The heaviest set, and the best estimated 1RM, ever logged for it, each with the day it happened. */
+  bestTop: [DayKey, number] | null;
+  bestE1rm: [DayKey, number] | null;
+  /** Every session's volume, added up. */
+  volume: number;
+  /** Sessions a week, from the first one logged to `t`; null until at least a week separates two sessions. */
+  perWeek: number | null;
+}
+
+export function liftModel(store: GymStore, t: DayKey, name: string): LiftModel {
+  const days = store.days().filter((k) => k <= t);
+  const points = liftPoints(store, days, name);
+  const best = (f: (p: LiftPoint) => number | null): [DayKey, number] | null =>
+    points.reduce<[DayKey, number] | null>((b, p) => {
+      const v = f(p);
+      return v != null && (!b || v > b[1]) ? [p.day, v] : b;
+    }, null);
+  const span = points.length > 1 ? S.daysBetween(points[0].day, t) : 0;
+  return {
+    name,
+    planned: plannedDays(store).get(name) ?? [],
+    points,
+    bestTop: best((p) => p.top),
+    bestE1rm: best((p) => p.e1rm),
+    volume: sum(points.map((p) => p.volume)),
+    perWeek: span >= 7 ? (points.length / span) * 7 : null,
   };
 }
 

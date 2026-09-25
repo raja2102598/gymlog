@@ -28,7 +28,7 @@ What people expect while lifting. Builds on the model as it is.
 - **Free-form workout** on any day, alongside the planned one.
 - **Plate calculator and warm-up calculator.**
 - **Voice logging:** say a set ("10 at 45") and it's logged. On the website first, then in the Android app with on-device recognition.
-- **Per-lift charts:** load, reps, estimated 1RM and volume over time. Progress tracks only each day's first lift today.
+- **Per-lift charts:** load, reps, estimated 1RM and volume over time, on a page for each lift.
 - **Body measurements** beyond weight and waist.
 
 ## Tier 3: needs new pieces

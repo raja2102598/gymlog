@@ -30,7 +30,7 @@ Moving from another copy of Gym Log? Tap **Restore a backup** on that screen and
   - The bar under the day's title fills as lifts are done.
 - **Voice:** switch on **Settings → Log sets by voice**, then tap the microphone on a lift and say the set: *10 at 45*, *twelve reps at forty kilos*, *45 kg for 8* or *22.5 for 10*. *10 reps* on its own keeps the weight of the set before. Say *again* to repeat the last set, *undo* to clear it, *done* to tick the lift or *skip* to skip it for today. A line under the sets says what it heard; anything it can't read for certain, such as a weight in pounds, changes nothing. It listens in English, the language it reads, whatever language the browser or phone is set to, and it stops when you leave Today or pick another day. On the website it uses the browser's speech recognition: in Chrome, what you say goes to Google to be turned into text. The [Android app](android.md#voice-logging) uses the phone's, on the phone itself where it can, and asks for the microphone when you switch it on.
 - **Change a day's workout:** the picker under the day's title lets any day use another day's workout, e.g. do a missed Push on a rest day. Rest days list the sessions you missed earlier that week, with a button to do one. The weekly count still counts each planned session once.
-- **Skip or swap:** tap **···** on a lift. *Skip today* (with an optional reason, e.g. machine busy) or *Swap for another lift* to log a different exercise in its place. The same menu undoes either.
+- **Skip, swap or see its chart:** tap **···** on a lift. *Skip today* (with an optional reason, e.g. machine busy) or *Swap for another lift* to log a different exercise in its place; the same menu undoes either. *See chart* opens that lift's own page under Progress: its heaviest set, estimated 1RM, volume and sessions a week, over time.
 - **Adding weight:** when every set of a lift reached the top of its rep range last time, the lift says *Go up to … kg* and the grey numbers switch to the new weight at the bottom of the range. Each lift adds 2.5 kg unless you set its own step in the plan.
 - **Records:** a set that beats every earlier session of that lift (heaviest weight, best estimated 1RM, or most reps at that weight or more) gets a **PR** badge as you type it.
 - **Knee:** on days with knee-sensitive lifts, tap your knee pain from 0 to 10 before and after the session, and on waking the next morning. Once scored, the scale folds to one line; **Change** opens it again. If pain goes above your limit (5 unless you change it), or hasn't settled by the morning, knee-sensitive lifts say *Hold … kg* instead of going up next time.
@@ -48,13 +48,16 @@ The data comes from Health Connect through the [Android app](android.md). The we
 
 ## Progress
 
-Weight trend and weekly rate, with a goal date and your pace against the target once you set them in the plan; sessions kept, full weeks in a row and a calendar; steps by week; strength (estimated 1RM of each day's first lift, lifts ready for more weight, recent records); knee scores by session. Notes at the top point out anything that needs attention, such as no weigh-in for a while, short sleep, or a resting heart rate higher than last week.
+Weight trend and weekly rate, with a goal date and your pace against the target once you set them in the plan; sessions kept, full weeks in a row and a calendar; steps by week; strength (estimated 1RM of every lift, each with a sparkline, lifts ready for more weight, recent records); knee scores by session. Notes at the top point out anything that needs attention, such as no weigh-in for a while, short sleep, or a resting heart rate higher than last week.
+
+Tap a lift in Strength, or **See chart** in its **···** menu on Today, for its own page: heaviest set (with its reps), estimated 1RM, total volume and sessions a week, charted over time the same way as a Health metric, with the days the plan has it on and its rep range. A lift on two days of the plan is one row in Strength, naming both.
 
 ### How the numbers work
 
 - **Weight trend:** one value a day from your weigh-ins, with gaps filled by straight lines, smoothed with Holt's method as [TrendWeight](https://github.com/ervwalter/trendweight) does. It starts from a straight-line fit of your first two weeks, so it doesn't lag behind at the start.
 - **Weekly rate:** a straight-line fit of your weigh-ins over the last four weeks. It shows once you have six weigh-ins spread over two weeks; before that, water weight hides the real change.
 - **Estimated 1RM:** Brzycki's formula, only from sets of 12 reps or fewer.
+- **Sessions a week**, on a lift's own page: its sessions so far divided by the weeks since the first one, shown once at least a week has passed.
 
 ## Settings
 
@@ -68,7 +71,7 @@ Weight trend and weekly rate, with a goal date and your pace against the target 
 
 ## Moving around
 
-The tabs along the bottom switch screens; pages under a tab (a Health chart, the plan editor) have a back arrow. The phone's Back button walks back the way you came: a page to its tab, a tab to Today. Each screen has an address, so `/#progress`, `/#health/sleep` or `/#settings` open it directly.
+The tabs along the bottom switch screens; pages under a tab (a Health chart, a lift's own page, the plan editor) have a back arrow. The phone's Back button walks back the way you came: a page to its tab, a tab to Today. Each screen has an address, so `/#progress`, `/#health/sleep` or `/#settings` open it directly, and so does a lift's own page.
 
 ## Saving and syncing
 
@@ -84,5 +87,5 @@ The installed app loads its files from the phone's cache first, so it opens stra
 ## Good to know
 
 - Supabase's built-in email service sends only a few sign-in emails an hour for the whole project (about 2). If you hit the limit, the sign-in screen says so: wait an hour, or sign in with your password. The Send button also waits a minute after each link, since a new link replaces the last one.
-- Your history follows each lift by name. Renaming a lift in the plan starts a fresh history for it; days you've already logged keep what you logged.
+- Your history follows each lift by name, including on its own page under Progress. Renaming a lift in the plan starts a fresh history for it; days you've already logged keep what you logged.
 - Supabase's free plan pauses a project after about a week with no activity. Logging every day keeps it awake. If it does pause, click **Restore** in the Supabase dashboard; no data is lost.

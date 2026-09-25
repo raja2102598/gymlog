@@ -12,6 +12,7 @@ import { depthOf, hashOf, parentOf, routeOf, sameRoute, tabOf, type Route } from
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
 import { DashboardView } from "./dashboard/DashboardView";
+import { LiftDetail } from "./dashboard/LiftDetail";
 import { HealthDetail } from "./health/HealthDetail";
 import { HealthView } from "./health/HealthView";
 import { PlanEditor } from "./plan/PlanEditor";
@@ -223,6 +224,7 @@ export default function GymLog() {
     setEditDay(wdIndex(sel));
     if (focus) focusNext(focus, true);
   };
+  const openLift = (name: string) => navigate({ view: "progress", lift: name });
 
   // A new account chooses a plan before Today; until the first load says whether it's new, the loading placeholder.
   // A backup restored there keeps the picker up until it's in, then opens Settings at Your data to say what came in.
@@ -252,7 +254,7 @@ export default function GymLog() {
           ? METRIC_TITLE[route.metric]
           : "Health"
         : route.view === "progress"
-          ? "Progress"
+          ? (route.lift ?? "Progress")
           : route.view === "settings"
             ? "Settings"
             : "Edit plan";
@@ -323,6 +325,7 @@ export default function GymLog() {
                 setHealthDay(sel);
                 navigate({ view: "health" });
               }}
+              onOpenLift={openLift}
               menu={menu}
               setMenu={setMenu}
               warmOpen={warmOpen === sel}
@@ -346,7 +349,9 @@ export default function GymLog() {
         </div>
 
         <div id="dashView" className="dash" hidden={!inApp || route.view !== "progress"}>
-          {inApp && route.view === "progress" ? <DashboardView onSetGoal={() => openPlan("#pe_goalw")} /> : null}
+          {inApp && route.view === "progress" ? (
+            route.lift ? <LiftDetail key={route.lift} name={route.lift} /> : <DashboardView onSetGoal={() => openPlan("#pe_goalw")} onOpenLift={openLift} />
+          ) : null}
         </div>
 
         <div id="settingsView" hidden={!inApp || route.view !== "settings"}>
