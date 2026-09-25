@@ -36,7 +36,8 @@ export interface SessionProps {
 }
 
 function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
-  if (!p.exercises.length) return <span className="pill">Rest day</span>;
+  // A free-form workout begins with no lifts, and isn't a rest day.
+  if (!p.exercises.length) return <span className="pill">{e.free ? "No lifts yet" : "Rest day"}</span>;
   const done = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
   const skipped = p.exercises.filter((x) => e.exercises[x.name]?.skipped).length;
   return (

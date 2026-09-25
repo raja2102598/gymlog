@@ -21,6 +21,7 @@ export default async function freeform({ browser, base, check }) {
   await until(() => !!today()?.free);
   check("Start an empty workout saves one with the day", JSON.stringify(today()?.free) === '{"name":"","lifts":[]}', JSON.stringify(today()?.free));
   check("it takes the day's place, with no lifts yet", (await title()) === "Free workout" && (await names()).length === 0);
+  check("and says so, rather than calling it a rest day", (await flat(page.locator("#liftPill"))) === "No lifts yet", await flat(page.locator("#liftPill")));
   check("it says what to do, and the field to add a lift has focus", (await flat(page.locator(".addlift .note"))).startsWith("A workout of your own") && (await focused()) === "addLift");
   await page.fill("#freeName", "Hotel gym");
   await until(() => today()?.free?.name === "Hotel gym");
