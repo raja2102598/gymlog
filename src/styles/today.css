@@ -60,8 +60,8 @@
 .prog{margin-left:40px}
 
 /* sets: reps × kg; a set's number turns green once its reps are in */
-.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:8px 20px;padding-left:40px}
-.set{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1.15fr) auto;align-items:center;gap:6px}
+.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(284px,1fr));gap:8px 20px;padding-left:40px}
+.set{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1.15fr) auto auto;align-items:center;gap:6px}
 .set .sn{display:grid;place-items:center;width:24px;height:24px;border-radius:99px;font:600 var(--t-xs) var(--mono);color:var(--muted);background:var(--sunken)}
 .set.logged .sn{background:var(--good);color:var(--surface)}
 .set input{width:100%;min-width:0;height:48px;font:500 18px var(--mono);padding:0 8px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);text-align:center;appearance:textfield;-moz-appearance:textfield}
@@ -75,6 +75,21 @@
 .setbtns .howto{margin-left:auto;color:var(--muted)}
 .howto svg{transition:transform var(--fast) var(--ease)}
 .howto[aria-expanded="true"] svg{transform:rotate(180deg)}
+
+/* the plates button on a set, and the breakdown it opens: a full-width row of its own, so it doesn't
+   stretch the sets either side of it */
+.plates-btn{color:var(--muted)}
+.plates-btn[aria-expanded="true"]{color:var(--ink);background:var(--chip)}
+.plates-info{grid-column:1/-1;font-size:var(--t-sm);color:var(--ink);padding:10px 12px;border-radius:var(--r-ctl);background:var(--sunken)}
+
+/* a lift's warm-up sets: 40/60/80% of a working weight, one tap to log them, marked so they're not working sets */
+.wset{margin-left:40px;display:grid;gap:8px}
+.wset-panel{display:grid;gap:10px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
+.wset-panel .field{max-width:200px}
+.wset-ladder{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.wset-ladder li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-radius:var(--r-ctl);background:var(--surface);font:500 var(--t-sm) var(--mono)}
+.wset-ladder .wset-pct{color:var(--muted);font-family:var(--body)}
+.wset-done{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:var(--t-sm);color:var(--muted)}
 
 /* skip and swap */
 .acts{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-left:40px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
@@ -160,7 +175,7 @@
 @media (max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
 @media (min-width:561px){.lift{padding:16px 16px 18px}.inputs,.hc{padding:20px}}
 @media (prefers-reduced-motion:no-preference){
-  .wu .chips:not([hidden]),.acts,.lift .cue{animation:rise var(--med) var(--ease)}
+  .wu .chips:not([hidden]),.acts,.lift .cue,.wset-panel,.plates-info{animation:rise var(--med) var(--ease)}
   .set .sn{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
   .lift .mic[aria-pressed="true"]{animation:listen 1.4s var(--ease) infinite}
 }

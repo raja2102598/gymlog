@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { kneeModel, liftModel, strengthModel, weightModel } from "@/lib/dashboard";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
-import { GymStore, setsOf } from "@/lib/store";
+import { GymStore, setsComplete, setsOf, topKg } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
 
 // Wednesday 23 September 2026, as in the end-to-end tests.
@@ -34,6 +34,17 @@ describe("plan", () => {
 
   it("marks the default plan's knee lifts", () => {
     expect(DEFAULT_PLAN.days[2].exercises.filter((x) => x.knee).map((x) => x.name)).toEqual(["Hack Squat", "Leg Press", "Leg Extension"]);
+  });
+
+  it("gives a 20 kg bar and a standard plate set by default, sanitizing what's typed or restored", () => {
+    const p = normalizePlan({}, DEFAULT_PLAN);
+    expect(p.barKg).toBe(20);
+    expect(p.plateKgs).toEqual([25, 20, 15, 10, 5, 2.5, 1.25]);
+    const q = normalizePlan({ barKg: 15, plateKgs: [10, "20", 0, -5, 10, "not a number"] }, DEFAULT_PLAN);
+    expect(q.barKg).toBe(15);
+    expect(q.plateKgs).toEqual([20, 10]);
+    const r = normalizePlan({ barKg: 0, plateKgs: [] }, q);
+    expect([r.barKg, r.plateKgs]).toEqual([15, []]);
   });
 });
 
@@ -85,6 +96,28 @@ describe("store", () => {
     expect(s.measureReadings("bodyFat")).toEqual([["2026-09-16", 23], ["2026-09-20", 22], ["2026-09-23", 21]]);
     expect(s.anyMeasured()).toBe(true);
     expect(storeWith({ "2026-09-16": day() }).anyMeasured()).toBe(false);
+  });
+
+  it("setsComplete and topKg ignore warm-up sets", () => {
+    const sets = [{ reps: 5, kg: 60, type: "warmup" as const }, { reps: 10, kg: 50 }, { reps: 10, kg: 50 }];
+    expect(setsComplete(sets, 3)).toBe(false);
+    expect(setsComplete(sets, 2)).toBe(true);
+    expect(topKg(sets)).toBe(50);
+  });
+
+  it("lastDone skips a day that only has warm-up sets", () => {
+    const s = storeWith({
+      "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 45]]) } }),
+      "2026-09-20": day({ exercises: { "Leg Press": { done: false, kg: null, sets: [{ reps: 5, kg: 30, type: "warmup" }] } } }),
+    });
+    const last = s.lastDone("Leg Press", "2026-09-23");
+    expect(last?.day).toBe("2026-09-16");
+  });
+
+  it("never lets a warm-up set trigger a false record", () => {
+    const s = storeWith({ "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 45]]) } }) });
+    s.logs["2026-09-23"] = day({ exercises: { "Leg Press": { done: false, kg: null, sets: [{ reps: 5, kg: 70, type: "warmup" }, { reps: 10, kg: 50 }] } } });
+    expect([...s.recordsOn("2026-09-23")]).toEqual([["Leg Press|0", ["weight", "e1rm"]]]);
   });
 });
 

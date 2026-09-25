@@ -52,12 +52,15 @@ export const minSets = (x: PlanExercise) => {
 };
 // Older entries have only one weight per lift: show it as set 1.
 export const setsOf = (r?: LiftLog | null): SetLog[] => (Array.isArray(r?.sets) ? r.sets : r?.kg != null ? [{ reps: null, kg: r.kg }] : []);
+/** Heaviest working set: a warm-up never counts, however heavy. */
 export const topKg = (sets: SetLog[]) => {
-  const ks = sets.map((s) => s.kg).filter((k): k is number => k != null);
+  const ks = sets.filter(S.isWorkingSet).map((s) => s.kg).filter((k): k is number => k != null);
   return ks.length ? Math.max(...ks) : null;
 };
 export const performed = (name: string, r?: LiftLog | null) => r?.swap || name;
 const liftHasData = (r?: LiftLog | null) => !!r && (r.done || !!r.skipped || !!r.swap || setsOf(r).some((s) => s.reps != null || s.kg != null));
+/** Whether `min` working sets have reps logged: warm-ups don't move it any closer. */
+export const setsComplete = (sets: SetLog[], min: number) => sets.filter((s) => S.isWorkingSet(s) && (s.reps ?? 0) > 0).length >= min;
 export const stepOf = (x: PlanExercise) => {
   const v = parseFloat(x.step);
   return v > 0 ? v : 2.5;
@@ -503,7 +506,7 @@ export class GymStore {
       const k = ks[i];
       if (k >= before) continue;
       for (const [key, r] of Object.entries(this.logs[k].exercises || {})) {
-        if (r && !r.skipped && performed(key, r) === name && setsOf(r).some((s) => s.reps != null || s.kg != null)) return { day: k, r };
+        if (r && !r.skipped && performed(key, r) === name && setsOf(r).some((s) => S.isWorkingSet(s) && (s.reps != null || s.kg != null))) return { day: k, r };
       }
     }
     return null;
@@ -512,7 +515,7 @@ export class GymStore {
   // weight, they show the new weight at the bottom of the rep range.
   placeholders(x: PlanExercise, L: LastDone | null, j: number, next: NextWeight | null): [string, string] {
     if (next && !next.held) return [String(S.repRange(x.reps)![0]), String(next.to)];
-    const ls = L ? setsOf(L.r) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
+    const ls = L ? setsOf(L.r).filter(S.isWorkingSet) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
     return [String(s.reps ?? (parseInt(x.reps, 10) || "-")), String(s.kg ?? "-")];
   }
   worked(k: DayKey): boolean {
@@ -606,10 +609,11 @@ export class GymStore {
     const r = L && S.readyToAdd(setsOf(L.r), x.reps, minSets(x), stepOf(x));
     return r && L ? { ...r, day: L.day, held: !!x.knee && this.kneeBad(L.day) } : null;
   }
+  // Working sets only: a warm-up never sets a record or counts toward volume.
   liftSets(d: DayKey) {
     return Object.entries(this.logs[d]?.exercises || {})
       .filter(([, r]) => r && !r.skipped)
-      .map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r) }));
+      .map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r).filter(S.isWorkingSet) }));
   }
   // Records set in the `n` days up to and including k. Earlier days are only folded in, not checked.
   recentRecords(k: DayKey, n: number): S.LiftRecord[] {
@@ -1084,8 +1088,11 @@ export class GymStore {
       const e = this.entry(day), session = this.planFor(day).name;
       for (const name of new Set(this.liftsFor(day).map((it) => it.name))) {
         const r = e.exercises[name];
-        setsOf(r).forEach((s, j) => {
-          if (s.reps != null || s.kg != null) rows.push([day, session, name, j + 1, s.reps, s.kg, !!r.skipped, r.swap ?? "", e.note]);
+        // Warm-ups and working sets are numbered apart, so set 1 is the first working set, as on Today.
+        let warm = 0, work = 0;
+        setsOf(r).forEach((s) => {
+          const n = s.type === "warmup" ? ++warm : ++work;
+          if (s.reps != null || s.kg != null) rows.push([day, session, name, n, s.reps, s.kg, s.type === "warmup", !!r.skipped, r.swap ?? "", e.note]);
         });
       }
     }

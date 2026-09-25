@@ -28,12 +28,7 @@ export function SettingsView({ onEditPlan, dataMsg = "" }: { onEditPlan: () => v
     <>
       {isNative() ? <HealthNative /> : <HealthWeb />}
       <Goals />
-      <Group title="Training" id="setTraining">
-        <ViewLink className="pref-row pref-tap" id="planBtn" href="#plan" onOpen={onEditPlan}>
-          <Text title="Edit plan" sub="Each day’s workout and lifts, warm-ups, tempo, goal weight and knee limit" />
-          <CaretRight className="pref-go" size={18} aria-hidden="true" />
-        </ViewLink>
-      </Group>
+      <Training onEditPlan={onEditPlan} />
       <Voice />
       <Appearance />
       <Account />
@@ -201,9 +196,12 @@ function HealthNative() {
 
 /* ---------- goals ---------- */
 
-type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl";
+type GoalKey = "stepGoal" | "sleepGoalH" | "exerciseGoalMin" | "activeGoalKcal" | "waterGoalMl" | "barKg";
+/** Plan fields saved to the nearest half, not the nearest whole number. */
+const HALVES: GoalKey[] = ["sleepGoalH", "barKg"];
 
-/** A daily goal: saved as you type once it's in range (the same ranges the plan is read with, lib/plan.ts). */
+/** A number saved straight to the plan: saved as you type once it's in range (the same ranges the plan is read
+ *  with, lib/plan.ts). Used for the daily goals, and for the bar weight under Training. */
 function Goal({ id, label, k, min, max, step, decimal = false }: { id: string; label: string; k: GoalKey; min: number; max: number; step: number; decimal?: boolean }) {
   const store = useGym();
   const [bad, setBad] = useState(false);
@@ -225,7 +223,7 @@ function Goal({ id, label, k, min, max, step, decimal = false }: { id: string; l
           setBad(!ok);
           if (ok)
             store.editPlan((p: Plan) => {
-              p[k] = k === "sleepGoalH" ? Math.round(v * 2) / 2 : Math.round(v);
+              p[k] = HALVES.includes(k) ? Math.round(v * 2) / 2 : Math.round(v);
             });
         }}
       />
@@ -252,6 +250,47 @@ function Goals() {
         </div>
         <p className="note" id="goalMsg" aria-live="polite">
           The rings and charts in Health measure against these. {store.planMsg}
+        </p>
+      </div>
+    </Group>
+  );
+}
+
+/* ---------- training ---------- */
+
+/** Plate weights typed separated by commas or spaces: positive numbers, no duplicates, heaviest first. */
+const parsePlates = (s: string): number[] => [...new Set(s.split(/[,\s]+/).map((t) => parseFloat(t)).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
+
+/** The plan editor link, and the bar and plates the plates button and warm-up calculator use, synced with the
+ *  plan like the rest of training (a bar and plates belong to your gym, not to this phone). */
+function Training({ onEditPlan }: { onEditPlan: () => void }) {
+  const store = useGym();
+  return (
+    <Group title="Training" id="setTraining">
+      <ViewLink className="pref-row pref-tap" id="planBtn" href="#plan" onOpen={onEditPlan}>
+        <Text title="Edit plan" sub="Each day’s workout and lifts, warm-ups, tempo, goal weight and knee limit" />
+        <CaretRight className="pref-go" size={18} aria-hidden="true" />
+      </ViewLink>
+      <div className="pref-row pref-col">
+        <div className="pref-goals">
+          <Goal id="barKg" label="Bar weight (kg)" k="barKg" min={1} max={50} step={0.5} decimal />
+          <label className="field wide" htmlFor="plateKgs">
+            <span>Available plates (kg), separated by commas</span>
+            <SyncedInput
+              id="plateKgs"
+              inputMode="decimal"
+              value={store.plan.plateKgs.join(", ")}
+              onChange={(ev) => {
+                const v = ev.target.value;
+                store.editPlan((p: Plan) => {
+                  p.plateKgs = parsePlates(v);
+                });
+              }}
+            />
+          </label>
+        </div>
+        <p className="note" id="gearMsg" aria-live="polite">
+          For the plates button on a set, and a lift’s warm-up sets. {store.planMsg}
         </p>
       </div>
     </Group>

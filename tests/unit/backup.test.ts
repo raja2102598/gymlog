@@ -249,25 +249,39 @@ describe("workout CSV", () => {
     });
     const rows = s.workoutRows();
     expect(rows).toEqual([
-      ["2026-09-21", "Push", "Incline Machine Press", 1, 10, 30, false, "Incline DB Press", note],
-      ["2026-09-21", "Push", "Chest Press Machine", 1, 12, 40, false, "", note],
-      ["2026-09-21", "Push", "Chest Press Machine", 2, 10, 42.5, false, "", note],
-      ["2026-09-21", "Push", "Machine Shoulder Press", 1, 8, 20, true, "", note],
-      ["2026-09-21", "Push", "Push-up, weighted", 1, 15, 10, false, "", note],
-      ["2026-09-23", "Legs", "Leg Press", 1, null, 50, false, "", ""],
-      ["2026-09-24", "Pull", "Lat Pulldown", 1, 10, 45, false, "", ""],
+      ["2026-09-21", "Push", "Incline Machine Press", 1, 10, 30, false, false, "Incline DB Press", note],
+      ["2026-09-21", "Push", "Chest Press Machine", 1, 12, 40, false, false, "", note],
+      ["2026-09-21", "Push", "Chest Press Machine", 2, 10, 42.5, false, false, "", note],
+      ["2026-09-21", "Push", "Machine Shoulder Press", 1, 8, 20, false, true, "", note],
+      ["2026-09-21", "Push", "Push-up, weighted", 1, 15, 10, false, false, "", note],
+      ["2026-09-23", "Legs", "Leg Press", 1, null, 50, false, false, "", ""],
+      ["2026-09-24", "Pull", "Lat Pulldown", 1, 10, 45, false, false, "", ""],
     ]);
     const quoted = '"Busy, ""leg day"" crowd\nshort rests"';
     expect(toCsv([CSV_COLUMNS, ...rows]).split("\r\n")).toEqual([
-      "day,session,lift,set,reps,kg,skipped,swapped_for,note",
-      `2026-09-21,Push,Incline Machine Press,1,10,30,false,Incline DB Press,${quoted}`,
-      `2026-09-21,Push,Chest Press Machine,1,12,40,false,,${quoted}`,
-      `2026-09-21,Push,Chest Press Machine,2,10,42.5,false,,${quoted}`,
-      `2026-09-21,Push,Machine Shoulder Press,1,8,20,true,,${quoted}`,
-      `2026-09-21,Push,"Push-up, weighted",1,15,10,false,,${quoted}`,
-      "2026-09-23,Legs,Leg Press,1,,50,false,,",
-      "2026-09-24,Pull,Lat Pulldown,1,10,45,false,,",
+      "day,session,lift,set,reps,kg,warmup,skipped,swapped_for,note",
+      `2026-09-21,Push,Incline Machine Press,1,10,30,false,false,Incline DB Press,${quoted}`,
+      `2026-09-21,Push,Chest Press Machine,1,12,40,false,false,,${quoted}`,
+      `2026-09-21,Push,Chest Press Machine,2,10,42.5,false,false,,${quoted}`,
+      `2026-09-21,Push,Machine Shoulder Press,1,8,20,false,true,,${quoted}`,
+      `2026-09-21,Push,"Push-up, weighted",1,15,10,false,false,,${quoted}`,
+      "2026-09-23,Legs,Leg Press,1,,50,false,false,,",
+      "2026-09-24,Pull,Lat Pulldown,1,10,45,false,false,,",
       "",
+    ]);
+  });
+
+  it("marks a warm-up set with its own column, numbered apart from the working sets it doesn't count toward", () => {
+    const s = storeWith({
+      "2026-09-23": day({
+        exercises: { "Leg Press": { done: false, kg: 50, sets: [{ reps: 8, kg: 20, type: "warmup" }, { reps: 5, kg: 30, type: "warmup" }, { reps: 10, kg: 50 }, { reps: 9, kg: 50 }] } },
+      }),
+    });
+    expect(s.workoutRows()).toEqual([
+      ["2026-09-23", "Legs", "Leg Press", 1, 8, 20, true, false, "", ""],
+      ["2026-09-23", "Legs", "Leg Press", 2, 5, 30, true, false, "", ""],
+      ["2026-09-23", "Legs", "Leg Press", 1, 10, 50, false, false, "", ""], // the first working set is set 1, as on Today
+      ["2026-09-23", "Legs", "Leg Press", 2, 9, 50, false, false, "", ""],
     ]);
   });
 });

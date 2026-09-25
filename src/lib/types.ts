@@ -10,6 +10,10 @@ export type DayKey = string;
 export interface SetLog {
   reps: number | null;
   kg: number | null;
+  /** A warm-up, not a working set: doesn't count toward the planned sets, records or volume. Unset (older sets,
+   *  and today's working sets) means a working set. The set types issue (warm-up, working, drop, failure) will
+   *  extend this. */
+  type?: "warmup";
 }
 
 export interface LiftLog {
@@ -153,6 +157,9 @@ export interface Plan {
   goalWeight: number | null;
   weeklyRatePct: number | null;
   kneeLimit: number;
+  /** For the plates button on a set, and a lift's warm-up sets. */
+  barKg: number;
+  plateKgs: number[];
   warmups: string[];
   days: PlanDay[];
 }

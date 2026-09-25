@@ -1,6 +1,6 @@
 "use client";
 import { CaretDown, DotsThree, Microphone } from "@phosphor-icons/react";
-import { useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
@@ -10,11 +10,13 @@ import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
 import { num, setsSummary } from "@/lib/format";
 import { hashOf } from "@/lib/route";
-import type { RecordKind } from "@/lib/stats";
-import { minSets, performed, prTitle, setsOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
+import { isWorkingSet, type RecordKind } from "@/lib/stats";
+import { minSets, performed, prTitle, setsComplete, setsOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
+import { PlatesButton, PlatesInfo } from "./PlateCalc";
 import type { LiftMenu } from "./types";
+import { WarmupCalc } from "./WarmupCalc";
 
 interface Props {
   item: Item;
@@ -35,7 +37,7 @@ interface Props {
  *  set is already heavier. */
 function LastHint({ last, cur }: { last: LastDone | null; cur: number | null }) {
   if (!last) return <span className="last">First time</span>;
-  const sets = setsOf(last.r), top = topKg(sets), up = cur != null && top != null && cur > top;
+  const sets = setsOf(last.r).filter(isWorkingSet), top = topKg(sets), up = cur != null && top != null && cur > top;
   return (
     <span className={cx("last", up && "up")}>
       Last {setsSummary(sets)} · {dayMonth(last.day)}
@@ -54,34 +56,54 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   const store = useGym();
   const { x, name, extra } = item, r: Partial<LiftLog> = entry.exercises[name] || {};
   const did = performed(name, r as LiftLog), last = store.lastDone(did, sel), next = r.skipped ? null : store.nextWeight(x, did, sel);
-  const sets = setsOf(r as LiftLog), min = extra ? 1 : minSets(x), rows = Math.max(min, sets.length);
+  // Warm-up sets (WU-marked) are kept apart from the numbered grid below: they never count toward the planned
+  // sets, a record or the heaviest set, whatever position they hold in the stored array.
+  const allSets = setsOf(r as LiftLog), warmSets = allSets.filter((s) => !isWorkingSet(s));
+  const sets = allSets.filter(isWorkingSet), min = extra ? 1 : minSets(x), rows = Math.max(min, sets.length);
+  // What to suggest as the warm-up calculator's working weight: the progression hint, or last time's top set.
+  const defaultWorkingKg = next && !next.held ? next.to : last ? topKg(setsOf(last.r)) : null;
   // How to do the lift: folded, since it's the same every week. Warnings (e.g. a KNEE NOTE) always show.
   const cue = r.skipped || r.swap ? "" : x.cue;
   const [howOpen, setHowOpen] = useState(false);
+  const [plateRow, setPlateRow] = useState<number | null>(null);
   const edit = (fn: (r: LiftLog) => void, immediate: boolean) => store.editLift(sel, name, fn, immediate);
+  const barKg = store.plan.barKg, plateKgs = store.plan.plateKgs;
 
-  const setField = (j: number, f: keyof SetLog, value: string) =>
+  const setField = (j: number, f: "reps" | "kg", value: string) =>
     edit((r) => {
-      const sets = setsOf(r).map((s) => ({ reps: s.reps ?? null, kg: s.kg ?? null }));
-      while (sets.length <= j) sets.push({ reps: null, kg: null });
+      const warm = setsOf(r).filter((s) => !isWorkingSet(s));
+      const work = setsOf(r).filter(isWorkingSet).map((s) => ({ reps: s.reps ?? null, kg: s.kg ?? null }));
+      while (work.length <= j) work.push({ reps: null, kg: null });
       const v = num(value);
-      sets[j][f] = v == null ? null : f === "kg" ? Math.round(v * 2) / 2 : Math.max(0, Math.round(v));
+      work[j][f] = v == null ? null : f === "kg" ? Math.round(v * 2) / 2 : Math.max(0, Math.round(v));
       // A new set usually uses the same weight as the one before it.
-      if (f === "reps" && v != null && j > 0 && sets[j].kg == null && sets[j - 1].kg != null) sets[j].kg = sets[j - 1].kg;
-      r.sets = sets;
-      r.kg = topKg(sets);
-      // Logging the planned number of sets ticks the lift off.
-      if (!r.done && !r.skipped && sets.filter((s) => (s.reps ?? 0) > 0).length >= min) {
+      if (f === "reps" && v != null && j > 0 && work[j].kg == null && work[j - 1].kg != null) work[j].kg = work[j - 1].kg;
+      r.sets = [...warm, ...work];
+      r.kg = topKg(r.sets);
+      // Logging the planned number of working sets ticks the lift off; warm-ups never do.
+      if (!r.done && !r.skipped && setsComplete(work, min)) {
         r.done = true;
         r.autoDone = true;
       }
     }, false);
   const addSet = () =>
     edit((r) => {
-      const sets = setsOf(r).map((s) => ({ ...s }));
-      while (sets.length < min) sets.push({ reps: null, kg: null });
-      sets.push({ reps: null, kg: null });
-      r.sets = sets;
+      const warm = setsOf(r).filter((s) => !isWorkingSet(s));
+      const work = setsOf(r).filter(isWorkingSet).map((s) => ({ ...s }));
+      while (work.length < min) work.push({ reps: null, kg: null });
+      work.push({ reps: null, kg: null });
+      r.sets = [...warm, ...work];
+    }, true);
+  const logWarmups = (steps: { reps: number; kg: number }[]) =>
+    edit((r) => {
+      const work = setsOf(r).filter(isWorkingSet);
+      r.sets = [...steps.map((s) => ({ reps: s.reps, kg: s.kg, type: "warmup" as const })), ...work];
+      r.kg = topKg(r.sets);
+    }, true);
+  const removeWarmups = () =>
+    edit((r) => {
+      r.sets = setsOf(r).filter(isWorkingSet);
+      r.kg = topKg(r.sets);
     }, true);
   const skipToday = () =>
     edit((r) => {
@@ -95,7 +117,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   // lift as saved now, since the answer comes after this render, and returns the line to show under the sets.
   const voiceOn = useVoiceOn();
   const hear = (said: VoiceResult, heard: string): string => {
-    const now = () => setsOf(store.entry(sel).exercises[name]);
+    const now = () => setsOf(store.entry(sel).exercises[name]).filter(isWorkingSet);
     const lastLogged = () => now().findLastIndex((s) => (s.reps ?? 0) > 0);
     const at = `Heard “${heard}”`, logged = (j: number) => `${at}: set\u00a0${j + 1}, ${setsSummary([now()[j]])}.`;
     if (store.entry(sel).exercises[name]?.skipped) return "";
@@ -127,7 +149,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
       // Logging the planned sets ticked the lift off (autoDone, saved with the day), so with fewer the tick goes
       // too. A tick given by hand, with the box or "done", stays.
       edit((r) => {
-        if (r.done && r.autoDone && setsOf(r).filter((s) => (s.reps ?? 0) > 0).length < min) {
+        if (r.done && r.autoDone && !setsComplete(setsOf(r), min)) {
           r.done = false;
           delete r.autoDone;
         }
@@ -284,42 +306,54 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
           )}
         </div>
       ) : null}
+      <WarmupCalc id={`wset${i}`} barKg={barKg} defaultKg={defaultWorkingKg} warmSets={warmSets} onLog={logWarmups} onRemove={removeWarmups} />
       <div className="sets">
         {Array.from({ length: rows }, (_, j) => {
           const s: Partial<SetLog> = sets[j] || {}, [phR, phK] = store.placeholders(x, last, j, next), pr = marks.get(`${did}|${j}`);
+          const platesId = `pl${i}_${j}`, plateOpen = plateRow === j;
           return (
-            <div key={j} className={cx("set", pr && "pr", (s.reps ?? 0) > 0 && "logged")}>
-              <span className="sn">{j + 1}</span>
-              <SyncedInput
-                id={`s${i}_${j}_r`}
-                data-set={`${i}:${j}:reps`}
-                type="number"
-                inputMode="numeric"
-                min="0"
-                step="1"
-                placeholder={phR}
-                value={s.reps}
-                aria-label={`${did}, set ${j + 1}, reps`}
-                onChange={(ev) => setField(j, "reps", ev.target.value)}
-              />
-              <span className="x">×</span>
-              <SyncedInput
-                id={`s${i}_${j}_k`}
-                data-set={`${i}:${j}:kg`}
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.5"
-                placeholder={phK}
-                value={s.kg}
-                aria-label={`${did}, set ${j + 1}, weight in kg`}
-                onChange={(ev) => setField(j, "kg", ev.target.value)}
-              />
-              <span className="u">kg</span>
-              <span className="prb" title={prTitle(pr)}>
-                PR
-              </span>
-            </div>
+            <Fragment key={j}>
+              <div className={cx("set", pr && "pr", (s.reps ?? 0) > 0 && "logged")}>
+                <span className="sn">{j + 1}</span>
+                <SyncedInput
+                  id={`s${i}_${j}_r`}
+                  data-set={`${i}:${j}:reps`}
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  step="1"
+                  placeholder={phR}
+                  value={s.reps}
+                  aria-label={`${did}, set ${j + 1}, reps`}
+                  onChange={(ev) => setField(j, "reps", ev.target.value)}
+                />
+                <span className="x">×</span>
+                <SyncedInput
+                  id={`s${i}_${j}_k`}
+                  data-set={`${i}:${j}:kg`}
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.5"
+                  placeholder={phK}
+                  value={s.kg}
+                  aria-label={`${did}, set ${j + 1}, weight in kg`}
+                  onChange={(ev) => setField(j, "kg", ev.target.value)}
+                />
+                <span className="u">kg</span>
+                <PlatesButton
+                  id={platesId}
+                  label={`Plates for ${did}, set ${j + 1}`}
+                  open={plateOpen}
+                  disabled={s.kg == null || s.kg <= 0}
+                  onToggle={() => setPlateRow(plateOpen ? null : j)}
+                />
+                <span className="prb" title={prTitle(pr)}>
+                  PR
+                </span>
+              </div>
+              {plateOpen && s.kg != null && s.kg > 0 ? <PlatesInfo id={platesId} kg={s.kg} barKg={barKg} plateKgs={plateKgs} /> : null}
+            </Fragment>
           );
         })}
         <div className="setbtns">
@@ -334,7 +368,8 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
                 const gone = sets[sets.length - 1], said = setsSummary([gone]);
                 if (said && !confirm(`Remove set ${sets.length} (${said})?`)) return;
                 edit((r) => {
-                  r.sets = setsOf(r).slice(0, -1);
+                  const warm = setsOf(r).filter((s) => !isWorkingSet(s));
+                  r.sets = [...warm, ...setsOf(r).filter(isWorkingSet).slice(0, -1)];
                   r.kg = topKg(r.sets);
                 }, true);
               }}

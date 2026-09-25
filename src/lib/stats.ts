@@ -2,6 +2,9 @@
  * storage, so they can be unit-tested on their own. Days are "YYYY-MM-DD" keys; sets are { reps, kg }. */
 import type { DayKey, SetLog } from "./types";
 
+/** Counts toward the planned sets, records and volume: a warm-up doesn't. */
+export const isWorkingSet = (s: SetLog) => s.type !== "warmup";
+
 const DAY = 86400000;
 export const dayNum = (k: DayKey) => {
   const [y, m, d] = k.split("-").map(Number);
@@ -135,11 +138,73 @@ export interface NextStep {
 export function readyToAdd(sets: SetLog[] | undefined, reps: string, minSets: number, step: number): NextStep | null {
   const range = repRange(reps);
   if (!range || !(step > 0)) return null;
-  const work = (sets || []).filter((s) => s && s.reps != null && s.kg != null && s.kg >= 0) as { reps: number; kg: number }[];
+  const work = (sets || []).filter((s) => s && isWorkingSet(s) && s.reps != null && s.kg != null && s.kg >= 0) as { reps: number; kg: number }[];
   if (!work.length || work.length < minSets) return null;
   const kg = work[0].kg;
   if (!work.every((s) => s.kg === kg && s.reps >= range[1])) return null;
   return { from: kg, to: Math.round((kg + step) * 100) / 100, top: range[1] };
+}
+
+/* ---------- plates ---------- */
+
+export interface PlateBreakdown {
+  /** One entry per plate size actually used, heaviest first: how many go on each side. */
+  perSide: { kg: number; count: number }[];
+  /** What the plates and bar actually come to: at most `kg`, since a plate is never split or guessed at. */
+  loaded: number;
+  /** `kg` minus `loaded`: 0 when the plates make it exactly. */
+  shortBy: number;
+  /** `kg` is under the bar's own weight, so no plates can reach it. */
+  underBar: boolean;
+}
+
+// The plates for one side that come closest to the target without going over, with the fewest plates that
+// does, heaviest first among equals; as many of each as it takes (a gym rarely runs out). Heaviest-first alone
+// can miss: with 25 and 15 kg plates, 30 kg a side is two 15s, not a 25 and 5 kg short. Counted in 0.05 kg
+// steps, which every usual plate is a whole number of, with any other plate rounded up to one so the count
+// never loads more than asked. A target under the bar loads the bar alone, since it can't go any lighter.
+export function platesFor(kg: number, barKg: number, plateKgs: number[]): PlateBreakdown {
+  const bar = barKg > 0 ? barKg : 0;
+  if (kg < bar) return { perSide: [], loaded: bar, shortBy: Math.round((kg - bar) * 100) / 100, underBar: true };
+  const sizes = [...new Set(plateKgs.filter((p) => p > 0))].sort((a, b) => b - a);
+  const STEP = 0.05, units = sizes.map((p) => Math.ceil(p / STEP - 1e-9));
+  // A side past 1000 kg is a typo: the search stops there rather than take long, and the rest shows as short.
+  const target = Math.min(Math.floor((kg - bar) / 2 / STEP + 1e-9), 20000);
+  const fewest = new Array<number>(target + 1).fill(Infinity), last = new Array<number>(target + 1).fill(-1);
+  fewest[0] = 0;
+  for (let t = 1; t <= target; t++)
+    units.forEach((u, i) => {
+      if (u <= t && fewest[t - u] + 1 < fewest[t]) [fewest[t], last[t]] = [fewest[t - u] + 1, i];
+    });
+  let t = target;
+  while (t > 0 && fewest[t] === Infinity) t--;
+  const count = new Map<number, number>();
+  for (; t > 0; t -= units[last[t]]) count.set(last[t], (count.get(last[t]) ?? 0) + 1);
+  const perSide = sizes.flatMap((p, i) => (count.has(i) ? [{ kg: p, count: count.get(i) as number }] : []));
+  const loaded = Math.round((bar + 2 * perSide.reduce((a, p) => a + p.kg * p.count, 0)) * 100) / 100;
+  return { perSide, loaded, shortBy: Math.round((kg - loaded) * 100) / 100, underBar: false };
+}
+
+/* ---------- warm-up ladder ---------- */
+
+export interface WarmupStep {
+  pct: number;
+  kg: number;
+  reps: number;
+}
+
+// 40, 60 and 80 percent of the working weight, fewer reps as it climbs: a common ramp before the working sets.
+const WARMUP_STEPS: readonly { pct: number; reps: number }[] = [
+  { pct: 40, reps: 8 },
+  { pct: 60, reps: 5 },
+  { pct: 80, reps: 3 },
+];
+
+// Rounded to the nearest 2.5 kg (a plate pair's smallest common step) and never under the bar, which can't be
+// loaded any lighter.
+export function warmupLadder(workingKg: number, barKg: number): WarmupStep[] {
+  const bar = barKg > 0 ? barKg : 0;
+  return WARMUP_STEPS.map(({ pct, reps }) => ({ pct, reps, kg: Math.max(bar, Math.round((workingKg * pct) / 100 / 2.5) * 2.5) }));
 }
 
 export type RecordKind = "weight" | "e1rm" | "reps";
@@ -181,7 +246,7 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
     if (!b) continue;
     const top: Partial<Record<RecordKind, { v: number; i: number }>> = {};
     sets.forEach((s, i) => {
-      if (!s || s.kg == null) return;
+      if (!s || s.kg == null || !isWorkingSet(s)) return;
       const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
       const cands: [RecordKind, number][] = [];
       if (s.kg > b.kg) cands.push(["weight", s.kg]);
@@ -205,7 +270,7 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
 // weight (a few distinct weights, so checking a set doesn't mean scanning every earlier set).
 export function foldDay(best: RecordFold, { lifts }: LiftDay): void {
   for (const { name, sets } of lifts) {
-    const good = sets.filter((s) => s && s.kg != null) as { reps: number | null; kg: number }[];
+    const good = sets.filter((s) => s && s.kg != null && isWorkingSet(s)) as { reps: number | null; kg: number }[];
     if (!good.length) continue;
     const b = best.get(name) || { kg: -Infinity, e1rm: null, repsAt: new Map<number, number>() };
     for (const s of good) {

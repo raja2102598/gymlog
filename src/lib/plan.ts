@@ -8,6 +8,10 @@ const pos = (v: unknown) => (v != null && v !== "" && +(v as number) > 0 ? +(v a
 /** A number from lo to hi, or null (missing, not a number, out of range). */
 const within = (v: unknown, lo: number, hi: number) => (v != null && v !== "" && +(v as number) >= lo && +(v as number) <= hi ? +(v as number) : null);
 
+/** A standard bar and plate set, until Settings says otherwise. */
+const DEFAULT_BAR_KG = 20;
+const DEFAULT_PLATE_KGS = [25, 20, 15, 10, 5, 2.5, 1.25];
+
 // Fills gaps and drops unnamed lifts so a hand-edited or partial plan can't break rendering. `d` is the
 // default plan to fall back on (none while the default itself is being read).
 export function normalizePlan(p: unknown, d: Plan | null): Plan {
@@ -24,6 +28,12 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
     goalWeight: pos(q.goalWeight),
     weeklyRatePct: pos(q.weeklyRatePct),
     kneeLimit: lim != null && lim !== "" && Number.isInteger(+lim) && +lim >= 0 && +lim <= 10 ? +lim : d ? d.kneeLimit : 5,
+    barKg: pos(q.barKg) ?? (d ? d.barKg : DEFAULT_BAR_KG),
+    plateKgs: Array.isArray(q.plateKgs)
+      ? [...new Set((q.plateKgs as unknown[]).map(pos).filter((n): n is number => n != null))].sort((a, b) => b - a)
+      : d
+        ? d.plateKgs.slice()
+        : DEFAULT_PLATE_KGS.slice(),
     warmups: Array.isArray(q.warmups) ? [...new Set((q.warmups as unknown[]).map((w) => str(w).trim()).filter(Boolean))] : d ? d.warmups.slice() : [],
     days: DOW.map((wd, i) => {
       const s = ((days && days[i]) || d?.days[i] || {}) as Record<string, unknown>;
