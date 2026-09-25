@@ -1,8 +1,8 @@
-// Writes src/styles/tokens.css and src/design/tokens.gen.ts from src/design/tokens.json, the design system's token
-// file (dark theme first, light second). Every colour the app draws comes from here: the CSS holds one custom
-// property per token (--bg, --surface, --steps-end…) for each theme, and the TS module the few values code needs
-// outside CSS (the browser bar's colour). Run `npm run tokens` after editing tokens.json; a unit test checks the two
-// generated files match it.
+// Writes src/styles/tokens.css (and a copy, public/tokens.css, for the standalone pages) and src/design/tokens.gen.ts
+// from src/design/tokens.json, the design system's token file (dark theme first, light second). Every colour the app
+// draws comes from here: the CSS holds one custom property per token (--bg, --surface, --steps-end…) for each theme,
+// and the TS module the few values code needs outside CSS (the browser bar's colour). Run `npm run tokens` after
+// editing tokens.json; tests/unit/tokens.test.ts checks the generated files match it.
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -58,5 +58,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { css, ts } = generate();
   fs.writeFileSync(new URL("src/styles/tokens.css", root), css);
   fs.writeFileSync(new URL("src/design/tokens.gen.ts", root), ts);
-  console.log("Wrote src/styles/tokens.css and src/design/tokens.gen.ts");
+  // The same file for the site's standalone pages (public/app-login.html, privacypolicy.html), which aren't built.
+  fs.writeFileSync(new URL("public/tokens.css", root), css);
+  console.log("Wrote src/styles/tokens.css, src/design/tokens.gen.ts and public/tokens.css");
 }

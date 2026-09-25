@@ -286,15 +286,21 @@ function lastSet(last: LastDone | null, j: number): string {
   return s.kg != null && s.reps != null ? `${s.kg} × ${s.reps}` : s.reps != null ? `${s.reps} reps` : s.kg != null ? `${s.kg} kg` : "–";
 }
 
-/** Logs set `j` as it stands: whatever is typed, and for what isn't, the suggestion showing in its box (the next
- *  weight, the target reps). The reps go in last, so the rest timer starts on the finished set. */
+/** Logs set `j` as it stands: whatever is typed, and for what isn't, the weight of the set before it today or else
+ *  the suggestion in its box (the next weight), and the target reps. The reps go in last, so the rest timer starts
+ *  on the finished set. With no reps to suggest, the reps box takes focus instead. */
 export function logSet(store: GymStore, m: LiftModel, j: number) {
   const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = store.placeholders(m.x, m.last, j, m.next);
-  if (s.kg == null && num(phK) != null) m.setField(j, "kg", phK);
-  if (!((s.reps ?? 0) > 0)) {
-    const reps = num(s.reps ?? phR) ?? num(phR) ?? 0;
-    m.setField(j, "reps", String(reps > 0 ? reps : 1));
+  const reps = num(s.reps ?? "") || num(phR);
+  if (!reps || reps <= 0) {
+    document.getElementById(`s${m.i}_${j}_r`)?.focus();
+    return;
   }
+  if (s.kg == null) {
+    const kg = (j > 0 ? m.sets[j - 1]?.kg : null) ?? num(phK);
+    if (kg != null) m.setField(j, "kg", String(kg));
+  }
+  if (!((s.reps ?? 0) > 0)) m.setField(j, "reps", String(reps));
 }
 
 /** The first working set with no reps yet: the one the workout is on. */

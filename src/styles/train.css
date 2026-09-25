@@ -43,10 +43,11 @@
 .wtop h1{font:800 15px/20px var(--font-sans);overflow-wrap:anywhere}
 .wclock{font:900 15px/20px var(--font-sans);color:var(--brand-text)}
 .wtop .btn-raised:not(.btn-icon){padding:0 20px;font-size:16px}
-.wprog{list-style:none;margin:0;padding:16px var(--gut-r) 0 var(--gut-l);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px}
+.wprog{position:relative;z-index:1;list-style:none;margin:0;padding:16px var(--gut-r) 0 var(--gut-l);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px}
 .wprog li{display:flex}
-.wprog button{flex:1 1 auto;height:20px;padding:7px 0;border:0;background:transparent;cursor:pointer}
-.wprog button::before{content:"";display:block;height:5px;border-radius:3px;background:var(--outline)}
+/* 44px tall to tap, drawn as a 5px bar: the rest of the target overlaps the space around it */
+.wprog button{flex:1 1 auto;height:44px;margin:-19.5px 0;padding:0;border:0;background:transparent;cursor:pointer;display:flex;align-items:center}
+.wprog button::before{content:"";flex:1 1 auto;height:5px;border-radius:3px;background:var(--outline)}
 .wprog .done button::before{background:var(--brand)}
 .wprog .now button::before{background:var(--brand-partial)}
 .wbody{padding-top:12px;flex:1 1 auto}
@@ -103,7 +104,9 @@
 .srow.set{height:56px;border-radius:var(--radius-md)}
 .srow.set.active{height:64px}
 .srow.done{background:var(--brand-row)}
-.srow .sn{display:grid;place-items:center;width:30px;height:44px;padding:0;border:0;background:none;color:var(--ink);font:900 17px/1 var(--font-sans);cursor:pointer;border-radius:var(--radius-sm)}
+.srow .sn{position:relative;display:grid;place-items:center;width:30px;height:44px;padding:0;border:0;background:none;color:var(--ink);font:900 17px/1 var(--font-sans);cursor:pointer;border-radius:var(--radius-sm)}
+/* 44px wide to tap: the target reaches into the row's edge and the Last column beside it */
+.srow .sn::before{content:"";position:absolute;inset:0 -7px}
 .srow.done .sn{color:var(--brand-text)}
 .srow.up .sn{color:var(--ink-muted)}
 .srow .sn[data-kind="failure"] span,.srow .sn[data-kind="drop"] span{color:var(--warn-ink);background:var(--warn-bg);padding:2px 4px;border-radius:6px;font-size:14px}

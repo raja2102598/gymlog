@@ -84,7 +84,7 @@ button,a,input,select,textarea,label{touch-action:manipulation}
 /* form fields: label above, outlined box on the card */
 .field{display:grid;gap:6px;min-width:0}
 .field>span{font:var(--type-label);color:var(--ink-muted)}
-.field input,.field textarea,.field select,select.ghost{width:100%;min-height:48px;padding:10px 14px;border:1.5px solid var(--outline);border-radius:var(--radius-md);background:var(--surface);color:var(--ink);font:var(--type-body);font-size:16px}
+.field input,.field textarea,.field select,select.ghost{width:100%;min-height:48px;padding:10px 14px;border:1.5px solid var(--ink-subtle);border-radius:var(--radius-md);background:var(--surface);color:var(--ink);font:var(--type-body);font-size:16px}
 .field input[type=number]{font:var(--type-input-num);font-size:18px}
 .field textarea{min-height:88px;resize:vertical;field-sizing:content;line-height:1.45}
 .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--brand);outline:none;box-shadow:inset 0 0 0 .5px var(--brand)}
@@ -93,7 +93,7 @@ button,a,input,select,textarea,label{touch-action:manipulation}
 .field.wide{grid-column:1/-1}
 input::placeholder,textarea::placeholder{color:var(--ink-muted);opacity:1}
 select.ghost,.field select{appearance:none;-webkit-appearance:none;padding-right:38px;background-repeat:no-repeat;background-image:linear-gradient(45deg,transparent 50%,var(--ink-muted) 50%),linear-gradient(135deg,var(--ink-muted) 50%,transparent 50%);background-position:calc(100% - 20px) 55%,calc(100% - 15px) 55%;background-size:5px 5px,5px 5px;text-align:left;text-overflow:ellipsis;max-width:100%}
-select.ghost{border-radius:var(--radius-pill);min-height:var(--touch-min);font:var(--type-body-strong);font-size:15px;border-color:var(--outline)}
+select.ghost{border-radius:var(--radius-pill);min-height:var(--touch-min);font:var(--type-body-strong);font-size:15px;border-color:var(--ink-subtle)}
 input[type=number]{appearance:textfield;-moz-appearance:textfield}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .pw-form{display:grid;gap:10px}
