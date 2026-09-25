@@ -46,6 +46,14 @@ export default async function weights({ browser, base, check }) {
   await until(() => lifts()[5]?.load === "ezbar" && lifts()[6]?.load === "dumbbell");
   check("a pick saves with the lift", lifts()[5]?.load === "ezbar" && lifts()[6]?.load === "dumbbell", JSON.stringify(lifts().slice(5)));
   check("and its step follows", (await stepHint(6)) === "2");
+  // Every choice reads whole in the box, "Resistance band (library)" the longest there is.
+  const cut = await page.$eval("#pe_x5_load", (s) => {
+    const cs = getComputedStyle(s), c = document.createElement("canvas").getContext("2d");
+    c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const room = s.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return ["Resistance band (library)", ...[...s.options].map((o) => o.textContent)].filter((t) => c.measureText(t).width > room);
+  });
+  check("Loaded with shows each choice whole", cut.length === 0, cut.join(", "));
   await page.locator("#pe_x6_load").scrollIntoViewIfNeeded();
   await shot(page, "weights-plan");
   await planDone(page);

@@ -583,7 +583,7 @@ function LoadField({ x, j, onPick }: { x: PlanExercise; j: number; onPick: (v: s
   const store = useGym();
   const lib = loadOf(store.exerciseOf(x.name, x));
   return (
-    <label className="field" htmlFor={`pe_x${j}_load`}>
+    <label className="field pe-load" htmlFor={`pe_x${j}_load`}>
       <span>Loaded with</span>
       <select id={`pe_x${j}_load`} data-pload={j} value={x.load ?? ""} onChange={(ev) => onPick(ev.target.value)}>
         <option value="">{lib ? `${LOADS[lib]} (library)` : "Not set"}</option>
