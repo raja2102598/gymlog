@@ -7,10 +7,12 @@ import {
   downloadPercent,
   formatMB,
   lastCheckedAt,
+  NOTHING_PUBLISHED,
   setDismissedUpdateCode,
   setLastCheckedAt,
   shouldCheckNow,
   shouldShowUpdateNotice,
+  updateFinding,
 } from "@/lib/update";
 
 describe("shouldCheckNow", () => {
@@ -40,6 +42,24 @@ describe("formatMB", () => {
 describe("availableMessage", () => {
   it("names the version and its size", () => {
     expect(availableMessage("1.0.46", 18.7 * 1024 * 1024)).toBe("Version 1.0.46 is available (18.7 MB).");
+  });
+});
+
+describe("updateFinding", () => {
+  const latest = { code: 70, name: "1.0.70", commit: "b6c171f", size: 6 * 1024 * 1024, sha256: "e465a7" };
+  it("offers a newer build", () => {
+    expect(updateFinding({ enabled: true, available: true, latest })).toEqual({ kind: "available", latest });
+  });
+  it("is up to date when the published build isn't newer", () => {
+    expect(updateFinding({ enabled: true, available: false, latest })).toEqual({ kind: "upToDate" });
+  });
+  it("says nothing is published, rather than up to date, when there's no version.json to compare with", () => {
+    // 1.0.70 went out as a draft: its version.json was a 404, and phones said they had the newest version.
+    expect(updateFinding({ enabled: true, available: false })).toEqual({ kind: "nothingPublished" });
+    expect(NOTHING_PUBLISHED).toBe("Couldn’t find a published build to update from. Try again in a few minutes.");
+  });
+  it("hides the controls in a build with no repo to check", () => {
+    expect(updateFinding({ enabled: false, available: false })).toEqual({ kind: "hidden" });
   });
 });
 
