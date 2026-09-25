@@ -47,9 +47,16 @@ export function ChoosePlanView({ hidden, onChosen, onRestoring, onRestored }: Pr
     }
   };
   return (
-    <section className="panel" id="chooseView" hidden={hidden}>
-      <h2 className="display">Choose a plan</h2>
-      <p className="sub">Pick a week to start from. You can change every session and lift later in Settings → Edit plan.</p>
+    <section className="choose" id="chooseView" hidden={hidden}>
+      <header className="head">
+        <div className="head-t">
+          <span className="eyebrow">Welcome to Gym Log</span>
+          <h1>Choose a plan</h1>
+        </div>
+      </header>
+      <div className="screen">
+      <div className="card">
+      <p className="sub">Pick a week to start from. You can change every session and lift later in Train → Change plan.</p>
       <TemplateList
         disabled={busy}
         onPick={(t) => {
@@ -59,7 +66,7 @@ export function ChoosePlanView({ hidden, onChosen, onRestoring, onRestored }: Pr
       />
       <div className="choose-row">
         <p className="sub">Moving from another copy of Gym Log?</p>
-        <button type="button" className="ghost" id="chooseRestore" disabled={busy} onClick={() => file.current?.click()}>
+        <button type="button" className="btn btn-sm" id="chooseRestore" disabled={busy} onClick={() => file.current?.click()}>
           Restore a backup
         </button>
       </div>
@@ -71,9 +78,11 @@ export function ChoosePlanView({ hidden, onChosen, onRestoring, onRestored }: Pr
         <p className="sub">
           Signed in as <span id="chooseWho">{store.user?.email || "you"}</span>
         </p>
-        <button type="button" className="ghost" id="chooseSignOut" disabled={busy} onClick={() => void store.signOut()}>
+        <button type="button" className="btn btn-sm" id="chooseSignOut" disabled={busy} onClick={() => void store.signOut()}>
           Sign out
         </button>
+      </div>
+      </div>
       </div>
     </section>
   );

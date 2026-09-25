@@ -13,8 +13,8 @@ const sets = (n: number) => (n % 1 ? n.toFixed(1) : String(n));
 export function MusclesCard({ m }: { m: MusclesModel }) {
   const last = m.weeks.length - 1;
   return (
-    <section className="panel" id="dashMuscles">
-      <h2>Sets per muscle</h2>
+    <section className="card" id="dashMuscles">
+      <h2 className="title-sm">Sets per muscle</h2>
       {m.rows.length ? (
         <>
           <table className="musc-t">

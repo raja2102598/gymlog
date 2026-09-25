@@ -23,7 +23,7 @@ export function TemplateList({ onPick, id, hidden, disabled }: Props) {
             <p className="sub">{t.summary}</p>
           </div>
           {/* Named "Use this plan" and the plan's name, so each of the four buttons says which plan it is. */}
-          <button type="button" className="ghost" id={`${uid}${t.id}-use`} data-template={t.id} aria-labelledby={`${uid}${t.id}-use ${uid}${t.id}`} disabled={disabled} onClick={() => onPick(t)}>
+          <button type="button" className="btn btn-sm" id={`${uid}${t.id}-use`} data-template={t.id} aria-labelledby={`${uid}${t.id}-use ${uid}${t.id}`} disabled={disabled} onClick={() => onPick(t)}>
             Use this plan
           </button>
         </li>

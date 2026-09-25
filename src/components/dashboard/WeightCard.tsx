@@ -5,14 +5,14 @@ import { useChartWidth } from "@/hooks/useChartWidth";
 import type { WeightModel } from "@/lib/dashboard";
 import { ago, dm } from "@/lib/dates";
 import { signed } from "@/lib/format";
-import { LineChart } from "./charts";
+import { WeightTrendChart } from "@/components/ds/WeightTrendChart";
 
 /** Is the weight trend moving at the intended pace? */
 export function WeightCard({ m, onSetGoal }: { m: WeightModel; onSetGoal: () => void }) {
   const [ref, width] = useChartWidth<HTMLElement>();
   return (
-    <section className="panel" id="dashWeight" ref={ref}>
-      <h2>Weight trend</h2>
+    <section className="card" id="dashWeightBody" ref={ref}>
+      <h2 className="title-sm">Weight trend</h2>
       {!m.series.length ? (
         <p className="empty">Log your body weight on the Today screen to start the trend.</p>
       ) : (
@@ -42,11 +42,14 @@ export function WeightCard({ m, onSetGoal }: { m: WeightModel; onSetGoal: () => 
             </p>
           ) : null}
           {m.series.length >= 2 ? (
-            <LineChart
-              line={m.series.map((p) => [p.day, p.trend])}
-              dots={m.series.filter((p) => p.measured).map((p) => [p.day, p.weight])}
-              goal={m.chartGoal ?? null}
+            <WeightTrendChart
+              points={m.series.map((p) => ({ value: p.measured ? p.weight : null, tip: `${dm(p.day)} · ${p.measured ? `${p.weight} kg` : `trend ${p.trend.toFixed(1)} kg`}` }))}
+              tone="body"
               width={width}
+              height={160}
+              goal={m.chartGoal ?? null}
+              axis={[dm(m.series[0].day), dm(m.series[Math.floor((m.series.length - 1) / 2)].day), dm(m.series[m.series.length - 1].day)]}
+              label={`Body weight trend from ${dm(m.series[0].day)}: ${m.series[0].trend.toFixed(1)} kg to ${m.trend!.toFixed(1)} kg${m.chartGoal != null ? `, goal ${m.chartGoal} kg` : ""}.`}
             />
           ) : (
             <p className="empty">1 weigh-in so far. The trend line starts after a few more.</p>
@@ -75,7 +78,7 @@ function GoalKpi({ goal, onSetGoal }: { goal: NonNullable<WeightModel["goal"]>; 
         <>
           <div className="v">-</div>
           <div className="l">no goal weight yet</div>
-          <ViewLink className="ghost tiny" data-goto="pe_goalw" href="#plan" onOpen={onSetGoal}>
+          <ViewLink className="btn btn-sm" data-goto="pe_goalw" href="#plan" onOpen={onSetGoal}>
             Set a goal
           </ViewLink>
         </>

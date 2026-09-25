@@ -1,5 +1,5 @@
 "use client";
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 import { useState, type InputHTMLAttributes } from "react";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
@@ -209,18 +209,18 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   );
 
   return (
-    <>
-      <section className="panel">
+    <div className="screen">
+      <section className="card">
         {/* The bar above names the page; this says whether it's saved. */}
         <div className="top pe-head">
           <div className="sub" id="planMsg" aria-live="polite">
             {store.planMsg}
           </div>
-          <button className="primary" id="planDone" onClick={onDone}>
+          <button className="btn btn-primary btn-sm" id="planDone" onClick={onDone}>
             Done
           </button>
         </div>
-        <div className="week" id="planDays">
+        <div className="daychips" id="planDays">
           {plan.days.map((p, i) => (
             <button key={i} className={cx("dchip", i === editDay && "sel")} aria-label={`Edit ${DOW[i]}, ${p.name}`} aria-pressed={i === editDay} onClick={() => onEditDay(i)}>
               <span className="dw">{DOW[i]}</span>
@@ -295,10 +295,10 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           </div>
           <h3 className="pe-h">Lifts</h3>
           <div id="peWarn" role="status">
-            {warn ? <p className="warn">{warn}</p> : null}
+            {warn ? <p className="callout caution">{warn}</p> : null}
           </div>
           <div id="peRename" role="status">
-            {renameMsg ? <p className={renameMsg.warn ? "warn" : "note"}>{renameMsg.text}</p> : null}
+            {renameMsg ? <p className={renameMsg.warn ? "callout caution" : "note"}>{renameMsg.text}</p> : null}
           </div>
           {d.exercises.length ? null : <p className="empty">No lifts: this is a rest day. Add one to make it a gym day.</p>}
           <ol className="pe-list">
@@ -349,7 +349,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                       Progression: {PROG[x.prog ?? "double"][0]}
                       {parseInt(x.deloadAfter ?? "", 10) > 0 ? `, deload after ${parseInt(x.deloadAfter ?? "", 10)} short` : ""}
                     </span>
-                    <CaretDown size={14} weight="bold" aria-hidden="true" />
+                    <ChevronDown size={16} aria-hidden="true" />
                   </summary>
                   <label className="field" htmlFor={`pe_x${j}_prog`}>
                     <span>How the weight goes up</span>
@@ -433,8 +433,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           </div>
         </div>
       </section>
-      <section className="panel" id="planGeneral" key={store.planShape}>
-        <h2>Every day</h2>
+      <section className="card" id="planGeneral" key={store.planShape}>
+        <h2 className="title-sm">Every day</h2>
         <div className="pe-grid">
           <label className="field" htmlFor="pe_goal">
             <span>Daily step goal</span>
@@ -573,7 +573,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           }}
         />
       </section>
-    </>
+    </div>
   );
 }
 

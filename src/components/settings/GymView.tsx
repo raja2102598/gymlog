@@ -1,5 +1,5 @@
 "use client";
-import { X } from "@phosphor-icons/react";
+import { X } from "lucide-react";
 import { useLibrary } from "@/components/library/LibraryContext";
 import { Group, NumField, Text } from "@/components/settings/parts";
 import { SyncedInput } from "@/components/ui/SyncedField";
@@ -39,7 +39,7 @@ function WeightsGroup() {
   const store = useGym();
   const w = store.weights(), [bLo, bHi] = WEIGHT_LIMITS.bar, [sLo, sHi] = WEIGHT_LIMITS.step;
   return (
-    <Group title="Weights" id="gymWeights">
+    <Group title="Bars, plates and weights" id="gymWeights" open>
       <div className="pref-row pref-col">
         <Text id="gw_bars" title="Bars and plates" sub="What each bar weighs, loaded with the plates your gym has" />
         <div className="pref-goals">
@@ -111,13 +111,13 @@ export function GymView({ onDone }: { onDone: () => void }) {
       onPick: (xs) => store.showLifts(xs.map((x) => x.id), list),
     });
   return (
-    <>
-      <section className="panel">
-        <div className="top pe-head">
+    <div className="screen">
+      <section className="card">
+        <div className="pe-head">
           <div className="sub" id="gymMsg" aria-live="polite">
             {store.planMsg}
           </div>
-          <button className="primary" id="gymDone" onClick={onDone}>
+          <button className="btn btn-primary" id="gymDone" onClick={onDone}>
             Done
           </button>
         </div>
@@ -129,16 +129,17 @@ export function GymView({ onDone }: { onDone: () => void }) {
           the same. Lifts already in your plan stay, whatever the gym has.
         </p>
         <div className="pref-btns">
-          <button className="ghost" id="gymAll" disabled={!g.off.length} onClick={() => store.setEquip(true)}>
+          <button className="btn btn-sm" id="gymAll" disabled={!g.off.length} onClick={() => store.setEquip(true)}>
             Select all
           </button>
-          <button className="ghost" id="gymNone" disabled={g.off.length === Object.keys(EQUIPMENT).length} onClick={() => store.setEquip(false)}>
+          <button className="btn btn-sm" id="gymNone" disabled={g.off.length === Object.keys(EQUIPMENT).length} onClick={() => store.setEquip(false)}>
             Clear all
           </button>
         </div>
       </section>
+      <ul className="list gym-list">
       {EQUIP_GROUPS.map((grp) => (
-        <Group key={grp.name} title={grp.name} id={`gym_${grp.equip[0]}`}>
+        <Group key={grp.name} title={grp.name} id={`gym_${grp.equip[0]}`} value={`${grp.equip.filter((e) => !g.off.includes(e) && uses(e)).length} of ${grp.equip.filter((e) => uses(e) || g.off.includes(e)).length}`} open>
           {/* Equipment no lift uses (the library's foam roller lifts are all stretches) isn't shown, unless it's off. */}
           {grp.equip.filter((e) => uses(e) || g.off.includes(e)).map((e) => {
             const on = !g.off.includes(e);
@@ -162,12 +163,12 @@ export function GymView({ onDone }: { onDone: () => void }) {
         </Group>
       ))}
       <WeightsGroup />
-      <Group title="Lifts" id="gymLifts">
+      <Group title="Lifts" id="gymLifts" open>
         {(["always", "never"] as const).map((list) => (
           <div key={list} className="pref-row pref-col" id={`gym_${list}`}>
             <div className="pref-line">
               <Text id={`gl_${list}`} title={LISTS[list].title} sub={LISTS[list].sub} />
-              <button className="ghost" data-gymadd={list} aria-describedby={`gl_${list}T`} onClick={() => add(list)}>
+              <button className="btn btn-sm" data-gymadd={list} aria-describedby={`gl_${list}T`} onClick={() => add(list)}>
                 Add…
               </button>
             </div>
@@ -179,8 +180,8 @@ export function GymView({ onDone }: { onDone: () => void }) {
                       <span className="pref-tt">{x.name}</span>
                       <span className="sub">{equipText(x)}</span>
                     </span>
-                    <button className="ghost icon" data-gymrm={x.id} aria-label={`Take ${x.name} off ${LISTS[list].title}`} onClick={() => store.showLifts([x.id], null)}>
-                      <X size={18} weight="bold" aria-hidden="true" />
+                    <button className="btn btn-icon" data-gymrm={x.id} aria-label={`Take ${x.name} off ${LISTS[list].title}`} onClick={() => store.showLifts([x.id], null)}>
+                      <X size={18} aria-hidden="true" />
                     </button>
                   </li>
                 ))}
@@ -189,6 +190,7 @@ export function GymView({ onDone }: { onDone: () => void }) {
           </div>
         ))}
       </Group>
-    </>
+      </ul>
+    </div>
   );
 }

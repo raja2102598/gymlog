@@ -1,5 +1,5 @@
 "use client";
-import { X } from "@phosphor-icons/react";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { availableMessage, dismissedUpdateCode, lastCheckedAt, setDismissedUpdateCode, setLastCheckedAt, shouldCheckNow, shouldShowUpdateNotice } from "@/lib/update";
 import type { LatestUpdate } from "@/native/update";
@@ -38,12 +38,12 @@ export function UpdateNotice({ onOpenSettings }: { onOpenSettings: () => void })
   return (
     <div className="syncbar info" id="updateBar" role="status" hidden={!show}>
       <span id="updateMsg">{latest ? availableMessage(latest.name, latest.size) : ""}</span>
-      <ViewLink className="ghost tiny" id="updateOpen" href="#settings" onOpen={onOpenSettings}>
+      <ViewLink className="btn btn-sm" id="updateOpen" href="#settings" onOpen={onOpenSettings}>
         Update
       </ViewLink>
       <button
         type="button"
-        className="ghost icon"
+        className="btn btn-icon"
         id="updateDismiss"
         aria-label="Dismiss"
         onClick={() => {

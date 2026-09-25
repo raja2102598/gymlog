@@ -977,6 +977,21 @@ export class GymStore {
   weightOf(k: DayKey): number | null {
     return this.logs[k]?.weight ?? this.health[k]?.weight ?? null;
   }
+  /** The day's water, ml: what was logged with + and −, or else Health Connect's. */
+  waterOf(k: DayKey): number | null {
+    return this.logs[k]?.water ?? this.health[k]?.waterMl ?? null;
+  }
+  /** Adds (or with a negative `ml`, takes off) water for the day, starting from what Health Connect had. */
+  addWater(k: DayKey, ml: number) {
+    const from = this.waterOf(k) ?? 0;
+    this.editDay(
+      k,
+      (n) => {
+        n.water = Math.max(0, Math.round(from + ml));
+      },
+      true,
+    );
+  }
   weightSeries(): S.TrendPoint[] {
     const days = [...new Set([...this.days(), ...Object.keys(this.health)])].sort();
     return S.weightTrend(days.filter((k) => this.weightOf(k) != null).map((k) => [k, +(this.weightOf(k) as number)]));

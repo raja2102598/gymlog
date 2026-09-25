@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Segmented } from "@/components/health/parts";
+import { SegmentedControl } from "@/components/ds/parts";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { num } from "@/lib/format";
 import type { Effort, SetLog } from "@/lib/types";
@@ -41,7 +41,7 @@ export function SetMenu({ id, s, effort, onChange }: { id: string; s: Partial<Se
   const [bad, setBad] = useState(false);
   return (
     <div className="setmenu" id={id}>
-      <Segmented<SetKind>
+      <SegmentedControl<SetKind>
         value={kind}
         label="Kind of set"
         onChange={(k) => onChange({ type: k === "working" ? undefined : k })}
@@ -70,7 +70,7 @@ export function SetMenu({ id, s, effort, onChange }: { id: string; s: Partial<Se
               if (v !== undefined) onChange({ [field]: v ?? undefined });
             }}
           />
-          {bad ? <span className="warn">{effort === "rpe" ? "RPE is 1 to 10." : "Reps in reserve is 0 to 10."}</span> : null}
+          {bad ? <span className="err">{effort === "rpe" ? "RPE is 1 to 10." : "Reps in reserve is 0 to 10."}</span> : null}
         </label>
       ) : null}
     </div>

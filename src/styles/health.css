@@ -1,109 +1,13 @@
-/* Health: the day at a glance (activity rings, then a tile per kind of data), and a page per kind with charts by
-   day, week and month. Each kind keeps its colour (tokens.css) on marks only, the rings, bars, dots and icons;
-   numbers and words stay ink. --c is the colour of whatever is being drawn. */
-
-/* ‹ Today › and Day / Week / Month */
-.dayswitch{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.dayswitch-l{flex:1 1 auto;min-width:0;text-align:center;font:600 var(--t-md)/1.3 var(--body)}
-.dayswitch .ghost.icon{background:var(--surface);box-shadow:var(--shadow);border-radius:99px}
-.seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px;padding:4px;border-radius:99px;background:var(--chip)}
-.seg-b{min-height:40px;padding:0 8px;border:0;border-radius:99px;background:transparent;color:var(--muted);font:500 14px/1.2 var(--body);cursor:pointer}
-.seg-b.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--shadow)}
-.seg-b:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
-
-/* activity: the rings, and beside them what each one counts */
-.activity{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px 20px}
-.rings{display:block;width:132px;height:132px}
-.rings .track{fill:none;stroke:color-mix(in srgb,var(--c) var(--tint),transparent)}
-.rings .arc{fill:none;stroke:var(--c);stroke-linecap:round}
-.act-rows{display:grid;gap:2px}
-.act-row{display:grid;gap:0;margin-inline:-8px;padding:6px 8px;border-radius:var(--r-ctl);color:var(--ink);text-decoration:none}
-.act-n{display:flex;align-items:center;gap:8px;font-size:var(--t-sm);color:var(--muted)}
-.act-n i{flex:none;width:10px;height:10px;border-radius:99px}
-.act-v{font-variant-numeric:tabular-nums;white-space:nowrap}
-.act-v b{font:600 var(--t-lg)/1.25 var(--body)}
-.act-v .sub{font-size:var(--t-sm)}
-.act-more{margin:4px 0 0;font-size:var(--t-sm)}
-@media (max-width:359px){.activity{grid-template-columns:1fr;justify-items:center}.act-rows{justify-self:stretch}}
-
-/* a tile per kind of data, two across */
-.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.tile{display:flex;flex-direction:column;gap:4px;min-height:136px;padding:14px;border-radius:var(--r-card);background:var(--surface);box-shadow:var(--shadow);color:var(--ink);text-decoration:none}
-.tile-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;font:600 var(--t-sm)/1.3 var(--body)}
-.ico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:99px;background:var(--c);color:#fff}
-.tile-v{font:600 24px/1.15 var(--body);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.tile-v small{font-size:var(--t-sm);font-weight:500;color:var(--muted);letter-spacing:0}
-.tile-v.none{font-size:var(--t-md);font-weight:500;color:var(--muted)}
-.tile-s{font-size:var(--t-sm);line-height:1.35;color:var(--muted)}
-.tile .stages{margin-top:auto;padding-top:8px}
-.tile .meter{margin-top:6px}
-@media (min-width:640px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
-
-/* a value against its goal: the fill on a pale track of the same colour */
-.meter{display:block;height:8px;margin:4px 0;border-radius:99px;background:color-mix(in srgb,var(--c) var(--tint),transparent);overflow:hidden}
-.meter i{display:block;height:100%;border-radius:99px;background:var(--c)}
-
-/* the night by stage: one bar with a 2px gap between stages, and a key that names each with its minutes */
-.stages{display:grid;gap:8px}
-.stagebar{display:flex;gap:2px;height:10px;border-radius:99px;overflow:hidden}
-.stagebar i{display:block;min-width:3px}
-.stagekey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--t-sm);color:var(--muted)}
-.stagekey>span{display:inline-flex;align-items:center;gap:6px}
-.stagekey i{display:inline-block;width:10px;height:10px;border-radius:3px}
-.stagekey b{color:var(--ink)}
-.st-deep{background:var(--st-deep)}
-.st-light{background:var(--st-light)}
-.st-rem{background:var(--st-rem)}
-.st-awake{background:var(--st-awake)}
-
-/* a metric's page: the day's number, a chart card per series, and a grid of numbers */
-.hhero{display:grid;gap:12px}
-.hv{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0}
-.hv b{font:600 40px/1.05 var(--body);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.hv .sub{margin:0;font-size:var(--t-base)}
-.hhero>.sub{margin:-6px 0 0}
-.hhero .note{margin:0}
-.hcard{display:grid;gap:4px}
-.hcard h2{font-size:var(--t-base)}
-.readout{margin:0;min-height:1.5em;font-size:var(--t-sm);color:var(--muted);font-variant-numeric:tabular-nums}
-.hstats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px}
-#healthView>.hstats{padding:16px;border-radius:var(--r-card);background:var(--surface);box-shadow:var(--shadow)}
-.hstat .v{font:600 var(--t-lg)/1.2 var(--body);font-variant-numeric:tabular-nums}
-.hstat .l{margin-top:2px;font-size:var(--t-xs);color:var(--muted)}
-.sessions{list-style:none;margin:4px 0 0;padding:0;display:grid}
-.sessions li{display:grid;gap:2px;padding:10px 0;border-top:1px solid var(--line)}
-.sessions li:first-child{border-top:0;padding-top:4px}
-.sessions .sub{margin:0;font-size:var(--t-sm)}
-.hempty{display:grid;gap:12px;justify-items:start}
-.hempty .sub{margin:0}
-#healthNote{margin:0;text-align:center}
-
-/* charts: bars rounded at the top and square on the baseline, a 2px line with dots, a hairline grid, and the goal
-   (dashed, ink) and average (dotted, grey) as labelled reference lines. The picked day is full colour. */
-svg.hchart{display:block;width:100%;height:auto;margin-top:6px;overflow:visible;touch-action:pan-y}
-.hchart .grid{stroke:var(--line)}
-.hchart .axis{stroke:var(--edge)}
-.hchart .tk{fill:var(--muted);font:11px var(--mono)}
-.hchart .tk.on{fill:var(--ink);font-weight:600}
-.hchart .col{fill:var(--c);opacity:var(--dim)}
-.hchart .col.on{opacity:1}
-.hchart .line{fill:none;stroke:var(--c);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
-.hchart .dot{fill:var(--surface);stroke:var(--c);stroke-width:2}
-.hchart .dot.on{fill:var(--c)}
-.hchart .ref{stroke-width:1.5}
-.hchart .ref.goal{stroke:var(--ink);stroke-dasharray:6 4;opacity:.7}
-.hchart .ref.avg{stroke:var(--muted);stroke-width:2;stroke-dasharray:2 3}
-/* the key naming them, drawn as they are */
-.refkey{display:flex;flex-wrap:wrap;gap:4px 16px;margin:4px 0 0;font-size:var(--t-xs);color:var(--muted);font-variant-numeric:tabular-nums}
-.refkey span{display:inline-flex;align-items:center;gap:6px}
-.refkey i{display:inline-block;width:18px;border-top:1.5px dashed var(--ink);opacity:.7}
-.refkey i.avg{border-top:2px dotted var(--muted);opacity:1}
-.hchart .hit{fill:transparent;cursor:pointer;outline:none}
-.hchart .hit:focus-visible{fill:color-mix(in srgb,var(--ink) 6%,transparent);stroke:var(--ink);stroke-width:1.5}
-
-@media (min-width:560px){.tile{padding:16px}#healthView>.hstats{padding:20px}}
-@media (hover:hover){
-  .tile:hover,.act-row:hover{background-color:var(--sunken)}
-  .seg-b:not(.on):hover{color:var(--ink)}
-}
-.act-row:active{background-color:var(--sunken)}
+/* Health: the day's rings and a tile per kind of data; a page per kind with Day / Week / Month / Year. Each kind keeps
+   its colour on marks and labels; numbers and words stay ink. */
+.tiles{grid-auto-rows:minmax(148px,auto)}
+.mt-link{text-decoration:none;min-height:24px;align-self:flex-start}
+#tileWaterBox .mt-c{display:grid;gap:0}
+.detail .card.hero{gap:14px}
+.detail .meter{height:10px;border-radius:5px}
+.detail .meter>i{border-radius:5px}
+.change-note{padding:0 4px}
+.list.inset{background:transparent;border-radius:0;margin:0 -4px}
+.list.inset .row{min-height:52px;padding-inline:4px}
+.card>.empty,.empty.card{padding:4px 0}
+p.empty.card{padding:var(--space-4)}

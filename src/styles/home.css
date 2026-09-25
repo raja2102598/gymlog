@@ -1,0 +1,36 @@
+/* Home: the greeting, the week, today's workout, the day's activity, quick-adds and the day's timeline. */
+.btn-row{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.btn-row .grow{flex:1 1 auto}
+.today-card{gap:14px}
+.today-card .hero-t{line-height:1.05;overflow-wrap:anywhere}
+.today-card .sub{margin-top:4px}
+.activity{gap:12px;text-decoration:none}
+.activity .chev{color:var(--ink-subtle)}
+.activity .ring-it{min-height:0}
+
+.quick{flex-direction:row;align-items:center;gap:8px}
+.quick-t{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.quick .mt-l{font-size:13px;line-height:18px}
+.quick-v{font:900 20px/26px var(--font-sans)}
+.quick-v .u{font-size:13px}
+.quick-field{flex:1 1 auto}
+.quick-field input{min-height:44px}
+
+.timeline{gap:10px;padding-bottom:8px}
+.tl{list-style:none;margin:0;padding:0}
+.tl-i{display:flex;gap:14px}
+.tl-rail{display:flex;flex-direction:column;align-items:center;flex:none;width:12px}
+.tl-rail i{width:12px;height:12px;border-radius:6px;margin-top:4px;flex:none;background:var(--ink-subtle)}
+.tl-rail::after{content:"";width:2px;flex:1 1 auto;background:var(--line-strong)}
+.tl-i:last-child .tl-rail::after{display:none}
+.tl-i[data-k="sleep"] .tl-rail i{background:var(--sleep)}
+.tl-i.past:not([data-k]) .tl-rail i{background:var(--brand)}
+.tl-i.next .tl-rail i{background:var(--brand);box-shadow:0 0 0 4px var(--brand-tint)}
+.tl-i.later .tl-rail i{background:transparent;box-shadow:inset 0 0 0 2px var(--outline)}
+.tl-t{display:flex;flex-direction:column;padding-bottom:14px;min-width:0}
+.tl-at{font:var(--type-label);color:var(--ink-muted)}
+.tl-i.next .tl-at{font-weight:800;color:var(--brand-text)}
+.tl-w{font:var(--type-body-strong);overflow-wrap:anywhere}
+.today-card .btn-row{flex-wrap:nowrap}
+.today-card .btn-row .grow{flex:1 1 auto;min-width:0}
+.today-card .btn-row .btn:not(.grow){flex:none}

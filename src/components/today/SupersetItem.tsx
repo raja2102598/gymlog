@@ -1,5 +1,4 @@
 "use client";
-import { CaretDown } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
@@ -7,9 +6,9 @@ import { useVoice, useVoiceOn } from "@/hooks/useVoice";
 import { cx } from "@/lib/cx";
 import { setsSummary } from "@/lib/format";
 import { isWorkingSet, type RecordKind } from "@/lib/stats";
-import { minSets, restSecFor, setsOf, targetOf, type LiftItem as Item } from "@/lib/store";
+import { minSets, restSecFor, setsOf, targetOf, type GymStore, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog } from "@/lib/types";
-import { LiftHead, liftModel, ProgHint, SetRow, voiceHandler, type LiftModel, type Moves } from "./LiftItem";
+import { LiftHead, liftModel, ProgHint, SetHead, SetRow, voiceHandler, type LiftModel, type Moves } from "./LiftItem";
 import type { LiftMenu } from "./types";
 import { WarmupCalc } from "./WarmupCalc";
 
@@ -28,6 +27,33 @@ interface Props {
   /** Opens a lift's own page, under Progress. */
   onOpenLift: (name: string) => void;
   moves: Moves;
+}
+
+/** A superset's lifts as models, with the rest timer starting once a round is complete rather than after each set,
+ *  for the longest rest any of its lifts has. Shared by the card and the workout's Complete button. */
+export function supersetModels(store: GymStore, sel: DayKey, lifts: { item: Item; i: number }[], entry: DayLog): LiftModel[] {
+  // Each lift as saved now, not as of this render: voice changes a set after it.
+  const now = () =>
+    lifts.map(({ item }) => {
+      const r = store.entry(sel).exercises[item.name];
+      const sets = setsOf(r).filter(isWorkingSet), min = item.extra ? 1 : minSets(targetOf(r, item.x));
+      return { sets, rows: r?.skipped ? 0 : Math.max(min, sets.length), rest: r?.skipped ? 0 : restSecFor(store.plan, item.x) };
+    });
+  const onReps = (m: LiftModel, j: number) => {
+    const all = now();
+    const complete = all.every((l) => j >= l.rows || l.sets[j]?.reps != null);
+    const later = all.some((l) => l.sets.slice(j + 1).some((s) => s.reps != null));
+    if (complete && !later) store.startRest(sel, m.did, Math.max(...all.map((l) => l.rest)));
+  };
+  return lifts.map(({ item, i }) => liftModel(store, sel, item, i, entry, onReps));
+}
+
+/** The next set to do in a superset, round by round: [lift, set], or null once every round is logged. */
+export function nextInRounds(ms: LiftModel[]): [number, number] | null {
+  const rounds = Math.max(0, ...ms.map((m) => (m.r.skipped ? 0 : m.rows)));
+  for (let j = 0; j < rounds; j++)
+    for (let n = 0; n < ms.length; n++) if (!ms[n].r.skipped && j < ms[n].rows && !((ms[n].sets[j]?.reps ?? 0) > 0)) return [n, j];
+  return null;
 }
 
 /** One of a superset's lifts: its name, tick, microphone and menu, its hint and warm-up sets. Its sets are the
@@ -60,29 +86,14 @@ function SupersetLift({ m, tag, sel, menu, setMenu, focusNext, onOpenLift, moves
 /** A superset: its lifts in one card, then their sets in rounds, A1's set 1 and A2's set 1, then round 2, and so on.
  *  The rest timer starts once a round is complete rather than after each set, for the longest rest any of its lifts
  *  has. A skipped lift drops out of the rounds; a lift with more sets than the others fills the last rounds alone. */
-export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, focusNext, onOpenLift, moves }: Props) {
+export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, focusNext, onOpenLift, moves, step }: Props & { step?: string }) {
   const store = useGym();
   const [menuAt, setMenuAt] = useState("");
-  const [platesAt, setPlatesAt] = useState("");
-  const [howOpen, setHowOpen] = useState<number[]>([]);
 
-  // Each lift as saved now, not as of this render: voice changes a set after it.
-  const now = () =>
-    lifts.map(({ item }) => {
-      const r = store.entry(sel).exercises[item.name];
-      const sets = setsOf(r).filter(isWorkingSet), min = item.extra ? 1 : minSets(targetOf(r, item.x));
-      return { sets, rows: r?.skipped ? 0 : Math.max(min, sets.length), rest: r?.skipped ? 0 : restSecFor(store.plan, item.x) };
-    });
-  // A set's first reps: a rest once they complete the round, and no later round has any yet (a correction then).
-  const onReps = (m: LiftModel, j: number) => {
-    const all = now();
-    const complete = all.every((l) => j >= l.rows || l.sets[j]?.reps != null);
-    const later = all.some((l) => l.sets.slice(j + 1).some((s) => s.reps != null));
-    if (complete && !later) store.startRest(sel, m.did, Math.max(...all.map((l) => l.rest)));
-  };
-  const ms = lifts.map(({ item, i }) => liftModel(store, sel, item, i, entry, onReps));
+  const ms = supersetModels(store, sel, lifts, entry);
   const tags = ms.map((_, n) => `${letter}${n + 1}`), first = ms[0].i;
   const rounds = Math.max(0, ...ms.map((m) => (m.r.skipped ? 0 : m.rows)));
+  const nxt = nextInRounds(ms);
   // − Round takes the last round's sets that are more than their lift's planned number.
   const extra = ms.filter((m) => !m.r.skipped && m.sets.length === rounds && rounds > m.min);
   const dropRound = () => {
@@ -92,7 +103,8 @@ export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, 
   };
 
   return (
-    <li className="lift superset" data-superset={letter}>
+    <section className="card ex-card lift superset" data-superset={letter} aria-label={`Superset ${letter}`}>
+      {step ? <div className="ex-step">{step}</div> : null}
       <div className="ss-h">
         <b>Superset {letter}</b> · {ms.length} lifts in rounds
       </div>
@@ -110,7 +122,8 @@ export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, 
         />
       ))}
       {rounds ? (
-        <div className="sets rounds">
+        <div className="sets rounds" role="group" aria-label={`Superset ${letter}, rounds`}>
+          <SetHead tag />
           {Array.from({ length: rounds }, (_, j) => (
             <div key={j} className="round" role="group" aria-labelledby={`rd${first}_${j}`}>
               <div className="round-h" id={`rd${first}_${j}`}>
@@ -126,50 +139,26 @@ export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, 
                     j={j}
                     marks={marks}
                     tag={tags[n]}
+                    active={!!nxt && nxt[0] === n && nxt[1] === j}
                     menuOpen={menuAt === at}
                     onMenu={() => setMenuAt(menuAt === at ? "" : at)}
-                    platesOpen={platesAt === at}
-                    onPlates={() => setPlatesAt(platesAt === at ? "" : at)}
                   />
                 );
               })}
             </div>
           ))}
           <div className="setbtns">
-            <button className="ghost tiny" data-addround={first} onClick={() => ms.forEach((m) => !m.r.skipped && m.addSet(rounds + 1))}>
+            <button className="btn btn-sm" data-addround={first} onClick={() => ms.forEach((m) => !m.r.skipped && m.addSet(rounds + 1))}>
               + Round
             </button>
             {extra.length ? (
-              <button className="ghost tiny" data-rmround={first} onClick={dropRound}>
+              <button className="btn btn-sm" data-rmround={first} onClick={dropRound}>
                 − Round
               </button>
             ) : null}
-            {ms.map((m, n) =>
-              m.cue ? (
-                <button
-                  key={m.i}
-                  type="button"
-                  className="ghost tiny howto"
-                  aria-expanded={howOpen.includes(m.i)}
-                  aria-controls={`cue${m.i}`}
-                  aria-label={`How to: ${tags[n]}, ${m.did}`}
-                  onClick={() => setHowOpen(howOpen.includes(m.i) ? howOpen.filter((k) => k !== m.i) : [...howOpen, m.i])}
-                >
-                  How to: {tags[n]}
-                  <CaretDown size={14} weight="bold" aria-hidden="true" />
-                </button>
-              ) : null,
-            )}
           </div>
         </div>
       ) : null}
-      {ms.map((m, n) =>
-        m.cue && howOpen.includes(m.i) ? (
-          <p key={m.i} className="nt cue" id={`cue${m.i}`}>
-            <b>{tags[n]}</b> {m.cue}
-          </p>
-        ) : null,
-      )}
-    </li>
+    </section>
   );
 }

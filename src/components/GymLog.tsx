@@ -1,24 +1,29 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Timer } from "lucide-react";
+import { PushHead } from "@/components/ds/parts";
+import { TabBar } from "@/components/ds/TabBar";
 import { useBarsHeight } from "@/hooks/useBarsHeight";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { useKeyboardUp } from "@/hooks/useKeyboardUp";
 import { stopListening } from "@/hooks/useVoice";
-import { addDays, parseKey, todayKey, wdIndex } from "@/lib/dates";
+import { addDays, todayKey, wdIndex } from "@/lib/dates";
+import { mmss } from "@/lib/format";
 import { METRIC_TITLE } from "@/lib/healthView";
 import { GO_EVENT, isNative } from "@/lib/native";
-import { depthOf, hashOf, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
+import { depthOf, hashOf, isPushed, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
-import { DashboardView } from "./dashboard/DashboardView";
+import { clearRun, endRun, startRun } from "@/lib/workout";
 import { LiftDetail } from "./dashboard/LiftDetail";
+import { ProgressView } from "./dashboard/ProgressView";
 import { HealthDetail } from "./health/HealthDetail";
 import { HealthView } from "./health/HealthView";
+import { HomeView } from "./home/HomeView";
 import { PlanEditor } from "./plan/PlanEditor";
 import { GymView } from "./settings/GymView";
 import { SettingsView } from "./settings/SettingsView";
-import { AppBar } from "./shell/AppBar";
 import { BootView } from "./shell/BootView";
 import { ChoosePlanView } from "./shell/ChoosePlanView";
 import { DemoBar } from "./shell/DemoBar";
@@ -26,14 +31,15 @@ import { LoginView } from "./shell/LoginView";
 import { SetupView } from "./shell/SetupView";
 import { SwUpdateNotice } from "./shell/SwUpdateNotice";
 import { SyncBar } from "./shell/SyncBar";
-import { TabBar } from "./shell/TabBar";
 import { UpdateNotice } from "./shell/UpdateNotice";
-import { TodayView } from "./today/TodayView";
-import type { KneeEdit, LiftMenu } from "./today/types";
+import type { LiftMenu } from "./today/types";
+import { TrainView } from "./train/TrainView";
+import { CompleteView } from "./workout/CompleteView";
+import { WorkoutView } from "./workout/WorkoutView";
 
-const TODAY: Route = { view: "today" };
+const HOME: Route = { view: "home" };
 const address = (r: Route) => location.pathname + location.search + hashOf(r);
-/** How many entries deep in the app's history this one is (0: Today), as the app set it. */
+/** How many entries deep in the app's history this one is (0: Home), as the app set it. */
 const stackDepth = () => (history.state as { gymDepth?: number } | null)?.gymDepth ?? 0;
 
 /** A text box has focus, so the page shouldn't move under the person typing. */
@@ -45,23 +51,41 @@ const editing = () => {
 // Home-screen shortcuts (public/manifest.webmanifest) open /?go=today, weight or steps.
 const shortcut = () => (typeof location === "undefined" ? null : new URL(location.href).searchParams.get("go"));
 
-const longDate = (k: DayKey) => parseKey(k).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
+/** The workout under way, from its address: the day it's for is Train's selected day. */
+const WORKOUT_DAY_KEY = "gymlog.workoutDay.v1";
 
-/** The app, behind sign-in: four tabs (Today, Health, Progress, Settings) along the bottom, pages under them
- *  (a Health metric, the plan editor) with a back arrow. The data lives in the store (lib/store.ts); this keeps
- *  what's on screen: the route, the selected days and what's unfolded. */
+/** The app, behind sign-in: four tabs (Home, Train, Progress, Health) along the bottom, and screens pushed over them
+ *  (Settings, a Health metric, a lift, the plan editor, My gym, the workout) with a back chevron. The data lives in
+ *  the store (lib/store.ts); this keeps what's on screen: the route, the selected days and what's unfolded. */
 export default function GymLog() {
   const store = useGym();
   const focusNext = useFocusNext();
   const keyboardUp = useKeyboardUp();
   const bars = useBarsHeight<HTMLDivElement>();
-  const [route, setRoute] = useState<Route>(() => (typeof location === "undefined" ? TODAY : routeOf(location.hash)));
-  const [sel, setSel] = useState<DayKey>(todayKey);
+  const [route, setRoute] = useState<Route>(() => {
+    if (typeof location === "undefined") return HOME;
+    // A shortcut to today's weight or steps opens Train, where those fields are.
+    const g = shortcut();
+    return g === "weight" || g === "steps" ? { view: "train" } : routeOf(location.hash);
+  });
+  const [sel, setSel] = useState<DayKey>(() => {
+    // Reopened on the workout (a reload, the app coming back): the day it was for.
+    if (typeof location !== "undefined" && routeOf(location.hash).view === "workout") {
+      try {
+        const d = sessionStorage.getItem(WORKOUT_DAY_KEY);
+        if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+      } catch {
+        /* no session storage: today */
+      }
+    }
+    return todayKey();
+  });
   const [healthDay, setHealthDay] = useState<DayKey>(todayKey);
   const [menu, setMenu] = useState<LiftMenu | null>(null);
   const [warmOpen, setWarmOpen] = useState<DayKey | null>(null);
-  const [kneeEdit, setKneeEdit] = useState<KneeEdit>({ day: null, fields: [] });
+  /** The block the workout opens on: a lift tapped in Train, or where it left off. */
   const [editDay, setEditDay] = useState(() => wdIndex(todayKey()));
+  const [workoutAt, setWorkoutAt] = useState<number | null>(null);
   const [, setToday] = useState(todayKey);
   const [go] = useState(shortcut);
   // A backup restored on the first-run screen: under way, and then what it brought in, for Settings → Your data.
@@ -75,16 +99,16 @@ export default function GymLog() {
     shown.current = route;
   }, [route]);
 
-  // Opened at a screen's address: put Today (and the page's tab) behind it, so Back walks out the usual way.
+  // Opened at a screen's address: put Home (and the page's tab) behind it, so Back walks out the usual way.
   useEffect(() => {
     const r = routeOf(location.hash), d = depthOf(r);
     if (!d || typeof (history.state as { gymDepth?: number } | null)?.gymDepth === "number") return;
     const chain = d === 2 ? [parentOf(r), r] : [r];
-    history.replaceState({ gymDepth: 0 }, "", address(TODAY));
+    history.replaceState({ gymDepth: 0 }, "", address(HOME));
     chain.forEach((c, i) => history.pushState({ gymDepth: i + 1 }, "", address(c)));
   }, []);
 
-  // Each sign-in starts on Today. (The first one keeps a screen opened by its address, e.g. #settings.)
+  // Each sign-in starts on Home. (The first one keeps a screen opened by its address, e.g. #settings.)
   const uid = store.user?.id ?? null;
   const [uiFor, setUiFor] = useState<string | null>(null);
   if (uid !== uiFor) {
@@ -92,15 +116,14 @@ export default function GymLog() {
     setRestoring(false);
     setRestored("");
     if (uiFor !== null) {
-      setRoute(TODAY);
+      setRoute(HOME);
       setMenu(null);
     }
   }
 
   useEffect(() => store.start(), [store]);
 
-  // Today stays mounted behind the other tabs, so a lift still listening there would log what's said on another
-  // screen, or into a day no longer on show: leaving Today, or picking another day, stops it.
+  // A lift listening for its sets by voice stops when the screen or the day changes.
   useEffect(() => stopListening(), [route.view, sel]);
 
   // Inside the Android app: sign-in links and Health Connect (src/native/, loaded only there).
@@ -119,9 +142,6 @@ export default function GymLog() {
   // its files on the phone already.
   useEffect(() => {
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator) || isNative()) return;
-    // A new sw.js installs and takes over in the background (it calls skipWaiting and clients.claim). A tab's first
-    // controller is the first install, not a new version; every change after that is a swap under this tab's code,
-    // so only a reload runs the new code. That holds for a first visit left open until the next deploy too.
     let controlled = !!navigator.serviceWorker.controller;
     const onControllerChange = () => {
       if (controlled) setSwUpdated(true);
@@ -134,22 +154,24 @@ export default function GymLog() {
     return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
   }, []);
 
-  // A shortcut opens Today at the weight or steps field, then drops ?go= from the address.
-  const signedIn = store.auth === "signedIn";
+  // The workout's day survives a reload of its screen.
   useEffect(() => {
-    if (!signedIn || !go || !new URL(location.href).searchParams.has("go")) return;
-    const u = new URL(location.href);
-    u.searchParams.delete("go");
-    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
-    if (go === "weight" || go === "steps") focusNext(`#${go}`, true);
-  }, [signedIn, go, focusNext]);
+    if (route.view !== "workout") return;
+    try {
+      sessionStorage.setItem(WORKOUT_DAY_KEY, sel);
+    } catch {
+      /* nothing to keep it in */
+    }
+  }, [route.view, sel]);
+
+  const signedIn = store.auth === "signedIn";
 
   // Roll the date over if the app stays open past midnight.
   useEffect(() => {
     const id = setInterval(() => {
       const t = todayKey();
       setToday(t);
-      if (sel !== t && sel === addDays(t, -1) && !(route.view === "today" && editing())) {
+      if (sel !== t && sel === addDays(t, -1) && route.view !== "workout" && !editing()) {
         setSel(t);
         setMenu(null);
       }
@@ -166,6 +188,7 @@ export default function GymLog() {
         setMenu(null);
       }
       if (from.view === "settings" && to.view !== "settings") setRestored("");
+      if (from.view === "workout" && to.view !== "workout") setMenu(null);
     },
     [store],
   );
@@ -178,7 +201,7 @@ export default function GymLog() {
       if (sameRoute(to, shown.current)) return;
       leave(shown.current, to);
       setRoute(to);
-      if (to.view !== "today") window.scrollTo(0, 0);
+      window.scrollTo(0, 0);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -186,7 +209,7 @@ export default function GymLog() {
 
   // A screen closed some other way (signing out) takes its address with it. (A Back on its way does that itself.)
   useEffect(() => {
-    if (route.view === "today" && !backing.current && routeOf(location.hash).view !== "today") history.replaceState({ gymDepth: 0 }, "", address(TODAY));
+    if (route.view === "home" && !backing.current && routeOf(location.hash).view !== "home") history.replaceState({ gymDepth: 0 }, "", address(HOME));
   }, [route]);
 
   const stepBack = useCallback((n: number) => {
@@ -195,27 +218,26 @@ export default function GymLog() {
     setTimeout(() => (backing.current = false), 1000); // in case the Back never lands
   }, []);
 
-  /** Moves to another screen from a tap. Tabs sit one entry after Today and pages one after where they were
-   *  opened: going deeper adds an entry, going across replaces it, going to Today steps back to it. So Back
-   *  retraces the way, and never returns to a screen that was closed. Stable except across an actual route
-   *  change, so the widget's "go" listener (below) can depend on it without resubscribing every render. */
+  /** Moves to another screen from a tap. Tabs sit one entry after Home and pages one after where they were
+   *  opened: going deeper adds an entry, going across replaces it, going Home steps back to it. So Back retraces
+   *  the way, and never returns to a screen that was closed. */
   const navigate = useCallback(
     (to: Route) => {
       if (backing.current || sameRoute(to, route)) return false;
       const depth = stackDepth();
-      if (to.view === "today") {
+      if (to.view === "home") {
         if (depth > 0) stepBack(depth);
-        else history.replaceState({ gymDepth: 0 }, "", address(TODAY));
+        else history.replaceState({ gymDepth: 0 }, "", address(HOME));
       } else if (depthOf(to) > depthOf(route)) history.pushState({ gymDepth: depth + 1 }, "", address(to));
       else history.replaceState({ gymDepth: depth }, "", address(to));
       leave(route, to);
       setRoute(to);
-      if (to.view !== "today") window.scrollTo(0, 0);
+      window.scrollTo(0, 0);
       return true;
     },
     [route, leave, stepBack],
   );
-  /** The back arrow: back to wherever this page was opened from, or, with nothing to go back to, its tab. */
+  /** The back chevron: back to wherever this page was opened from, or, with nothing to go back to, its parent. */
   const goBack = () => {
     if (backing.current) return;
     if (stackDepth() > 0) stepBack(1);
@@ -225,17 +247,53 @@ export default function GymLog() {
     setSel(k);
     setMenu(null);
   };
+  const openTrain = (k: DayKey) => {
+    select(k);
+    navigate({ view: "train" });
+  };
   const openPlan = (focus?: string) => {
     if (!navigate({ view: "plan" })) return;
     setEditDay(wdIndex(sel));
     if (focus) focusNext(focus, true);
   };
   const openLift = (name: string) => navigate({ view: "progress", lift: name });
+  /** Opens the workout for day `k`, at block `at` (or where it left off), and starts its clock. */
+  const startWorkout = (k: DayKey, at: number | null = null) => {
+    select(k);
+    setWorkoutAt(at);
+    startRun(k);
+    navigate({ view: "workout" });
+  };
+  const finishWorkout = () => {
+    endRun(sel);
+    navigate({ view: "workout", done: true });
+  };
+  const doneWorkout = () => {
+    clearRun();
+    navigate(HOME);
+  };
+  /** Weight or steps from a shortcut or the widget: today's field in Train. */
+  const openField = useCallback(
+    (target: string) => {
+      if (target === "weight" || target === "steps") {
+        setSel(todayKey());
+        navigate({ view: "train" });
+        focusNext(`#${target}`, true);
+      } else navigate(HOME);
+    },
+    [navigate, focusNext],
+  );
 
-  // The home-screen widget's taps (native/app.ts, from a deep link shaped like the sign-in link) open Today,
-  // focusing weight or steps the same way a shortcut does. Unlike a shortcut's ?go=, one can arrive while the
-  // app is already open somewhere else, so it switches tab itself instead of counting on the first render's route.
-  // One that starts the app arrives before sign-in is known, so like a shortcut it waits for that.
+  // A shortcut opens today's weight or steps field, then drops ?go= from the address.
+  useEffect(() => {
+    if (!signedIn || !go || !new URL(location.href).searchParams.has("go")) return;
+    const u = new URL(location.href);
+    u.searchParams.delete("go");
+    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+    if (go === "weight" || go === "steps") focusNext(`#${go}`, true);
+  }, [signedIn, go, focusNext]);
+
+  // The home-screen widget's taps (native/app.ts) open Home, or today's weight or steps, the same way a shortcut does.
   const goTo = useRef<string | null>(null);
   const [goTick, setGoTick] = useState(0);
   useEffect(() => {
@@ -250,11 +308,10 @@ export default function GymLog() {
     const target = goTo.current;
     if (!signedIn || target == null) return;
     goTo.current = null;
-    navigate(TODAY);
-    if (target === "weight" || target === "steps") focusNext(`#${target}`, true);
-  }, [signedIn, goTick, navigate, focusNext]);
+    openField(target);
+  }, [signedIn, goTick, openField]);
 
-  // A new account chooses a plan before Today; until the first load says whether it's new, the loading placeholder.
+  // A new account chooses a plan first; until the first load says whether it's new, the loading placeholder.
   // A backup restored there keeps the picker up until it's in, then opens Settings at Your data to say what came in.
   const step = store.planStep();
   const screen =
@@ -273,25 +330,27 @@ export default function GymLog() {
     document.getElementById("setData")?.scrollIntoView({ block: "start" });
     document.getElementById("dataMsg")?.focus({ preventScroll: true });
   }, [restored, inApp, route]);
-  const sub = depthOf(route) === 2;
+
+  const pushed = isPushed(route);
+  const tabs = inApp && !pushed;
   const title =
-    route.view === "today"
-      ? "Today"
-      : route.view === "health"
-        ? route.metric
-          ? METRIC_TITLE[route.metric]
-          : "Health"
-        : route.view === "progress"
-          ? (route.lift ?? "Progress")
-          : route.view === "settings"
-            ? "Settings"
-            : route.view === "gym"
-              ? "My gym"
-              : "Edit plan";
+    route.view === "health" && route.metric
+      ? METRIC_TITLE[route.metric]
+      : route.view === "progress" && route.lift
+        ? route.lift
+        : route.view === "settings"
+          ? "Settings"
+          : route.view === "gym"
+            ? "My gym"
+            : route.view === "plan"
+              ? "Edit plan"
+              : "";
+  const backLabel = `Back to ${route.view === "settings" ? "Home" : parentOf(route).view === "health" ? "Health" : parentOf(route).view === "progress" ? "Progress" : "Train"}`;
+  const v = route.view;
   return (
-    <div className="wrap" data-tabs={inApp && !sub ? "" : undefined}>
+    <div className="wrap" data-tabs={tabs ? "" : undefined} data-view={inApp ? v : screen}>
       <a
-        className="ghost skip"
+        className="skip"
         href="#main"
         onClick={(ev) => {
           ev.preventDefault();
@@ -300,27 +359,10 @@ export default function GymLog() {
       >
         Skip to content
       </a>
-      {inApp ? (
-        <AppBar
-          title={title}
-          sub={route.view === "today" ? longDate(sel) : route.view === "progress" ? `As of ${longDate(todayKey())}` : undefined}
-          backHref={sub ? hashOf(parentOf(route)) || "./" : undefined}
-          onBack={sub ? goBack : undefined}
-          status={store.status}
-        />
-      ) : (
-        <header className="appbar brand">
-          <div className="appbar-t">
-            <h1 translate="no">Gym Log</h1>
-            <p className="sub" id="tagline">
-              Lifts + cardio + 10,000 steps.
-            </p>
-          </div>
-          <div className="status" id="status" aria-live="polite">
-            {store.status}
-          </div>
-        </header>
-      )}
+      <p className="sr-only" id="status" aria-live="polite">
+        {store.status}
+      </p>
+      {inApp && pushed && v !== "workout" ? <PushHead title={title} backHref={hashOf(parentOf(route)) || "./"} onBack={goBack} backLabel={backLabel} /> : null}
 
       <main id="main" tabIndex={-1}>
         <div className="bars" ref={bars}>
@@ -336,7 +378,7 @@ export default function GymLog() {
           key={uid ?? ""}
           hidden={screen !== "choose"}
           onChosen={() => {
-            navigate(TODAY);
+            navigate(HOME);
             window.scrollTo(0, 0);
           }}
           onRestoring={setRestoring}
@@ -346,60 +388,129 @@ export default function GymLog() {
           }}
         />
 
-        <div id="appView" hidden={!inApp || route.view !== "today"}>
-          {inApp ? (
-            <TodayView
-              sel={sel}
-              onSelect={select}
-              onOpenDash={() => navigate({ view: "progress" })}
+        {inApp && v === "home" ? (
+          <div id="homeView" className="view">
+            <HomeView
+              onOpenDay={openTrain}
+              onStart={(k) => startWorkout(k)}
+              onOpenSettings={() => navigate({ view: "settings" })}
               onOpenHealth={() => {
-                setHealthDay(sel);
+                setHealthDay(todayKey());
                 navigate({ view: "health" });
               }}
-              onOpenLift={openLift}
-              menu={menu}
-              setMenu={setMenu}
-              warmOpen={warmOpen === sel}
-              onToggleWarm={() => setWarmOpen((w) => (w === sel ? null : sel))}
-              kneeOpen={kneeEdit.day === sel ? kneeEdit.fields : []}
-              onKneeChange={(f) => setKneeEdit((k) => ({ day: sel, fields: [...(k.day === sel ? k.fields : []), f] }))}
-              onKneeScored={(f) => setKneeEdit((k) => ({ ...k, fields: k.fields.filter((x) => x !== f) }))}
               focusNext={focusNext}
             />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
-        <div id="healthView" hidden={!inApp || route.view !== "health"}>
-          {inApp && route.view === "health" ? (
-            route.metric ? (
+        {inApp && v === "train" ? (
+          <div id="trainView" className="view">
+            <TrainView
+              sel={sel}
+              onSelect={select}
+              onStart={(at) => startWorkout(sel, at)}
+              onOpenPlan={() => openPlan()}
+              onOpenGym={() => navigate({ view: "gym" })}
+              warmOpen={warmOpen === sel}
+              onToggleWarm={() => setWarmOpen((w) => (w === sel ? null : sel))}
+              focusNext={focusNext}
+            />
+          </div>
+        ) : null}
+
+        {inApp && v === "workout" ? (
+          <div id="workoutView" className="view">
+            {route.done ? (
+              <CompleteView day={sel} onDone={doneWorkout} />
+            ) : (
+              <WorkoutView
+                key={sel}
+                day={sel}
+                startAt={workoutAt}
+                onClose={goBack}
+                onFinish={finishWorkout}
+                onOpenLift={openLift}
+                menu={menu}
+                setMenu={setMenu}
+                focusNext={focusNext}
+              />
+            )}
+          </div>
+        ) : null}
+
+        {inApp && v === "health" ? (
+          <div id="healthView" className="view">
+            {route.metric ? (
               <HealthDetail metric={route.metric} day={healthDay} onDay={setHealthDay} />
             ) : (
-              <HealthView day={healthDay} onDay={setHealthDay} onOpen={(m) => navigate({ view: "health", metric: m })} onOpenSettings={() => navigate({ view: "settings" })} />
-            )
-          ) : null}
-        </div>
+              <HealthView
+                day={healthDay}
+                onDay={setHealthDay}
+                onOpen={(m) => navigate({ view: "health", metric: m })}
+                onOpenSettings={() => navigate({ view: "settings" })}
+                onOpenTrain={() => openTrain(todayKey())}
+              />
+            )}
+          </div>
+        ) : null}
 
-        <div id="dashView" className="dash" hidden={!inApp || route.view !== "progress"}>
-          {inApp && route.view === "progress" ? (
-            route.lift ? <LiftDetail key={route.lift} name={route.lift} /> : <DashboardView onSetGoal={() => openPlan("#pe_goalw")} onOpenLift={openLift} />
-          ) : null}
-        </div>
+        {inApp && v === "progress" ? (
+          <div id="dashView" className="view">
+            {route.lift ? <LiftDetail key={route.lift} name={route.lift} /> : <ProgressView onSetGoal={() => openPlan("#pe_goalw")} onOpenLift={openLift} onOpenTrain={() => openTrain(todayKey())} />}
+          </div>
+        ) : null}
 
-        <div id="settingsView" hidden={!inApp || route.view !== "settings"}>
-          {inApp && route.view === "settings" ? <SettingsView onEditPlan={() => openPlan()} onOpenGym={() => navigate({ view: "gym" })} dataMsg={restored} /> : null}
-        </div>
+        {inApp && v === "settings" ? (
+          <div id="settingsView" className="view">
+            <SettingsView onEditPlan={() => openPlan()} onOpenGym={() => navigate({ view: "gym" })} dataMsg={restored} />
+          </div>
+        ) : null}
 
-        <div id="planView" className="pe" hidden={!inApp || route.view !== "plan"}>
-          {inApp && route.view === "plan" ? <PlanEditor editDay={editDay} onEditDay={setEditDay} onDone={goBack} /> : null}
-        </div>
+        {inApp && v === "plan" ? (
+          <div id="planView" className="view pe">
+            <PlanEditor editDay={editDay} onEditDay={setEditDay} onDone={goBack} />
+          </div>
+        ) : null}
 
-        <div id="gymView" hidden={!inApp || route.view !== "gym"}>
-          {inApp && route.view === "gym" ? <GymView onDone={goBack} /> : null}
-        </div>
+        {inApp && v === "gym" ? (
+          <div id="gymView" className="view">
+            <GymView onDone={goBack} />
+          </div>
+        ) : null}
       </main>
 
+      {inApp && v !== "workout" ? <RestPill onOpen={() => startWorkout(store.rest?.day ?? sel)} /> : null}
       {/* While typing, the keyboard needs the room (in the app, the tabs would ride on top of it). */}
-      {inApp && !sub ? <TabBar tab={tabOf(route)} hidden={keyboardUp} onOpen={(t) => navigate({ view: t })} /> : null}
+      {tabs ? <TabBar tab={tabOf(route)} hidden={keyboardUp} onOpen={(t) => navigate({ view: t })} /> : null}
     </div>
+  );
+}
+
+/** A rest counting down while you're away from the workout: its time, and a way back. */
+function RestPill({ onOpen }: { onOpen: () => void }) {
+  const store = useGym();
+  const r = store.rest;
+  const running = !!r && r.pausedAt == null && !r.ended;
+  const [, retick] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => retick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+  if (!r) return null;
+  return (
+    <a
+      className="restpill"
+      id="restPill"
+      href="#workout"
+      onClick={(ev) => {
+        ev.preventDefault();
+        onOpen();
+      }}
+    >
+      <Timer size={18} aria-hidden="true" />
+      <span aria-hidden="true">{r.ended ? "Rest over" : mmss(store.restRemaining())}</span>
+      <span className="sr-only">{r.ended ? "Rest over. " : "Resting. "}Back to the workout</span>
+    </a>
   );
 }

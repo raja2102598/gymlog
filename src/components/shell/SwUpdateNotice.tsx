@@ -6,7 +6,7 @@ export function SwUpdateNotice({ show, onReload }: { show: boolean; onReload: ()
   return (
     <div className="syncbar info" id="swUpdateBar" role="status" hidden={!show}>
       <span id="swUpdateMsg">Gym Log was updated.</span>
-      <button type="button" className="ghost tiny" id="swUpdateReload" onClick={onReload}>
+      <button type="button" className="btn btn-sm" id="swUpdateReload" onClick={onReload}>
         Reload
       </button>
     </div>

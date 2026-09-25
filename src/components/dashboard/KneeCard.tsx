@@ -53,8 +53,8 @@ export function KneeCard({ m }: { m: KneeModel }) {
     );
   }
   return (
-    <section className="panel" id="dashKnee">
-      <h2>Knee</h2>
+    <section className="card" id="dashKnee">
+      <h2 className="title-sm">Knee</h2>
       {body}
     </section>
   );

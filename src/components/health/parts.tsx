@@ -1,10 +1,8 @@
 "use client";
-import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
-import { cx } from "@/lib/cx";
 import { useChartWidth } from "@/hooks/useChartWidth";
-import type { DayKey, HealthDay } from "@/lib/types";
+import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
+import type { DayKey } from "@/lib/types";
 
 /** "Today", "Yesterday" or "Wed, 23 Sept". */
 export function dayWords(k: DayKey, t = todayKey()): string {
@@ -13,113 +11,44 @@ export function dayWords(k: DayKey, t = todayKey()): string {
   return parseKey(k).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
 }
 
-/** ‹ label ›: moves the day shown by `step` days, never past today. */
-export function DaySwitch({ day, onDay, step, label }: { day: DayKey; onDay: (k: DayKey) => void; step: number; label: string }) {
-  const t = todayKey(), next = addDays(day, step);
+/** A labelled number in a stat row (a 3-up of small radius-lg tiles). */
+export function Stat({ v, u, l, id, tone }: { v: ReactNode; u?: string; l: string; id?: string; tone?: string }) {
   return (
-    <div className="dayswitch">
-      <button className="ghost icon" id="hPrev" aria-label={`Back ${step === 1 ? "a day" : `${step} days`}`} onClick={() => onDay(addDays(day, -step))}>
-        <CaretLeft size={20} aria-hidden="true" />
-      </button>
-      <span className="dayswitch-l" aria-live="polite">
-        {label}
-      </span>
-      <button className="ghost icon" id="hNext" aria-label={`On ${step === 1 ? "a day" : `${step} days`}`} disabled={day >= t} onClick={() => onDay(next > t ? t : next)}>
-        <CaretRight size={20} aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
-
-/** Day / Week / Month. */
-export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: [T, string][]; onChange: (v: T) => void; label: string }) {
-  return (
-    <div className="seg" role="group" aria-label={label}>
-      {options.map(([v, text]) => (
-        <button key={v} className={cx("seg-b", v === value && "on")} aria-pressed={v === value} onClick={() => onChange(v)}>
-          {text}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** A value against its goal: the fill in the metric's colour, on a pale track of the same colour. */
-export function Meter({ value, goal, color, label }: { value: number; goal: number; color: string; label: string }) {
-  const pct = Math.max(0, Math.min(100, (value / goal) * 100));
-  return (
-    <span className="meter" style={{ ["--c" as string]: color }} role="meter" aria-valuemin={0} aria-valuemax={goal} aria-valuenow={value} aria-label={label}>
-      <i style={{ width: `${pct}%` }} />
-    </span>
-  );
-}
-
-const STAGES: ["deep" | "rem" | "light" | "awake", string][] = [
-  ["deep", "Deep"],
-  ["light", "Light"],
-  ["rem", "REM"],
-  ["awake", "Awake"],
-];
-
-/** The night by stage, deepest first, as one bar with a 2px gap between stages; the legend names each. */
-export function StageBar({ stages, legend = true }: { stages: NonNullable<HealthDay["sleepStages"]>; legend?: boolean }) {
-  const total = STAGES.reduce((m, [k]) => m + (stages[k] ?? 0), 0);
-  if (!total) return null;
-  return (
-    <span className="stages">
-      <span className="stagebar" aria-hidden="true">
-        {STAGES.map(([k]) => (stages[k] ? <i key={k} className={`st-${k}`} style={{ flexGrow: stages[k] }} /> : null))}
-      </span>
-      {legend ? (
-        <span className="stagekey">
-          {STAGES.map(([k, name]) =>
-            stages[k] ? (
-              <span key={k}>
-                <i className={`st-${k}`} aria-hidden="true" />
-                <span>
-                  {name} <b>{Math.round(stages[k]!)}</b>&nbsp;min
-                </span>
-              </span>
-            ) : null,
-          )}
-        </span>
-      ) : (
-        <span className="sr-only">{STAGES.map(([k, name]) => (stages[k] ? `${name} ${Math.round(stages[k]!)} min` : "")).filter(Boolean).join(", ")}</span>
-      )}
-    </span>
-  );
-}
-
-/** A labelled number in a detail page's summary grid. */
-export function Stat({ v, l, id }: { v: string; l: string; id?: string }) {
-  return (
-    <div className="hstat" id={id}>
-      <div className="v">{v}</div>
+    <div className="stat" id={id}>
+      <div className="v" style={tone ? { color: tone } : undefined}>
+        {v}
+        {u ? <span className="u"> {u}</span> : null}
+      </div>
       <div className="l">{l}</div>
     </div>
   );
 }
 
-/** A card holding one chart, drawn at the card's own width: a title, an optional live readout of the picked
- *  point above it, then the chart itself. Shared by every page with a Bars or Trend chart (Health's metrics,
- *  Progress's lifts), so they keep one look and the same measuring. */
-export function ChartCard({ title, readout, children, id }: { title: string; readout?: ReactNode; children: (width: number) => ReactNode; id?: string }) {
+/** A card holding one chart, drawn at the card's own width: a caption, a big number, then the chart. */
+export function ChartCard({ caption, value, unit, title, children, id, aside }: { caption?: ReactNode; value?: ReactNode; unit?: string; title?: string; children: (width: number) => ReactNode; id?: string; aside?: ReactNode }) {
   const [ref, width] = useChartWidth<HTMLElement>();
   return (
-    <section className="panel hcard" ref={ref} id={id}>
-      <h2>{title}</h2>
-      {readout ? (
-        <p className="readout" aria-live="polite">
-          {readout}
-        </p>
-      ) : null}
+    <section className="card chart-card" ref={ref} id={id}>
+      <div className="cc-h">
+        <div className="cc-t">
+          {title ? <h2 className="title-sm">{title}</h2> : null}
+          {caption ? <div className="label">{caption}</div> : null}
+          {value != null ? (
+            <div className="cc-v">
+              {value}
+              {unit ? <span className="u"> {unit}</span> : null}
+            </div>
+          ) : null}
+        </div>
+        {aside}
+      </div>
       {children(width)}
     </section>
   );
 }
 
-/** Axis labels for a run of days: every day for a week (M T W …), otherwise every 7th date. */
-export function dayAxis(days: DayKey[]): string[] {
-  if (days.length <= 7) return days.map((k) => parseKey(k).toLocaleDateString("en-IN", { weekday: "narrow" }));
-  return days.map((k, i) => ((days.length - 1 - i) % 7 === 0 ? dm(k) : ""));
+/** Axis labels for a run of days: weekday names for a week (the last "Today" when it is), otherwise every 7th date. */
+export function dayAxis(days: DayKey[], t = todayKey()): string[] {
+  if (days.length <= 7) return days.map((k) => (k === t ? "Today" : parseKey(k).toLocaleDateString("en-IN", { weekday: "short" })));
+  return days.map((k, i) => ((days.length - 1 - i) % 7 === 0 ? (k === t ? "Today" : dm(k)) : ""));
 }

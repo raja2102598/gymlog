@@ -24,7 +24,7 @@ export function SyncBar() {
         {/* With no copy on the phone, it doesn't say they're saved there. */}
         {w ? `${w.days} day${w.days === 1 ? "" : "s"} not synced yet. ${local ? later[0].toUpperCase() + later.slice(1) : `Saved on this phone; ${later}`}.` : ""}
       </span>
-      <button className="ghost tiny" id="syncRetry" hidden={!w || w.offline} onClick={() => store.retrySync()}>
+      <button className="btn btn-sm" id="syncRetry" hidden={!w || w.offline} onClick={() => store.retrySync()}>
         Retry now
       </button>
       <p id="syncLocal" hidden={!local}>
@@ -33,10 +33,10 @@ export function SyncBar() {
       {day || plan ? (
         <div className="conflict" id="syncConflict">
           <p id="conflictMsg">{day ? `${dm(day)} was changed on another device.` : "The plan was changed on another device."}</p>
-          <button className="ghost tiny" id="keepMine" disabled={choosing} onClick={() => keep("mine")}>
+          <button className="btn btn-sm" id="keepMine" disabled={choosing} onClick={() => keep("mine")}>
             Keep this phone’s version
           </button>
-          <button className="ghost tiny" id="keepTheirs" disabled={choosing} onClick={() => keep("theirs")}>
+          <button className="btn btn-sm" id="keepTheirs" disabled={choosing} onClick={() => keep("theirs")}>
             Keep the other version
           </button>
         </div>

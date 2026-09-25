@@ -203,19 +203,28 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
 /** In the page: waits for timed animations to end. (The top bar's edge follows the scroll, and never ends.) */
 export const settled = () => Promise.all(document.getAnimations().filter((a) => a.timeline === document.timeline).map((a) => a.finished.catch(() => {})));
 
-/** Waits for the app to show Today and finish its first sync. */
+/** Waits for the app to show Home and finish its first sync. */
 export async function ready(page) {
-  await page.waitForSelector("#appView:not([hidden])", { timeout: 15000 });
+  await page.waitForSelector("#homeView", { timeout: 15000 });
   await until(async () => (await page.locator("#status").textContent()) === "Synced");
   // Let the view's fade-in finish: mid-transform, a 44px button can measure 43.99997px.
   await page.evaluate(settled);
 }
 
-const VIEWS = { today: "#appView", health: "#healthView", progress: "#dashView", settings: "#settingsView" };
-/** Taps a tab along the bottom (today, health, progress or settings) and waits for its screen. */
+const VIEWS = { home: "#homeView", train: "#trainView", health: "#healthView", progress: "#dashView", settings: "#settingsView" };
+/** Taps a tab along the bottom (home, train, progress or health) and waits for its screen. Settings, which isn't a
+ *  tab, opens from Home's avatar: from anywhere else, Home first. */
 export async function openTab(page, name) {
-  await page.click(`#tab${name[0].toUpperCase()}${name.slice(1)}`);
-  await page.waitForSelector(`${VIEWS[name]}:not([hidden])`);
+  if (name === "settings") {
+    if (!(await page.locator("#settingsBtn").count())) await openTab(page, "home");
+    await page.click("#settingsBtn");
+  } else await page.click(`#tab${name[0].toUpperCase()}${name.slice(1)}`);
+  await page.waitForSelector(VIEWS[name]);
+}
+/** Opens a Settings row that unfolds in place (its group's id, e.g. "setData"), unless it's open already. */
+export async function openSetting(page, id) {
+  const b = page.locator(`#${id}H`);
+  if ((await b.getAttribute("aria-expanded")) !== "true") await b.click();
 }
 /** Leaves the plan editor with Done, back to the screen it opened from. */
 export async function planDone(page) {

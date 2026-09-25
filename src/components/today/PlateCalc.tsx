@@ -1,5 +1,4 @@
 "use client";
-import { Stack } from "@phosphor-icons/react";
 import { platesFor } from "@/lib/stats";
 
 const NB = " ";
@@ -16,25 +15,7 @@ export function plateLine(kg: number, barKg: number, plateKgs: number[]): string
   return r.shortBy > 0.001 ? `${made}. ${r.shortBy}${NB}kg left over.` : `${made}.`;
 }
 
-interface ButtonProps {
-  id: string;
-  label: string;
-  open: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}
-
-/** The small button on a set's kg box that opens its plate breakdown (rendered separately by PlatesInfo, so a
- *  wide breakdown never stretches the sets either side of it in the grid). */
-export function PlatesButton({ id, label, open, disabled, onToggle }: ButtonProps) {
-  return (
-    <button type="button" className="ghost icon plates-btn" aria-expanded={open} aria-controls={id} aria-label={label} disabled={disabled} onClick={onToggle}>
-      <Stack size={20} weight="bold" aria-hidden="true" />
-    </button>
-  );
-}
-
-/** The breakdown a PlatesButton opens: per-side plates for `kg`, on the lift's bar and the gym's plates. */
+/** A set's plate breakdown, in its menu: per-side plates for `kg`, on the lift's bar and the gym's plates. */
 export function PlatesInfo({ id, kg, barKg, plateKgs }: { id: string; kg: number; barKg: number; plateKgs: number[] }) {
   return (
     <div className="plates-info" id={id} role="status">

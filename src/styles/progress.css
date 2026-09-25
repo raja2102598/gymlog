@@ -1,0 +1,53 @@
+/* Progress: the week in numbers, the weight trend, consistency, pinned lifts; Strength, Body and Muscles; a lift's
+   own page. */
+.trend-lab{display:block;font:800 14px/20px var(--font-sans);color:var(--body)}
+#dashWeight .cc-v{font:900 28px/32px var(--font-sans)}
+#dashFlags{display:grid;gap:var(--space-2)}
+.sec-h{display:flex;justify-content:space-between;align-items:center;padding:6px 4px 0}
+.sec-h .btn-link{min-height:var(--touch-min);padding:0 4px;font:800 15px/1 var(--font-sans)}
+.cons{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cell{aspect-ratio:1;border-radius:var(--radius-sm);display:grid;place-items:center;font:800 11px/1 var(--font-sans);background:var(--surface-sunken);color:var(--ink-muted)}
+.cell.done{background:var(--brand);color:var(--on-brand)}
+.cell.part{background:var(--brand-partial);color:var(--brand-tint-ink)}
+.cell.rest{background:var(--line);color:var(--ink-subtle)}
+.cell.miss{background:transparent;box-shadow:inset 0 0 0 1.5px var(--outline);color:var(--ink-muted)}
+.cell.fut,.cell.pre,.cell.todo{background:transparent;color:var(--ink-subtle)}
+.cell.now{box-shadow:inset 0 0 0 2px var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;font:var(--type-micro);color:var(--ink-muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.legend i.done{background:var(--brand)}
+.legend i.part{background:var(--brand-partial)}
+.legend i.rest{background:var(--line)}
+.legend i.miss{box-shadow:inset 0 0 0 1.5px var(--outline)}
+/* Strength, Body, Muscles, Knee, a lift's page: the older cards, in the system's parts */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
+.kpi{background:var(--surface-sunken);border-radius:var(--radius-lg);padding:14px;min-width:0}
+.kpi .v{font:900 20px/26px var(--font-sans)}
+.kpi .l{font:var(--type-label);color:var(--ink-muted)}
+.kpi .btn{margin-top:8px}
+.card .stats3.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dh{font:var(--type-title-sm);margin-top:8px}
+.lifts,.plain{list-style:none;margin:0;padding:0;display:grid}
+.lifts li{display:grid;grid-template-columns:minmax(0,1fr) 72px auto;align-items:center;gap:4px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.lifts li:last-child{border-bottom:0}
+.lifts .ln{font:var(--type-body-strong);color:var(--ink);min-height:var(--touch-min);display:flex;flex-direction:column;justify-content:center}
+.lifts .ln .sub{font-size:13px}
+.lifts .lv{font:900 16px/1 var(--font-sans);text-align:right}
+.lifts .lc{grid-column:1/-1;font:var(--type-label);color:var(--ink-muted)}
+.spark{width:72px;height:28px}
+.spark polyline{fill:none;stroke:var(--brand-text);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.plain li{padding:8px 0;border-bottom:1px solid var(--line);font:600 15px/1.4 var(--font-sans)}
+.plain li:last-child{border-bottom:0}
+.plain b{font-weight:900}
+.musc-t th[scope=row]{white-space:normal;font:var(--type-body-strong)}
+.musc-n{font:700 12px/16px var(--font-sans)}
+.musc-n.under{color:var(--warn-ink)}
+.musc-n.over{color:var(--brand-text)}
+.knee-t td:first-child{white-space:normal}
+.knee-t .loads{font:600 12px/16px var(--font-sans);color:var(--ink-muted)}
+.knee-t .hi{color:var(--brand-text);font-weight:900}
+.hist{overflow-x:auto}
+.hist td:first-child{white-space:normal}
+.hist .hs{font:600 12px/16px var(--font-sans);color:var(--ink-muted)}
+#dashMuscles,#dashKnee,#dashStrength{overflow-x:auto}

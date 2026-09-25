@@ -20,15 +20,15 @@ export function History() {
           <div className="hs">{p.name}</div>
         </td>
         <td className="r num">{p.exercises.length ? `${done}/${p.exercises.length}` : "-"}</td>
-        <td className="c">{e.cardio ? "✓" : "-"}</td>
+        <td className="c">{e.cardio ? "Yes" : "–"}</td>
         <td className="r num">{fmt(store.stepsOf(k))}</td>
         <td className="r num">{store.weightOf(k) ?? "-"}</td>
       </tr>,
     );
   }
   return (
-    <section className="panel">
-      <h2 id="histTitle" className="panel-h">
+    <section className="card">
+      <h2 id="histTitle" className="title-sm">
         {rows.length === 1 ? "Today" : `Last ${rows.length} days`}
       </h2>
       <div className="hist" id="hist">

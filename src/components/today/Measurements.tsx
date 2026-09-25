@@ -30,14 +30,16 @@ interface Props {
  *  is outside a plausible range, is refused with a message, the way a daily goal is in Settings. */
 export function Measurements({ entry: e, onMeasure }: Props) {
   return (
-    <div className="hc measure" id="measureCard">
-      <h3>Measurements</h3>
-      <div className="measure-grid">
+    <section className="card measure" id="measureCard" aria-labelledby="measureH">
+      <h2 className="title-sm" id="measureH">
+        Measurements
+      </h2>
+      <div className="fields2">
         {ORDER.map((f) => (
           <MeasureField key={f} field={f} value={e[f]} onChange={onMeasure} />
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 

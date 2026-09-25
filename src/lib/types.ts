@@ -72,6 +72,9 @@ export interface DayLog {
   kneeBefore?: number;
   kneeAfter?: number;
   kneeWake?: number;
+  /** Water drunk, ml, added with Home's and Health's + and −: what you log wins over Health Connect's reading, as
+   *  with weight, and starts from it. */
+  water?: number;
 }
 
 export interface FreeWorkout {
@@ -140,7 +143,7 @@ export interface HealthWorkout {
   source?: string;
 }
 
-export const EXTRA_FIELDS = ["waist", "chest", "arms", "thighs", "hips", "bodyFat", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake"] as const;
+export const EXTRA_FIELDS = ["waist", "chest", "arms", "thighs", "hips", "bodyFat", "cardioMin", "cardioKmh", "cardioIncline", "kneeBefore", "kneeAfter", "kneeWake", "water"] as const;
 export type ExtraField = (typeof EXTRA_FIELDS)[number];
 export type KneeField = "kneeBefore" | "kneeAfter" | "kneeWake";
 export type NumField = "waist" | "cardioMin" | "cardioKmh" | "cardioIncline";

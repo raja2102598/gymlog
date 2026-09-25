@@ -1,249 +1,209 @@
 "use client";
-import { Drop, Fire, Heartbeat, Moon, PersonSimpleRun, PersonSimple, type Icon } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Droplet, Flame, Footprints, HeartPulse, Minus, Moon, Plus, Weight as WeightIcon } from "lucide-react";
+import { ActivityRings, RingLegend } from "@/components/ds/ActivityRings";
+import { METRIC_INK, MetricTile } from "@/components/ds/MetricTile";
+import { InsightCallout, LinkButton, MiniRange, StageLanes, TabHead } from "@/components/ds/parts";
+import { MiniBars } from "@/components/ds/StepsBarChart";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
+import { addDays, todayKey } from "@/lib/dates";
 import { fmt, syncedWhen } from "@/lib/format";
-import { hoursMin, workoutName } from "@/lib/health";
-import { anyHealth, dayNumbers, fromHealthConnect, type DayNumbers } from "@/lib/healthView";
+import { hoursMin } from "@/lib/health";
+import { dayNumbers, daysTo, fromHealthConnect } from "@/lib/healthView";
 import { isNative } from "@/lib/native";
 import { hashOf, type Metric } from "@/lib/route";
 import type { DayKey } from "@/lib/types";
-import { DaySwitch, dayWords, Meter, StageBar } from "./parts";
-import { Rings } from "./Rings";
+import { dayWords } from "./parts";
 
-const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase();
 
 interface Props {
   day: DayKey;
   onDay: (k: DayKey) => void;
   onOpen: (m: Metric) => void;
   onOpenSettings: () => void;
+  onOpenTrain: () => void;
 }
 
-/** The Health tab: a day of Health Connect data at a glance. Activity rings against the day's goals, then a tile
- *  for each kind of data; everything opens its own page with charts by day, week and month. */
+/** The Health tab (Health board): the day's activity rings against its goals, then a tile per kind of data with a
+ *  mini chart, water added in place, and one insight. Each tile opens the metric's own page. */
 export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
   const store = useGym();
-  const p = store.plan, n = dayNumbers(store, day);
-  if (!anyHealth(store)) {
-    return (
-      <section className="panel hempty" id="healthEmpty">
-        <h2>No Health Connect data yet</h2>
-        {isNative() ? (
-          <>
-            <p className="sub">Connect Health Connect to see steps, sleep, heart rate, calories, workouts, weight and water here.</p>
-            <ViewLink className="primary" id="toSettings" href="#settings" onOpen={onOpenSettings}>
-              Connect in Settings
-            </ViewLink>
-          </>
-        ) : (
-          <p className="sub">It comes from Health Connect, through the Gym Log Android app. Once the app has synced, it shows here too.</p>
-        )}
-      </section>
-    );
-  }
-  const link = (m: Metric, cls: string, children: ReactNode, id: string) => (
-    <ViewLink className={cls} id={id} href={hashOf({ view: "health", metric: m })} onOpen={() => onOpen(m)}>
-      {children}
-    </ViewLink>
-  );
-  const rows: [Metric, string, string, number | null, number, string, string][] = [
-    ["steps", "Steps", "var(--c-steps)", n.steps, p.stepGoal, "", "ringSteps"],
-    ["exercise", "Exercise", "var(--c-exercise)", n.exerciseMin || null, p.exerciseGoalMin, " min", "ringExercise"],
-    ["energy", "Active", "var(--c-energy)", n.activeKcal, p.activeGoalKcal, " kcal", "ringActive"],
+  const p = store.plan, n = dayNumbers(store, day), t = todayKey();
+  const hc = fromHealthConnect(store);
+  const week = daysTo(day, 7), wn = week.map((k) => dayNumbers(store, k));
+  const link = (m: Metric) => ({ href: hashOf({ view: "health", metric: m }), onOpen: () => onOpen(m) });
+  const rows = [
+    { tone: "steps" as const, name: "Steps", v: n.steps ?? 0, goal: p.stepGoal, unit: "", m: "steps" as Metric, id: "ringSteps" },
+    { tone: "active" as const, name: "Active time", v: n.exerciseMin, goal: p.exerciseGoalMin, unit: " min", m: "exercise" as Metric, id: "ringExercise" },
+    { tone: "energy" as const, name: "Active calories", v: n.activeKcal ?? 0, goal: p.activeGoalKcal, unit: " kcal", m: "energy" as Metric, id: "ringActive" },
   ];
-  return (
-    <>
-      <DaySwitch day={day} onDay={onDay} step={1} label={dayWords(day)} />
-      <section className="panel activity" id="activity" aria-label="Activity">
-        <Rings
-          label={rows.map(([, name, , v, goal, unit]) => `${name} ${v != null ? fmt(v) : 0} of ${fmt(goal)}${unit}`).join(", ")}
-          rings={rows.map(([, , color, v, goal]) => ({ value: v ?? 0, goal, color }))}
-        />
-        <div className="act-rows">
-          {rows.map(([m, name, color, v, goal, unit, id]) =>
-            link(
-              m,
-              "act-row",
-              <>
-                <span className="act-n">
-                  <i style={{ background: color }} aria-hidden="true" />
-                  {name}
-                </span>
-                <span className="act-v">
-                  <b>{v != null ? fmt(v) : "–"}</b>
-                  <span className="sub">
-                    {" "}
-                    / {fmt(goal)}
-                    {unit}
-                  </span>
-                </span>
-              </>,
-              id,
-            ),
-          )}
-          {n.km || n.floors ? (
-            <p className="sub act-more">{[n.km ? `${n.km} km` : "", n.floors ? `${fmt(n.floors)} floor${n.floors === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ")}</p>
-          ) : null}
-        </div>
-      </section>
-      <div className="tiles">
-        {link("sleep", "tile", <SleepTile n={n} />, "tileSleep")}
-        {link("heart", "tile", <HeartTile n={n} />, "tileHeart")}
-        {link("energy", "tile", <EnergyTile n={n} />, "tileEnergy")}
-        {link("body", "tile", <BodyTile n={n} />, "tileBody")}
-        {link("water", "tile", <WaterTile n={n} goal={p.waterGoalMl} />, "tileWater")}
-        {link("exercise", "tile", <ExerciseTile n={n} />, "tileExercise")}
-      </div>
-      <p className="note" id="healthNote">
-        {fromHealthConnect(store)
-          ? `From Health Connect${store.healthSyncedAt ? `, synced ${syncedWhen(store.healthSyncedAt)}` : ""}.`
-          : `Only the measurements you’ve typed on Today so far. Steps, sleep, heart rate and the rest come from Health Connect, ${isNative() ? "once it’s connected in Settings" : "through the Gym Log Android app"}.`}
-      </p>
-    </>
-  );
-}
-
-function Head({ icon: I, color, title }: { icon: Icon; color: string; title: string }) {
-  return (
-    <span className="tile-h">
-      <span className="ico" style={{ ["--c" as string]: color }} aria-hidden="true">
-        <I size={18} weight="fill" />
-      </span>
-      {title}
-    </span>
-  );
-}
-const None = ({ hint }: { hint: string }) => (
-  <>
-    <span className="tile-v none">No data</span>
-    <span className="tile-s">{hint}</span>
-  </>
-);
-
-function SleepTile({ n }: { n: DayNumbers }) {
-  return (
-    <>
-      <Head icon={Moon} color="var(--c-sleep)" title="Sleep" />
-      {n.sleepMin ? (
-        <>
-          <span className="tile-v">{hoursMin(n.sleepMin)}</span>
-          <span className="tile-s">{n.bed && n.wake ? `${clock(n.bed)} – ${clock(n.wake)}` : "asleep the night before"}</span>
-          {n.sleepStages ? <StageBar stages={n.sleepStages} legend={false} /> : null}
-        </>
-      ) : (
-        <None hint="From a watch or sleep tracker" />
-      )}
-    </>
-  );
-}
-
-function HeartTile({ n }: { n: DayNumbers }) {
-  const more = [n.hrAvg ? `avg ${n.hrAvg}` : "", n.hrv ? `HRV ${n.hrv} ms` : "", n.spo2 ? `SpO₂ ${Math.round(n.spo2)}%` : ""].filter(Boolean);
-  return (
-    <>
-      <Head icon={Heartbeat} color="var(--c-heart)" title="Heart" />
-      {n.restingHr || n.hrAvg ? (
-        <>
-          <span className="tile-v">
-            {n.restingHr ?? n.hrAvg}
-            <small>&nbsp;bpm</small>
-          </span>
-          <span className="tile-s">{[n.restingHr ? "resting" : "average", ...more.slice(n.restingHr ? 0 : 1)].join(" · ")}</span>
-        </>
-      ) : (
-        <None hint="From a watch or heart-rate sensor" />
-      )}
-    </>
-  );
-}
-
-function EnergyTile({ n }: { n: DayNumbers }) {
+  // Body: the change over the week to this day, toward the goal weight counting as good.
+  const weights = wn.map((x) => x.weight).filter((w): w is number => w != null);
+  const change = weights.length > 1 ? Math.round((weights[weights.length - 1] - weights[0]) * 100) / 100 : null;
+  const goodWay = change != null && (p.goalWeight == null ? change <= 0 : Math.abs((n.weight ?? weights[weights.length - 1]) - p.goalWeight) < Math.abs(weights[0] - p.goalWeight));
   const burned = n.totalKcal ?? n.activeKcal;
+  const water = n.waterMl ?? 0;
   return (
     <>
-      <Head icon={Fire} color="var(--c-energy)" title="Calories" />
-      {burned || n.eatenKcal ? (
-        <>
-          <span className="tile-v">
-            {burned ? fmt(burned) : "–"}
-            <small>&nbsp;kcal</small>
-          </span>
-          <span className="tile-s">
-            {[n.totalKcal ? "burned" : n.activeKcal ? "burned moving" : "", n.eatenKcal ? `${fmt(n.eatenKcal)} eaten` : ""].filter(Boolean).join(" · ")}
-          </span>
-        </>
-      ) : (
-        <None hint="From a watch or food app" />
-      )}
+      <TabHead
+        eyebrow={hc ? `Health Connect${store.healthSyncedAt ? ` · synced ${syncedWhen(store.healthSyncedAt)}` : ""}` : "Logged in Gym Log"}
+        eyebrowId="healthNote"
+        title="Health"
+        action={
+          <LinkButton variant="raised" id="editGoals" href="#settings" aria-label="Edit daily goals" onOpen={onOpenSettings}>
+            Edit
+          </LinkButton>
+        }
+      />
+      <div className="screen">
+        {!hc ? (
+          <section className="card" id="healthEmpty">
+            <h2 className="title-sm">No Health Connect data yet</h2>
+            {isNative() ? (
+              <>
+                <p className="sub">Connect it to see steps, sleep, heart rate, calories, workouts and weight here.</p>
+                <LinkButton variant="primary" id="toSettings" href="#settings" onOpen={onOpenSettings}>
+                  Connect in Settings
+                </LinkButton>
+              </>
+            ) : (
+              <p className="sub">It comes through the Gym Log Android app. Once the app has synced, it shows here too. Until then, what you log in Gym Log shows.</p>
+            )}
+          </section>
+        ) : null}
+        <section className="card activity" id="activity" aria-labelledby="activityH">
+          <div className="card-h">
+            <h2 id="activityH">Daily activity</h2>
+            <div className="dayswitch">
+              <button type="button" className="btn btn-icon btn-quiet" id="hPrev" aria-label="Previous day" onClick={() => onDay(addDays(day, -1))}>
+                <ChevronLeft size={18} aria-hidden="true" />
+              </button>
+              <span className="label" aria-live="polite">
+                {dayWords(day)}
+              </span>
+              <button type="button" className="btn btn-icon btn-quiet" id="hNext" aria-label="Next day" disabled={day >= t} onClick={() => onDay(addDays(day, 1))}>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <div className="activity-body">
+            <ActivityRings
+              size="health"
+              rings={rows.map((r) => ({ tone: r.tone, value: r.v, goal: r.goal }))}
+              label={rows.map((r) => `${r.name} ${fmt(r.v)} of ${fmt(r.goal)}${r.unit}, ${Math.round((r.v / r.goal) * 100)}%`).join("; ")}
+            />
+            <RingLegend rows={rows.map((r) => ({ tone: r.tone, name: r.name, value: fmt(r.v), goal: `${fmt(r.goal)}${r.unit}`, id: r.id, ...link(r.m) }))} />
+          </div>
+        </section>
+
+        <div className="grid2 tiles">
+          <MetricTile
+            id="tileSteps"
+            icon={Footprints}
+            name="Steps"
+            ink={METRIC_INK.steps}
+            value={n.steps != null ? fmt(n.steps) : "–"}
+            support={n.km ? `${n.km} km ${day === t ? "today" : ""}`.trim() : `of ${fmt(p.stepGoal)}`}
+            chart={<MiniBars values={wn.map((x) => x.steps)} goal={p.stepGoal} tone="steps" />}
+            {...link("steps")}
+          />
+          <MetricTile
+            id="tileSleep"
+            icon={Moon}
+            name="Sleep"
+            ink={METRIC_INK.sleep}
+            value={n.sleepMin ? hoursMin(n.sleepMin) : "–"}
+            support={n.sleepMin ? (n.bed && n.wake ? `${clock(n.bed)} – ${clock(n.wake)}` : "the night before") : "From a watch or tracker"}
+            chart={n.sleepStages ? <StageLanes stages={n.sleepStages} /> : null}
+            {...link("sleep")}
+          />
+          <MetricTile
+            id="tileHeart"
+            icon={HeartPulse}
+            name="Heart"
+            ink={METRIC_INK.heart}
+            value={n.restingHr ?? n.hrAvg ?? "–"}
+            unit={n.restingHr ?? n.hrAvg ? "bpm" : undefined}
+            support={n.restingHr || n.hrAvg ? [n.restingHr ? "resting" : "average", n.hrv ? `HRV ${n.hrv} ms` : ""].filter(Boolean).join(" · ") : "From a watch or sensor"}
+            chart={<MiniRange days={wn.map((x) => ({ lo: x.hrMin, hi: x.hrMax, rest: x.restingHr }))} />}
+            {...link("heart")}
+          />
+          <MetricTile
+            id="tileEnergy"
+            icon={Flame}
+            name="Calories"
+            ink={METRIC_INK.energy}
+            value={burned != null ? fmt(burned) : "–"}
+            unit={burned != null ? "kcal" : undefined}
+            support={burned != null || n.eatenKcal ? [n.totalKcal ? "burned" : n.activeKcal ? "burned moving" : "", n.eatenKcal ? `${fmt(n.eatenKcal)} eaten` : ""].filter(Boolean).join(" · ") : "From a watch or food app"}
+            chart={
+              n.activeKcal != null ? (
+                <span className="mt-track" style={{ ["--tt" as string]: "var(--line-strong)", ["--tf" as string]: "var(--energy)" }} role="img" aria-label={`Active calories ${fmt(n.activeKcal)} of ${fmt(p.activeGoalKcal)}`}>
+                  <i style={{ width: `${Math.min(100, (n.activeKcal / p.activeGoalKcal) * 100)}%` }} />
+                </span>
+              ) : null
+            }
+            {...link("energy")}
+          />
+          <MetricTile
+            id="tileBody"
+            icon={WeightIcon}
+            name="Body"
+            ink={METRIC_INK.body}
+            value={n.weight != null ? n.weight.toFixed(1) : "–"}
+            unit={n.weight != null ? "kg" : undefined}
+            support={n.weight != null ? [n.bodyFat ? `${n.bodyFat}% body fat` : "", n.bmi ? `BMI ${n.bmi}` : ""].filter(Boolean).join(" · ") || "body weight" : "Weigh in, or log it in Train"}
+            chart={
+              change != null ? (
+                <span className={goodWay ? "mt-good" : "mt-s"}>
+                  {change < 0 ? "↓" : change > 0 ? "↑" : "±"} {Math.abs(change).toFixed(2).replace(/0$/, "")} kg this week
+                </span>
+              ) : null
+            }
+            {...link("body")}
+          />
+          <div className="tile" id="tileWaterBox">
+            <ViewLink className="mt-l mt-link" id="tileWater" href={hashOf({ view: "health", metric: "water" })} onOpen={() => onOpen("water")} style={{ color: METRIC_INK.water }}>
+              <Droplet size={16} aria-hidden="true" />
+              Water
+            </ViewLink>
+            <span className="mt-v" id="waterValue">
+              {fmt(water)}
+              <span className="u"> ml</span>
+            </span>
+            <span className="mt-s">of {fmt(p.waterGoalMl)} ml</span>
+            <span className="mt-c">
+              <span className="mt-track" style={{ ["--tt" as string]: "var(--water-tint)", ["--tf" as string]: "var(--water)" }} role="meter" aria-valuemin={0} aria-valuemax={p.waterGoalMl} aria-valuenow={water} aria-label={`Water, ${fmt(water)} of ${fmt(p.waterGoalMl)} ml`}>
+                <i style={{ width: `${Math.min(100, (water / p.waterGoalMl) * 100)}%` }} />
+              </span>
+              <span className="water-btns">
+                <button type="button" className="btn" id="waterMinus" aria-label="Remove 250 ml of water" disabled={!water} onClick={() => store.addWater(day, -250)}>
+                  <Minus size={20} aria-hidden="true" />
+                </button>
+                <button type="button" className="btn add" id="waterPlus" aria-label="Add 250 ml of water" onClick={() => store.addWater(day, 250)}>
+                  <Plus size={20} aria-hidden="true" />
+                </button>
+              </span>
+            </span>
+          </div>
+        </div>
+        <Insight day={day} />
+      </div>
     </>
   );
 }
 
-function BodyTile({ n }: { n: DayNumbers }) {
-  // With no weight for the day, the measurements typed on Today: the first, and how many more.
-  const measured = [n.bodyFat ? ([n.bodyFat, "%", "body fat"] as const) : null, ...CM.map((f) => (n[f] ? ([n[f], "\u00a0cm", f] as const) : null))].filter((m) => m != null);
-  return (
-    <>
-      <Head icon={PersonSimple} color="var(--c-body)" title="Body" />
-      {n.weight ? (
-        <>
-          <span className="tile-v">
-            {n.weight.toFixed(1)}
-            <small>&nbsp;kg</small>
-          </span>
-          <span className="tile-s">{[n.bodyFat ? `${n.bodyFat}% body fat` : "", n.bmi ? `BMI ${n.bmi}` : ""].filter(Boolean).join(" · ") || "body weight"}</span>
-        </>
-      ) : measured.length ? (
-        <>
-          <span className="tile-v">
-            {measured[0][0]}
-            <small>{measured[0][1]}</small>
-          </span>
-          <span className="tile-s">{[measured[0][2], measured.length > 1 ? `${measured.length - 1} more` : ""].filter(Boolean).join(" · ")}</span>
-        </>
-      ) : (
-        <None hint="Weigh in, or type it on Today" />
-      )}
-    </>
-  );
-}
-const CM = ["chest", "arms", "thighs", "hips"] as const;
-
-function WaterTile({ n, goal }: { n: DayNumbers; goal: number }) {
-  return (
-    <>
-      <Head icon={Drop} color="var(--c-water)" title="Water" />
-      {n.waterMl ? (
-        <>
-          <span className="tile-v">
-            {fmt(n.waterMl)}
-            <small>&nbsp;ml</small>
-          </span>
-          <Meter value={n.waterMl} goal={goal} color="var(--c-water)" label={`Water, ${fmt(n.waterMl)} of ${fmt(goal)} ml`} />
-          <span className="tile-s">of {fmt(goal)}&nbsp;ml</span>
-        </>
-      ) : (
-        <None hint="From a water-tracking app" />
-      )}
-    </>
-  );
-}
-
-function ExerciseTile({ n }: { n: DayNumbers }) {
-  const w = n.workouts;
-  return (
-    <>
-      <Head icon={PersonSimpleRun} color="var(--c-exercise)" title="Exercise" />
-      {w.length ? (
-        <>
-          <span className="tile-v">{hoursMin(n.exerciseMin)}</span>
-          <span className="tile-s">{[...new Set(w.map((x) => workoutName(x.type)))].join(", ")}</span>
-        </>
-      ) : (
-        <None hint="Workouts from a watch or fitness app" />
-      )}
-    </>
-  );
+/** One coach line under the tiles: the steps left to the goal today, or the goal met, or sleep short of its goal. */
+function Insight({ day }: { day: DayKey }) {
+  const store = useGym();
+  const p = store.plan, n = dayNumbers(store, day), t = todayKey();
+  let text = "";
+  if (n.steps != null && n.steps < p.stepGoal && day === t) {
+    const left = p.stepGoal - n.steps, min = Math.max(5, Math.round(left / 110 / 5) * 5);
+    text = `${fmt(left)} steps to go. A ${min}-minute walk ${new Date().getHours() >= 17 ? "after dinner " : ""}will close it.`;
+  } else if (n.steps != null && n.steps >= p.stepGoal) text = `Steps goal reached with ${fmt(n.steps)}. Nice work.`;
+  else if (n.sleepMin && n.sleepMin < p.sleepGoalH * 60) text = `${hoursMin(p.sleepGoalH * 60 - n.sleepMin)} short of your sleep goal. An earlier night would help recovery.`;
+  if (!text) return null;
+  return <InsightCallout id="healthInsight">{text}</InsightCallout>;
 }

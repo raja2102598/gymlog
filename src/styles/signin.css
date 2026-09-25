@@ -1,0 +1,15 @@
+/* Sign in (Sign in board) and the setup screen: the mark and wordmark, then a bottom sheet of ways in. */
+.signin{display:flex;flex-direction:column;min-height:100dvh}
+.signin-top{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:calc(var(--sat) + 48px) 24px 32px}
+.wordmark{margin-top:36px;font:var(--type-display)}
+.tagline{margin-top:4px;font:700 18px/24px var(--font-sans);color:var(--ink-muted)}
+.logo-mark .lm-bg{fill:var(--brand)}
+.logo-mark .lm-fg{fill:var(--on-brand)}
+.sheet{display:flex;flex-direction:column;gap:10px;padding:24px 20px calc(max(20px,var(--sab)) + 20px);border-radius:var(--radius-sheet) var(--radius-sheet) 0 0;background:var(--surface)}
+.sheet .login{display:flex;flex-direction:column;gap:10px}
+.sheet-note{text-align:center}
+.sheet .btn-link{min-height:46px;font-size:16px}
+.sheet code{font-size:.9em;background:var(--surface-sunken);padding:1px 5px;border-radius:6px}
+.sk-head{display:grid;gap:10px}
+.sk-line.big{height:28px;border-radius:10px}
+.choose .card{gap:14px}
