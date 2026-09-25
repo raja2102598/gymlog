@@ -294,6 +294,52 @@ export function warmupLadder(workingKg: number, barKg: number, inc = 2.5): Warmu
   return WARMUP_STEPS.map(({ pct, reps }) => ({ pct, reps, kg: Math.min(workingKg, Math.max(bar, near((workingKg * pct) / 100))) })).filter((s) => s.kg > 0);
 }
 
+/* ---------- sets per muscle ---------- */
+
+/** How many of a lift's sets count toward its muscles' weekly sets: those done, with reps, and not a warm-up or a
+ *  drop set, which carries on the set before it. */
+export const muscleSetCount = (sets: SetLog[]) => sets.filter((s) => isStraightSet(s) && (s.reps ?? 0) > 0).length;
+
+export interface MuscleWeeks {
+  /** Each muscle's sets in each week, oldest first: a set counts 1 for a lift's main muscles, 0.5 for the others. */
+  muscles: Map<string, number[]>;
+  /** Muscles that were a main one of a lift counted: the ones trained on purpose. */
+  main: Set<string>;
+  /** Lifts with no muscles to count, by name, with their sets in each week. */
+  untagged: Map<string, number[]>;
+}
+
+// Sets per muscle in the weeks starting on `mondays` (oldest first, a week apart), from the days' lifts; a day in
+// none of them counts nothing. `musclesOf` says what a lift works, or null when that isn't known.
+export function muscleWeeks(
+  days: LiftDay[],
+  mondays: DayKey[],
+  musclesOf: (name: string) => { primary: readonly string[]; secondary: readonly string[] } | null,
+): MuscleWeeks {
+  const out: MuscleWeeks = { muscles: new Map(), main: new Set(), untagged: new Map() };
+  const add = (m: Map<string, number[]>, k: string, w: number, n: number) => {
+    if (!m.has(k)) m.set(k, mondays.map(() => 0));
+    (m.get(k) as number[])[w] += n;
+  };
+  for (const d of days) {
+    const w = mondays.length ? Math.floor((dayNum(d.day) - dayNum(mondays[0])) / 7) : -1;
+    if (w < 0 || w >= mondays.length) continue;
+    for (const l of d.lifts) {
+      const n = muscleSetCount(l.sets), x = n ? musclesOf(l.name) : null;
+      if (!n) continue;
+      if (!x) add(out.untagged, l.name, w, n);
+      else {
+        for (const m of x.primary) {
+          add(out.muscles, m, w, n);
+          out.main.add(m);
+        }
+        for (const m of x.secondary) add(out.muscles, m, w, n / 2);
+      }
+    }
+  }
+  return out;
+}
+
 export type RecordKind = "weight" | "e1rm" | "reps";
 export interface LiftDay {
   day: DayKey;

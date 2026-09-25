@@ -99,7 +99,7 @@ select.ghost{appearance:none;-webkit-appearance:none;padding-right:34px;backgrou
 table{border-collapse:collapse;width:100%;font-size:var(--t-sm)}
 th,td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 th{font-size:var(--t-xs);color:var(--muted);font-weight:500}
-tbody tr:last-child td{border-bottom:0}
+tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
 td.r,th.r{text-align:right}
 td.c,th.c{text-align:center}
 

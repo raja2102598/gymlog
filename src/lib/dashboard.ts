@@ -3,6 +3,7 @@
 import { addDays, DOW, dm, mondayOf } from "./dates";
 import { avg, signed, sum } from "./format";
 import { hoursMin } from "./health";
+import { MUSCLES, type Muscle } from "./library";
 import * as S from "./stats";
 import { setsOf, topKg, type GymStore } from "./store";
 import type { DayKey, PlanExercise } from "./types";
@@ -296,6 +297,44 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
     held,
     deload,
     records: store.recentRecords(t, 30).reverse().slice(0, 8),
+  };
+}
+
+/* ---------- sets per muscle: is each muscle getting enough? ---------- */
+
+export interface MuscleRow {
+  muscle: Muscle;
+  /** Its sets in each of the four weeks, oldest first. */
+  sets: number[];
+  /** Last week under 10 sets or over 20, outside the range most advice gives: under only for a muscle trained on
+   *  purpose (a main muscle of a lift done), and neither before the account's first full week. */
+  note: "under" | "over" | null;
+}
+
+export interface MusclesModel {
+  /** The four weeks' Mondays, oldest first: the last is this week, so far. */
+  weeks: DayKey[];
+  /** Muscles with any sets in them, most first. */
+  rows: MuscleRow[];
+  /** Lifts done in them with no muscles to count (not in the library, or yours with none given), with their sets. */
+  untagged: { name: string; sets: number }[];
+}
+
+export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
+  const mon = mondayOf(t), weeks = [-21, -14, -7, 0].map((n) => addDays(mon, n));
+  const days = store.days().filter((k) => k >= weeks[0] && k <= t).map((k) => ({ day: k, lifts: store.liftSets(k) }));
+  const w = S.muscleWeeks(days, weeks, (name) => {
+    const x = store.exerciseOf(name);
+    return x?.primary.length ? x : null;
+  });
+  const judged = store.firstDay() <= weeks[2];
+  const note = (m: string, n: number): MuscleRow["note"] => (!judged ? null : n > 20 ? "over" : n < 10 && w.main.has(m) ? "under" : null);
+  return {
+    weeks,
+    rows: [...w.muscles]
+      .map(([m, sets]) => ({ muscle: m as Muscle, sets, note: note(m, sets[2]) }))
+      .sort((a, b) => sum(b.sets) - sum(a.sets) || MUSCLES[a.muscle].localeCompare(MUSCLES[b.muscle])),
+    untagged: [...w.untagged].map(([name, sets]) => ({ name, sets: sum(sets) })).sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name)),
   };
 }
 

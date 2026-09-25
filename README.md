@@ -52,7 +52,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 
 **Progress: is it working?**
 - Weight trend (Holt smoothing, as [TrendWeight](https://github.com/ervwalter/trendweight) does) and the weekly rate, with a goal date and your pace against the target.
-- Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, and knee scores by session, with notes on anything that needs attention.
+- Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, working sets per muscle each week, and knee scores by session, with notes on anything that needs attention.
 - Tap a lift, in Strength or on Today's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
 
 **Everywhere**
@@ -61,7 +61,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
 - Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.
 - An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. Start from a blank week or a 3, 4 or 5-day template.
-- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own. My gym leaves out what your equipment can't do.
+- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own. My gym leaves out what your equipment can't do, and knows what each bar weighs and what dumbbells, machines and cables go up by, so plates, warm-up sets and *Go up to* suggest weights you can load.
 
 ## How it works
 

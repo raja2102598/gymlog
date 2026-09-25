@@ -1,16 +1,17 @@
 "use client";
 import { useGym } from "@/hooks/useGym";
-import { healthModel, kneeModel, planModel, stepsModel, strengthModel, weightModel } from "@/lib/dashboard";
+import { healthModel, kneeModel, musclesModel, planModel, stepsModel, strengthModel, weightModel } from "@/lib/dashboard";
 import { todayKey } from "@/lib/dates";
 import { KneeCard } from "./KneeCard";
+import { MusclesCard } from "./MusclesCard";
 import { PlanCard } from "./PlanCard";
 import { StepsCard } from "./StepsCard";
 import { StrengthCard } from "./StrengthCard";
 import { WeightCard } from "./WeightCard";
 
-/** Progress: how the plan is going. Weight trend, sessions kept, steps, strength and the knee, with anything that
- *  needs attention flagged at the top (sleep and resting heart rate from Health Connect too; their charts are in
- *  the Health tab). */
+/** Progress: how the plan is going. Weight trend, sessions kept, steps, strength, sets per muscle and the knee,
+ *  with anything that needs attention flagged at the top (sleep and resting heart rate from Health Connect too;
+ *  their charts are in the Health tab). */
 export function DashboardView({ onSetGoal, onOpenLift }: { onSetGoal: () => void; onOpenLift: (name: string) => void }) {
   const store = useGym();
   const t = todayKey();
@@ -31,6 +32,7 @@ export function DashboardView({ onSetGoal, onOpenLift }: { onSetGoal: () => void
       <PlanCard m={planModel(store, t)} today={t} />
       <StepsCard m={stepsModel(store, t)} />
       <StrengthCard m={strength} onOpenLift={onOpenLift} />
+      <MusclesCard m={musclesModel(store, t)} />
       <KneeCard m={knee} />
     </>
   );

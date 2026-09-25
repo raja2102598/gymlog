@@ -55,3 +55,9 @@ svg.spark polyline{fill:none;stroke:var(--good);stroke-width:2;stroke-linejoin:r
 .knee-t td:first-child{white-space:normal}
 .knee-t .loads{font-size:12px;color:var(--muted)}
 .knee-t td.hi{color:var(--warn);font-weight:600}
+/* sets per muscle: the muscle heads its row, with a note under it when last week was out of range */
+.musc-t th,.musc-t td{padding:9px 4px}
+.musc-t th{white-space:normal}
+.musc-t tbody th{font-size:inherit;color:var(--ink);font-weight:400}
+.musc-n{font-size:12px;color:var(--muted)}
+.musc-n.under,.musc-n.over{color:var(--warn);font-weight:600}
