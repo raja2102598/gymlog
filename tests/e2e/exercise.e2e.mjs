@@ -64,6 +64,9 @@ export default async function exercise({ browser, base, check }) {
     check("? shows the start and finish photos, named for screen readers", photos.join("|") === "Leg Extension, start position|Leg Extension, finish position", photos.join("|"));
     check("and the steps, numbered", steps >= 3 && /leg extension machine/i.test(await flat(page.locator("#workoutView .howto-steps li").first())), String(steps));
     check("with where they come from", /free-exercise-db, public domain/.test(await flat(page.locator("#workoutView .howto-credit"))));
+    // The photos load lazily: bring them on screen and wait for both before looking at what was asked for.
+    await page.locator("#workoutView .howto-photos img").first().scrollIntoViewIfNeeded();
+    await until(() => db.photos.filter((u) => u.includes("/Leg_Extensions/")).length === 2);
     check("the photos come from free-exercise-db, pinned to the library's commit", db.photos.filter((u) => u.includes("/Leg_Extensions/")).length === 2 && db.photos.every((u) => /free-exercise-db@[0-9a-f]{40}\/exercises\/[A-Za-z_]+\/[01]\.jpg$/.test(u)), db.photos.join(", "));
 
     // A lift's page: how to do it, under its progress.
