@@ -100,5 +100,6 @@ The installed app loads its files from the phone's cache first, so it opens stra
 ## Good to know
 
 - Supabase's built-in email service sends only a few sign-in emails an hour for the whole project (about 2). If you hit the limit, the sign-in screen says so: wait an hour, or sign in with your password. The Send button also waits a minute after each link, since a new link replaces the last one.
-- Your history follows each lift by name, including on its own page under Progress. Renaming a lift in the plan starts a fresh history for it; days you've already logged keep what you logged.
+- Your history follows each lift by name, including on its own page under Progress. Rename a lift that has history in the plan and leave the field, and you're asked whether to carry its history over: every logged day, and anything swapped for it, moves to the new name, as do other days of the plan that use the same lift. Say no and the lift starts a fresh history. A name that already has its own history can't take another's.
+- Each lift you log keeps the sets and reps the plan asked for that day, so changing the plan later doesn't change how an old session reads, or whether it earned a heavier weight.
 - Supabase's free plan pauses a project after about a week with no activity. Logging every day keeps it awake. If it does pause, click **Restore** in the Supabase dashboard; no data is lost.

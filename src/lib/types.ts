@@ -28,6 +28,11 @@ export interface LiftLog {
   swap?: string;
   /** The tick came from logging the planned number of sets, not from a hand: voice's "undo" can take it back. */
   autoDone?: boolean;
+  /** The plan's sets and reps for this lift when it was first logged that day (see GymStore.editLift), so its
+   *  row count, "sets done" reading and go-up check still match what was actually asked after the plan's
+   *  targets change. Unset on older entries, and on a lift no longer in the plan when first logged: both fall
+   *  back to today's plan, as every entry did before this. */
+  target?: { sets: string; reps: string };
 }
 
 export interface DayLog {

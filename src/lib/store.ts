@@ -48,10 +48,14 @@ export interface Replacing {
 }
 
 const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 7;
-export const minSets = (x: PlanExercise) => {
+export const minSets = (x: { sets: string }) => {
   const n = parseInt(x.sets, 10);
   return n > 0 ? Math.min(n, 10) : 1;
 };
+/** The sets and reps to check a logged lift against: what it was actually asked for that day, once stored
+ *  (LiftLog.target), else today's plan for it. A lift never logged that day, or logged before targets were
+ *  stored, reads the plan, exactly as every lift did before. */
+export const targetOf = (r: Partial<LiftLog> | null | undefined, x: PlanExercise): { sets: string; reps: string } => r?.target ?? { sets: x.sets, reps: x.reps };
 // Older entries have only one weight per lift: show it as set 1.
 export const setsOf = (r?: LiftLog | null): SetLog[] => (Array.isArray(r?.sets) ? r.sets : r?.kg != null ? [{ reps: null, kg: r.kg }] : []);
 /** Heaviest working set: a warm-up never counts, however heavy. */
@@ -654,6 +658,53 @@ export class GymStore {
     s.delete(exclude);
     return [...s].sort((a, b) => a.localeCompare(b));
   }
+  /** Whether a name is tracked in any day this phone has: the key of a logged lift, or something swapped in
+   *  for one. The plan editor checks this before offering to carry a rename's history over, so renaming to a
+   *  name that already has its own history can be refused rather than merging the two. */
+  hasHistory(name: string): boolean {
+    return this.days().some((k) => {
+      const ex = this.logs[k].exercises;
+      return name in ex || Object.values(ex).some((r) => r?.swap === name);
+    });
+  }
+  /** Carries a lift's history over to a new name: the key in every logged day's exercises, and any lift's swap
+   *  equal to the old name, become the new one, saved the way any day's edit is (pending, then flush, so a
+   *  conflict with another device merges or waits for you to choose exactly as it would for any other edit),
+   *  a batch of days at once, as a restore saves. Every plan day with an exercise still named `from` moves to
+   *  `to` as well, since a lift kept on two plan days (Seated Row on Pull and Upper) shares one history: left
+   *  on the old name, that day's future logging would start a history of its own. Pulls first, so a day this
+   *  phone hasn't loaded yet is caught too. Refuses when `to` already has its own history, so two are never
+   *  quietly merged into one; a name clash within the day being edited (another lift there already called
+   *  `to`) is the plan editor's to catch first, since only it knows which day that is. */
+  async renameLift(from: string, to: string): Promise<{ ok: boolean; msg: string; days: number }> {
+    if (this.user && navigator.onLine) await this.pull();
+    if (this.hasHistory(to)) return { ok: false, msg: `“${to}” already has its own history, so ${from}’s can’t be carried over there too.`, days: 0 };
+    const days = this.days().filter((k) => {
+      const ex = this.logs[k].exercises;
+      return from in ex || Object.values(ex).some((r) => r?.swap === from);
+    });
+    this.editPlan((p) => {
+      for (const d of p.days) for (const x of d.exercises) if (x.name === from) x.name = to;
+    });
+    for (const k of days) {
+      const n = this.clone(k);
+      if (from in n.exercises) {
+        n.exercises[to] = n.exercises[from];
+        delete n.exercises[from];
+      }
+      for (const r of Object.values(n.exercises)) if (r.swap === from) r.swap = to;
+      this.logs[k] = n;
+      this.pending[k] = n;
+    }
+    if (days.length) {
+      this.logsChanged();
+      this.persistLocal();
+      this.changed();
+      await this.flush();
+    }
+    const named = days.length === 1 ? "1 day" : `${days.length} days`;
+    return { ok: true, msg: days.length ? `Carried ${from}’s history over to ${to}: ${named}.` : `${to} is saved. ${from} had no history yet to carry over.`, days: days.length };
+  }
 
   /* ---------- knee, next weight and records ---------- */
   kneeLifts(p: PlanDay) {
@@ -669,11 +720,15 @@ export class GymStore {
     return [e.kneeAfter, w].some((v) => v != null && v > lim) || (w != null && e.kneeBefore != null && w > e.kneeBefore);
   }
   // Double progression from the last time this exercise was done, held back on knee-sensitive lifts
-  // when that session was hard on the knee.
+  // when that session was hard on the knee. Whether every set reached the top of the rep range is checked
+  // against what that last session was actually asked for (its own stored target, once it has one) rather
+  // than today's plan, so a rep range or sets change doesn't retroactively call an old session incomplete;
+  // the step to add stays today's, since that part is about what to do next, not what was done then.
   nextWeight(x: PlanExercise, did: string, k: DayKey): NextWeight | null {
     const L = this.lastDone(did, k);
-    const r = L && S.readyToAdd(setsOf(L.r), x.reps, minSets(x), stepOf(x));
-    return r && L ? { ...r, day: L.day, held: !!x.knee && this.kneeBad(L.day) } : null;
+    if (!L) return null;
+    const t = targetOf(L.r, x), r = S.readyToAdd(setsOf(L.r), t.reps, minSets(t), stepOf(x));
+    return r ? { ...r, day: L.day, held: !!x.knee && this.kneeBad(L.day) } : null;
   }
   // Working sets only: a warm-up never sets a record or counts toward volume.
   liftSets(d: DayKey) {
@@ -727,10 +782,18 @@ export class GymStore {
   /** Applies a change to one lift of a day and saves it. */
   editLift(day: DayKey, name: string, fn: (r: LiftLog) => void, immediate: boolean): LiftLog {
     const n = this.clone(day);
-    const r = n.exercises[name] || (n.exercises[name] = { done: false, kg: null });
+    const r = n.exercises[name] || (n.exercises[name] = this.freshLift(day, name));
     fn(r);
     this.save(day, n, immediate);
     return r;
+  }
+  /** A lift's first entry for a day: stamped with the plan's sets and reps for it right now, if it's still in
+   *  the plan for that day, so its history reads right (row count, "sets done", the go-up check) even after the
+   *  plan's targets change later. A lift no longer in the plan when first logged (an "extra") gets none, and
+   *  falls back to the plan like an entry logged before this existed. */
+  private freshLift(day: DayKey, name: string): LiftLog {
+    const x = this.planFor(day).exercises.find((e) => e.name === name);
+    return x && (x.sets || x.reps) ? { done: false, kg: null, target: { sets: x.sets, reps: x.reps } } : { done: false, kg: null };
   }
 
   /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) In the demo, nothing is

@@ -11,7 +11,7 @@ import { dayMonth } from "@/lib/dates";
 import { num, setsSummary } from "@/lib/format";
 import { hashOf } from "@/lib/route";
 import { isWorkingSet, type RecordKind } from "@/lib/stats";
-import { minSets, performed, prTitle, setsComplete, setsOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
+import { minSets, performed, prTitle, setsComplete, setsOf, targetOf, topKg, type LastDone, type LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
 import { PlatesButton, PlatesInfo } from "./PlateCalc";
@@ -56,10 +56,13 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   const store = useGym();
   const { x, name, extra } = item, r: Partial<LiftLog> = entry.exercises[name] || {};
   const did = performed(name, r as LiftLog), last = store.lastDone(did, sel), next = r.skipped ? null : store.nextWeight(x, did, sel);
+  // What this lift was actually asked for on this day: its own stored target once logged, so its row count and
+  // "sets done" reading don't drift under it if the plan's sets or reps change later; today's plan otherwise.
+  const target = targetOf(r, x);
   // Warm-up sets (WU-marked) are kept apart from the numbered grid below: they never count toward the planned
   // sets, a record or the heaviest set, whatever position they hold in the stored array.
   const allSets = setsOf(r as LiftLog), warmSets = allSets.filter((s) => !isWorkingSet(s));
-  const sets = allSets.filter(isWorkingSet), min = extra ? 1 : minSets(x), rows = Math.max(min, sets.length);
+  const sets = allSets.filter(isWorkingSet), min = extra ? 1 : minSets(target), rows = Math.max(min, sets.length);
   // What to suggest as the warm-up calculator's working weight: the progression hint, or last time's top set.
   const defaultWorkingKg = next && !next.held ? next.to : last ? topKg(setsOf(last.r)) : null;
   // How to do the lift: folded, since it's the same every week. Warnings (e.g. a KNEE NOTE) always show.
@@ -445,9 +448,9 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
         </button>
       </div>
       <div className="lift-meta">
-        {x.sets || x.reps ? (
+        {target.sets || target.reps ? (
           <span className="sr">
-            {x.sets}&nbsp;×&nbsp;{x.reps}
+            {target.sets}&nbsp;×&nbsp;{target.reps}
           </span>
         ) : null}
         {r.skipped ? null : (

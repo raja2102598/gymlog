@@ -23,6 +23,13 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   const store = useGym();
   const focusNext = useFocusNext();
   const [templates, setTemplates] = useState(false);
+  const [renameMsg, setRenameMsg] = useState<{ text: string; warn?: boolean } | null>(null);
+  // Cleared on its own when another day opens, rather than lingering under a lift it no longer names.
+  const [renameDay, setRenameDay] = useState(editDay);
+  if (renameDay !== editDay) {
+    setRenameDay(editDay);
+    setRenameMsg(null);
+  }
   const plan = store.plan, d = plan.days[editDay], last = d.exercises.length - 1, wd = DOW[editDay];
   const edit = (fn: (p: Plan) => void, shape = false) => store.editPlan(fn, shape);
   const setLift = (j: number, f: LiftText, v: string) =>
@@ -47,6 +54,27 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
     }, true);
     focusNext(`#pe_x${j}_name`);
   };
+  // Offered when a name that has history is changed and the field is left, never on every keystroke: carries
+  // every logged day (and any swap) over to the new name, and every other plan day still using the old one,
+  // since a lift kept on two days (Seated Row on Pull and Upper) shares one history. Declining, or a name with
+  // no history to lose, just leaves the plain rename as typed: a fresh history starts, as the note below says.
+  const tryCarryOver = async (j: number, before: string, afterRaw: string) => {
+    setRenameMsg(null);
+    const from = before.trim(), to = afterRaw.trim();
+    if (!from || !to || from === to || !store.hasHistory(from)) return;
+    if (d.exercises.some((ex, k) => k !== j && ex.name.trim() === to)) {
+      setRenameMsg({ warn: true, text: `Another lift on ${wd} is already called “${to}”. Give them different names to carry ${from}’s history over.` });
+      return;
+    }
+    if (store.hasHistory(to)) {
+      setRenameMsg({ warn: true, text: `“${to}” already has its own history, so ${from}’s can’t be carried over there too.` });
+      return;
+    }
+    if (!confirm(`Carry ${from}’s history over to ${to}? Every logged day, and anything swapped for ${from}, will show ${to} instead.`)) return;
+    setRenameMsg({ text: `Carrying ${from}’s history over to ${to}…` });
+    const r = await store.renameLift(from, to);
+    setRenameMsg({ warn: !r.ok, text: r.msg });
+  };
 
   const names = d.exercises.map((x) => x.name.trim()), dup = names.find((n, i) => n && names.indexOf(n) !== i);
   // A name box that's empty or repeated is marked, and the message says what to do.
@@ -61,6 +89,27 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
     <label className="field" htmlFor={`pe_x${j}_${f}`}>
       <span>{label}</span>
       <input id={`pe_x${j}_${f}`} data-px={`${j}:${f}`} defaultValue={x[f]} autoComplete="off" onChange={(ev) => setLift(j, f, ev.target.value)} {...extra} />
+    </label>
+  );
+  // The name field on its own, not through liftField: it needs the name at focus, to offer carrying its
+  // history over once the field is left, which none of the other fields do.
+  const nameField = (x: PlanExercise, j: number) => (
+    <label className="field" htmlFor={`pe_x${j}_name`}>
+      <span>{`Lift ${j + 1}`}</span>
+      <input
+        id={`pe_x${j}_name`}
+        data-px={`${j}:name`}
+        defaultValue={x.name}
+        autoComplete="off"
+        placeholder="Exercise name…"
+        aria-invalid={badName(names[j]) || undefined}
+        aria-describedby={badName(names[j]) ? "peWarn" : undefined}
+        onFocus={(ev) => {
+          ev.currentTarget.dataset.prev = ev.currentTarget.value;
+        }}
+        onChange={(ev) => setLift(j, "name", ev.target.value)}
+        onBlur={(ev) => void tryCarryOver(j, ev.currentTarget.dataset.prev ?? "", ev.currentTarget.value)}
+      />
     </label>
   );
 
@@ -121,16 +170,15 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           <div id="peWarn" role="status">
             {warn ? <p className="warn">{warn}</p> : null}
           </div>
+          <div id="peRename" role="status">
+            {renameMsg ? <p className={renameMsg.warn ? "warn" : "note"}>{renameMsg.text}</p> : null}
+          </div>
           {d.exercises.length ? null : <p className="empty">No lifts: this is a rest day. Add one to make it a gym day.</p>}
           <ol className="pe-list">
             {d.exercises.map((x, j) => (
               <li className="pe-ex" key={j}>
                 <div className="pe-row">
-                  {liftField(x, j, "name", `Lift ${j + 1}`, {
-                    placeholder: "Exercise name…",
-                    "aria-invalid": badName(names[j]) || undefined,
-                    "aria-describedby": badName(names[j]) ? "peWarn" : undefined,
-                  })}
+                  {nameField(x, j)}
                   {liftField(x, j, "sets", "Sets", { placeholder: "3" })}
                   {liftField(x, j, "reps", "Reps", { placeholder: "8-10" })}
                 </div>
@@ -323,7 +371,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           />
         </label>
         <p className="note">
-          Your history follows each lift by its name, so renaming a lift starts a fresh history for it. Days you’ve already logged keep what you logged.
+          Your history follows each lift by its name. Change a name with history and leave the field, and you’re asked whether to carry it over to the new name; say no, or rename one with no history, and it starts fresh. Days you’ve already logged keep what you logged either way.
         </p>
         <div className="pe-btns">
           <button className="ghost" id="pe_tpl" aria-expanded={templates} aria-controls="peTemplates" onClick={() => setTemplates(!templates)}>
