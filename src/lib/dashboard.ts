@@ -217,13 +217,15 @@ function e1rmChange(points: [DayKey, number][]): string {
 /** Where a lift is in the plan: the days it's on, with its rep range on each. */
 export type Planned = { day: string; reps: [number, number] | null }[];
 
-/** Each lift in the plan, in the plan's order, with the days it's on (a day listing it twice counts once). */
+/** Each lift in the plan, in the plan's order, with the days it's on. Days that read the same (the same session
+ *  name and rep range: Push on Monday and Thursday, or a day listing the lift twice) count once; two Push days
+ *  with different rep ranges stay two, so neither range is hidden. */
 function plannedDays(store: GymStore): Map<string, Planned> {
   const out = new Map<string, Planned>();
   for (const d of store.plan.days)
     for (const x of d.exercises) {
-      const on = out.get(x.name) ?? [];
-      if (!on.some((p) => p.day === d.name)) on.push({ day: d.name, reps: S.repRange(x.reps) });
+      const on = out.get(x.name) ?? [], reps = S.repRange(x.reps);
+      if (!on.some((p) => p.day === d.name && String(p.reps) === String(reps))) on.push({ day: d.name, reps });
       out.set(x.name, on);
     }
   return out;
@@ -263,7 +265,7 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
     const logged = points.length > 0 || days.some((k) => store.liftSets(k).some((l) => l.name === name));
     return {
       name,
-      day: on.map((p) => p.day).join(", "),
+      day: [...new Set(on.map((p) => p.day))].join(", "),
       points,
       change: points.length ? e1rmChange(points) : logged ? "no estimate yet: needs a set with weight and 1-12 reps" : "not logged yet",
     };

@@ -209,6 +209,23 @@ describe("a lift's own page", () => {
     expect(renamed.planned).toEqual([{ day: "Legs", reps: [10, 12] }]);
   });
 
+  it("keeps two days with the same session name apart only when the lift's rep ranges differ there", () => {
+    const s = storeWith({});
+    const withPush = (reps: string) => ({
+      ...s.plan,
+      days: s.plan.days.map((d, i) => (i === 3 ? { ...d, name: "Push", exercises: [{ ...s.plan.days[0].exercises[0], reps }] } : d)),
+    });
+    s.plan = withPush("8-10"); // Thursday is a second Push, the same as Monday's
+    expect(liftModel(s, "2026-09-23", "Incline Machine Press").planned).toEqual([{ day: "Push", reps: [8, 10] }]);
+    expect(strengthModel(s, "2026-09-23").rows.find((r) => r.name === "Incline Machine Press")?.day).toBe("Push");
+    s.plan = withPush("12-15"); // a lighter Push on Thursday
+    expect(liftModel(s, "2026-09-23", "Incline Machine Press").planned).toEqual([
+      { day: "Push", reps: [8, 10] },
+      { day: "Push", reps: [12, 15] },
+    ]);
+    expect(strengthModel(s, "2026-09-23").rows.find((r) => r.name === "Incline Machine Press")?.day).toBe("Push");
+  });
+
   it("names every day the plan has a lift on, each with its rep range there", () => {
     const s = storeWith({});
     expect(liftModel(s, "2026-09-23", "Seated Row").planned).toEqual([
