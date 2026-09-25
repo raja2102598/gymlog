@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import type { DownloadProgress, LatestUpdate } from "@/native/update";
+import type { DownloadProgress, InstallResult, LatestUpdate } from "@/native/update";
 
 // Loaded only in the Android app, so the website doesn't carry the plugin.
 const native = () => import("@/native/app");
@@ -23,11 +23,16 @@ export const downloadFailed = (e: unknown, latest?: LatestUpdate): AndroidUpdate
 type Native = Pick<typeof import("@/native/app"), "downloadUpdate" | "downloadUnderway" | "followDownload" | "installUpdate" | "openInstallSettings" | "onAppResume">;
 type SetUpdate = (next: AndroidUpdate | ((cur: AndroidUpdate) => AndroidUpdate)) => void;
 
+/** The installer being asked for, if it is: shared by every place that offers the update (the banner and Settings
+ *  can both be waiting to try again on the way back from Android's settings), so it opens once. */
+let installing: Promise<InstallResult> | null = null;
+const installOnce = (m: Native): Promise<InstallResult> => (installing ??= m.installUpdate().finally(() => (installing = null)));
+
 /** The steps, apart from React so they can be tested on their own: `load` is the Android app's native module. */
 export function updateSteps(set: SetUpdate, load: () => Promise<Native> = native) {
   const install = (latest: LatestUpdate): Promise<void> =>
     load()
-      .then((m) => m.installUpdate())
+      .then((m) => installOnce(m))
       // { started: true }: Android's installer has taken over. Back to readyToInstall either way, not needsPermission
       // again once it's started, so coming back from the installer (cancelled, say) doesn't retry it on a loop.
       .then((r) => set("needsPermission" in r ? { kind: "needsPermission", latest } : { kind: "readyToInstall", latest }))

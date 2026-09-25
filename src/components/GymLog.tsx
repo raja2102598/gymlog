@@ -17,7 +17,7 @@ import { onBack } from "@/lib/back";
 import { sessionDone } from "@/lib/session";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
-import { clearRun, endRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
+import { clearRun, dropStaleRun, endRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
 import { LiftDetail } from "./dashboard/LiftDetail";
 import { ProgressView } from "./dashboard/ProgressView";
 import { HealthDetail } from "./health/HealthDetail";
@@ -300,6 +300,7 @@ export default function GymLog() {
     // Opening a skipped day's workout (a lift row in Train) means doing it after all: the skip goes.
     if (store.entry(k).skip != null) store.unskipDay(k);
     if (!sessionDone(store, k)) startRun(k);
+    else dropStaleRun(k);
     navigate({ view: "workout" });
   };
   const finishWorkout = () => {

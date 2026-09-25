@@ -232,7 +232,12 @@ function TopBar({ name, day, onClose, onFinish }: { name: string; day: DayKey; o
       </a>
       <div className="wtop-t">
         <h1 id="screenTitle">{name}</h1>
-        {run ? (
+        {run?.endedAt ? (
+          // Finished: its duration, kept as it was (opened again to review it, say), with nothing to restart.
+          <span className="wclock" id="wclock" role="timer" aria-label={`Took ${Math.floor(runSeconds(run) / 60)} minutes`}>
+            {clock(runSeconds(run))}
+          </span>
+        ) : run ? (
           <button
             type="button"
             className="wclock"

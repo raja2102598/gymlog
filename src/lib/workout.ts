@@ -45,13 +45,14 @@ function write(r: WorkoutRun | null): WorkoutRun | null {
   return w;
 }
 
-/** The day's run, if it has one: not one left running for hours (STALE_RUN_MS), which is as good as none, so neither
- *  the workout nor a finished one reviewed later shows or records an abandoned clock. One that was finished stays. */
-export function runOf(day: DayKey, now = Date.now()): WorkoutRun | null {
+export function runOf(day: DayKey): WorkoutRun | null {
   const r = read();
-  if (!r || r.day !== day || typeof r.startedAt !== "number") return null;
-  return !r.endedAt && now - r.startedAt >= STALE_RUN_MS ? null : r;
+  return r && r.day === day && typeof r.startedAt === "number" ? r : null;
 }
+
+/** Whether the day's clock was left behind: still running STALE_RUN_MS after it started. Only asked as the workout
+ *  opens, so a long workout on screen keeps its clock. */
+const staleRun = (r: WorkoutRun | null, now: number): r is WorkoutRun => !!r && !r.endedAt && now - r.startedAt >= STALE_RUN_MS;
 
 /** A clock left running this long was left behind (closed without Finish, then opened another day or hours
  *  later): opening the workout starts it again, rather than carrying on from hours ago. */
@@ -59,16 +60,22 @@ export const STALE_RUN_MS = 3 * 60 * 60 * 1000;
 
 /** Starts the day's workout clock, unless it's already running for that day (and not left running for hours). */
 export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
-  const r = runOf(day, now);
-  if (r && !r.endedAt) return r;
+  const r = runOf(day);
+  if (r && !r.endedAt && !staleRun(r, now)) return r;
   return write({ day, startedAt: now });
 }
 
 /** Starts the day's clock again from 0:00: the top bar's clock, tapped. */
 export const restartRun = (day: DayKey, now = Date.now()): WorkoutRun => write({ day, startedAt: now });
 
+/** Drops the day's clock if it was left behind: a finished workout opened to review it shows no abandoned clock, and
+ *  Finish there records no duration of hours. */
+export function dropStaleRun(day: DayKey, now = Date.now()) {
+  if (staleRun(runOf(day), now)) write(null);
+}
+
 export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
-  const r = runOf(day, now);
+  const r = runOf(day);
   if (!r) return null;
   return write({ ...r, endedAt: r.endedAt ?? now });
 }

@@ -69,6 +69,18 @@ describe("the update notice's Update and Settings' Download and install", () => 
     expect(r.now()).toEqual({ kind: "readyToInstall", latest });
   });
 
+  it("open Android's installer once when two places ask at the same moment (both back from Android's settings)", async () => {
+    let release: (r: { started: true }) => void = () => {};
+    const r = run({ install: () => new Promise((resolve) => (release = resolve)) });
+    const other = updateSteps(() => {}, async () => r.m);
+    const both = Promise.all([r.steps.install(latest), other.install(latest)]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release({ started: true });
+    await both;
+    expect(r.m.installUpdate).toHaveBeenCalledTimes(1);
+    expect(r.now()).toEqual({ kind: "readyToInstall", latest });
+  });
+
   it("say so when the installer can't start", async () => {
     const r = run({
       install: async () => {

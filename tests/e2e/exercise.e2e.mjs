@@ -158,7 +158,15 @@ export default async function exercise({ browser, base, check }) {
     await page.click("#finishBtn");
     await page.click("#doneBtn");
     await page.waitForSelector("#homeView");
-    check("and closing the review leaves another day's running clock alone", JSON.parse((await page.evaluate(() => localStorage.getItem("gymlog.workout.v1"))) ?? "null")?.startedAt === running.startedAt);
+    const reviewed = JSON.parse((await page.evaluate(() => localStorage.getItem("gymlog.workout.v1"))) ?? "null");
+    // A finished clock, opened again: its duration, with nothing to restart.
+    await page.evaluate((r) => localStorage.setItem("gymlog.workout.v1", JSON.stringify(r)), { day: K(28), startedAt: Date.parse("2026-09-23T09:00:00"), endedAt: Date.parse("2026-09-23T09:52:00"), user: "00000000-0000-4000-8000-00000000e0e0" });
+    await openWorkout(page);
+    check("a finished workout's clock shows how long it took, and can't be restarted", (await page.$eval("#wclock", (e) => e.tagName)) === "SPAN" && (await flat(page.locator("#wclock"))) === "52:00", await flat(page.locator("#wclock")));
+    await page.click("#closeWorkout");
+    await page.waitForSelector("#trainView");
+    await page.evaluate((r) => localStorage.setItem("gymlog.workout.v1", JSON.stringify(r)), reviewed);
+    check("and closing the review leaves another day's running clock alone", reviewed?.startedAt === running.startedAt, JSON.stringify(reviewed));
     await ctx.close();
   }
 }
