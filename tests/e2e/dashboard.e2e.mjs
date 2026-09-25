@@ -145,9 +145,11 @@ export default async function dashboard({ browser, base, check }) {
     await shot(page, "d2b-lift", { fullPage: true });
     await page.click("#backBtn");
     check("lift page: Back returns to Progress, where it was opened from", page.url().endsWith("/#progress") && (await page.locator("#dashStrength").isVisible()));
-    // The whole row is the tap area, not just the name: a tap on its sparkline opens the lift too.
-    const spark = await seated.locator(".spark").boundingBox();
-    await page.mouse.click(spark.x + spark.width / 2, spark.y + spark.height / 2);
+    // The whole row is the tap area, not just the name: a tap on its sparkline opens the lift too. Tapped through the
+    // row at the sparkline's spot, so the row is scrolled into view first (Back may leave it off screen), and the tap
+    // is checked to land on the row's own link.
+    const [spark, li] = [await seated.locator(".spark").boundingBox(), await seated.boundingBox()];
+    await seated.click({ position: { x: spark.x - li.x + spark.width / 2, y: spark.y - li.y + spark.height / 2 } });
     await page.waitForSelector("#dashLift");
     check(
       "strength: a tap anywhere on a row opens its lift, whose page names both its days",
