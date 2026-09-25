@@ -16,14 +16,17 @@ export interface PlanTemplate {
   plan: Plan;
 }
 
+// JSON reads "off" as any string: checked here, so every other field keeps its type.
+const asPlan = (p: Omit<Plan, "effort"> & { effort: string }): Plan => ({ ...p, effort: p.effort === "rpe" || p.effort === "rir" ? p.effort : "off" });
+
 export const TEMPLATES: readonly PlanTemplate[] = [
-  { id: "blank", name: "Blank plan", summary: "Every day a rest day, ready for your own sessions and lifts.", plan: blank },
-  { id: "full-body-3", name: "Full body, 3 days", summary: "3 days a week, 5 lifts a session: Monday, Wednesday and Friday.", plan: fullBody3 },
+  { id: "blank", name: "Blank plan", summary: "Every day a rest day, ready for your own sessions and lifts.", plan: asPlan(blank) },
+  { id: "full-body-3", name: "Full body, 3 days", summary: "3 days a week, 5 lifts a session: Monday, Wednesday and Friday.", plan: asPlan(fullBody3) },
   {
     id: "upper-lower-4",
     name: "Upper and lower, 4 days",
     summary: "4 days a week, 5 lifts a session: upper body Monday and Thursday, lower body Tuesday and Friday.",
-    plan: upperLower4,
+    plan: asPlan(upperLower4),
   },
-  { id: "five-day", name: "Five-day split", summary: "5 days a week, 5 or 6 lifts a session, with knee tracking on the leg days.", plan: fiveDay },
+  { id: "five-day", name: "Five-day split", summary: "5 days a week, 5 or 6 lifts a session, with knee tracking on the leg days.", plan: asPlan(fiveDay) },
 ];

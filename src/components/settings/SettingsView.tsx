@@ -311,6 +311,32 @@ function Training({ onEditPlan }: { onEditPlan: () => void }) {
           rest length on its own row in the plan editor. {store.planMsg}
         </p>
       </div>
+      <div className="pref-row pref-col">
+        <Text
+          title="Effort per set"
+          sub={
+            store.plan.effort === "rpe"
+              ? "RPE, 1 to 10, in each set’s menu: tap the set’s number."
+              : store.plan.effort === "rir"
+                ? "Reps in reserve, 0 to 10, in each set’s menu: tap the set’s number."
+                : "Not logged. Pick RPE or reps in reserve to add it to each set’s menu."
+          }
+        />
+        <Segmented
+          value={store.plan.effort}
+          label="Effort per set"
+          onChange={(v) =>
+            store.editPlan((p: Plan) => {
+              p.effort = v;
+            })
+          }
+          options={[
+            ["off", "Off"],
+            ["rpe", "RPE"],
+            ["rir", "RIR"],
+          ]}
+        />
+      </div>
       {isNative() ? <RestNotifications /> : null}
     </Group>
   );

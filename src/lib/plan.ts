@@ -37,6 +37,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
         ? d.plateKgs.slice()
         : DEFAULT_PLATE_KGS.slice(),
     restSec: within(q.restSec, 5, 600) ?? d?.restSec ?? DEFAULT_REST_SEC,
+    effort: q.effort === "rpe" || q.effort === "rir" || q.effort === "off" ? q.effort : (d?.effort ?? "off"),
     warmups: Array.isArray(q.warmups) ? [...new Set((q.warmups as unknown[]).map((w) => str(w).trim()).filter(Boolean))] : d ? d.warmups.slice() : [],
     days: DOW.map((wd, i) => {
       const s = ((days && days[i]) || d?.days[i] || {}) as Record<string, unknown>;

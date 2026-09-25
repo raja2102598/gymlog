@@ -254,12 +254,12 @@ export default async function guidelines({ browser, base, check }) {
       const [csv] = await Promise.all([page.waitForEvent("download"), page.click("#csvBtn")]);
       const text = fs.readFileSync(await csv.path(), "utf8"), note = '"Busy, ""leg day"" crowd"';
       const rows = [
-        "day,session,lift,set,reps,kg,warmup,skipped,swapped_for,note",
-        ...[10, 10, 8].map((reps, j) => `${K(21)},Legs,Leg Press,${j + 1},${reps},45,false,false,,`),
-        `${K(26)},"Chest, shoulders",Incline Machine Press,1,10,30,false,false,Incline DB Press,${note}`,
-        `${K(26)},"Chest, shoulders",Chest Press Machine,1,12,40,false,false,,${note}`,
-        `${K(26)},"Chest, shoulders",Chest Press Machine,2,10,42.5,false,false,,${note}`,
-        `${K(26)},"Chest, shoulders",Machine Shoulder Press,1,8,20,false,true,,${note}`,
+        "day,session,lift,set,reps,kg,type,rpe,rir,skipped,swapped_for,note",
+        ...[10, 10, 8].map((reps, j) => `${K(21)},Legs,Leg Press,${j + 1},${reps},45,working,,,false,,`),
+        `${K(26)},"Chest, shoulders",Incline Machine Press,1,10,30,working,,,false,Incline DB Press,${note}`,
+        `${K(26)},"Chest, shoulders",Chest Press Machine,1,12,40,working,,,false,,${note}`,
+        `${K(26)},"Chest, shoulders",Chest Press Machine,2,10,42.5,working,,,false,,${note}`,
+        `${K(26)},"Chest, shoulders",Machine Shoulder Press,1,8,20,working,,,true,,${note}`,
       ];
       check("CSV: a row for each set, quoted where needed, with the swap and the skip", csv.suggestedFilename() === "gym-log-workouts-2026-09-23.csv" && text === rows.map((r) => r + "\r\n").join(""), JSON.stringify(text.slice(0, 400)));
       check("CSV: says how many sets", (await page.textContent("#dataMsg")) === "Exported 7 sets as CSV.", await page.textContent("#dataMsg"));

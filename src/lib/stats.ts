@@ -2,8 +2,11 @@
  * storage, so they can be unit-tested on their own. Days are "YYYY-MM-DD" keys; sets are { reps, kg }. */
 import type { DayKey, SetLog } from "./types";
 
-/** Counts toward the planned sets, records and volume: a warm-up doesn't. */
+/** A set on the lift's rows on Today, and in its volume: anything but a warm-up. */
 export const isWorkingSet = (s: SetLog) => s.type !== "warmup";
+/** Counts toward the planned sets, the go-up rule and records: a working set or one to failure, not a warm-up or a
+ *  drop set (extra volume after the planned sets, at a lighter weight). */
+export const isStraightSet = (s: SetLog) => s.type !== "warmup" && s.type !== "drop";
 
 const DAY = 86400000;
 export const dayNum = (k: DayKey) => {
@@ -138,7 +141,7 @@ export interface NextStep {
 export function readyToAdd(sets: SetLog[] | undefined, reps: string, minSets: number, step: number): NextStep | null {
   const range = repRange(reps);
   if (!range || !(step > 0)) return null;
-  const work = (sets || []).filter((s) => s && isWorkingSet(s) && s.reps != null && s.kg != null && s.kg >= 0) as { reps: number; kg: number }[];
+  const work = (sets || []).filter((s) => s && isStraightSet(s) && s.reps != null && s.kg != null && s.kg >= 0) as { reps: number; kg: number }[];
   if (!work.length || work.length < minSets) return null;
   const kg = work[0].kg;
   if (!work.every((s) => s.kg === kg && s.reps >= range[1])) return null;
@@ -249,7 +252,7 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
     if (!b) continue;
     const top: Partial<Record<RecordKind, { v: number; i: number }>> = {};
     sets.forEach((s, i) => {
-      if (!s || s.kg == null || !isWorkingSet(s)) return;
+      if (!s || s.kg == null || !isStraightSet(s)) return;
       const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
       const cands: [RecordKind, number][] = [];
       if (s.kg > b.kg) cands.push(["weight", s.kg]);
@@ -273,7 +276,7 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
 // weight (a few distinct weights, so checking a set doesn't mean scanning every earlier set).
 export function foldDay(best: RecordFold, { lifts }: LiftDay): void {
   for (const { name, sets } of lifts) {
-    const good = sets.filter((s) => s && s.kg != null && isWorkingSet(s)) as { reps: number | null; kg: number }[];
+    const good = sets.filter((s) => s && s.kg != null && isStraightSet(s)) as { reps: number | null; kg: number }[];
     if (!good.length) continue;
     const b = best.get(name) || { kg: -Infinity, e1rm: null, repsAt: new Map<number, number>() };
     for (const s of good) {

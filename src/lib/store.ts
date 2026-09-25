@@ -82,7 +82,7 @@ export const topKg = (sets: SetLog[]) => {
 export const performed = (name: string, r?: LiftLog | null) => r?.swap || name;
 const liftHasData = (r?: LiftLog | null) => !!r && (r.done || !!r.skipped || !!r.swap || setsOf(r).some((s) => s.reps != null || s.kg != null));
 /** Whether `min` working sets have reps logged: warm-ups don't move it any closer. */
-export const setsComplete = (sets: SetLog[], min: number) => sets.filter((s) => S.isWorkingSet(s) && (s.reps ?? 0) > 0).length >= min;
+export const setsComplete = (sets: SetLog[], min: number) => sets.filter((s) => S.isStraightSet(s) && (s.reps ?? 0) > 0).length >= min;
 export const stepOf = (x: PlanExercise) => {
   const v = parseFloat(x.step);
   return v > 0 ? v : 2.5;
@@ -1340,11 +1340,11 @@ export class GymStore {
       const e = this.entry(day), session = this.planFor(day).name;
       for (const name of new Set(this.liftsFor(day).map((it) => it.name))) {
         const r = e.exercises[name];
-        // Warm-ups and working sets are numbered apart, so set 1 is the first working set, as on Today.
+        // Warm-ups and the lift's rows are numbered apart, so set 1 is the first set on Today's rows.
         let warm = 0, work = 0;
         setsOf(r).forEach((s) => {
           const n = s.type === "warmup" ? ++warm : ++work;
-          if (s.reps != null || s.kg != null) rows.push([day, session, name, n, s.reps, s.kg, s.type === "warmup", !!r.skipped, r.swap ?? "", e.note]);
+          if (s.reps != null || s.kg != null) rows.push([day, session, name, n, s.reps, s.kg, s.type ?? "working", s.rpe ?? null, s.rir ?? null, !!r.skipped, r.swap ?? "", e.note]);
         });
       }
     }

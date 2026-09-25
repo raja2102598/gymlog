@@ -63,8 +63,15 @@
    for it, and the whole width where there isn't (a 360px phone leaves 262px), so a set never spills out of its card. */
 .sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(284px,100%),1fr));gap:8px 20px;padding-left:40px}
 .set{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1.15fr) auto auto;align-items:center;gap:6px}
-.set .sn{display:grid;place-items:center;width:24px;height:24px;border-radius:99px;font:600 var(--t-xs) var(--mono);color:var(--muted);background:var(--sunken)}
-.set.logged .sn{background:var(--good);color:var(--surface)}
+.set .sn{position:relative;display:grid;place-items:center;width:24px;height:44px;padding:0;border:0;background:none;color:var(--muted);cursor:pointer}
+.set .sn>span{display:grid;place-items:center;width:24px;height:24px;border-radius:99px;font:600 var(--t-xs) var(--mono);letter-spacing:-.06em;background:var(--sunken)}
+/* the number opens the set's menu: 44px wide as well as tall, reaching into the sets' left margin rather than under
+   the reps box beside it */
+.set .sn::before{content:"";position:absolute;inset:0 -6px 0 -14px}
+/* 3F to failure, 3D a drop set: a ring says it isn't a plain working set */
+.set .sn[data-kind="failure"]>span,.set .sn[data-kind="drop"]>span{box-shadow:inset 0 0 0 1.5px var(--warn)}
+.set .sn[aria-expanded="true"]>span{outline:2px solid var(--ink);outline-offset:1px}
+.set.logged .sn>span{background:var(--good);color:var(--surface)}
 .set input{width:100%;min-width:0;height:48px;font:500 18px var(--mono);padding:0 8px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--sunken);color:var(--ink);text-align:center;appearance:textfield;-moz-appearance:textfield}
 .set input:not(:placeholder-shown){background:var(--surface);font-weight:600}
 .set input::-webkit-outer-spin-button,.set input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
@@ -81,6 +88,10 @@
    stretch the sets either side of it */
 .plates-btn{color:var(--muted)}
 .plates-btn[aria-expanded="true"]{color:var(--ink);background:var(--chip)}
+/* a set's menu: its kind, and its effort when the plan logs one */
+.setmenu{grid-column:1/-1;display:grid;gap:10px;padding:12px;border-radius:var(--r-ctl);background:var(--sunken)}
+.setmenu .field{max-width:200px}
+.setmenu .note{margin:0}
 .plates-info{grid-column:1/-1;font-size:var(--t-sm);color:var(--ink);padding:10px 12px;border-radius:var(--r-ctl);background:var(--sunken)}
 
 /* a lift's warm-up sets: 40/60/80% of a working weight, one tap to log them, marked so they're not working sets */
@@ -176,7 +187,7 @@
 @media (max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
 @media (min-width:561px){.lift{padding:16px 16px 18px}.inputs,.hc{padding:20px}}
 @media (prefers-reduced-motion:no-preference){
-  .wu .chips:not([hidden]),.acts,.lift .cue,.wset-panel,.plates-info{animation:rise var(--med) var(--ease)}
-  .set .sn{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
+  .wu .chips:not([hidden]),.acts,.lift .cue,.wset-panel,.plates-info,.setmenu{animation:rise var(--med) var(--ease)}
+  .set .sn>span{transition:background-color var(--med) var(--ease),color var(--med) var(--ease)}
   .lift .mic[aria-pressed="true"]{animation:listen 1.4s var(--ease) infinite}
 }

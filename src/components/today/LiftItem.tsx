@@ -15,6 +15,7 @@ import { minSets, performed, prTitle, restSecFor, setsComplete, setsOf, targetOf
 import type { DayKey, DayLog, LiftLog, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
 import { PlatesButton, PlatesInfo } from "./PlateCalc";
+import { SetMenu, SetNumber } from "./SetMenu";
 import type { LiftMenu } from "./types";
 import { WarmupCalc } from "./WarmupCalc";
 
@@ -69,6 +70,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   const cue = r.skipped || r.swap ? "" : x.cue;
   const [howOpen, setHowOpen] = useState(false);
   const [plateRow, setPlateRow] = useState<number | null>(null);
+  const [menuRow, setMenuRow] = useState<number | null>(null);
   const edit = (fn: (r: LiftLog) => void, immediate: boolean) => store.editLift(sel, name, fn, immediate);
   const barKg = store.plan.barKg, plateKgs = store.plan.plateKgs;
 
@@ -77,7 +79,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
     let startsRest = false;
     edit((r) => {
       const warm = setsOf(r).filter((s) => !isWorkingSet(s));
-      const work = setsOf(r).filter(isWorkingSet).map((s) => ({ reps: s.reps ?? null, kg: s.kg ?? null }));
+      const work = setsOf(r).filter(isWorkingSet).map((s): SetLog => ({ ...s, reps: s.reps ?? null, kg: s.kg ?? null }));
       while (work.length <= j) work.push({ reps: null, kg: null });
       const v = num(value), hadReps = work[j].reps != null;
       work[j][f] = v == null ? null : f === "kg" ? Math.round(v * 2) / 2 : Math.max(0, Math.round(v));
@@ -96,6 +98,25 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
     }, false);
     if (startsRest) store.startRest(sel, did, restSecFor(store.plan, x));
   };
+  // A set's kind or effort, from its menu. Making a set a drop set, or a working set again, changes how many count
+  // toward the planned sets, so a tick that came from them follows.
+  const setInfo = (j: number, patch: Partial<SetLog>) =>
+    edit((r) => {
+      const warm = setsOf(r).filter((s) => !isWorkingSet(s));
+      const work = setsOf(r).filter(isWorkingSet).map((s) => ({ ...s }));
+      while (work.length <= j) work.push({ reps: null, kg: null });
+      const next: SetLog = { ...work[j], ...patch };
+      for (const k of ["type", "rpe", "rir"] as const) if (next[k] == null) delete next[k];
+      work[j] = next;
+      r.sets = [...warm, ...work];
+      if (r.done && r.autoDone && !setsComplete(work, min)) {
+        r.done = false;
+        delete r.autoDone;
+      } else if (!r.done && !r.skipped && setsComplete(work, min)) {
+        r.done = true;
+        r.autoDone = true;
+      }
+    }, true);
   const addSet = () =>
     edit((r) => {
       const warm = setsOf(r).filter((s) => !isWorkingSet(s));
@@ -320,11 +341,11 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
       <div className="sets">
         {Array.from({ length: rows }, (_, j) => {
           const s: Partial<SetLog> = sets[j] || {}, [phR, phK] = store.placeholders(x, last, j, next), pr = marks.get(`${did}|${j}`);
-          const platesId = `pl${i}_${j}`, plateOpen = plateRow === j;
+          const platesId = `pl${i}_${j}`, plateOpen = plateRow === j, menuId = `sm${i}_${j}`, menuOpen = menuRow === j;
           return (
             <Fragment key={j}>
               <div className={cx("set", pr && "pr", (s.reps ?? 0) > 0 && "logged")}>
-                <span className="sn">{j + 1}</span>
+                <SetNumber n={j + 1} s={s} id={menuId} did={did} open={menuOpen} onToggle={() => setMenuRow(menuOpen ? null : j)} />
                 <SyncedInput
                   id={`s${i}_${j}_r`}
                   data-set={`${i}:${j}:reps`}
@@ -362,6 +383,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
                   PR
                 </span>
               </div>
+              {menuOpen ? <SetMenu id={menuId} s={s} effort={store.plan.effort} onChange={(patch) => setInfo(j, patch)} /> : null}
               {plateOpen && s.kg != null && s.kg > 0 ? <PlatesInfo id={platesId} kg={s.kg} barKg={barKg} plateKgs={plateKgs} /> : null}
             </Fragment>
           );

@@ -7,13 +7,18 @@
 /** "YYYY-MM-DD" in the phone's local time. */
 export type DayKey = string;
 
+export type SetType = "warmup" | "drop" | "failure";
+export type Effort = "off" | "rpe" | "rir";
 export interface SetLog {
   reps: number | null;
   kg: number | null;
-  /** A warm-up, not a working set: doesn't count toward the planned sets, records or volume. Unset (older sets,
-   *  and today's working sets) means a working set. The set types issue (warm-up, working, drop, failure) will
-   *  extend this. */
-  type?: "warmup";
+  /** What kind of set: unset (older sets too) is a working set. A warm-up counts toward nothing: not the planned
+   *  sets, records or volume. A drop set is volume only: it doesn't count toward the planned sets, the go-up rule
+   *  or a record. A set to failure counts as a working set does. */
+  type?: SetType;
+  /** How hard it was, when the plan logs effort (Plan.effort): RPE 1-10, or reps in reserve 0-10. */
+  rpe?: number;
+  rir?: number;
 }
 
 export interface LiftLog {
@@ -170,6 +175,8 @@ export interface Plan {
   plateKgs: number[];
   /** The rest timer's default length, seconds, started when a set's reps are logged. A lift can override it. */
   restSec: number;
+  /** An effort field on each set: RPE, reps in reserve, or neither. */
+  effort: Effort;
   warmups: string[];
   days: PlanDay[];
 }
