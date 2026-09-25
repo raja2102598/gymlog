@@ -3,7 +3,7 @@
 // sets, as it does when a set is cleared or taken off, and the CSV says both. Sets are logged in the workout, one
 // lift at a time; the tick is the "Done" box in the lift's ··· menu.
 import fs from "node:fs";
-import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 export default async function settypes({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000053", "2026-08-26T05:00:00Z", "t@example.com");
@@ -18,8 +18,8 @@ export default async function settypes({ browser, base, check }) {
     await openSetting(page, "setData");
     const [csv] = await Promise.all([page.waitForEvent("download"), page.click("#csvBtn")]);
     const text = fs.readFileSync(await csv.path(), "utf8");
-    await page.click("#backBtn"); // back to Home
-    await page.waitForSelector("#homeView");
+    await page.click("#backBtn"); // back to the tab Settings was opened from
+    await page.waitForSelector(TAB_VIEWS);
     return text;
   };
 
@@ -32,7 +32,7 @@ export default async function settypes({ browser, base, check }) {
   await until(() => db.plan?.effort === "rpe");
   check("choosing RPE saves it with the plan", db.plan?.effort === "rpe");
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
 
   // --- a set's number opens its menu (Leg Press is the second lift on Legs: its boxes are s1_<set>_k and _r)
   await openWorkout(page, "Leg Press");

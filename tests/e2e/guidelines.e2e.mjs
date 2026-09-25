@@ -3,7 +3,7 @@
 // can see, long names, empty states, asking before replacing data, a backup that restores an account, and the sticky
 // sync bar keeping clear of a focused field.
 import fs from "node:fs";
-import { K, NOW, flat, open, openSetting, openTab, openWorkout, ready, session, until } from "./harness.mjs";
+import { K, NOW, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 export const covers = [
   "src/components/health/HealthView.tsx",
@@ -113,9 +113,9 @@ export default async function guidelines({ browser, base, check }) {
     check("buttons change colour under the mouse", before !== after, `${before} → ${after}`);
     check("taps don't wait for a double-tap zoom", (await page.$eval("#startBtn", (e) => getComputedStyle(e).touchAction)) === "manipulation" && (await page.$eval("#dayChips .dchip", (e) => getComputedStyle(e).touchAction)) === "manipulation");
 
-    // the plan editor: opened from Settings (Home's avatar), Back saves and returns there
+    // the plan editor: opened from Settings (the avatar, here on Train), Back saves and returns there
     await openTab(page, "settings");
-    check("Settings is a page with a back arrow to Home, and no tabs", page.url().endsWith("/#settings") && (await page.getAttribute("#backBtn", "aria-label")) === "Back to Home" && (await page.locator(".tabbar").count()) === 0, page.url());
+    check("Settings is a page with a back arrow to the tab it came from, and no tabs", page.url().endsWith("/#settings") && (await page.getAttribute("#backBtn", "aria-label")) === "Back to Train" && (await page.locator(".tabbar").count()) === 0, page.url());
     check("Edit plan is a link to #plan", (await page.getAttribute("#planBtn", "href")) === "#plan");
     await page.click("#planBtn");
     await page.waitForSelector("#planView");
@@ -126,9 +126,8 @@ export default async function guidelines({ browser, base, check }) {
     await until(() => db.plan?.tempo === "4:0:1:0");
     check("Back from the plan editor returns to Settings and saves the plan", page.url().endsWith("/#settings") && db.plan?.tempo === "4:0:1:0", page.url());
     await page.click("#backBtn");
-    await page.waitForSelector("#homeView");
-    check("Settings' back arrow returns to Home", !page.url().includes("#"), page.url());
-    await openTab(page, "train");
+    await page.waitForSelector("#trainView");
+    check("Settings' back arrow returns to the tab it was opened from", page.url().endsWith("/#train"), page.url());
     check("the edited plan shows in Train", /4:0:1:0/.test(await page.textContent("#tempoNote")));
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
@@ -226,7 +225,7 @@ export default async function guidelines({ browser, base, check }) {
     check("import: a wrong file says what to do next", /Choose a \.json file exported from Gym Log\.$/.test(await page.textContent("#dataMsg")), await page.textContent("#dataMsg"));
     page.on("dialog", (d) => d.accept());
     await page.click("#backBtn");
-    await page.waitForSelector("#homeView");
+    await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
 
     // removing a set, in the workout, asks only when the set has numbers in it
     await openWorkout(page, 0);
@@ -332,7 +331,7 @@ export default async function guidelines({ browser, base, check }) {
       );
       // Home's timeline has last night's sleep, from the restored Health Connect day; Train has the plan's tempo.
       await page.click("#backBtn");
-      await page.waitForSelector("#homeView");
+      await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
       const slept = async () => (await page.locator("#timeline").count()) === 1 && /7 h 12 min sleep/.test(await flat(page.locator("#timeline")));
       check("the restored Health Connect day shows on Home", await slept(), await flat(page.locator("#homeView")));
       await openTab(page, "train");

@@ -9,6 +9,10 @@ const OUT = path.resolve("out");
 // Not kept: the service worker itself, the 404 page, React Server Component payloads (only used when
 // moving between pages, and this app has one) and source maps. index.html is kept as "/".
 const skip = (f) => f === "sw.js" || f === "404.html" || f.startsWith("_not-found") || f.startsWith("404/") || f.endsWith(".txt") || f.endsWith(".map");
+// Kept when first shown rather than up front: the exercise library's pictures and steps (public/exercises, over a
+// thousand small files), so a first visit doesn't download them all. They still count toward VERSION, so a build
+// that changes one makes a new cache, and the old copy isn't served forever.
+const later = (f) => f.startsWith("exercises/");
 
 async function files(dir, base = "") {
   const out = [];
@@ -29,7 +33,7 @@ const all = (await files(OUT)).filter((f) => !skip(f) && !legacy.has(f)).sort();
 const hash = createHash("sha256");
 for (const f of all) hash.update(f).update("\0").update(await readFile(path.join(OUT, f))).update("\0");
 const version = "gymlog-" + hash.digest("hex").slice(0, 12);
-const shell = all.map((f) => (f === "index.html" ? "/" : "/" + f));
+const shell = all.filter((f) => !later(f)).map((f) => (f === "index.html" ? "/" : "/" + f));
 
 const worker = await readFile(path.resolve("src/service-worker.js"), "utf8");
 await writeFile(path.join(OUT, "sw.js"), `const VERSION = ${JSON.stringify(version)};\nconst SHELL = ${JSON.stringify(shell, null, 1)};\n\n${worker}`);

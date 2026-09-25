@@ -13,15 +13,11 @@ import { fmt } from "@/lib/format";
 import { hoursMin, workoutName } from "@/lib/health";
 import { dayNumbers } from "@/lib/healthView";
 import { sessionSummary, weekPosition } from "@/lib/session";
+import { firstName } from "@/components/ds/ProfileButton";
 import type { DayKey, KneeField } from "@/lib/types";
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase();
 
-/** The first name to greet with, when the account has one (a Google account does). Never the email. */
-export function firstName(meta: Record<string, unknown> | undefined): string {
-  const n = [meta?.given_name, meta?.full_name, meta?.name].find((v): v is string => typeof v === "string" && !!v.trim());
-  return n ? n.trim().split(/\s+/)[0] : "";
-}
 const greeting = (h: number) => (h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening");
 
 interface Props {
@@ -43,11 +39,7 @@ export function HomeView({ onOpenDay, onStart, onOpenSettings, onOpenHealth, foc
       <TabHead
         eyebrow={date}
         title={name ? `${greeting(new Date().getHours())}, ${name}` : greeting(new Date().getHours())}
-        action={
-          <ViewLink className="avatar" id="settingsBtn" href="#settings" aria-label="Profile and settings" onOpen={onOpenSettings}>
-            <span aria-hidden="true">{(name || store.user?.email || "?").slice(0, 1).toUpperCase()}</span>
-          </ViewLink>
-        }
+        onProfile={onOpenSettings}
       />
       <div className="screen">
         <WeekStrip onOpen={onOpenDay} />

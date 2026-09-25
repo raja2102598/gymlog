@@ -87,7 +87,7 @@ export default async function healthSuite({ browser, base, check }) {
   check("Settings: says the data comes from the Android app, and when it synced", /^Health Connect data comes from the Gym Log Android app, last synced at \d{1,2}:\d\d (am|pm)\.$/i.test(hcStatus), hcStatus);
   check("Settings: no Connect or background sync on the website", (await page.locator("#hcConnect, #hcSync, #bgSync").count()) === 0);
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector("#dashView");
 
   // The Health tab: the day's rings and a tile for each kind of data
   await openTab(page, "health");
@@ -113,11 +113,11 @@ export default async function healthSuite({ browser, base, check }) {
   await until(() => !db.logs["2026-09-23"].water);
   check("− takes it off again", !db.logs["2026-09-23"].water && /^0/.test(await flat(page.locator("#waterValue"))), JSON.stringify(db.logs["2026-09-23"].water));
   await page.click("#hPrev");
-  check("the day switch moves to yesterday", (await flat(page.locator("#activity .dayswitch .label"))) === "Yesterday" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000"));
+  check("the day switch moves to yesterday, with its date", (await flat(page.locator("#activity .dayswitch .label"))) === "Yesterday 22 Sept" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000"));
   await page.click("#hNext");
-  check("and back to today, no further", (await flat(page.locator("#activity .dayswitch .label"))) === "Today" && (await page.locator("#hNext").isDisabled()));
-  // Edit opens Settings over Health, and its back chevron returns to Health, not Home.
-  await page.click("#editGoals");
+  check("and back to today, no further", (await flat(page.locator("#activity .dayswitch .label"))) === "Today 23 Sept" && (await page.locator("#hNext").isDisabled()));
+  // The avatar opens Settings over Health, and its back chevron returns to Health, not Home.
+  await page.click("#settingsBtn");
   await page.waitForSelector("#signOutBtn");
   check("its back chevron says where it goes", (await page.getAttribute("#backBtn", "aria-label")) === "Back to Health");
   await page.click("#backBtn");
@@ -144,6 +144,14 @@ export default async function healthSuite({ browser, base, check }) {
     (await text("#hHero .cc-v")) === "7 h 12 min asleep" && (await text("#hHero .lanes-full")) === "Awake 12 min REM 95 min Light 257 min Deep 80 min" && (await text("#hGoal")) === "12 min over your 7 h goal.",
     `${await text("#hHero")} | ${await text("#hGoal")}`,
   );
+  check("the day's page says which day it is", /^Today, 23 Sept · (\d{1,2}:\d\d (am|pm) – \d{1,2}:\d\d (am|pm)|the night before)$/i.test(await text("#hDate")), await text("#hDate"));
+  // A day with nothing: its date and ‹ › stay, so another day is a tap away.
+  for (let i = 0; i < 40 && !(await page.locator("#hEmpty").count()); i++) await page.click("#hPrev");
+  const emptyDate = await text("#hDate");
+  check("a night with no sleep still shows its date and the way to other days", (await page.locator("#hEmpty").count()) === 1 && /^[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]+$/.test(emptyDate) && (await page.locator("#hPrev").isEnabled()) && (await page.locator("#hNext").isEnabled()), emptyDate);
+  await page.click("#hNext");
+  check("and › moves on from it", (await text("#hDate")) !== emptyDate, await text("#hDate"));
+  while (await page.locator("#hNext").isEnabled()) await page.click("#hNext"); // back to today
   await page.click("#backBtn");
   await page.waitForSelector("#activity");
   check("the back arrow returns to Health", page.url().endsWith("/#health"), page.url());
@@ -194,6 +202,26 @@ export default async function healthSuite({ browser, base, check }) {
     await openTab(page, "settings");
     await openSetting(page, "setHealth");
     check("Settings with no data: says where it would come from", (await flat(page.locator("#hcStatus"))) === "Health Connect data comes from the Gym Log Android app. Connect it there, and it shows here too.");
+    await ctx.close();
+  }
+
+  {
+    // A watch that gives each day's heart rate range and average, but no resting rate.
+    const health = {};
+    for (const [n, lo, hi, avg] of [[24, 58, 131, 80], [25, 62, 118, 76], [26, 55, 140, 84], [27, 60, 150, 90]]) health[K(n)] = { hrMin: lo, hrMax: hi, hrAvg: avg, steps: 5000 };
+    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: savedPlan(), health } });
+    await ready(page);
+    await page.goto(base + "#health/heart");
+    await page.waitForSelector("#hChart .rg-cap", { state: "attached" });
+    const t = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
+    check("heart week with no resting rate: the average instead of a dash", /^Average · /.test(await t("#hChart .label, #hChart .cc-t .label")) && (await t("#hChart .cc-v")) === "83 bpm", `${await t("#hChart .cc-t")}`);
+    check("its lowest, and every day with a reading counted", /^55 bpm lowest$/.test(await t("#hLowest")) && /^4 of 7 days measured$/.test(await t("#hMeasured")), `${await t("#hLowest")} | ${await t("#hMeasured")}`);
+    const fit = await page.evaluate(() => {
+      const base = Number(document.querySelector("#hChart .bc-base").getAttribute("y1"));
+      return [...document.querySelectorAll("#hChart .rg-cap")].every((l) => Number(l.getAttribute("y2")) + Number(l.getAttribute("stroke-width")) / 2 <= base + 0.5);
+    });
+    check("every range, round ends included, sits above the baseline", fit);
+    check("and the chart's text says what it shows", /from 55 to 150 bpm across 4 days/.test(await page.getAttribute("#hChart .bchart", "aria-label")), await page.getAttribute("#hChart .bchart", "aria-label"));
     await ctx.close();
   }
 }

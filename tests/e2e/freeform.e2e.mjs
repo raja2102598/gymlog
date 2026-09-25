@@ -2,7 +2,7 @@
 // named, lifts added by name with suggestions, logged in the workout as usual; Progress counts it as an extra
 // session, and going back to the plan keeps what was logged.
 import fs from "node:fs";
-import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 export default async function freeform({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000036", "2026-08-26T05:00:00Z", "t@example.com");
@@ -79,7 +79,8 @@ export default async function freeform({ browser, base, check }) {
   const text = fs.readFileSync(await csv.path(), "utf8");
   check("the CSV gives its name as the session", text.includes(`${K(28)},Hotel gym,Goblet Squat,1,12,20,working,`), text);
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
+  await openTab(page, "home");
   await page.reload();
   await ready(page);
   await openTab(page, "train");

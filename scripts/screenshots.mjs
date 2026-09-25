@@ -32,7 +32,7 @@ async function snap(page, name) {
   console.log("shot", name);
 }
 for (const scheme of ["dark", "light"]) {
-  const { ctx, page } = await open(browser, base, { auth: auth(), db: fresh(), scheme });
+  const { ctx, page } = await open(browser, base, { auth: auth(), db: fresh(), scheme, photos: "live" });
   await ready(page);
   await snap(page, `home-${scheme}`);
   for (const tab of ["train", "progress", "health"]) {
@@ -42,6 +42,12 @@ for (const scheme of ["dark", "light"]) {
   await page.click("#tileSteps");
   await page.waitForSelector("#hChart");
   await snap(page, `steps-${scheme}`);
+  // A day's page: its date, and ‹ › even on a day with nothing.
+  await page.click('#hRange [data-seg="day"]');
+  await page.waitForSelector("#hHero");
+  for (let i = 0; i < 40 && !(await page.locator("#hEmpty").count()); i++) await page.click("#hPrev");
+  await snap(page, `day-empty-${scheme}`);
+  while (await page.locator("#hNext").isEnabled()) await page.click("#hNext");
   await page.click("#backBtn");
   await page.waitForSelector("#healthView #activity");
   await openTab(page, "settings");
@@ -52,9 +58,14 @@ for (const scheme of ["dark", "light"]) {
   await page.waitForSelector("#libList");
   await snap(page, `library-${scheme}`);
   await page.keyboard.press("Escape");
-  // The workout: today's session, a set in, resting.
+  // The workout: today's session, how to do its first lift, then a set in, resting.
   await page.click("#startBtn");
   await page.waitForSelector("#workoutView");
+  await page.locator("#workoutView .ex-card .howto").first().click();
+  await page.waitForSelector("#workoutView .howto-steps");
+  await page.evaluate(() => Promise.all([...document.querySelectorAll(".howto-photos img")].map((i) => i.decode().catch(() => {}))));
+  await snap(page, `howto-${scheme}`);
+  await page.locator("#workoutView .ex-card .howto").first().click();
   await page.click("#completeSet");
   await page.waitForSelector("#restCard");
   await snap(page, `workout-${scheme}`);

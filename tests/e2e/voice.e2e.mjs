@@ -1,7 +1,7 @@
 // Voice logging: the Log sets by voice switch in Settings → Voice, and a microphone on each lift's card in the workout
 // that logs what's said the way typing it would. Chromium's own speech recognition is swapped for a fake that answers
 // from a queue.
-import { flat, open, openSetting, openTab, openWorkout, ready, session, settled, until } from "./harness.mjs";
+import { flat, open, openSetting, openTab, openWorkout, ready, session, settled, until, TAB_VIEWS } from "./harness.mjs";
 
 const TODAY = "2026-09-23"; // Wednesday: Legs
 const NB = "\u00a0";
@@ -180,7 +180,7 @@ export default async function voice({ browser, base, check }) {
   check("switched on, and kept on this device", (await sw.getAttribute("aria-checked")) === "true" && (await page.evaluate(() => localStorage.getItem("gymlog.voice.v1"))) === "true");
 
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openWorkout(page, "Leg Press");
   const steps = await page.locator("#workoutView ol.wprog > li").count(), perLift = await micsPerLift(page);
   check("switched on: one microphone on each lift's card", steps === 6 && JSON.stringify(perLift) === "[1,1,1,1,1]", `${JSON.stringify(perLift)} over ${steps} steps`);
@@ -456,7 +456,7 @@ export default async function voice({ browser, base, check }) {
   await openSetting(page, "setVoice");
   await page.locator("#voiceLog").click();
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openWorkout(page, "Leg Extension");
   check("switched off: no microphones", JSON.stringify(await micsPerLift(page)) === "[0,0,0,0,0]" && (await page.locator(".ex-card .said").count()) === 0 && (await page.evaluate(() => localStorage.getItem("gymlog.voice.v1"))) === "false");
 

@@ -2,6 +2,7 @@
 import { Bike, Check, ChevronLeft, Dumbbell, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useGym } from "@/hooks/useGym";
+import { ExerciseThumb } from "@/components/exercise/ExerciseThumb";
 import { cx } from "@/lib/cx";
 import { tintOf } from "@/lib/session";
 import { plural } from "@/lib/format";
@@ -156,9 +157,14 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
           const added = had || on, cardio = /bike|cycl|rower|rowing machine|treadmill|elliptical/i.test(x.name);
           return (
             <li key={x.id} className={cx("lib-row", on && "on", had && "had")}>
-              <span className={cx("ico-tile", cardio ? "t-steps" : tintOf(store, x.name, { lib: x.id }))} aria-hidden="true">
-                {cardio ? <Bike size={20} /> : <Dumbbell size={20} />}
-              </span>
+              <ExerciseThumb
+                id={x.custom ? null : x.id}
+                fallback={
+                  <span className={cx("ico-tile", cardio ? "t-steps" : tintOf(store, x.name, { lib: x.id }))} aria-hidden="true">
+                    {cardio ? <Bike size={20} /> : <Dumbbell size={20} />}
+                  </span>
+                }
+              />
               <span className="lib-t">
                 <span className="lib-n">
                   {x.name}

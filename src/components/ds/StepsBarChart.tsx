@@ -206,8 +206,9 @@ export function RangeChart({ days, width: W, height: H = 190, label }: { days: R
   const svg = useRef<SVGSVGElement>(null);
   const vals = days.flatMap((d) => [d.lo, d.hi, d.dot]).filter((v): v is number => v != null);
   const lo = vals.length ? Math.min(...vals) - 4 : 0, hi = vals.length ? Math.max(...vals) + 4 : 1;
-  const base = H - 29, top = 28, y = (v: number) => top + ((hi - v) * (base - top)) / (hi - lo || 1);
   const slot = W / days.length, bw = Math.max(4, Math.min(14, slot * 0.5)), cxOf = (i: number) => slot * i + slot / 2;
+  // Inset by half a bar, so a range's round caps stay above the baseline.
+  const base = H - 29, top = 28, y = (v: number) => top + bw / 2 + ((hi - v) * (base - top - bw)) / (hi - lo || 1);
   const every = days.length > 14 ? 7 : days.length > 8 ? 2 : 1;
   const at = (ev: PointerEvent<SVGSVGElement>) => {
     const r = svg.current!.getBoundingClientRect();

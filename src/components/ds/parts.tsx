@@ -4,6 +4,7 @@
 import { ChevronLeft, ChevronRight, Lightbulb, TriangleAlert } from "lucide-react";
 import { useRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { cx } from "@/lib/cx";
+import { ProfileButton } from "./ProfileButton";
 
 /* ---------- Button ---------- */
 
@@ -200,7 +201,8 @@ export function PainScale({
 /* ---------- screen headers ---------- */
 
 /** A tab screen's header: an eyebrow (label) over a title-lg, and an optional action at the right. */
-export function TabHead({ eyebrow, title, action, eyebrowId }: { eyebrow?: ReactNode; title: ReactNode; action?: ReactNode; eyebrowId?: string }) {
+/** A tab's header: an eyebrow, the title, the tab's own action if it has one, and Settings' avatar, always last. */
+export function TabHead({ eyebrow, title, action, eyebrowId, onProfile }: { eyebrow?: ReactNode; title: ReactNode; action?: ReactNode; eyebrowId?: string; onProfile: () => void }) {
   return (
     <header className="head">
       <div className="head-t">
@@ -211,7 +213,10 @@ export function TabHead({ eyebrow, title, action, eyebrowId }: { eyebrow?: React
         ) : null}
         <h1 id="screenTitle">{title}</h1>
       </div>
-      {action ? <div className="head-a">{action}</div> : null}
+      <div className="head-a">
+        {action}
+        <ProfileButton onOpen={onProfile} />
+      </div>
     </header>
   );
 }

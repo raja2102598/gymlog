@@ -8,10 +8,11 @@ import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
+import { ExerciseThumb } from "@/components/exercise/ExerciseThumb";
 import { cx } from "@/lib/cx";
 import { addDays, DOW, todayKey, wdIndex } from "@/lib/dates";
 import { num } from "@/lib/format";
-import { liftLine, sessionSummary, tintOf, weekPosition } from "@/lib/session";
+import { liftLine, sessionDone, sessionSummary, tintOf, weekPosition } from "@/lib/session";
 import { performed } from "@/lib/store";
 import type { DayKey, DayLog, KneeField, MeasureField, NumField } from "@/lib/types";
 import { DayFields } from "@/components/today/DayFields";
@@ -25,6 +26,7 @@ interface Props {
   onStart: (at: number | null) => void;
   onOpenPlan: () => void;
   onOpenGym: () => void;
+  onOpenSettings: () => void;
   warmOpen: boolean;
   onToggleWarm: () => void;
   focusNext: FocusNext;
@@ -33,7 +35,7 @@ interface Props {
 /** Train: the selected day's session (Train board). Day chips for the week, the session with a row per lift (tap one
  *  to start there; drag the handle to reorder), Add exercise, the library and My gym, then the day's log: warm-ups,
  *  knee scores, steps, weight, notes and measurements. */
-export function TrainView({ sel, onSelect, onStart, onOpenPlan, onOpenGym, warmOpen, onToggleWarm, focusNext }: Props) {
+export function TrainView({ sel, onSelect, onStart, onOpenPlan, onOpenGym, onOpenSettings, warmOpen, onToggleWarm, focusNext }: Props) {
   const store = useGym();
   const pos = weekPosition(store, todayKey());
   const trainDays = store.plan.days.filter((d) => d.exercises.length).length;
@@ -42,6 +44,7 @@ export function TrainView({ sel, onSelect, onStart, onOpenPlan, onOpenGym, warmO
       <TabHead
         eyebrow={[`${trainDays}-day plan`, pos ? `Week ${pos.week}` : ""].filter(Boolean).join(" · ")}
         title="Train"
+        onProfile={onOpenSettings}
         action={
           <LinkButton variant="raised" id="changePlan" href="#plan" onOpen={onOpenPlan}>
             Change plan
@@ -132,7 +135,7 @@ function Session({ sel, onStart, focusNext }: { sel: DayKey; onStart: (at: numbe
   const sum = sessionSummary(store, sel);
   const addLifts = useAddLifts(sel, focusNext);
   const items = blocks.flat();
-  const done = items.length > 0 && items.every((it) => e.exercises[it.name]?.done || e.exercises[it.name]?.skipped);
+  const done = sessionDone(store, sel);
   const editDay = (fn: (n: DayLog) => void) => store.editDay(sel, fn, true);
   const switchTo = (v: number) =>
     editDay((n) => {
@@ -296,9 +299,20 @@ function LiftRows({ sel, onOpen, focusNext, cardio, cardioDone }: { sel: DayKey;
         return (
           <li key={names.join("|") + bi} className={cx("lrow", allDone && "done", skipped && "skipped", drag?.b === bi && "dragging")} style={offset ? { transform: `translateY(${offset}px)` } : undefined}>
             <button type="button" className="lrow-main" data-lift={bi} onClick={() => onOpen(bi)}>
-              <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
-                {allDone ? <Check size={20} strokeWidth={3} /> : <Dumbbell size={20} />}
-              </span>
+              {allDone ? (
+                <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
+                  <Check size={20} strokeWidth={3} />
+                </span>
+              ) : (
+                <ExerciseThumb
+                  id={store.exerciseOf(names[0], r?.swap ? null : it.x)?.id}
+                  fallback={
+                    <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
+                      <Dumbbell size={20} />
+                    </span>
+                  }
+                />
+              )}
               <span className="row-t">
                 <span className="row-tt lift-t">{b.length > 1 ? names.join(" + ") : names[0]}</span>
                 <span className="row-d">{b.length > 1 ? `Superset · ${b.map((x) => liftLine(store, sel, x).split(" · ")[0]).join(", ")}` : liftLine(store, sel, it)}</span>

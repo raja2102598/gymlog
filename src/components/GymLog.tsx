@@ -13,6 +13,7 @@ import { mmss } from "@/lib/format";
 import { METRIC_TITLE } from "@/lib/healthView";
 import { GO_EVENT, isNative } from "@/lib/native";
 import { depthOf, hashOf, isPushed, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
+import { sessionDone } from "@/lib/session";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
 import { clearRun, endRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
@@ -274,12 +275,13 @@ export default function GymLog() {
     if (focus) focusNext(focus, true);
   };
   const openLift = (name: string) => navigate({ view: "progress", lift: name });
-  /** Opens the workout for day `k`, at block `at` (or where it left off), and starts its clock. */
+  /** Opens the workout for day `k`, at block `at` (or where it left off), and starts its clock, unless every lift is
+   *  already done: reviewing a finished workout neither starts a clock nor replaces one that's running. */
   const startWorkout = (k: DayKey, at: number | null = null) => {
     keepRunsInMemory(store.demo);
     select(k);
     setWorkoutAt(at);
-    startRun(k);
+    if (!sessionDone(store, k)) startRun(k);
     navigate({ view: "workout" });
   };
   const finishWorkout = () => {
@@ -288,7 +290,7 @@ export default function GymLog() {
     navigate({ view: "workout", done: true });
   };
   const doneWorkout = () => {
-    clearRun();
+    clearRun(sel);
     navigate(HOME);
   };
   /** Weight or steps from a shortcut or the widget: today's field in Train. */
@@ -303,12 +305,17 @@ export default function GymLog() {
     [navigate, focusNext],
   );
 
-  // A shortcut opens today's weight or steps field, then drops ?go= from the address.
+  // A shortcut opens today's weight or steps field, then drops ?go= from the address. Train opened that way gets
+  // its own address with Home behind it, as a tap on its tab would, so a reload stays there and Back goes Home.
   useEffect(() => {
     if (!signedIn || !go || !new URL(location.href).searchParams.has("go")) return;
     const u = new URL(location.href);
     u.searchParams.delete("go");
-    history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+    const base = u.pathname + u.search;
+    if ((go === "weight" || go === "steps") && shown.current.view === "train" && stackDepth() === 0) {
+      history.replaceState({ gymDepth: 0 }, "", base);
+      history.pushState({ gymDepth: 1, from: "" }, "", base + hashOf({ view: "train" }));
+    } else history.replaceState(history.state, "", base + u.hash);
     if (go === "weight" || go === "steps") focusNext(`#${go}`, true);
   }, [signedIn, go, focusNext]);
 
@@ -430,6 +437,7 @@ export default function GymLog() {
               onStart={(at) => startWorkout(sel, at)}
               onOpenPlan={() => openPlan()}
               onOpenGym={() => navigate({ view: "gym" })}
+              onOpenSettings={() => navigate({ view: "settings" })}
               warmOpen={warmOpen === sel}
               onToggleWarm={() => setWarmOpen((w) => (w === sel ? null : sel))}
               focusNext={focusNext}
@@ -476,7 +484,7 @@ export default function GymLog() {
 
         {inApp && v === "progress" ? (
           <div id="dashView" className="view">
-            {route.lift ? <LiftDetail key={route.lift} name={route.lift} /> : <ProgressView onSetGoal={() => openPlan("#pe_goalw")} onOpenLift={openLift} onOpenTrain={() => openTrain(todayKey())} />}
+            {route.lift ? <LiftDetail key={route.lift} name={route.lift} /> : <ProgressView onSetGoal={() => openPlan("#pe_goalw")} onOpenLift={openLift} onOpenTrain={() => openTrain(todayKey())} onOpenSettings={() => navigate({ view: "settings" })} />}
           </div>
         ) : null}
 

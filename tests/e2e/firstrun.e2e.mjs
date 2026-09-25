@@ -3,7 +3,7 @@
 // goes to Home on the default plan, as before. And the plan editor can start over from a template.
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
-import { HOST, flat, open, openSetting, openTab, planDone, ready, session, shot, until } from "./harness.mjs";
+import { HOST, flat, open, openSetting, openTab, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
 const template = (id) => JSON.parse(fs.readFileSync(new URL(`../../src/data/templates/${id}.json`, import.meta.url), "utf8"));
 const NAMES = "Blank plan|Full body, 3 days|Upper and lower, 4 days|Five-day split";
@@ -196,7 +196,7 @@ export default async function firstRun({ browser, base, check }) {
     check("and the partial result is still there to read", (await page.textContent("#dataMsg")) === partial && (await page.locator("#dataMsg").isVisible()), await page.textContent("#dataMsg"));
     // Settings is a pushed screen: its back chevron leaves it, for Home.
     await page.click("#backBtn");
-    await page.waitForSelector("#homeView");
+    await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
     await openTab(page, "settings");
     await openSetting(page, "setData");
     check("once read and left, Settings doesn't show it again", (await page.textContent("#dataMsg")) === "", await page.textContent("#dataMsg"));
@@ -263,7 +263,7 @@ export default async function firstRun({ browser, base, check }) {
     // Done goes back to Settings, and its back chevron to Home.
     await page.waitForSelector("#settingsView");
     await page.click("#backBtn");
-    await page.waitForSelector("#homeView");
+    await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
     // Today in Home's week strip opens Train at today.
     await page.click("#week .wd.today");
     await page.waitForSelector("#trainView");

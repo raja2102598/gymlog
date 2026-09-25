@@ -1,7 +1,7 @@
 // My gym (RAJ-63): Settings → My gym turns equipment on and off, and lists lifts always or never offered; the
 // library, a swap's suggestions and its library then leave out what the gym can't do, and the plan editor keeps a
 // plan lift that needs what isn't there, saying so.
-import { K, flat, open, openTab, openWorkout, planDone, ready, session, shot, until } from "./harness.mjs";
+import { K, flat, open, openTab, openWorkout, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
 export default async function gym({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000063", "2026-08-26T05:00:00Z", "t@example.com");
@@ -85,7 +85,7 @@ export default async function gym({ browser, base, check }) {
 
   // --- a swap in the workout, from the lift's ··· menu
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openWorkout(page, 1);
   await page.click('[data-more="1"]');
   await page.click('[data-swapopen="1"]');

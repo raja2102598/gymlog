@@ -23,7 +23,7 @@ const SECTION_KEY = "gymlog.progressTab";
 
 /** Progress (Progress board): Overview, Strength, Body and Muscles. Overview leads with the week in three numbers,
  *  the weight trend, the last 14 days' consistency and the pinned lifts. */
-export function ProgressView({ onSetGoal, onOpenLift, onOpenTrain }: { onSetGoal: () => void; onOpenLift: (name: string) => void; onOpenTrain: () => void }) {
+export function ProgressView({ onSetGoal, onOpenLift, onOpenTrain, onOpenSettings }: { onSetGoal: () => void; onOpenLift: (name: string) => void; onOpenTrain: () => void; onOpenSettings: () => void }) {
   const [tab, setTabState] = useState<Section>(() => {
     try {
       const v = sessionStorage.getItem(SECTION_KEY);
@@ -44,7 +44,7 @@ export function ProgressView({ onSetGoal, onOpenLift, onOpenTrain }: { onSetGoal
   const t = todayKey();
   return (
     <>
-      <TabHead eyebrow={`Week of ${parseKey(mondayOf(t)).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}`} title="Progress" />
+      <TabHead eyebrow={`Week of ${parseKey(mondayOf(t)).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}`} title="Progress" onProfile={onOpenSettings} />
       <div className="screen">
         <SegmentedControl
           id="progTabs"

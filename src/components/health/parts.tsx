@@ -4,11 +4,16 @@ import { useChartWidth } from "@/hooks/useChartWidth";
 import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
 import type { DayKey } from "@/lib/types";
 
-/** "Today", "Yesterday" or "Wed, 23 Sept". */
-export function dayWords(k: DayKey, t = todayKey()): string {
-  if (k === t) return "Today";
-  if (k === addDays(t, -1)) return "Yesterday";
-  return parseKey(k).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+/** A day with its date, for a day's own page: "Today, 25 Sept", "Yesterday, 24 Sept", "Wed, 23 Sept". */
+export function dayDate(k: DayKey, t = todayKey()): string {
+  const d = parseKey(k), date = d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  return `${k === t ? "Today" : k === addDays(t, -1) ? "Yesterday" : d.toLocaleDateString("en-IN", { weekday: "short" })}, ${date}`;
+}
+
+/** A day as the day switch shows it, in two lines: "Yesterday" over "24 Sept", "Wednesday" over "23 Sept". */
+export function dayParts(k: DayKey, t = todayKey()): [string, string] {
+  const d = parseKey(k);
+  return [k === t ? "Today" : k === addDays(t, -1) ? "Yesterday" : d.toLocaleDateString("en-IN", { weekday: "long" }), d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })];
 }
 
 /** A labelled number in a stat row (a 3-up of small radius-lg tiles). */

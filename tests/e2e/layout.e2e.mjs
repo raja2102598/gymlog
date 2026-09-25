@@ -1,6 +1,6 @@
 // Layout and readability on a small phone (360 x 800): the fixes from the UI audit, in the redesign's Home, Train,
 // the workout, Settings and Progress.
-import { flat, K, open, openSetting, openTab, openWorkout, ready, session, until } from "./harness.mjs";
+import { flat, K, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 const today = () => ({
   "2026-09-23": {
@@ -36,6 +36,13 @@ export default async function layout({ browser, base, check }) {
     );
     const bar = await box(page, ".tabbar"), tabs = await page.$$eval(".tabbar a", (els) => els.map((e) => [e.id, e.getAttribute("aria-current"), Math.round(e.getBoundingClientRect().height)]));
     check("four tabs along the bottom of the screen, Home current", Math.round(bar.y + bar.height) === 800 && tabs.map((t) => t[0]).join() === "tabHome,tabTrain,tabProgress,tabHealth" && tabs[0][1] === "page" && tabs.every((t) => t[2] >= 44), JSON.stringify(tabs));
+    const barGaps = await page.evaluate(() => {
+      const bar = document.querySelector(".tabbar").getBoundingClientRect(), tab = document.querySelector("#tabHome");
+      const r = document.createRange();
+      r.selectNodeContents([...tab.childNodes].at(-1));
+      return { height: bar.height, above: tab.querySelector(".tab-pill").getBoundingClientRect().top - bar.top, below: bar.bottom - r.getBoundingClientRect().bottom };
+    });
+    check("the tabs sit in the middle of a bar no taller than they need, with no inset to keep clear", barGaps.height <= 60 && Math.abs(barGaps.above - barGaps.below) <= 2, JSON.stringify(barGaps));
     const start = await box(page, "#startWorkout");
     check("today's workout and its Start button are on the first screen", start && start.y + start.height < bar.y, `bottom ${Math.round(start?.y + start?.height)}px, tabs at ${Math.round(bar.y)}`);
     const wed = page.locator("#week .wd").nth(2);
@@ -131,7 +138,7 @@ export default async function layout({ browser, base, check }) {
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);
     check("Settings fits at 360px (no sideways scroll)", wide <= 360, `${wide}px`);
     await page.click("#backBtn");
-    await page.waitForSelector("#homeView");
+    await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
 
     // Progress on a new account
     await openTab(page, "progress");
