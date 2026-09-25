@@ -1,8 +1,8 @@
 // Poor signal and updates: the sync bar, launching from the offline copy, the loading placeholder, and
-// how a new build reaches an installed copy.
+// how a new build reaches an installed copy. Today's steps are typed in Train's day log (#steps).
 import fs from "node:fs";
 import path from "node:path";
-import { flat, open, openTab, ready, session, until } from "./harness.mjs";
+import { flat, open, openSetting, openTab, openWorkout, ready, session, until } from "./harness.mjs";
 
 const today = () => ({ "2026-09-23": { exercises: {}, warmup: [], cardio: true, steps: 7351, weight: 81, note: "" } });
 
@@ -15,6 +15,7 @@ export default async function offline({ browser, base, copy, check }) {
     const db = { logs: today(), plan: null };
     const { ctx, page } = await open(browser, base, { auth, db, width: 360, height: 800 });
     await ready(page);
+    await openTab(page, "train");
     db.failWrites = true;
     await page.fill("#steps", "9100");
     await until(() => page.locator("#syncBar").isVisible(), 8000);
@@ -44,6 +45,7 @@ export default async function offline({ browser, base, copy, check }) {
     const db = { logs: today(), plan: null };
     const { ctx, page } = await open(browser, base, { auth, db, width: 360, height: 800 });
     await ready(page);
+    await openTab(page, "train");
     // Every save on the phone now throws, as the browser's do when its storage is full.
     await page.evaluate(() => {
       window.__setItem = Storage.prototype.setItem;
@@ -93,18 +95,23 @@ export default async function offline({ browser, base, copy, check }) {
     await page.reload();
     await ready(page);
     check("service worker controls the page", await page.evaluate(() => !!navigator.serviceWorker.controller));
-    const cached = await page.evaluate(async () => (await caches.open((await caches.keys())[0])).keys().then((ks) => ks.length));
-    check("every file of the app is in the offline copy", cached >= 15, `${cached} files`);
+    // sw.js lists every file of the built site (SHELL: the scripts, the one Nunito font, the icons, the pages).
+    const cached = await page.evaluate(async () => {
+      const shell = JSON.parse((await (await fetch("/sw.js")).text()).match(/const SHELL = (\[[\s\S]*?\]);/)[1]);
+      const have = (await (await caches.open((await caches.keys())[0])).keys()).map((r) => new URL(r.url).pathname);
+      return { shell: shell.length, have: have.length, missing: shell.filter((f) => !have.includes(f)) };
+    });
+    check("every file of the app is in the offline copy", cached.shell >= 15 && cached.missing.length === 0, JSON.stringify(cached));
     await delay(base, 2000);
     const t0 = Date.now();
     await page.goto(base, { waitUntil: "commit" });
-    await page.waitForSelector("#appView:not([hidden])", { timeout: 30000 });
+    await page.waitForSelector("#homeView", { timeout: 30000 });
     const ms = Date.now() - t0;
     check("launch with 2 s per request is quick from the cache", ms < 1500, `${ms} ms`);
     await delay(base, 0);
     await ctx.setOffline(true);
     await page.goto(base + "?go=today", { waitUntil: "commit" });
-    await page.waitForSelector("#appView:not([hidden])", { timeout: 10000 });
+    await page.waitForSelector("#homeView", { timeout: 10000 });
     check("still opens offline", true);
     await ctx.close();
   }
@@ -152,8 +159,10 @@ export default async function offline({ browser, base, copy, check }) {
     // one): a notice offers a reload, since this tab is still running the old code until then.
     await page.waitForSelector("#swUpdateBar:not([hidden])", { timeout: 5000 });
     check("a notice offers a reload once the new version takes over the open tab", (await flat(page.locator("#swUpdateMsg"))) === "Gym Log was updated.");
-    // With the sync bar up too, scrolled: the two stack, neither covering the other's buttons.
+    // With the sync bar up too, scrolled: the two stack, neither covering the other's buttons. (A set's reps, typed
+    // in the workout.)
     db.failWrites = true;
+    await openWorkout(page, 0);
     await page.fill("#s0_0_r", "10");
     await page.waitForSelector("#syncBar:not([hidden])", { timeout: 8000 });
     await page.evaluate(() => window.scrollBy(0, 600));
@@ -162,11 +171,16 @@ export default async function offline({ browser, base, copy, check }) {
     db.failWrites = false;
     // Those saves failed on purpose: what the browser and the app log about them isn't a page error.
     page.errors = page.errors.filter((e) => !/status of 503 \(Service Unavailable\)|\{message: unavailable\}/.test(e));
+    // The reload, and the next launch, open where it was: the workout.
+    const inWorkout = async () => {
+      await page.waitForSelector("#workoutView .ex-card", { timeout: 15000 });
+      await until(async () => (await page.locator("#status").textContent()) === "Synced");
+    };
     await page.click("#swUpdateReload");
-    await ready(page);
+    await inWorkout();
     check("Reload runs the new version", await page.evaluate(() => window.__build === 2));
     await page.reload();
-    await ready(page);
+    await inWorkout();
     check("the next launch runs the new version", await page.evaluate(() => window.__build === 2), JSON.stringify({ before: v1, after: await page.evaluate(() => caches.keys()) }));
     check("no page errors across the update", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
@@ -186,12 +200,13 @@ export default async function offline({ browser, base, copy, check }) {
     const swFile = path.join(copy.dir, "sw.js");
     fs.writeFileSync(swFile, fs.readFileSync(swFile, "utf8").replace(/const VERSION = "[^"]+"/, 'const VERSION = "gymlog-test-third"'));
     await openTab(page, "settings");
+    await openSetting(page, "setAbout");
     await page.click("#updCheckWebBtn");
     await page.waitForSelector("#swUpdateBar:not([hidden])", { timeout: 10000 });
     check("a first visit left open still offers a reload once the next build takes over", (await flat(page.locator("#swUpdateMsg"))) === "Gym Log was updated.");
     await page.click("#swUpdateReload");
     // The reload opens where it was: Settings.
-    await page.waitForSelector("#settingsView:not([hidden])", { timeout: 15000 });
+    await page.waitForSelector("#settingsView", { timeout: 15000 });
     check("…and Reload runs that build", await page.evaluate(() => window.__build === 3));
     check("no page errors across it", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();

@@ -1,6 +1,7 @@
 // Signing in: an emailed link that carries its own flow id, a wait before another, Supabase's hourly email
-// limit, a password instead, setting or changing a password in Settings, and Continue with Google.
-import { flat, open, openTab, ready, savedPlan, session, until } from "./harness.mjs";
+// limit, a password instead, setting or changing a password in Settings, and Continue with Google. The email form is
+// folded behind "Continue with email" (#emailBtn) until it's tapped.
+import { flat, open, openSetting, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
 export const covers = ["public/app-login.html"];
 
@@ -10,6 +11,7 @@ export default async function signinSuite({ browser, base, check }) {
     const db = { logs: {}, plan: null };
     const { ctx, page } = await open(browser, base, { auth: null, db });
     await page.waitForSelector("#loginView:not([hidden])");
+    await page.click("#emailBtn");
     await page.fill("#email", "t@example.com");
     await page.click("#loginBtn");
     await until(() => db.otp?.length === 1);
@@ -39,8 +41,9 @@ export default async function signinSuite({ browser, base, check }) {
     const db = { logs: {}, plan: savedPlan(), google: true };
     const { ctx, page } = await open(browser, base, { auth: null, db });
     await page.waitForSelector("#googleBtn");
-    // The first divider is Google's, above the email ways in; the second is the demo's, lower down the screen.
-    check("Continue with Google, above the email ways in", (await flat(page.locator("#googleBtn"))) === "Continue with Google" && (await page.locator("#loginView .or").first().isVisible()));
+    // Google's button comes first in the sheet, above Continue with email.
+    const googleFirst = await page.evaluate(() => !!(document.getElementById("googleBtn").compareDocumentPosition(document.getElementById("emailBtn")) & Node.DOCUMENT_POSITION_FOLLOWING));
+    check("Continue with Google, above the email ways in", (await flat(page.locator("#googleBtn"))) === "Continue with Google" && googleFirst && (await page.locator("#emailBtn").isVisible()));
     await page.click("#googleBtn");
     await ready(page);
     check(
@@ -49,8 +52,9 @@ export default async function signinSuite({ browser, base, check }) {
       JSON.stringify(db.oauth),
     );
     check("the code is exchanged with the verifier this page kept (PKCE)", db.pkceOk === true);
-    check("signed in, and the code is gone from the address", (await page.locator("#appView").isVisible()) && !/code=|sb_flow_id/.test(page.url()), page.url());
+    check("signed in, and the code is gone from the address", (await page.locator("#homeView").isVisible()) && !/code=|sb_flow_id/.test(page.url()), page.url());
     await openTab(page, "settings");
+    await openSetting(page, "setAccount");
     check("Settings says the Google account is linked", /^g@example\.com · Google account linked$/.test(await flat(page.locator("#setAccount .pref-row").first().locator(".sub"))));
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
@@ -72,6 +76,7 @@ export default async function signinSuite({ browser, base, check }) {
     const db = { logs: {}, plan: null, otpError: { code: 429, error_code: "over_email_send_rate_limit", msg: "email rate limit exceeded" } };
     const { ctx, page } = await open(browser, base, { auth: null, db });
     await page.waitForSelector("#loginView:not([hidden])");
+    await page.click("#emailBtn");
     await page.fill("#email", "t@example.com");
     await page.click("#loginBtn");
     await until(async () => /Supabase/.test(await flat(page.locator("#loginMsg"))));
@@ -88,14 +93,15 @@ export default async function signinSuite({ browser, base, check }) {
     const db = { logs: {}, plan: savedPlan(), passwords: { "t@example.com": "right-password-1" } };
     const { ctx, page } = await open(browser, base, { auth: null, db });
     await page.waitForSelector("#loginView:not([hidden])");
+    await page.click("#emailBtn");
     check("no password box until you ask for one", (await page.locator("#password").count()) === 0);
     await page.click("#loginMode");
     check(
       "password mode: a password box, a Sign in button, and where the password comes from",
       (await page.locator("#password").isVisible()) &&
         (await flat(page.locator("#loginBtn"))) === "Sign in" &&
-        // The form's own sub-text, above the demo's further down the screen.
-        /Settings → Set a password/.test(await flat(page.locator("#loginView .sub").first())) &&
+        // The form's own line above the email box.
+        /password you set in Settings/.test(await flat(page.locator("#loginHow"))) &&
         (await page.$eval("#password", (e) => e.autocomplete)) === "current-password",
     );
     await page.fill("#email", "t@example.com");
@@ -111,6 +117,7 @@ export default async function signinSuite({ browser, base, check }) {
     await ready(page);
     check("the right password signs you in", await page.locator("#loginView").isHidden());
     await openTab(page, "settings");
+    await openSetting(page, "setAccount");
     check("signed in with the password: Settings offers Change password, not Set a password", (await flat(page.locator("#pwBtn"))) === "Change password");
     await until(() => db.metadata?.has_password === true);
     check("and marks the account as having one, for sign-ins with a link", db.metadata?.has_password === true, JSON.stringify(db.metadata));
@@ -129,6 +136,7 @@ export default async function signinSuite({ browser, base, check }) {
     const { ctx, page } = await open(browser, base, { auth, db });
     await ready(page);
     await openTab(page, "settings");
+    await openSetting(page, "setAccount");
     check("signed in with a link and no password yet: Set a password", (await flat(page.locator("#pwBtn"))) === "Set a password" && /^Not set\./.test(await flat(page.locator("#pwD"))), await flat(page.locator("#pwD")));
     await page.click("#pwBtn");
     check("the password box has the focus", await page.evaluate(() => document.activeElement?.id === "newPassword"));

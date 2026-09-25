@@ -15,7 +15,7 @@ import { GO_EVENT, isNative } from "@/lib/native";
 import { depthOf, hashOf, isPushed, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
-import { clearRun, endRun, startRun } from "@/lib/workout";
+import { clearRun, endRun, keepRunsInMemory, startRun } from "@/lib/workout";
 import { LiftDetail } from "./dashboard/LiftDetail";
 import { ProgressView } from "./dashboard/ProgressView";
 import { HealthDetail } from "./health/HealthDetail";
@@ -259,12 +259,14 @@ export default function GymLog() {
   const openLift = (name: string) => navigate({ view: "progress", lift: name });
   /** Opens the workout for day `k`, at block `at` (or where it left off), and starts its clock. */
   const startWorkout = (k: DayKey, at: number | null = null) => {
+    keepRunsInMemory(store.demo);
     select(k);
     setWorkoutAt(at);
     startRun(k);
     navigate({ view: "workout" });
   };
   const finishWorkout = () => {
+    keepRunsInMemory(store.demo);
     endRun(sel);
     navigate({ view: "workout", done: true });
   };
@@ -427,6 +429,7 @@ export default function GymLog() {
                 key={sel}
                 day={sel}
                 startAt={workoutAt}
+                onStep={setWorkoutAt}
                 onClose={goBack}
                 onFinish={finishWorkout}
                 onOpenLift={openLift}

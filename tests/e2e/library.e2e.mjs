@@ -1,13 +1,19 @@
 // The exercise library (RAJ-55): the plan editor adds lifts from it, searched by name and filtered by muscle and
 // equipment, makes lifts of your own, and points a plan lift at another library lift; a plan saved before the
-// library is asked once about each lift the library may know; Today swaps a lift for one from it, and a free-form
-// workout adds lifts from it.
-import { K, flat, open, openTab, planDone, ready, savedPlan, session, shot, until } from "./harness.mjs";
+// library is asked once about each lift the library may know; the workout swaps a lift for one from it, and a
+// free-form workout in Train adds lifts from it (Add exercise). Muscles are chips (data-muscle), and each row has a
+// + button (button.lib-add[data-lib]) that toggles it (aria-pressed) when adding several, or picks it.
+import { K, flat, open, openTab, openWorkout, planDone, ready, savedPlan, session, shot, until } from "./harness.mjs";
 
 export default async function library({ browser, base, check }) {
   const day = { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" };
   const isOpen = (page) => page.evaluate(() => document.querySelector("#libDialog")?.open === true);
-  const rows = async (page) => (await page.locator("#libList .lib-n").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
+  // A row's name, without its tags ("Yours", "Not in my gym").
+  const rows = (page) => page.locator("#libList .lib-n").evaluateAll((els) => els.map((e) => [...e.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").replace(/\s+/g, " ").trim()));
+  /** A row's button is on: chosen, or already added. */
+  const pressed = async (page, id) => (await page.getAttribute(`[data-lib="${id}"]`, "aria-pressed")) === "true";
+  /** The muscle chip that's on ("" for All). */
+  const muscle = (page) => page.locator('[data-muscle][aria-pressed="true"]').getAttribute("data-muscle");
   const focused = (page) => page.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute("data-plib"));
   const lifts = (db, name) => (db.plan?.days ?? []).flatMap((d) => d.exercises).filter((x) => x.name === name);
 
@@ -34,14 +40,14 @@ export default async function library({ browser, base, check }) {
     check("and how many there are", (await flat(page.locator("#libCount"))) === "657 lifts", await flat(page.locator("#libCount")));
     check(
       "the day's lifts show as added, by the library's name too",
-      (await page.locator('[data-lib="Leg_Press"]').isDisabled()) && (await page.locator('[data-lib="Leg_Extensions"]').isDisabled()) && (await page.locator('[data-lib="Leg_Press"]').isChecked()),
+      (await page.locator('[data-lib="Leg_Press"]').isDisabled()) && (await page.locator('[data-lib="Leg_Extensions"]').isDisabled()) && (await pressed(page, "Leg_Press")) && (await page.locator("#libList .lib-row.had", { has: page.locator('[data-lib="Leg_Press"]') }).count()) === 1,
     );
     await shot(page, "library-picker");
     await page.fill("#libSearch", "goblet");
     check("search narrows the list, and says by how much", (await rows(page)).join("|") === "Goblet Squat" && (await flat(page.locator("#libCount"))) === "1 lift of 657", (await rows(page)).join("|"));
-    await page.check('[data-lib="Goblet_Squat"]');
+    await page.click('[data-lib="Goblet_Squat"]');
     await page.fill("#libSearch", "hip thrust");
-    await page.check('[data-lib="Barbell_Hip_Thrust"]');
+    await page.click('[data-lib="Barbell_Hip_Thrust"]');
     check("Add counts what's chosen, across searches", (await flat(page.locator("#libAdd"))) === "Add 2");
     await page.click("#libAdd");
     await until(() => legs().length === 7);
@@ -55,9 +61,9 @@ export default async function library({ browser, base, check }) {
 
     // --- filters and order
     await page.click("#pe_lib");
-    await page.selectOption("#libMuscle", "hamstrings");
+    await page.click('[data-muscle="hamstrings"]');
     await page.selectOption("#libEquip", "machine");
-    const subs = (await page.locator("#libList .lib-t > .sub").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
+    const subs = (await page.locator("#libList .lib-t > .row-d").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
     check(
       "muscle and equipment filters: only machine lifts for the hamstrings",
       subs.length > 1 && subs.every((t) => /machines/i.test(t.split(" · ")[0]) && /hamstrings/i.test(t.split(" · ")[1].split(", with")[0])),
@@ -69,7 +75,7 @@ export default async function library({ browser, base, check }) {
     check("A to Z", az.length > 1 && az.join("|") === [...az].sort((a, b) => a.localeCompare(b)).join("|"), az.join("|"));
 
     // --- a lift of your own
-    await page.selectOption("#libMuscle", "");
+    await page.click('[data-muscle=""]');
     await page.selectOption("#libEquip", "");
     await page.fill("#libSearch", "sled push");
     check("nothing matches: it says what to do", (await flat(page.locator("#libList .empty"))) === "Nothing matches. Create it as a lift of your own?");
@@ -87,7 +93,7 @@ export default async function library({ browser, base, check }) {
     await until(() => db.plan?.custom?.length === 1);
     check("it saves with the plan", JSON.stringify(db.plan?.custom) === JSON.stringify([{ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: ["glutes"] }]), JSON.stringify(db.plan?.custom));
     const mine = page.locator("#libList .lib-row", { has: page.locator('[data-lib="custom:Sled Push"]') });
-    check("and is chosen in the list, marked as yours", (await page.isChecked('[data-lib="custom:Sled Push"]')) && (await flat(mine.locator(".lib-tag"))) === "Yours" && (await flat(page.locator("#libAdd"))) === "Add 1");
+    check("and is chosen in the list, marked as yours", (await pressed(page, "custom:Sled Push")) && (await flat(mine.locator(".pill"))) === "Yours" && (await flat(page.locator("#libAdd"))) === "Add 1");
     await page.click("#libAdd");
     await until(() => legs().length === 8);
     check("added, found by its name", legs()[7]?.name === "Sled Push" && !("lib" in legs()[7]), JSON.stringify(legs()[7]));
@@ -124,31 +130,35 @@ export default async function library({ browser, base, check }) {
     check("Escape closes it, adding nothing", !(await isOpen(page)) && legs().length === 8);
     await planDone(page);
 
-    // --- Today: a swap from the library
-    await openTab(page, "today");
+    // --- the workout: a swap from the library (the lift's ··· menu → Swap → Library…)
+    await page.click("#backBtn"); // Settings, back to Home
+    await page.waitForSelector("#homeView");
+    await openWorkout(page, "Leg Press");
     await page.click('[data-more="1"]');
     await page.click('[data-swapopen="1"]');
     await page.click('[data-swaplib="1"]');
-    check("Library… in a swap shows lifts for the same muscle", (await flat(page.locator("#libTitle"))) === "Swap Leg Press for" && (await page.inputValue("#libMuscle")) === "quadriceps");
+    check("Library… in a swap shows lifts for the same muscle", (await flat(page.locator("#libTitle"))) === "Swap Leg Press for" && (await muscle(page)) === "quadriceps", await muscle(page));
     check("not the lift itself", await page.locator('[data-lib="Leg_Press"]').isDisabled());
     await page.click('[data-lib="Barbell_Squat"]');
     await until(() => today()?.exercises?.["Leg Press"]?.swap === "Barbell Squat");
     check("a tap swaps it", today()?.exercises?.["Leg Press"]?.swap === "Barbell Squat" && !(await isOpen(page)), JSON.stringify(today()?.exercises?.["Leg Press"]));
 
-    // --- a free-form workout: lifts from the library, your own among them
+    // --- a free-form workout in Train: lifts from the library, your own among them
+    await page.click("#closeWorkout");
+    await page.waitForSelector("#trainView");
     await page.click("#freeStart");
     await until(() => !!today()?.free);
-    await page.click("#addLiftLib");
-    check("Library… adds to the workout", (await flat(page.locator("#libTitle"))) === "Add to this workout");
+    await page.click("#addExercise");
+    check("Add exercise adds to the workout", (await flat(page.locator("#libTitle"))) === "Add to this workout");
     await page.fill("#libSearch", "sled push");
-    await page.check('[data-lib="custom:Sled Push"]');
+    await page.click('[data-lib="custom:Sled Push"]');
     await page.fill("#libSearch", "barbell curl");
-    await page.check('[data-lib="Barbell_Curl"]');
+    await page.click('[data-lib="Barbell_Curl"]');
     await page.click("#libAdd");
     await until(() => today()?.free?.lifts?.length === 2);
     check("Add puts them in the workout, in one go", JSON.stringify(today()?.free?.lifts) === '["Sled Push","Barbell Curl"]', JSON.stringify(today()?.free));
-    await until(async () => (await focused(page)) === "addLift");
-    check("and the field to add a lift has focus", (await focused(page)) === "addLift");
+    await until(async () => (await focused(page)) === "addExercise");
+    check("and Add exercise has focus again, for more", (await focused(page)) === "addExercise", await focused(page));
 
     check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));

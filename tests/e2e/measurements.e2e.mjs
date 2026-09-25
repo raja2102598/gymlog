@@ -1,8 +1,8 @@
-// The measurements card on Today (chest, arms, thighs, hips, body fat): labels and touch targets, an
+// The measurements card in Train's day log (chest, arms, thighs, hips, body fat): labels and touch targets, an
 // implausible value refused with a message, logging all five, their trends and four-week change in
 // Health → Body, the day view, and the export.
 import fs from "node:fs";
-import { flat, K, open, openTab, ready, session, until } from "./harness.mjs";
+import { flat, K, open, openSetting, openTab, ready, session, until } from "./harness.mjs";
 
 export const covers = [
   "src/components/health/HealthView.tsx",
@@ -28,11 +28,12 @@ export default async function measurements({ browser, base, check }) {
   const db = { logs: history(), plan: null };
   const { ctx, page } = await open(browser, base, { auth, db });
   await ready(page);
+  await openTab(page, "train");
   // Text as laid out, so a hero's separate blocks (value, then each stat) read as separate words.
   const text = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
 
   // --- the card, its labels and touch targets, the weekly hint
-  check("a Measurements card on Today", (await flat(page.locator("#measureCard h3"))) === "Measurements");
+  check("a Measurements card in Train's day log", (await flat(page.locator("#measureCard h2"))) === "Measurements");
   const info = await page.$$eval(
     FIELDS.map((f) => `#${f}`).join(","),
     (els) => els.map((e) => ({ labels: e.labels.length, h: e.getBoundingClientRect().height })),
@@ -65,14 +66,20 @@ export default async function measurements({ browser, base, check }) {
   // --- Health with only typed measurements: the Body tile shows them, and the note says where they came from
   await openTab(page, "health");
   const tile = await text("#tileBody");
-  check("with no weight, the Body tile shows today's measurements rather than no data", tile === "Body 21% body fat · 4 more", tile);
+  // The tile's big value is "–" only when there's nothing for the body at all.
+  check("with no weight, the Body tile shows today's measurements rather than no data", !/^Body –/.test(tile) && /21% body fat · 4 more/.test(tile), tile);
   const note = await flat(page.locator("#healthNote"));
-  check("and the note doesn't credit Health Connect with them", /^Only the measurements you’ve typed on Today so far\. Steps, sleep, heart rate and the rest come from Health Connect, through the Gym Log Android app\.$/.test(note), note);
+  const empty = await flat(page.locator("#healthEmpty"));
+  check(
+    "and the note doesn't credit Health Connect with them",
+    note === "Logged in Gym Log" && /comes through the Gym Log Android app/.test(empty) && /what you log in Gym Log shows/.test(empty),
+    `${note} | ${empty}`,
+  );
 
   // --- reading them back in Health → Body: a trend and the four-week change for each
   await page.click("#tileBody");
   await page.waitForSelector("#hChart");
-  check("Body opens on the month, where these trends show", (await flat(page.locator(".seg-b.on"))) === "Month");
+  check("Body opens on the month, where these trends show", (await flat(page.locator('#hRange [role=tab][aria-selected="true"]'))) === "Month");
   check("a trend chart for each new measurement", (await page.locator("#hChest, #hArms, #hThighs, #hHips").count()) === 4);
   check("chest: the latest value and its change from four weeks back", (await flat(page.locator("#hChestChange"))) === "Chest 105.5 cm on 23 Sept · +5.5 cm since 26 Aug", await flat(page.locator("#hChestChange")));
   check("arms: same shape", (await flat(page.locator("#hArmsChange"))) === "Arms 35.5 cm on 23 Sept · +1.5 cm since 26 Aug", await flat(page.locator("#hArmsChange")));
@@ -81,16 +88,17 @@ export default async function measurements({ browser, base, check }) {
   check("body fat: a change line next to Health Connect's existing Body fat chart", (await flat(page.locator("#hFatChange"))) === "Body fat 21% on 23 Sept · −1.0% since 26 Aug", await flat(page.locator("#hFatChange")));
   check("body fat still has only the one chart", (await page.locator("#hFat").count()) === 1);
 
-  // --- the day view: today's measurements alongside weight and body fat
-  await page.click(".seg-b >> text=Day");
-  const hero = await text("#hHero");
+  // --- the day view: today's measurements alongside weight and body fat (the stats under the day's big number)
+  await page.click('#hRange [data-seg="day"]');
+  await page.waitForSelector("#hHero");
+  const hero = await text("#healthView .detail");
   check(
     "the day view lists today's measurements too",
     hero.includes("105.5 cm chest") && hero.includes("35.5 cm arms") && hero.includes("59.5 cm thighs") && hero.includes("97.5 cm hips") && hero.includes("21% body fat"),
     hero,
   );
   // --- an earlier week: each note reads up to that week's last day, as its chart does, never a later reading
-  await page.click(".seg-b >> text=Week");
+  await page.click('#hRange [data-seg="week"]');
   for (let i = 0; i < 4; i++) await page.click("#hPrev"); // the week ending 26 Aug, the first round's day
   await page.waitForSelector("#hChestChange");
   check("an earlier week's chest note stops at that week, like its chart", (await flat(page.locator("#hChestChange"))) === "Chest 100 cm on 26 Aug", await flat(page.locator("#hChestChange")));
@@ -100,6 +108,7 @@ export default async function measurements({ browser, base, check }) {
 
   // --- included in the export; an old day without any of these fields exports as before
   await openTab(page, "settings");
+  await openSetting(page, "setData");
   const [json] = await Promise.all([page.waitForEvent("download"), page.click("#exportBtn")]);
   const backup = JSON.parse(fs.readFileSync(await json.path(), "utf8"));
   const byDay = Object.fromEntries(backup.logs.map((r) => [r.day, r.data]));

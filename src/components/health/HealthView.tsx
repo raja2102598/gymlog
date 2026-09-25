@@ -43,6 +43,11 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
   const change = weights.length > 1 ? Math.round((weights[weights.length - 1] - weights[0]) * 100) / 100 : null;
   const goodWay = change != null && (p.goalWeight == null ? change <= 0 : Math.abs((n.weight ?? weights[weights.length - 1]) - p.goalWeight) < Math.abs(weights[0] - p.goalWeight));
   const burned = n.totalKcal ?? n.activeKcal;
+  // With no weight for the day, the measurements logged in Train: the first, and how many more.
+  const measured = [
+    n.bodyFat ? ([n.bodyFat, "%", "body fat"] as const) : null,
+    ...(["chest", "arms", "thighs", "hips"] as const).map((f) => (n[f] ? ([n[f]!, "cm", f] as const) : null)),
+  ].filter((m) => m != null);
   const water = n.waterMl ?? 0;
   return (
     <>
@@ -151,9 +156,15 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
             icon={WeightIcon}
             name="Body"
             ink={METRIC_INK.body}
-            value={n.weight != null ? n.weight.toFixed(1) : "–"}
-            unit={n.weight != null ? "kg" : undefined}
-            support={n.weight != null ? [n.bodyFat ? `${n.bodyFat}% body fat` : "", n.bmi ? `BMI ${n.bmi}` : ""].filter(Boolean).join(" · ") || "body weight" : "Weigh in, or log it in Train"}
+            value={n.weight != null ? n.weight.toFixed(1) : measured.length ? measured[0][0] : "–"}
+            unit={n.weight != null ? "kg" : measured.length ? measured[0][1] : undefined}
+            support={
+              n.weight != null
+                ? [n.bodyFat ? `${n.bodyFat}% body fat` : "", n.bmi ? `BMI ${n.bmi}` : ""].filter(Boolean).join(" · ") || "body weight"
+                : measured.length
+                  ? [measured[0][2], measured.length > 1 ? `${measured.length - 1} more` : ""].filter(Boolean).join(" · ")
+                  : "Weigh in, or log it in Train"
+            }
             chart={
               change != null ? (
                 <span className={goodWay ? "mt-good" : "mt-s"}>

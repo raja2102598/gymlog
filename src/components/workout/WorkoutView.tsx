@@ -18,6 +18,8 @@ interface Props {
   day: DayKey;
   /** The block to open on: one tapped in Train, else the first not yet done. */
   startAt: number | null;
+  /** Hears the exercise the workout moves to, so coming back to it (from a lift's chart, say) opens there again. */
+  onStep: (at: number) => void;
   onClose: () => void;
   onFinish: () => void;
   onOpenLift: (name: string) => void;
@@ -29,7 +31,7 @@ interface Props {
 /** The active workout (Active workout board): one exercise at a time. A top bar (close, the session and time
  *  elapsed, Finish), a segment per exercise, the current exercise's card with its set table, the rest timer, and
  *  Complete set N pinned at the bottom with the next exercise under it. The day's cardio is the last step. */
-export function WorkoutView({ day, startAt, onClose, onFinish, onOpenLift, menu, setMenu, focusNext }: Props) {
+export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLift, menu, setMenu, focusNext }: Props) {
   const store = useGym();
   const p = store.planFor(day), e = store.entry(day), free = e.free ?? null;
   const blocks = store.liftBlocks(day);
@@ -45,6 +47,7 @@ export function WorkoutView({ day, startAt, onClose, onFinish, onOpenLift, menu,
   const go = (n: number) => {
     setMenu(null);
     setAt(n);
+    onStep(n);
     window.scrollTo(0, 0);
   };
   const name = free ? free.name.trim() || "Free workout" : p.name;
@@ -57,6 +60,7 @@ export function WorkoutView({ day, startAt, onClose, onFinish, onOpenLift, menu,
     const to = b + dir, at = i + dir * blocks[to].length, edge = dir < 0 ? to === 0 : to === blocks.length - 1;
     store.moveBlock(day, b, dir);
     setAt(to);
+    onStep(to);
     focusNext(`[data-lmove="${at}:${edge ? -dir : dir}"]`);
   };
   const moves = (b: number, superset?: string): Moves => ({

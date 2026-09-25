@@ -1,7 +1,8 @@
 // Two phones on one account (two browser contexts answered from one `db`). Each day is saved over the version the
 // phone last had, so neither overwrites the other unseen: the same thing changed on both asks which version to keep,
-// and edits to different lifts merge. An edit waiting through a reload keeps the version it started from.
-import { flat, liftEl, open, ready, session, shot, until } from "./harness.mjs";
+// and edits to different lifts merge. An edit waiting through a reload keeps the version it started from. Steps and
+// weight are in Train's day log; sets are logged in the workout.
+import { flat, open, openTab, openWorkout, ready, session, shot, until } from "./harness.mjs";
 
 const D = "2026-09-23";
 
@@ -11,6 +12,8 @@ export default async function sync({ browser, base, check }) {
   const a = await open(browser, base, { auth, db, width: 360, height: 800 });
   const b = await open(browser, base, { auth, db, width: 360, height: 800 });
   await Promise.all([ready(a.page), ready(b.page)]);
+  await openTab(a.page, "train");
+  await openTab(b.page, "train");
   const asked = (p) => p.locator("#syncConflict");
 
   // ---------- The same day changed on both: the second phone to save is asked, and either choice holds ----------
@@ -29,14 +32,14 @@ export default async function sync({ browser, base, check }) {
     buttons.map((x) => x[0]).join(" | ") === "Keep this phone’s version | Keep the other version" && buttons.every((x) => x[1] >= 44),
     JSON.stringify(buttons),
   );
-  check("the top bar says the day isn't synced", (await b.page.textContent("#status")) === "Not synced yet", await b.page.textContent("#status"));
+  check("the sync status says the day isn't synced", (await b.page.textContent("#status")) === "Not synced yet", await b.page.textContent("#status"));
   await b.page.locator("#steps").blur();
   await shot(b.page, "8-sync-conflict");
-  // The question makes the bar tall on a phone. Going back up through the lifts with Shift+Tab, each control lands
-  // below the bar, not under it.
+  // The question makes the bar tall on a phone. Going back up through Train (the day log, then the session's lifts)
+  // with Shift+Tab, each control lands below the bar, not under it.
   const from = await b.page.evaluate(() => {
-    const sets = document.querySelectorAll("#session input[data-set]");
-    sets[sets.length - 1].focus({ preventScroll: true });
+    const boxes = document.querySelectorAll("#trainView input, #trainView textarea");
+    boxes[boxes.length - 1].focus({ preventScroll: true });
     window.scrollTo(0, document.body.scrollHeight);
     return scrollY;
   });
@@ -69,9 +72,12 @@ export default async function sync({ browser, base, check }) {
   );
 
   // ---------- Different lifts on each phone, from the same version: merged, nothing asked ----------
-  await liftEl(a.page, "Leg Press").locator('input[data-set$=":0:reps"]').fill("10");
+  // Leg Press is the day's lift 1, Leg Extension lift 2: the first set's reps (#s<lift>_0_r) of each, in the workout.
+  await openWorkout(a.page, "Leg Press");
+  await openWorkout(b.page, "Leg Extension");
+  await a.page.fill("#s1_0_r", "10");
   await until(() => db.logs[D].exercises["Leg Press"]?.sets?.[0]?.reps === 10);
-  await liftEl(b.page, "Leg Extension").locator('input[data-set$=":0:reps"]').fill("12");
+  await b.page.fill("#s2_0_r", "12");
   await until(() => db.logs[D].exercises["Leg Extension"]?.sets?.[0]?.reps === 12, 8000);
   await b.page.waitForTimeout(300);
   check(
@@ -79,9 +85,13 @@ export default async function sync({ browser, base, check }) {
     db.logs[D].exercises["Leg Press"]?.sets?.[0]?.reps === 10 && db.logs[D].steps === 9200 && (await b.page.locator("#syncBar").isHidden()),
     JSON.stringify(db.logs[D]),
   );
-  check("the second phone shows the first one's lift too", (await liftEl(b.page, "Leg Press").locator('input[data-set$=":0:reps"]').inputValue()) === "10");
+  await b.page.click('ol.wprog button[aria-label="Go to exercise 2"]');
+  await b.page.waitForSelector("#s1_0_r");
+  check("the second phone shows the first one's lift too", (await b.page.inputValue("#s1_0_r")) === "10", await b.page.inputValue("#s1_0_r"));
 
   // ---------- An edit waiting through a reload is saved over the version it started from, without asking ----------
+  await b.page.click("#closeWorkout");
+  await b.page.waitForSelector("#trainView");
   db.failWrites = true;
   await b.page.fill("#steps", "9300");
   await until(() => b.page.locator("#syncMsg").isVisible(), 8000);

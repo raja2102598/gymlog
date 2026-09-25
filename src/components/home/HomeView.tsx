@@ -175,7 +175,7 @@ function WorkoutCard({ t, onStart, onOpenDay, focusNext }: { t: DayKey; onStart:
           </Button>
         </div>
       ) : (
-        <div className="btn-row">
+        <div className="btn-row start-row">
           <Button variant="primary" id="startWorkout" className="grow" onClick={() => onStart(t)}>
             {done ? <Check size={18} aria-hidden="true" /> : <Play size={16} fill="currentColor" aria-hidden="true" />}
             {done ? "Workout done" : started ? "Continue" : "Start workout"}

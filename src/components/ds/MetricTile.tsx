@@ -48,7 +48,7 @@ export function MetricTile({
       </span>
       <span className="mt-v">
         {value}
-        {unit ? <span className="u"> {unit}</span> : null}
+        {unit ? <span className="u">{unit === "%" ? unit : ` ${unit}`}</span> : null}
       </span>
       {support ? <span className="mt-s">{support}</span> : null}
       {chart ? <span className="mt-c">{chart}</span> : null}

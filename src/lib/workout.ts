@@ -14,8 +14,23 @@ export interface WorkoutRun {
   endedAt?: number;
 }
 
+/** The run while trying the sample data, which saves nothing on the phone: kept here instead, and gone on reload. */
+let inMemory: WorkoutRun | null = null;
+let memoryOnly = false;
+/** Keeps runs in memory only (the demo), or on the phone again. */
+export function keepRunsInMemory(on: boolean) {
+  memoryOnly = on;
+  if (!on) inMemory = null;
+}
+const read = () => (memoryOnly ? inMemory : lsGet<WorkoutRun | null>(WORKOUT_KEY, null));
+const write = (r: WorkoutRun | null) => {
+  if (memoryOnly) inMemory = r;
+  else if (r) lsSet(WORKOUT_KEY, r);
+  else lsDel(WORKOUT_KEY);
+};
+
 export function runOf(day: DayKey): WorkoutRun | null {
-  const r = lsGet<WorkoutRun | null>(WORKOUT_KEY, null);
+  const r = read();
   return r && r.day === day && typeof r.startedAt === "number" ? r : null;
 }
 
@@ -24,7 +39,7 @@ export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
   const r = runOf(day);
   if (r && !r.endedAt) return r;
   const n = { day, startedAt: now };
-  lsSet(WORKOUT_KEY, n);
+  write(n);
   return n;
 }
 
@@ -32,12 +47,12 @@ export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);
   if (!r) return null;
   const n = { ...r, endedAt: r.endedAt ?? now };
-  lsSet(WORKOUT_KEY, n);
+  write(n);
   return n;
 }
 
 export function clearRun() {
-  lsDel(WORKOUT_KEY);
+  write(null);
 }
 
 /** Seconds a run has lasted, to its end or to now. */

@@ -31,6 +31,6 @@
 .tl-at{font:var(--type-label);color:var(--ink-muted)}
 .tl-i.next .tl-at{font-weight:800;color:var(--brand-text)}
 .tl-w{font:var(--type-body-strong);overflow-wrap:anywhere}
-.today-card .btn-row{flex-wrap:nowrap}
-.today-card .btn-row .grow{flex:1 1 auto;min-width:0}
-.today-card .btn-row .btn:not(.grow){flex:none}
+.today-card .start-row{flex-wrap:nowrap}
+.today-card .start-row .grow{flex:1 1 auto;min-width:0}
+.today-card .start-row .btn:not(.grow){flex:none}
