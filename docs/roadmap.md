@@ -1,6 +1,6 @@
 # Roadmap
 
-Where Gym Log is going, in the order the work is planned. It comes from two independent reviews of the repo, checked against the code, and it is kept in step with the project's issue tracker. Each item becomes a GitHub issue when it is ready to be picked up; the labels `tier 1`, `tier 2`, `tier 3` and `later` match the tiers here, and `good first issue` marks the small, self-contained ones.
+Where Gym Log is going, in the order the work is planned. It comes from two independent reviews of the repo, checked against the code, and it is kept in step with the project's issue tracker.
 
 What the app does well today, and keeps: fast plan-driven logging, injury-aware progression, deep Health Connect data, offline-first with your own database. The roadmap adds what people expect from a workout log without giving those up.
 
@@ -13,7 +13,7 @@ The things that can lose data, and what a new person hits first. Small, one pull
 - **Sync conflict detection.** Two devices editing the same day, or the plan, currently overwrite each other; the tables' `updated_at` columns make detecting that cheap.
 - **A generic privacy page**, with a note for self-hosters to name their own deployment.
 - **Permanent, versioned APK releases** from tags, with `android-latest` kept as the moving build.
-- **This roadmap and the issue labels.**
+- **This roadmap.**
 - **Neutral first run:** a blank plan and 3, 4 and 5-day templates instead of the author's own split.
 - **A Vercel Deploy button**, and the Supabase integration's variable name accepted for the key.
 
@@ -33,16 +33,13 @@ What people expect while lifting. Builds on the model as it is.
 
 ## Tier 3: needs new pieces
 
-Items that depend on something from outside the repo: a licensed dataset, sample files, or native code.
+Items that depend on something from outside the repo: a licensed dataset or native code.
 
 - **Exercise library** with search, muscle and equipment tags, and custom exercises. Needs an exercise dataset with a licence that allows redistribution.
 - **Weekly sets per muscle group.** Depends on the library.
-- **Import from Strong and Hevy** with a preview. Needs real export files to write the parsers against; depends on the library.
-- **Pounds** as a display unit.
 - **Progression options per lift:** linear, double, percentage, simple deload, always showing the rule.
 - **In-app demo mode** with sample data, so people can try it without a database.
 - **Android home-screen widgets.** Needs native code.
-- **Other languages.**
 
 ## Later
 
