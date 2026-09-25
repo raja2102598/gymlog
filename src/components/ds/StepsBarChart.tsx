@@ -59,6 +59,8 @@ export function StepsBarChart({ bars, tone, width: W, height: H = 210, goal, lab
     return Math.max(0, Math.min(bars.length - 1, Math.floor(((ev.clientX - r.left) / r.width) * (W / slot))));
   };
   const key = (ev: KeyboardEvent) => {
+    // Only the chart's own keys: Tab and the rest go on as usual.
+    if (!["ArrowRight", "ArrowLeft", "Home", "End", "Escape"].includes(ev.key)) return;
     const cur = pick ?? bars.length - 1;
     const to = ev.key === "ArrowRight" ? cur + 1 : ev.key === "ArrowLeft" ? cur - 1 : ev.key === "Home" ? 0 : ev.key === "End" ? bars.length - 1 : ev.key === "Escape" ? null : cur;
     if (to === cur && pick != null) return;
@@ -212,6 +214,7 @@ export function RangeChart({ days, width: W, height: H = 190, label }: { days: R
     return Math.max(0, Math.min(days.length - 1, Math.floor(((ev.clientX - r.left) / r.width) * days.length)));
   };
   const key = (ev: KeyboardEvent) => {
+    if (!["ArrowRight", "ArrowLeft", "Escape"].includes(ev.key)) return;
     const cur = pick ?? days.length - 1;
     const to = ev.key === "ArrowRight" ? cur + 1 : ev.key === "ArrowLeft" ? cur - 1 : ev.key === "Escape" ? null : cur;
     if (to === cur && pick != null) return;

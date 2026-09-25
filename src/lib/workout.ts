@@ -12,6 +12,8 @@ export interface WorkoutRun {
   startedAt: number;
   /** When Finish was tapped: the duration stops there. */
   endedAt?: number;
+  /** Who started it: another account signed in on this phone never picks it up. */
+  user?: string | null;
 }
 
 /** The run while trying the sample data, which saves nothing on the phone: kept here instead, and gone on reload. */
@@ -22,12 +24,24 @@ export function keepRunsInMemory(on: boolean) {
   memoryOnly = on;
   if (!on) inMemory = null;
 }
-const read = () => (memoryOnly ? inMemory : lsGet<WorkoutRun | null>(WORKOUT_KEY, null));
-const write = (r: WorkoutRun | null) => {
-  if (memoryOnly) inMemory = r;
-  else if (r) lsSet(WORKOUT_KEY, r);
-  else lsDel(WORKOUT_KEY);
+/** The account signed in: runs belong to it. */
+let owner: string | null = null;
+export function runsFor(user: string | null) {
+  owner = user;
+}
+const read = () => {
+  const r = memoryOnly ? inMemory : lsGet<WorkoutRun | null>(WORKOUT_KEY, null);
+  return r && (r.user ?? null) === owner ? r : null;
 };
+function write(r: WorkoutRun): WorkoutRun;
+function write(r: null): null;
+function write(r: WorkoutRun | null): WorkoutRun | null {
+  const w = r && { ...r, user: owner };
+  if (memoryOnly) inMemory = w;
+  else if (w) lsSet(WORKOUT_KEY, w);
+  else lsDel(WORKOUT_KEY);
+  return w;
+}
 
 export function runOf(day: DayKey): WorkoutRun | null {
   const r = read();
@@ -38,17 +52,13 @@ export function runOf(day: DayKey): WorkoutRun | null {
 export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
   const r = runOf(day);
   if (r && !r.endedAt) return r;
-  const n = { day, startedAt: now };
-  write(n);
-  return n;
+  return write({ day, startedAt: now });
 }
 
 export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);
   if (!r) return null;
-  const n = { ...r, endedAt: r.endedAt ?? now };
-  write(n);
-  return n;
+  return write({ ...r, endedAt: r.endedAt ?? now });
 }
 
 export function clearRun() {

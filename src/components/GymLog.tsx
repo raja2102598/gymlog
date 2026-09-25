@@ -15,7 +15,7 @@ import { GO_EVENT, isNative } from "@/lib/native";
 import { depthOf, hashOf, isPushed, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
-import { clearRun, endRun, keepRunsInMemory, startRun } from "@/lib/workout";
+import { clearRun, endRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
 import { LiftDetail } from "./dashboard/LiftDetail";
 import { ProgressView } from "./dashboard/ProgressView";
 import { HealthDetail } from "./health/HealthDetail";
@@ -103,7 +103,7 @@ export default function GymLog() {
   useEffect(() => {
     const r = routeOf(location.hash), d = depthOf(r);
     if (!d || typeof (history.state as { gymDepth?: number } | null)?.gymDepth === "number") return;
-    const chain = d >= 2 ? [parentOf(r), r] : [r];
+    const up = parentOf(r), chain = d >= 2 && up.view !== "home" ? [up, r] : [r];
     history.replaceState({ gymDepth: 0 }, "", address(HOME));
     chain.forEach((c, i) => history.pushState({ gymDepth: i + 1 }, "", address(c)));
   }, []);
@@ -113,6 +113,7 @@ export default function GymLog() {
   const [uiFor, setUiFor] = useState<string | null>(null);
   if (uid !== uiFor) {
     setUiFor(uid);
+    runsFor(uid);
     setRestoring(false);
     setRestored("");
     if (uiFor !== null) {

@@ -25,10 +25,10 @@ describe("routing", () => {
     expect(tabOf({ view: "progress", lift: "Leg Press" })).toBe("progress");
   });
 
-  it("puts My gym under Train, as deep as the plan editor", () => {
+  it("puts My gym under Train, as deep as the plan editor and deeper than Settings, which opens it too", () => {
     expect(routeOf("#gym")).toEqual({ view: "gym" });
     expect(hashOf({ view: "gym" })).toBe("#gym");
-    expect(depthOf({ view: "gym" })).toBe(2);
+    expect(depthOf({ view: "gym" })).toBe(3);
     expect(parentOf({ view: "gym" })).toEqual({ view: "train" });
     expect(tabOf({ view: "gym" })).toBe("train");
   });
@@ -42,6 +42,9 @@ describe("routing", () => {
     expect(parentOf({ view: "workout" })).toEqual({ view: "train" });
     expect(isPushed({ view: "workout" })).toBe(true);
     expect(isPushed({ view: "settings" })).toBe(true);
+    // Deeper than the tabs it opens from (Health's Edit, the avatar on Home), so Back returns there.
+    expect(depthOf({ view: "settings" })).toBeGreaterThan(depthOf({ view: "health" }));
+    expect(depthOf({ view: "plan" })).toBeGreaterThan(depthOf({ view: "settings" }));
     expect(isPushed({ view: "train" })).toBe(false);
     expect(parentOf({ view: "settings" })).toEqual({ view: "home" });
     expect(routeOf("#train")).toEqual({ view: "train" });

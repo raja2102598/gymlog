@@ -56,13 +56,14 @@ export const hashOf = (r: Route): string =>
           : `#${r.view}`;
 export const sameRoute = (a: Route, b: Route) => a.view === b.view && a.metric === b.metric && a.lift === b.lift && !!a.done === !!b.done;
 
-/** How deep a route sits: Home 0, the other tabs and Settings 1, a metric's page, the plan editor, My gym and the
- *  workout 2, and a lift's page 3, since it opens from the workout as well as from Progress (Back returns to either). */
+/** How deep a route sits: Home 0, the other tabs 1, Settings, a metric's page and the workout 2, and 3 for the plan
+ *  editor and My gym (they open from Settings as well as from Train) and a lift's page (it opens from the workout as
+ *  well as from Progress). Opening a deeper screen adds a history entry, so Back returns to wherever it was opened. */
 export const depthOf = (r: Route): number =>
-  r.view === "home" ? 0 : r.lift ? 3 : r.metric || r.view === "plan" || r.view === "gym" || r.view === "workout" ? 2 : 1;
+  r.view === "home" ? 0 : r.lift || r.view === "plan" || r.view === "gym" ? 3 : r.metric || r.view === "settings" || r.view === "workout" ? 2 : 1;
 
 /** A screen pushed over the tabs: a back chevron, and no tab bar. */
-export const isPushed = (r: Route): boolean => r.view === "settings" || depthOf(r) >= 2;
+export const isPushed = (r: Route): boolean => depthOf(r) >= 2;
 
 /** The tab a route belongs to, lit in the tab bar. The plan editor, My gym and the workout open from Train;
  *  Settings from Home. */

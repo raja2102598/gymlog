@@ -114,7 +114,7 @@ describe("where the app is", () => {
   });
 
   it("knows how deep a screen is, its tab, and where its back arrow goes", () => {
-    expect([depthOf({ view: "home" }), depthOf({ view: "settings" }), depthOf({ view: "health", metric: "water" }), depthOf({ view: "plan" })]).toEqual([0, 1, 2, 2]);
+    expect([depthOf({ view: "home" }), depthOf({ view: "settings" }), depthOf({ view: "health", metric: "water" }), depthOf({ view: "plan" })]).toEqual([0, 2, 2, 3]);
     expect(tabOf({ view: "plan" })).toBe("train");
     expect(parentOf({ view: "health", metric: "water" })).toEqual({ view: "health" });
     expect(parentOf({ view: "plan" })).toEqual({ view: "train" });

@@ -116,6 +116,12 @@ export default async function healthSuite({ browser, base, check }) {
   check("the day switch moves to yesterday", (await flat(page.locator("#activity .dayswitch .label"))) === "Yesterday" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000"));
   await page.click("#hNext");
   check("and back to today, no further", (await flat(page.locator("#activity .dayswitch .label"))) === "Today" && (await page.locator("#hNext").isDisabled()));
+  // Edit opens Settings over Health, and its back chevron returns to Health, not Home.
+  await page.click("#editGoals");
+  await page.waitForSelector("#signOutBtn");
+  await page.click("#backBtn");
+  await page.waitForSelector("#activity");
+  check("Settings opened from Health goes back to Health", new URL(page.url()).hash === "#health" && (await page.locator("#homeView").count()) === 0, page.url());
 
   // Sleep's page: the week as bars against the goal, then one night
   await page.click("#tileSleep");

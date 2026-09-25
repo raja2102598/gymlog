@@ -9,8 +9,9 @@ import type { LiftMenu } from "@/components/today/types";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
+import { wdIndex } from "@/lib/dates";
 import { mmss, num } from "@/lib/format";
-import { performed } from "@/lib/store";
+import { performed, restSecFor } from "@/lib/store";
 import type { DayKey, NumField } from "@/lib/types";
 import { clock, runOf, runSeconds } from "@/lib/workout";
 
@@ -258,7 +259,7 @@ function RestCard() {
   }, [running]);
   if (!r) return null;
   const left = store.restRemaining();
-  const len = restLength(r.lift, store);
+  const len = r.sec ?? restLength(r.lift, r.day, store);
   const pct = ended ? 0 : Math.min(100, (left / Math.max(len, left, 1)) * 100);
   return (
     <section className={cx("card restcard", ended && "over")} id="restCard" role="group" aria-label="Rest timer">
@@ -288,8 +289,8 @@ function RestCard() {
   );
 }
 
-/** The rest's full length, for its ring: the lift's own rest, or the plan's. */
-function restLength(lift: string, store: ReturnType<typeof useGym>) {
-  for (const d of store.plan.days) for (const x of d.exercises) if (x.name === lift && parseInt(x.rest ?? "", 10) > 0) return Math.min(600, Math.max(5, parseInt(x.rest!, 10)));
-  return store.plan.restSec;
+/** The rest's full length, for a timer saved without it: the lift's own rest on the timer's day, or the plan's. */
+function restLength(lift: string, day: DayKey, store: ReturnType<typeof useGym>) {
+  const x = store.plan.days[wdIndex(day)]?.exercises.find((e) => e.name === lift);
+  return x ? restSecFor(store.plan, x) : store.plan.restSec;
 }

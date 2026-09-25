@@ -58,6 +58,9 @@ export interface RestTimer {
   /** Reached zero and said so already (vibrated, marked for screen readers): stays true until skipped or a set
    *  restarts it, so that only happens once. */
   ended: boolean;
+  /** Seconds it was started with, for the rest card's ring and "of M:SS". Missing on timers saved before it was
+   *  kept: the card then works it out from the plan. */
+  sec?: number;
 }
 /** What an import would replace: how many logged days the file has differently, and whether its plan differs. */
 export interface Replacing {
@@ -1219,7 +1222,7 @@ export class GymStore {
   }
   /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx). */
   startRest(day: DayKey, lift: string, sec: number) {
-    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false };
+    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false, sec };
     this.armRest();
     this.persistRest();
     this.changed();
