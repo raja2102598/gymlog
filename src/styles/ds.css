@@ -167,8 +167,6 @@
 .howto-tags{display:flex;flex-wrap:wrap;gap:6px;margin:0}
 .howto-steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:var(--space-2);font:var(--type-body);color:var(--ink)}
 .howto-steps li::marker{font-weight:800;color:var(--brand-text)}
-.howto-credit{margin:0;font:var(--type-label);color:var(--ink-muted)}
-.howto-credit a{color:var(--brand-text)}
 
 /* Things that open in place come in with a short fade and rise, rather than jumping: a lift's how-to (the workout's
    ?, the library), and a Settings row unfolding. Opacity and transform only, which the phone animates on its own. */

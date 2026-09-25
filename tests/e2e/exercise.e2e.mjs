@@ -63,7 +63,7 @@ export default async function exercise({ browser, base, check }) {
     const photos = await page.$$eval("#workoutView .howto-photos img", (els) => els.map((e) => e.getAttribute("alt")));
     check("? shows the start and finish photos, named for screen readers", photos.join("|") === "Leg Extension, start position|Leg Extension, finish position", photos.join("|"));
     check("and the steps, numbered", steps >= 3 && /leg extension machine/i.test(await flat(page.locator("#workoutView .howto-steps li").first())), String(steps));
-    check("with where they come from", /free-exercise-db, public domain/.test(await flat(page.locator("#workoutView .howto-credit"))));
+    check("with no credit line under the steps (public domain, so none is owed; the README credits it)", (await page.locator("#workoutView .howto-credit").count()) === 0 && !/public domain/.test(await flat(page.locator("#workoutView .cue-panel"))));
     // The photos load lazily: bring them on screen and wait for both before looking at what was asked for.
     await page.locator("#workoutView .howto-photos img").first().scrollIntoViewIfNeeded();
     await until(() => db.photos.filter((u) => u.includes("/Leg_Extensions/")).length === 2);

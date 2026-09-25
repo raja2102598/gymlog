@@ -1701,10 +1701,16 @@ export class GymStore {
     this.changed();
   }
   /** Saves days read from Health Connect on this phone; only days that changed are written. Returns how many. */
-  async saveHealth(days: Record<DayKey, HealthDay>): Promise<number> {
+  async saveHealth(days: Record<DayKey, HealthDay>, { quiet = false } = {}): Promise<number> {
     if (!this.user || !this.sb) return 0;
     // Compared key-order blind: rows read back from Supabase have jsonb's key order, not ours.
     const changed = Object.entries(days).filter(([k, d]) => canon(d) !== canon(this.health[k]));
+    // `quiet` (native/health.ts's read of today every 30 seconds): nothing new, nothing to redraw. The time it
+    // synced shows at the next redraw.
+    if (quiet && !changed.length) {
+      this.healthSyncedAt = new Date().toISOString();
+      return 0;
+    }
     if (changed.length) {
       const { error } = await this.sb.from("health_days").upsert(
         changed.map(([day, data]) => ({ user_id: this.user!.id, day, data })),

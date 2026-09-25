@@ -76,7 +76,7 @@ import { todayKey, wdIndex } from "@/lib/dates";
 import { APP_LOGIN_PAGE, NATIVE_SIGN_IN } from "@/lib/native";
 import { speechSupported } from "@/lib/speech";
 import { GymStore } from "@/lib/store";
-import { connectHealth, healthAccess, READ, syncHealth } from "@/native/health";
+import { connectHealth, healthAccess, READ, syncHealth, syncToday } from "@/native/health";
 import { signInWithGoogle } from "@/native/google";
 import { checkBackgroundOwner, deviceName, turnOffBackground, turnOnBackground } from "@/native/sync";
 import { downloadUnderway, downloadUpdate, followDownload, type DownloadProgress } from "@/native/update";
@@ -241,6 +241,71 @@ describe("syncHealth", () => {
     s.sb = { from: () => ({ upsert: async () => ({ error: new Error("Failed to fetch") }) }) } as unknown as GymStore["sb"];
     await syncHealth(s, true);
     expect(s.healthLink).toEqual({ state: "error", msg: "Couldn’t sync Health Connect: Failed to fetch. It tries again next time the app opens." });
+  });
+});
+
+describe("syncToday (every 30 seconds while the app is open)", () => {
+  /** Today's steps as Health Connect now has them, on top of phoneHas(). */
+  const walked = (steps: number) =>
+    health.queryAggregated.mockImplementation(async ({ dataType, bucket }: { dataType: string; bucket: string }) => ({
+      samples: dataType === "steps" && bucket === "day" ? [{ startDate: mid(9, 23), value: steps }] : dataType === "steps" ? [{ startDate: new Date(2026, 8, 23, 9).toISOString(), value: steps }] : [],
+    }));
+
+  it("waits for a full read to have connected", async () => {
+    const { s } = signedIn();
+    phoneHas();
+    await syncToday(s);
+    expect(health.queryAggregated).not.toHaveBeenCalled();
+  });
+
+  it("reads only today, quietly, and saves it when it changed", async () => {
+    const { s, upserts } = signedIn();
+    phoneHas();
+    await syncHealth(s, true);
+    const link = s.healthLink, saves = upserts.length;
+    health.queryAggregated.mockClear();
+    health.isAvailable.mockClear();
+    walked(4200);
+    await syncToday(s);
+    expect(health.queryAggregated).toHaveBeenCalledWith(expect.objectContaining({ dataType: "steps", startDate: mid(9, 23), bucket: "day" }));
+    expect(health.queryAggregated.mock.calls.every((c) => c[0].startDate === mid(9, 23))).toBe(true);
+    // No "Reading Health Connect…" each time, nor asking again whether it's there.
+    expect(s.healthLink).toBe(link);
+    expect(health.isAvailable).not.toHaveBeenCalled();
+    expect(upserts).toHaveLength(saves + 1);
+    expect(upserts.at(-1)).toEqual([expect.objectContaining({ day: "2026-09-23", data: expect.objectContaining({ steps: 4200 }) })]);
+    expect(s.health["2026-09-23"].steps).toBe(4200);
+    // Nothing new: nothing written, nothing redrawn.
+    let redraws = 0;
+    s.subscribe(() => redraws++);
+    await syncToday(s);
+    expect(upserts).toHaveLength(saves + 1);
+    expect(redraws).toBe(0);
+  });
+
+  it("saves nothing from a read where something failed that the full read could read", async () => {
+    const { s, upserts } = signedIn();
+    phoneHas();
+    await syncHealth(s, true);
+    const saves = upserts.length;
+    walked(4200);
+    health.readSamples.mockImplementation(async ({ dataType }: { dataType: string }) => {
+      if (dataType === "weight") throw new Error("Rate limited");
+      return { samples: [] };
+    });
+    await syncToday(s);
+    expect(upserts).toHaveLength(saves);
+    expect(s.health["2026-09-23"].weight).toBe(81.2);
+  });
+
+  it("doesn't read while the app isn't on screen", async () => {
+    const { s } = signedIn();
+    phoneHas();
+    await syncHealth(s, true);
+    health.queryAggregated.mockClear();
+    vi.stubGlobal("document", { visibilityState: "hidden" });
+    await syncToday(s);
+    expect(health.queryAggregated).not.toHaveBeenCalled();
   });
 });
 
