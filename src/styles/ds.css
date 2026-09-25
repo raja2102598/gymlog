@@ -13,9 +13,17 @@
 .ring-it .u{font:var(--type-label);color:var(--ink-muted)}
 .activity-body{display:flex;align-items:center;gap:20px}
 @media (prefers-reduced-motion:no-preference){
-  .ring-arc{animation:ringIn var(--ring-draw) var(--ease) both}
+  /* Rings and bars draw once they're on screen (useOnScreen adds .in), not while their screen is still being built
+     or further down the page: fewer things animate at once. Until then, the rings show their tracks alone and the
+     bars nothing, which is where the draw starts anyway. */
+  .rings:not(.in) .ring-arc,.rings:not(.in) .ring-tip{visibility:hidden}
+  .rings.in .ring-arc{animation:ringIn var(--ring-draw) var(--ease) both}
+  .rings.in .ring-tip{animation:tipIn var(--sheet) var(--ease) var(--ring-draw) both}
   @keyframes ringIn{from{stroke-dasharray:0 100}}
-  .bar{transform-box:fill-box;transform-origin:50% 100%;animation:barIn var(--bar-grow) var(--ease) both}
+  @keyframes tipIn{from{opacity:0}}
+  .bchart:not(.in) .bar,.mini:not(.in) .bar{visibility:hidden}
+  .bar{transform-box:fill-box;transform-origin:50% 100%}
+  .bchart.in .bar,.mini.in .bar{animation:barIn var(--bar-grow) var(--ease) both}
   @keyframes barIn{from{transform:scaleY(0)}}
 }
 
@@ -161,3 +169,9 @@
 .howto-steps li::marker{font-weight:800;color:var(--brand-text)}
 .howto-credit{margin:0;font:var(--type-label);color:var(--ink-muted)}
 .howto-credit a{color:var(--brand-text)}
+
+/* Things that open in place come in with a short fade and rise, rather than jumping: a lift's how-to (the workout's
+   ?, the library), and a Settings row unfolding. Opacity and transform only, which the phone animates on its own. */
+@media (prefers-reduced-motion:no-preference){
+  .cue-panel,.lib-how,.pref-card:not([hidden]){animation:rise var(--sheet) var(--ease)}
+}

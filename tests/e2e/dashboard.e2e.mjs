@@ -136,6 +136,11 @@ export default async function dashboard({ browser, base, check }) {
     check("consistency: 14 days as squares, today marked, the week, streak and share", (await page.locator("#dashPlan .cons .cell").count()) === 14 && (await page.locator("#dashPlan .cons .cell.now").count()) === 1 && /\d+ of \d+ this week · .*in a row · \d+% of sessions/.test(p), p.slice(0, 200));
     const s = await flat(page.locator("#dashSteps"));
     check("steps card: weekly bars against the goal", /Steps by week/.test(s) && (await page.locator("#dashSteps svg rect.bar").count()) >= 4 && (await page.locator("#dashSteps .bc-goal").count()) === 1, s.slice(0, 120));
+    // Charts further down draw when they're scrolled to, not all at once as the screen opens.
+    const below = await page.$eval("#dashSteps .bchart", (e) => ({ under: e.getBoundingClientRect().top > innerHeight, drawn: e.classList.contains("in") }));
+    await page.locator("#dashSteps .bchart").scrollIntoViewIfNeeded();
+    const drawn = await until(() => page.$eval("#dashSteps .bchart", (e) => e.classList.contains("in")));
+    check("steps by week, below the fold, waits to be scrolled to, then draws", below.under && !below.drawn && drawn, JSON.stringify({ ...below, drawn }));
     const pinned = await page.$$eval("#pinned a", (els) => els.map((e) => e.getAttribute("href")));
     check("pinned lifts link to their pages", pinned.length === 3 && pinned.every((h) => h.startsWith("#progress/lift/")), pinned.join(" "));
     await shot(page, "d2-dashboard", { fullPage: true });

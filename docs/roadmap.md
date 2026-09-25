@@ -47,25 +47,30 @@ Items that depend on something from outside the repo: a licensed dataset or nati
 
 Reported from using the Android app after the redesign.
 
-- **Smooth animations.** Movement isn't smooth on the phone. First measure it on a real, mid-range Android phone,
-  with Chrome's remote DevTools (`chrome://inspect`) on the app's WebView and its Performance panel. Measure:
-  - switching tabs;
-  - opening Health, then a metric's page;
-  - opening the workout, then Complete set and the rest ring.
+- **Smooth animations.** Movement wasn't smooth on the phone. The first pass is done; what's left is measuring it on
+  a real, mid-range Android phone.
 
-  What the code points to so far:
-  - **Settings' switches** slide their knob by `left` and `top`, which lays the page out again every frame. They
-    should move with `transform`.
-  - **Every screen fades and rises in** (`rise`, 200 ms) while React is still building it, charts and lists
-    included, so the first frames are dropped. Start the fade once the screen has painted, or paint the screen's
-    frame first and its charts just after.
-  - **The activity rings** draw by animating `stroke-dasharray` for 0.9 s, under an SVG drop-shadow filter on each
-    tip. **The bars** grow by `scaleY` on SVG rectangles for 0.6 s. In Android's WebView both are repainted on the
-    CPU every frame, and Home and Health start several at once. Animate only what's on screen, drop the filter while
-    drawing, or use shapes the GPU can move.
-  - **Things that appear or change jump** instead of moving: a logged set, a lift moved in Train, the how-to
-    opening, a Settings row unfolding. Give each a short `transform` and `opacity` transition, 120–200 ms, with the
-    design's easing.
+  Done so far:
+  - **Settings' switches** slide and grow their thumb with `transform`, not `left`, `top`, `width` and `height`, so
+    the page isn't laid out again every frame.
+  - **The activity rings and the bars** draw once they're on screen (`useOnScreen`), not all at once while their
+    screen is still being built or further down the page. The shadow under a second lap's tip is a still shape with a
+    gradient instead of an SVG drop-shadow filter, which was redrawn on the CPU every frame of the draw.
+  - **Things that open in place** fade and rise in (opacity and `transform`, 200 ms): a lift's how-to (the workout's
+    **?**, the library) and a Settings row unfolding. A logged set fills in rather than snapping, and its tick gives
+    under the thumb.
+  - Nothing moves with Reduce motion on, as before.
+
+  In headless Chromium, with the CPU slowed four times, Home and Health dropped no frames before or after these
+  changes, so that can't tell how much they help: only the phone can.
+
+  Still to do:
+  - Measure on the phone with Chrome's remote DevTools (`chrome://inspect`) on the app's WebView and its Performance
+    panel: switching tabs; opening Health, then a metric's page; opening the workout, then Complete set and the rest
+    ring.
+  - **Every screen fades and rises in** (`rise`, 200 ms) from the frame it's built in, so if that frame is slow, the
+    start of the fade is lost. If the traces show it, start the fade once the screen has painted.
+  - **A lift moved in Train** still jumps to its new place.
 
   Done when:
   - those interactions hold 60 fps on that phone, with the traces attached to the pull request;

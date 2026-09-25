@@ -1,5 +1,6 @@
 "use client";
 import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useOnScreen } from "@/hooks/useOnScreen";
 import { cx } from "@/lib/cx";
 
 /** A metric's colour set for bars: steps, active time and calories have gradient pairs; the rest use their solid
@@ -39,6 +40,7 @@ interface Props {
  */
 export function StepsBarChart({ bars, tone, width: W, height: H = 210, goal, label, bubble = (b) => b.tip, onPick }: Props) {
   const id = useId().replace(/:/g, "");
+  const [box, on] = useOnScreen<HTMLDivElement>();
   const [pick, setPick] = useState<number | null>(null);
   const svg = useRef<SVGSVGElement>(null);
   const base = H - 29, top = 24, pillW = goal ? 34 : 0;
@@ -71,7 +73,7 @@ export function StepsBarChart({ bars, tone, width: W, height: H = 210, goal, lab
   const bx = pick != null ? cxOf(pick) : 0, text = p ? bubble(p) : "", bubW = Math.max(64, text.length * 7 + 18);
   const bubX = Math.max(0, Math.min(W - bubW, bx - bubW / 2));
   return (
-    <div className={cx("bchart", `tone-${tone}`)} role="group" aria-label={label} tabIndex={0} onKeyDown={key} onBlur={() => choose(null)}>
+    <div ref={box} className={cx("bchart", `tone-${tone}`, on && "in")} role="group" aria-label={label} tabIndex={0} onKeyDown={key} onBlur={() => choose(null)}>
       <svg
         ref={svg}
         width="100%"
@@ -157,11 +159,12 @@ export function StepsBarChart({ bars, tone, width: W, height: H = 210, goal, lab
 /** A tile's mini version: 30–34px of capsules, the goal line faint and dashed, today outlined. */
 export function MiniBars({ values, goal, tone }: { values: (number | null)[]; goal: number | null; tone: BarTone }) {
   const id = useId().replace(/:/g, "");
+  const [box, on] = useOnScreen<SVGSVGElement>();
   const W = 100, H = 34, n = values.length, slot = W / n, bw = Math.min(8, slot * 0.6);
   const max = Math.max(1, ...values.map((v) => v ?? 0), goal ? goal * 1.1 : 0);
   const y = (v: number) => H - 2 - ((H - 5) * v) / max;
   return (
-    <svg className={cx("mini", `tone-${tone}`)} width="100" height="34" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
+    <svg ref={box} className={cx("mini", `tone-${tone}`, on && "in")} width="100" height="34" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
       <defs>
         <linearGradient id={`${id}g`} x1="0" y1="1" x2="0" y2="0">
           <stop offset="0" style={{ stopColor: "var(--bc-start)" }} />

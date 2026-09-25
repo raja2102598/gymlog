@@ -125,6 +125,12 @@
 .chk{width:44px;height:44px;border-radius:22px;border:2px solid var(--ink-subtle);background:transparent;padding:0;display:grid;place-items:center;cursor:pointer;color:var(--on-brand)}
 .srow.up .chk{border-color:var(--outline)}
 .srow.done .chk{border:0;background:var(--brand)}
+/* A logged set fills in rather than snapping, and its tick gives under the thumb: colour and transform only. */
+@media (prefers-reduced-motion:no-preference){
+  .srow{transition:background-color var(--sheet) var(--ease)}
+  .chk{transition:background-color var(--press) var(--ease),transform var(--press) var(--ease)}
+  .chk:active{transform:scale(.92)}
+}
 .prb{display:none;position:absolute;top:-6px;left:118px;align-items:center;gap:3px;padding:2px 7px;border-radius:8px;background:var(--brand-tint);color:var(--brand-tint-ink);font:900 11px/14px var(--font-sans)}
 .srow.pr .prb{display:inline-flex}
 .setmenu-w{display:grid;gap:10px;padding:12px;margin:2px 0 6px;border-radius:var(--radius-md);background:var(--surface-sunken)}

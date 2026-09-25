@@ -93,6 +93,10 @@ export default async function healthSuite({ browser, base, check }) {
   await openTab(page, "health");
   const rings = (await page.getAttribute("#activity svg.rings", "aria-label")).replace(/\s+/g, " ");
   check("rings: steps (the 9,000 you typed), active time and active calories against their goals", rings === "Steps 9,000 of 10,000, 90%; Active time 52 of 30 min, 173%; Active calories 412 of 500 kcal, 82%", JSON.stringify(rings));
+  // The rings draw once they're on screen, with a plain disc under a second lap's tip rather than a shadow filter.
+  await until(() => page.$eval("#activity svg.rings", (e) => e.classList.contains("in")));
+  const ringsDraw = await page.$eval("#activity svg.rings", (e) => ({ filters: e.querySelectorAll("filter, [filter]").length, tips: e.querySelectorAll(".ring-tip").length, anim: getComputedStyle(e.querySelector(".ring-arc")).animationName }));
+  check("the rings draw on screen, and Active time’s second lap has a shadow shape, not a shadow filter", ringsDraw.filters === 0 && ringsDraw.tips === 1 && ringsDraw.anim === "ringIn", JSON.stringify(ringsDraw));
   check("the Active time ring's legend opens the exercise page", (await page.getAttribute("#ringExercise", "href")) === "#health/exercise" && /52/.test(await flat(page.locator("#ringExercise"))));
   // Text as laid out, so the lines of a tile read as separate words.
   const text = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
@@ -129,6 +133,8 @@ export default async function healthSuite({ browser, base, check }) {
   await page.waitForSelector("#hChart");
   check("Sleep opens as a page with its own address, the week picked", page.url().endsWith("/#health/sleep") && (await page.textContent("#screenTitle")) === "Sleep" && (await page.getAttribute('#hRange [data-seg="week"]', "aria-selected")) === "true");
   check("a bar for each night of the week", (await page.locator("#hChart .bchart rect.bar").count()) === 7);
+  await until(() => page.$eval("#hChart .bchart", (e) => e.classList.contains("in")));
+  check("its bars grow once the chart is on screen", (await page.$eval("#hChart .bchart rect.bar", (e) => getComputedStyle(e).animationName)) === "barIn");
   check("the average and the nights at the goal", (await text("#hChart .cc-v")) === "5 h 45 min" && (await text("#hGoalDays .v")) === "1 of 7", `${await text("#hChart .cc-v")} | ${await text("#hGoalDays")}`);
   const summary = await page.getAttribute("#hChart .bchart", "aria-label");
   check("the chart has a goal line marked 7 h, and says in a sentence which night reached it", (await svgText("#hChart .bc-gtext")) === "7 h" && /^Sleep a night, 17 Sept to 23 Sept\. Goal reached on Wednesday\./.test(summary), summary);

@@ -269,9 +269,29 @@ export const flat = async (loc) => ((await loc.textContent()) || "").replace(/\s
 /** One lift on Today, by the name it shows. */
 export const liftEl = (page, name) => page.locator("#session .ex li", { has: page.locator(".nm", { hasText: name }) }).first();
 
+/** Scrolls each chart that hasn't drawn yet onto the screen, then back to the top, and lets them finish. Rings and
+ *  bars draw once they've been seen (useOnScreen), as they do when you scroll: a full-page picture would otherwise
+ *  catch the ones further down still empty. */
+export async function drawCharts(page) {
+  await page.evaluate(async () => {
+    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const y = scrollY;
+    for (const el of document.querySelectorAll(".rings:not(.in), .bchart:not(.in), .mini:not(.in)")) {
+      if (!el.checkVisibility()) continue;
+      el.scrollIntoView({ block: "center" });
+      for (let i = 0; i < 20 && !el.classList.contains("in"); i++) await frame();
+    }
+    scrollTo(0, y);
+    await frame();
+  });
+  await page.evaluate(settled);
+}
+
 /** Saves a screenshot when E2E_SHOTS names a folder. */
 export async function shot(target, name, opts = {}) {
-  if (process.env.E2E_SHOTS) await target.screenshot({ path: `${process.env.E2E_SHOTS}/${name}.png`, ...opts }).catch(() => {});
+  if (!process.env.E2E_SHOTS) return;
+  if (opts.fullPage) await drawCharts(target);
+  await target.screenshot({ path: `${process.env.E2E_SHOTS}/${name}.png`, ...opts }).catch(() => {});
 }
 
 /** Collects pass/fail lines for one suite. `log` gets each formatted line (console.log by default); the

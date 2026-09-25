@@ -7,7 +7,7 @@ import path from "node:path";
 import { chromium } from "playwright-core";
 import { sampleDays } from "../src/lib/sampleData.js";
 import { serve } from "./serve.mjs";
-import { open, openTab, ready, savedPlan, session, settled } from "../tests/e2e/harness.mjs";
+import { drawCharts, open, openTab, ready, savedPlan, session, settled } from "../tests/e2e/harness.mjs";
 
 const OUT = path.resolve(process.env.SHOTS_DIR || "docs/screenshots");
 const FULL = process.argv.includes("--full");
@@ -27,6 +27,7 @@ const fresh = () => ({ logs: structuredClone(logs), plan: null, health: structur
 async function snap(page, name) {
   await page.evaluate(() => document.fonts.ready);
   await page.evaluate(settled);
+  if (FULL) await drawCharts(page);
   await page.waitForTimeout(250);
   await page.screenshot({ path: `${OUT}/${name}.png`, type: "png", animations: "disabled", caret: "hide", fullPage: FULL });
   console.log("shot", name);
