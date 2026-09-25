@@ -59,8 +59,9 @@
 /* hints above the sets */
 .prog{margin-left:40px}
 
-/* sets: reps × kg; a set's number turns green once its reps are in */
-.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(284px,1fr));gap:8px 20px;padding-left:40px}
+/* sets: reps × kg; a set's number turns green once its reps are in. A column is at least 284px where there's room
+   for it, and the whole width where there isn't (a 360px phone leaves 262px), so a set never spills out of its card. */
+.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(284px,100%),1fr));gap:8px 20px;padding-left:40px}
 .set{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) auto minmax(0,1.15fr) auto auto;align-items:center;gap:6px}
 .set .sn{display:grid;place-items:center;width:24px;height:24px;border-radius:99px;font:600 var(--t-xs) var(--mono);color:var(--muted);background:var(--sunken)}
 .set.logged .sn{background:var(--good);color:var(--surface)}
