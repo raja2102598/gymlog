@@ -123,6 +123,15 @@ export default async function exercise({ browser, base, check }) {
     await page.click("#skipDay");
     await until(() => db.logs[K(28)]?.skip === "");
     check("Train: Skip day marks the day's workout skipped", (await flat(page.locator("#liftPill"))) === "Skipped" && (await page.locator("#unskipBtn").count()) === 1 && (await page.locator("#startBtn").count()) === 0, await flat(page.locator("#liftPill")));
+    // Opening one of its lifts means doing it after all: the skip goes.
+    await page.locator(".lrow-main").first().click();
+    await page.waitForSelector("#workoutView .ex-card");
+    await until(() => db.logs[K(28)] && db.logs[K(28)].skip === undefined);
+    check("opening a skipped day's lift takes the skip back", db.logs[K(28)].skip === undefined);
+    await page.click("#closeWorkout");
+    await page.waitForSelector("#trainView");
+    await page.click("#skipDay");
+    await until(() => db.logs[K(28)]?.skip === "");
     await page.fill("#skipReason", "travelling");
     await until(() => db.logs[K(28)]?.skip === "travelling");
     check("with why, kept on the day", (await flat(page.locator("#liftPill"))) === "Skipped · travelling");

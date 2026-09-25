@@ -45,9 +45,12 @@ function write(r: WorkoutRun | null): WorkoutRun | null {
   return w;
 }
 
-export function runOf(day: DayKey): WorkoutRun | null {
+/** The day's run, if it has one: not one left running for hours (STALE_RUN_MS), which is as good as none, so neither
+ *  the workout nor a finished one reviewed later shows or records an abandoned clock. One that was finished stays. */
+export function runOf(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = read();
-  return r && r.day === day && typeof r.startedAt === "number" ? r : null;
+  if (!r || r.day !== day || typeof r.startedAt !== "number") return null;
+  return !r.endedAt && now - r.startedAt >= STALE_RUN_MS ? null : r;
 }
 
 /** A clock left running this long was left behind (closed without Finish, then opened another day or hours
@@ -56,8 +59,8 @@ export const STALE_RUN_MS = 3 * 60 * 60 * 1000;
 
 /** Starts the day's workout clock, unless it's already running for that day (and not left running for hours). */
 export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
-  const r = runOf(day);
-  if (r && !r.endedAt && now - r.startedAt < STALE_RUN_MS) return r;
+  const r = runOf(day, now);
+  if (r && !r.endedAt) return r;
   return write({ day, startedAt: now });
 }
 
@@ -65,7 +68,7 @@ export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
 export const restartRun = (day: DayKey, now = Date.now()): WorkoutRun => write({ day, startedAt: now });
 
 export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
-  const r = runOf(day);
+  const r = runOf(day, now);
   if (!r) return null;
   return write({ ...r, endedAt: r.endedAt ?? now });
 }
@@ -73,7 +76,7 @@ export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
 /** Forgets the run, or with `day`, only a run for that day: a finished workout reviewed later leaves another
  *  day's running clock alone. */
 export function clearRun(day?: DayKey) {
-  if (day === undefined || runOf(day)) write(null);
+  if (day === undefined || read()?.day === day) write(null);
 }
 
 /** Seconds a run has lasted, to its end or to now. */

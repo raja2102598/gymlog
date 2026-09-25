@@ -297,6 +297,8 @@ export default function GymLog() {
     keepRunsInMemory(store.demo);
     select(k);
     setWorkoutAt(at);
+    // Opening a skipped day's workout (a lift row in Train) means doing it after all: the skip goes.
+    if (store.entry(k).skip != null) store.unskipDay(k);
     if (!sessionDone(store, k)) startRun(k);
     navigate({ view: "workout" });
   };

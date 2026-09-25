@@ -20,7 +20,7 @@ export const withProgress = (p: DownloadProgress) => (cur: AndroidUpdate): Andro
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\.$/, "");
 export const downloadFailed = (e: unknown, latest?: LatestUpdate): AndroidUpdate => ({ kind: "error", message: `Couldn’t download the update: ${reason(e)}.`, latest });
 
-type Native = Pick<typeof import("@/native/app"), "downloadUpdate" | "installUpdate" | "openInstallSettings" | "onAppResume">;
+type Native = Pick<typeof import("@/native/app"), "downloadUpdate" | "downloadUnderway" | "followDownload" | "installUpdate" | "openInstallSettings" | "onAppResume">;
 type SetUpdate = (next: AndroidUpdate | ((cur: AndroidUpdate) => AndroidUpdate)) => void;
 
 /** The steps, apart from React so they can be tested on their own: `load` is the Android app's native module. */
@@ -32,15 +32,24 @@ export function updateSteps(set: SetUpdate, load: () => Promise<Native> = native
       // again once it's started, so coming back from the installer (cancelled, say) doesn't retry it on a loop.
       .then((r) => set("needsPermission" in r ? { kind: "needsPermission", latest } : { kind: "readyToInstall", latest }))
       .catch((e: unknown) => set({ kind: "error", message: `Couldn’t start the installer: ${reason(e)}.`, latest }));
-  /** "Download and install": once the download checks out, straight on to the installer, without a second tap. */
+  /** "Download and install": once the download checks out, straight on to the installer, without a second tap. A
+   *  download already under way (started from Settings, say, while the banner still offered it) is followed, not
+   *  started again, and ends at Install: the place that started it opens the installer, so it opens once. */
   const download = (latest: LatestUpdate): Promise<void> => {
     set({ kind: "downloading", latest, received: 0, total: latest.size });
-    return load()
-      .then((m) => m.downloadUpdate((p) => set(withProgress(p))))
-      .then(
+    return load().then(async (m) => {
+      if (m.downloadUnderway()) {
+        await m.followDownload((p) => set(withProgress(p)))?.then(
+          () => set({ kind: "readyToInstall", latest }),
+          (e: unknown) => set(downloadFailed(e, latest)),
+        );
+        return;
+      }
+      await m.downloadUpdate((p) => set(withProgress(p))).then(
         () => install(latest),
         (e: unknown) => set(downloadFailed(e, latest)),
       );
+    });
   };
   return { install, download };
 }

@@ -4,7 +4,12 @@ import { updateSteps, type AndroidUpdate } from "@/components/shell/useAndroidUp
 const latest = { code: 82, name: "1.0.82", commit: "abc", size: 8_600_000, sha256: "f00" };
 
 /** The steps against a fake native module; `states` records every state they set, as React would see it. */
-function run(native: { download?: (onProgress: (p: { received: number; total: number }) => void) => Promise<void>; install?: () => Promise<{ started: true } | { needsPermission: true }> }) {
+function run(native: {
+  download?: (onProgress: (p: { received: number; total: number }) => void) => Promise<void>;
+  install?: () => Promise<{ started: true } | { needsPermission: true }>;
+  /** A download someone else started, still going: followed rather than started again. */
+  underway?: (onProgress: (p: { received: number; total: number }) => void) => Promise<void>;
+}) {
   let state: AndroidUpdate = { kind: "available", latest };
   const states: AndroidUpdate[] = [];
   const set = (next: AndroidUpdate | ((cur: AndroidUpdate) => AndroidUpdate)) => {
@@ -13,6 +18,8 @@ function run(native: { download?: (onProgress: (p: { received: number; total: nu
   };
   const m = {
     downloadUpdate: vi.fn(native.download ?? (async () => {})),
+    downloadUnderway: vi.fn(() => !!native.underway),
+    followDownload: vi.fn((onProgress: (p: { received: number; total: number }) => void) => (native.underway ? native.underway(onProgress) : null)),
     installUpdate: vi.fn(native.install ?? (async () => ({ started: true as const }))),
     openInstallSettings: vi.fn(async () => {}),
     onAppResume: vi.fn(() => () => {}),
@@ -48,6 +55,18 @@ describe("the update notice's Update and Settings' Download and install", () => 
     await r.steps.download(latest);
     expect(r.now()).toEqual({ kind: "error", message: "Couldn’t download the update: The download didn't match its checksum.", latest });
     expect(r.m.installUpdate).not.toHaveBeenCalled();
+  });
+
+  it("follow a download already started elsewhere, without opening the installer a second time", async () => {
+    const r = run({
+      underway: async (onProgress) => {
+        onProgress({ received: 8_600_000, total: 8_600_000 });
+      },
+    });
+    await r.steps.download(latest);
+    expect(r.m.downloadUpdate).not.toHaveBeenCalled();
+    expect(r.m.installUpdate).not.toHaveBeenCalled();
+    expect(r.now()).toEqual({ kind: "readyToInstall", latest });
   });
 
   it("say so when the installer can't start", async () => {

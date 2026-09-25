@@ -31,12 +31,23 @@ describe("workout runs", () => {
     expect(startRun("2026-09-23", 60_000 + STALE_RUN_MS).startedAt).toBe(60_000 + STALE_RUN_MS); // left behind
   });
 
+  it("treats a clock left running for hours as none, so a finished workout reviewed later shows no abandoned clock", () => {
+    startRun("2026-09-23", 1000);
+    expect(runOf("2026-09-23", 1000 + STALE_RUN_MS - 1)?.startedAt).toBe(1000);
+    expect(runOf("2026-09-23", 1000 + STALE_RUN_MS)).toBeNull();
+    expect(endRun("2026-09-23", 1000 + STALE_RUN_MS)).toBeNull(); // Finish records no multi-hour duration
+    // A finished run keeps its duration however long ago it ended.
+    startRun("2026-09-24", 5000);
+    endRun("2026-09-24", 65_000);
+    expect(runOf("2026-09-24", 5000 + 10 * STALE_RUN_MS)?.endedAt).toBe(65_000);
+  });
+
   it("clears only the given day's run: closing a reviewed day leaves another day's clock running", () => {
     startRun("2026-09-22", 1000);
     clearRun("2026-09-23");
-    expect(runOf("2026-09-22")?.startedAt).toBe(1000);
+    expect(runOf("2026-09-22", 2000)?.startedAt).toBe(1000);
     clearRun("2026-09-22");
-    expect(runOf("2026-09-22")).toBeNull();
+    expect(runOf("2026-09-22", 2000)).toBeNull();
   });
 
   it("never hands one account's unfinished run to another signed in on the same phone", () => {
