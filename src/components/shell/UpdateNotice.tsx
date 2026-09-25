@@ -2,7 +2,7 @@
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { availableMessage, dismissedUpdateCode, downloadingMessage, lastCheckedAt, setDismissedUpdateCode, setLastCheckedAt, shouldCheckNow, shouldShowUpdateNotice } from "@/lib/update";
-import { useAndroidUpdate } from "./useAndroidUpdate";
+import { retryWith, useAndroidUpdate } from "./useAndroidUpdate";
 
 // Loaded only in the Android app (see GymLog), so the website doesn't carry the plugin.
 const native = () => import("@/native/app");
@@ -52,7 +52,7 @@ export function UpdateNotice() {
     <div className="syncbar info" id="updateBar" role="status" hidden={!show}>
       <span id="updateMsg">{msg}</span>
       {latest && (s.kind === "available" || s.kind === "error") ? (
-        <button type="button" className="btn btn-sm" id="updateGo" onClick={() => download(latest)}>
+        <button type="button" className="btn btn-sm" id="updateGo" onClick={() => (retryWith(s) === "install" ? install : download)(latest)}>
           {s.kind === "error" ? "Try again" : "Update"}
         </button>
       ) : null}

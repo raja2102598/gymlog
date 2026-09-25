@@ -121,6 +121,24 @@ export default async function exercise({ browser, base, check }) {
     await ctx.close();
   }
 
+  // Reloaded on the workout after the session was finished on another device: the clock goes by the day as loaded
+  // from Supabase, not this phone's older copy, so a stale clock is dropped rather than started again.
+  {
+    const uid = "00000000-0000-4000-8000-00000000e0e0", now = Date.parse("2026-09-23T12:00:00");
+    const { ctx, page, db } = await open(browser, base, { auth, db: { logs: {}, plan: {} } });
+    await ready(page);
+    await openWorkout(page);
+    db.logs[K(28)] = day(Object.fromEntries(LEGS.map((n) => [n, { done: true, sets: [{ reps: 10, kg: 40 }] }])));
+    await page.evaluate((r) => localStorage.setItem("gymlog.workout.v1", JSON.stringify(r)), { day: K(28), startedAt: now - 5 * 60 * 60_000, user: uid });
+    await page.reload();
+    await page.waitForSelector("#workoutView .ex-card", { timeout: 15000 });
+    await until(async () => (await page.locator("#status").textContent()) === "Synced");
+    await until(async () => (await page.locator("#workoutView .wclock").count()) === 0); // the clock redraws each second
+    const run = JSON.parse((await page.evaluate(() => localStorage.getItem("gymlog.workout.v1"))) ?? "null");
+    check("a reload on a workout finished elsewhere drops its stale clock, not restarts it", run === null && (await page.locator("#workoutView .wclock").count()) === 0, JSON.stringify(run));
+    await ctx.close();
+  }
+
   // Skipping a day's workout, with why, and taking it back.
   {
     const { ctx, page, db } = await open(browser, base, { auth, db: { logs: {}, plan: {} } });

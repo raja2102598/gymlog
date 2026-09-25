@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { updateSteps, type AndroidUpdate } from "@/components/shell/useAndroidUpdate";
+import { retryWith, updateSteps, type AndroidUpdate } from "@/components/shell/useAndroidUpdate";
 
 const latest = { code: 82, name: "1.0.82", commit: "abc", size: 8_600_000, sha256: "f00" };
 
@@ -54,6 +54,7 @@ describe("the update notice's Update and Settings' Download and install", () => 
     });
     await r.steps.download(latest);
     expect(r.now()).toEqual({ kind: "error", message: "Couldn’t download the update: The download didn't match its checksum.", latest });
+    expect(retryWith(r.now())).toBe("download");
     expect(r.m.installUpdate).not.toHaveBeenCalled();
   });
 
@@ -88,6 +89,23 @@ describe("the update notice's Update and Settings' Download and install", () => 
       },
     });
     await r.steps.install(latest);
-    expect(r.now()).toEqual({ kind: "error", message: "Couldn’t start the installer: no installer.", latest });
+    expect(r.now()).toEqual({ kind: "error", message: "Couldn’t start the installer: no installer.", latest, step: "install" });
+  });
+
+  it("try the installer again after it failed, without downloading the build again", async () => {
+    let fail = true;
+    const r = run({
+      install: async () => {
+        if (fail) throw new Error("no installer");
+        return { started: true };
+      },
+    });
+    await r.steps.download(latest);
+    expect(retryWith(r.now())).toBe("install");
+    fail = false;
+    await r.steps.install(latest);
+    expect(r.m.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(r.m.installUpdate).toHaveBeenCalledTimes(2);
+    expect(r.now()).toEqual({ kind: "readyToInstall", latest });
   });
 });

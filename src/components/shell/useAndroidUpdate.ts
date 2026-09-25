@@ -13,8 +13,12 @@ export type AndroidUpdate =
   | { kind: "downloading"; latest: LatestUpdate; received: number; total: number }
   | { kind: "readyToInstall"; latest: LatestUpdate }
   | { kind: "needsPermission"; latest: LatestUpdate }
-  | { kind: "error"; message: string; latest?: LatestUpdate };
+  // step "install": the download is on the phone and only Android's installer failed, so trying again opens the
+  // installer rather than downloading the whole build again.
+  | { kind: "error"; message: string; latest?: LatestUpdate; step?: "install" };
 
+/** What trying again after an error does: the installer again when only it failed, else the download. */
+export const retryWith = (s: AndroidUpdate): "install" | "download" => (s.kind === "error" && s.step === "install" ? "install" : "download");
 /** A download's "progress", into the state while it's still downloading. */
 export const withProgress = (p: DownloadProgress) => (cur: AndroidUpdate): AndroidUpdate => (cur.kind === "downloading" ? { ...cur, received: p.received, total: p.total || cur.total } : cur);
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\.$/, "");
@@ -36,7 +40,7 @@ export function updateSteps(set: SetUpdate, load: () => Promise<Native> = native
       // { started: true }: Android's installer has taken over. Back to readyToInstall either way, not needsPermission
       // again once it's started, so coming back from the installer (cancelled, say) doesn't retry it on a loop.
       .then((r) => set("needsPermission" in r ? { kind: "needsPermission", latest } : { kind: "readyToInstall", latest }))
-      .catch((e: unknown) => set({ kind: "error", message: `Couldn’t start the installer: ${reason(e)}.`, latest }));
+      .catch((e: unknown) => set({ kind: "error", message: `Couldn’t start the installer: ${reason(e)}.`, latest, step: "install" }));
   /** "Download and install": once the download checks out, straight on to the installer, without a second tap. A
    *  download already under way (started from Settings, say, while the banner still offered it) is followed, not
    *  started again, and ends at Install: the place that started it opens the installer, so it opens once. */

@@ -4,7 +4,7 @@ import { ChevronRight, Download, ExternalLink, LogOut, Upload } from "lucide-rea
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { SegmentedControl } from "@/components/ds/parts";
 import { firstName } from "@/components/ds/ProfileButton";
-import { downloadFailed, useAndroidUpdate, withProgress } from "@/components/shell/useAndroidUpdate";
+import { downloadFailed, retryWith, useAndroidUpdate, withProgress } from "@/components/shell/useAndroidUpdate";
 import { Group, NumField, Text } from "@/components/settings/parts";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
@@ -692,7 +692,12 @@ function UpdateAndroid() {
                         : s.message
           }
         />
-        {s.kind === "upToDate" || s.kind === "error" ? (
+        {s.kind === "error" && retryWith(s) === "install" && s.latest ? (
+          // Only the installer failed: the download is on the phone, so this opens the installer again.
+          <button className="btn btn-sm" id="updRetryInstall" onClick={() => install(s.latest!)}>
+            Try again
+          </button>
+        ) : s.kind === "upToDate" || s.kind === "error" ? (
           <button className="btn btn-sm" id="updCheckBtn" onClick={check}>
             {s.kind === "error" ? "Retry" : "Check again"}
           </button>
