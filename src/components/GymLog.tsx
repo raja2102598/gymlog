@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useBarsHeight } from "@/hooks/useBarsHeight";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { useKeyboardUp } from "@/hooks/useKeyboardUp";
@@ -50,6 +51,7 @@ export default function GymLog() {
   const store = useGym();
   const focusNext = useFocusNext();
   const keyboardUp = useKeyboardUp();
+  const bars = useBarsHeight<HTMLDivElement>();
   const [route, setRoute] = useState<Route>(() => (typeof location === "undefined" ? TODAY : routeOf(location.hash)));
   const [sel, setSel] = useState<DayKey>(todayKey);
   const [healthDay, setHealthDay] = useState<DayKey>(todayKey);
@@ -289,7 +291,7 @@ export default function GymLog() {
       )}
 
       <main id="main" tabIndex={-1}>
-        <div className="bars">
+        <div className="bars" ref={bars}>
           <SyncBar />
           <SwUpdateNotice show={swUpdated} onReload={() => location.reload()} />
           {isNative() && inApp ? <UpdateNotice onOpenSettings={() => navigate({ view: "settings" })} /> : null}

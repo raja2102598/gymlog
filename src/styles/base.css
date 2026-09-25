@@ -2,8 +2,9 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{color-scheme:light;-webkit-text-size-adjust:100%}
-/* while the sync bar or a notice is up, a field reached with Tab scrolls clear of it too, instead of sitting underneath */
-html:has(.bars>:not([hidden])){scroll-padding-top:calc(var(--sat) + var(--appbar) + 84px)}
+/* while the sync bar or a notice is up, a field reached with Tab scrolls clear of it too, instead of sitting underneath:
+   below the stack's top (8px under the top bar) and its measured height (--bars-h, from GymLog), with 12px to spare */
+html:has(.bars>:not([hidden])){scroll-padding-top:calc(var(--sat) + var(--appbar) + 20px + var(--bars-h,64px))}
 /* the top bar (shell.css) keeps the page clear of the phone's status bar */
 body{margin:0;background:var(--ground);color:var(--ink);font:var(--t-base)/1.5 var(--body);padding:0 var(--gut-r) calc(32px + var(--sab)) var(--gut-l);-webkit-tap-highlight-color:transparent}
 .wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:20px}

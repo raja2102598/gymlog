@@ -32,6 +32,25 @@ export default async function sync({ browser, base, check }) {
   check("the top bar says the day isn't synced", (await b.page.textContent("#status")) === "Not synced yet", await b.page.textContent("#status"));
   await b.page.locator("#steps").blur();
   await shot(b.page, "8-sync-conflict");
+  // The question makes the bar tall on a phone. Going back up through the lifts with Shift+Tab, each control lands
+  // below the bar, not under it.
+  const from = await b.page.evaluate(() => {
+    const sets = document.querySelectorAll("#session input[data-set]");
+    sets[sets.length - 1].focus({ preventScroll: true });
+    window.scrollTo(0, document.body.scrollHeight);
+    return scrollY;
+  });
+  const under = [];
+  for (let i = 0; i < 30; i++) {
+    await b.page.keyboard.press("Shift+Tab");
+    const r = await b.page.evaluate(() => {
+      const a = document.activeElement, bar = document.querySelector("#syncBar").getBoundingClientRect();
+      return { control: a.getAttribute("aria-label") || a.textContent.trim() || a.id, top: Math.round(a.getBoundingClientRect().top), barBottom: Math.round(bar.bottom) };
+    });
+    if (r.top < r.barBottom) under.push(r);
+  }
+  const to = await b.page.evaluate(() => scrollY);
+  check("with the question up, each control reached with Shift+Tab lands below the bar", to < from && under.length === 0, JSON.stringify({ from, to, under }));
   await b.page.click("#keepMine");
   await until(async () => db.logs[D].steps === 9200 && (await b.page.locator("#syncBar").isHidden()) && (await b.page.textContent("#status")) === "Synced");
   check("Keep this phone's version saves it over the other, and the bar goes", db.logs[D].steps === 9200 && (await b.page.locator("#syncBar").isHidden()) && (await b.page.textContent("#status")) === "Synced");
