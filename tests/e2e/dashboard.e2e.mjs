@@ -107,12 +107,58 @@ export default async function dashboard({ browser, base, check }) {
     const s = await flat(page.locator("#dashSteps"));
     check("steps card: 7-day average and weekly bars", /7-day average/.test(s) && (await page.locator("#dashSteps svg rect.wbar").count()) >= 4, s.slice(0, 120));
     const st = await flat(page.locator("#dashStrength"));
-    check("strength: first lifts with 1RM trend", (await page.locator("#dashStrength .lifts li").count()) === 5 && /Incline Machine Press Push .*43 kg ?\+17% since 31 Aug/.test(st), st.slice(0, 260));
+    check("strength: every lift, not only each day's first, with 1RM trends", (await page.locator("#dashStrength .lifts li").count()) === 25 && /Incline Machine Press Push .*43 kg ?\+17% since 31 Aug/.test(st), st.slice(0, 260));
+    const seated = page.locator("#dashStrength .lifts li", { hasText: "Seated Row" });
+    check("strength: a lift kept on two days is one row, naming both", (await seated.count()) === 1 && /^Seated Row Pull, Upper/.test(await flat(seated)), await flat(seated));
     check("strength: ready and held lists", /Chest Press Machine Push: 40 → 42\.5 kg/.test(st) && /Leg Press Legs: hold 50 kg \(knee\)/.test(st) && !/Hamstring Curl Legs:/.test(st), st.slice(st.indexOf("Ready"), st.indexOf("Ready") + 200));
     check("strength: records in the last 30 days", /Leg Press 12 × 50 kg heaviest yet, best estimated 1RM/.test(st) && /Hamstring Curl 10 × 32\.5 kg heaviest yet/.test(st));
     const kn = await flat(page.locator("#dashKnee"));
     check("knee card: sessions with before/after/next morning", (await page.locator("#dashKnee tbody tr").count()) >= 3 && (await page.locator("#dashKnee td.hi").count()) >= 3, kn.slice(0, 200));
     await shot(page, "d2-dashboard", { fullPage: true });
+
+    // --- a lift's own page, opened from Strength
+    await page.locator("#dashStrength .lifts li", { hasText: "Incline Machine Press" }).first().locator(".ln").click();
+    await page.waitForSelector("#dashLift");
+    check(
+      "Strength: a lift's name opens its own page, titled and addressed by name",
+      (await page.textContent("#screenTitle")) === "Incline Machine Press" && page.url().endsWith("/#progress/lift/Incline%20Machine%20Press"),
+      page.url(),
+    );
+    const kp = await flat(page.locator("#dashLift"));
+    check(
+      "lift page: heaviest set, best 1RM, total volume and sessions a week, with the plan's rep range",
+      /Part of Push, 8-10 reps\./.test(kp) &&
+        /35 kg ?heaviest set, 14 Sept/.test(kp) &&
+        /43 kg ?best estimated 1RM, 14 Sept/.test(kp) &&
+        /3,180 kg ?total volume lifted/.test(kp) &&
+        /1\.2 ?sessions a week on average/.test(kp),
+      kp,
+    );
+    check(
+      "lift page: a dot for each session on the 1RM chart, the last one read out with its reps",
+      (await page.locator("#liftE1rm svg circle.dot").count()) === 4 && (await flat(page.locator("#liftTop .readout"))) === "Mon, 21 Sept: 35 kg × 8",
+      await flat(page.locator("#liftTop .readout")),
+    );
+    await page.locator("#liftTop rect.hit").first().click();
+    check("lift page: tapping an earlier point updates the readout, as a Health chart would", /31 Aug: 30 kg × 8$/.test(await flat(page.locator("#liftTop .readout"))), await flat(page.locator("#liftTop .readout")));
+    check("lift page: volume a session, bars for each of the 4 sessions", (await page.locator("#liftVolume svg path.col").count()) === 4);
+    await shot(page, "d2b-lift", { fullPage: true });
+    await page.click("#backBtn");
+    check("lift page: Back returns to Progress, where it was opened from", page.url().endsWith("/#progress") && (await page.locator("#dashStrength").isVisible()));
+    // The whole row is the tap area, not just the name: a tap on its sparkline opens the lift too. Tapped through the
+    // row at the sparkline's spot, so the row is scrolled into view first (Back may leave it off screen), and the tap
+    // is checked to land on the row's own link.
+    const [spark, li] = [await seated.locator(".spark").boundingBox(), await seated.boundingBox()];
+    await seated.click({ position: { x: spark.x - li.x + spark.width / 2, y: spark.y - li.y + spark.height / 2 } });
+    await page.waitForSelector("#dashLift");
+    check(
+      "strength: a tap anywhere on a row opens its lift, whose page names both its days",
+      (await page.textContent("#screenTitle")) === "Seated Row" && (await flat(page.locator("#liftPlan"))) === "Part of Pull and Upper, 10-12 reps.",
+      JSON.stringify({ title: await page.textContent("#screenTitle"), plan: await flat(page.locator("#liftPlan")) }),
+    );
+    await page.click("#backBtn");
+    const rowH = await seated.evaluate((li) => li.getBoundingClientRect().height);
+    check("strength: each row, the lift link's tap area, is at least 44px tall", rowH >= 44, String(rowH));
 
     // --- plan settings feed the dashboard
     await page.locator('#dashWeight [data-goto="pe_goalw"]').click();

@@ -11,7 +11,7 @@ import { WeightCard } from "./WeightCard";
 /** Progress: how the plan is going. Weight trend, sessions kept, steps, strength and the knee, with anything that
  *  needs attention flagged at the top (sleep and resting heart rate from Health Connect too; their charts are in
  *  the Health tab). */
-export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
+export function DashboardView({ onSetGoal, onOpenLift }: { onSetGoal: () => void; onOpenLift: (name: string) => void }) {
   const store = useGym();
   const t = todayKey();
   const weight = weightModel(store, t), strength = strengthModel(store, t), knee = kneeModel(store, t), health = healthModel(store, t);
@@ -30,7 +30,7 @@ export function DashboardView({ onSetGoal }: { onSetGoal: () => void }) {
       <WeightCard m={weight} onSetGoal={onSetGoal} />
       <PlanCard m={planModel(store, t)} today={t} />
       <StepsCard m={stepsModel(store, t)} />
-      <StrengthCard m={strength} />
+      <StrengthCard m={strength} onOpenLift={onOpenLift} />
       <KneeCard m={knee} />
     </>
   );

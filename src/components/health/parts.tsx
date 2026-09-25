@@ -1,7 +1,9 @@
 "use client";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
 import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
 import { cx } from "@/lib/cx";
+import { useChartWidth } from "@/hooks/useChartWidth";
 import type { DayKey, HealthDay } from "@/lib/types";
 
 /** "Today", "Yesterday" or "Wed, 23 Sept". */
@@ -95,6 +97,24 @@ export function Stat({ v, l, id }: { v: string; l: string; id?: string }) {
       <div className="v">{v}</div>
       <div className="l">{l}</div>
     </div>
+  );
+}
+
+/** A card holding one chart, drawn at the card's own width: a title, an optional live readout of the picked
+ *  point above it, then the chart itself. Shared by every page with a Bars or Trend chart (Health's metrics,
+ *  Progress's lifts), so they keep one look and the same measuring. */
+export function ChartCard({ title, readout, children, id }: { title: string; readout?: ReactNode; children: (width: number) => ReactNode; id?: string }) {
+  const [ref, width] = useChartWidth<HTMLElement>();
+  return (
+    <section className="panel hcard" ref={ref} id={id}>
+      <h2>{title}</h2>
+      {readout ? (
+        <p className="readout" aria-live="polite">
+          {readout}
+        </p>
+      ) : null}
+      {children(width)}
+    </section>
   );
 }
 

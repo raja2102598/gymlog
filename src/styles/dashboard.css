@@ -36,9 +36,14 @@ svg.spark polyline{fill:none;stroke:var(--good);stroke-width:2;stroke-linejoin:r
 
 /* strength */
 .lifts{list-style:none;margin:10px 0 0;padding:0;display:grid}
-.lifts li{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;grid-template-areas:"ln sp lv" "lc lc lc";gap:2px 10px;align-items:center;border-top:1px solid var(--line);padding:10px 0}
-.lifts .ln{grid-area:ln;font-weight:600}
+.lifts li{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;grid-template-areas:"ln sp lv" "lc lc lc";gap:2px 10px;align-items:center;border-top:1px solid var(--line);padding:10px 0;position:relative}
+.lifts .ln{grid-area:ln;font-weight:600;color:var(--ink);text-decoration:none}
+/* the name links to the lift's page, and the whole row is its tap area */
+.lifts .ln::after{content:"";position:absolute;inset:0}
+.lifts .ln:focus-visible{outline:none}
+.lifts .ln:focus-visible::after{outline:2px solid var(--ink);outline-offset:-2px;border-radius:6px}
 .lifts .ln .sub{font-weight:400;font-size:12px}
+@media (hover:hover){.lifts .ln:hover{text-decoration:underline}}
 .lifts .spark{grid-area:sp;width:90px;height:26px}
 .lifts .lv{grid-area:lv;text-align:right}
 .lifts .lc{grid-area:lc;font-size:12px;color:var(--muted)}

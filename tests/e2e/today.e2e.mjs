@@ -55,6 +55,33 @@ export default async function today({ browser, base, check }) {
   check("and folds it again", (await lp.locator(".nt").count()) === 0);
   await shot(page, "1-today-legs", { fullPage: true });
 
+  // --- a lift's own page, opened from Today's "···" menu (not touched again below, so its one legacy
+  // set - no reps logged - stays exactly as it started)
+  await lift("Hamstring Curl").locator("button[data-more]").click();
+  await lift("Hamstring Curl").locator("a[data-chart]").click();
+  await page.waitForSelector("#dashLift");
+  check(
+    "Today: \"See chart\" in a lift's ··· menu opens its own page, titled and addressed by name",
+    (await page.textContent("#screenTitle")) === "Hamstring Curl" && page.url().endsWith("/#progress/lift/Hamstring%20Curl"),
+    page.url(),
+  );
+  const hc = await flat(page.locator("#dashLift"));
+  check(
+    "lift page from Today: a legacy set with no reps still shows as the heaviest set, but gives no 1RM estimate",
+    /Part of Legs and Shoulders \+ Legs, 10-12 reps\./.test(hc) && /27 kg ?heaviest set, 23 Sept/.test(hc) && /-\s?best estimated 1RM/.test(hc) && /not enough sessions yet for a weekly rate/.test(hc),
+    hc,
+  );
+  check(
+    "lift page from Today: a chart with nothing to draw is left out (no 1RM or volume from a set with no reps)",
+    (await page.locator("#liftTop").count()) === 1 && (await page.locator("#liftE1rm").count()) === 0 && (await page.locator("#liftVolume").count()) === 0,
+  );
+  await page.click("#backBtn");
+  check(
+    "lift page from Today: Back returns to Today directly, not to Progress (it was opened from depth 0)",
+    (await page.locator("#appView").isVisible()) && !(await page.locator("#dashView").isVisible()) && (await page.locator("#session h2").textContent()) === "Legs" && !page.url().includes("progress"),
+    page.url(),
+  );
+
   // --- log sets on today's Leg Press
   await lp.locator('input[data-set$=":0:reps"]').fill("10");
   await lp.locator('input[data-set$=":1:reps"]').fill("10");

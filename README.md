@@ -52,7 +52,8 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 
 **Progress: is it working?**
 - Weight trend (Holt smoothing, as [TrendWeight](https://github.com/ervwalter/trendweight) does) and the weekly rate, with a goal date and your pace against the target.
-- Sessions kept and full weeks in a row, steps by week, estimated 1RM per session, lifts ready for more weight, recent records, and knee scores by session, with notes on anything that needs attention.
+- Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, and knee scores by session, with notes on anything that needs attention.
+- Tap a lift, in Strength or on Today's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
 
 **Everywhere**
 - Installable as a PWA from Chrome, or as an Android app. It opens instantly from the phone's cache and works offline; edits queue and sync when you're back online.

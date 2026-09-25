@@ -1,6 +1,5 @@
 "use client";
 import { useState, type ReactNode } from "react";
-import { useChartWidth } from "@/hooks/useChartWidth";
 import { useGym } from "@/hooks/useGym";
 import { dm, parseKey } from "@/lib/dates";
 import { fmt } from "@/lib/format";
@@ -21,7 +20,7 @@ import {
 import type { Metric } from "@/lib/route";
 import type { DayKey, HealthWorkout } from "@/lib/types";
 import { Bars, type Bar } from "./Bars";
-import { DaySwitch, dayAxis, dayWords, Meter, Segmented, StageBar, Stat } from "./parts";
+import { ChartCard, DaySwitch, dayAxis, dayWords, Meter, Segmented, StageBar, Stat } from "./parts";
 import { Trend } from "./Trend";
 
 type Range = "day" | "week" | "month";
@@ -59,22 +58,6 @@ export function HealthDetail({ metric, day, onDay }: { metric: Metric; day: DayK
       <DaySwitch day={day} onDay={onDay} step={range === "day" ? 1 : n} label={range === "day" ? dayWords(day) : `${dm(days[0])} – ${dm(day)}`} />
       {range === "day" ? <DayPage key={`${metric}-${day}`} metric={metric} day={day} /> : <RangePage key={`${metric}-${range}-${day}`} metric={metric} days={days} />}
     </>
-  );
-}
-
-/** A card holding a chart, drawn at the card's width. */
-function ChartCard({ title, readout, children, id }: { title: string; readout?: ReactNode; children: (width: number) => ReactNode; id?: string }) {
-  const [ref, width] = useChartWidth<HTMLElement>();
-  return (
-    <section className="panel hcard" ref={ref} id={id}>
-      <h2>{title}</h2>
-      {readout ? (
-        <p className="readout" aria-live="polite">
-          {readout}
-        </p>
-      ) : null}
-      {children(width)}
-    </section>
   );
 }
 
