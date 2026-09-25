@@ -8,7 +8,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
 import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { createDemoSupabase } from "./demoSupabase";
-import { DEFAULT_PLAN, normalizePlan } from "./plan";
+import { DEFAULT_PLAN, normalizePlan, orderBlocks, planBlocks } from "./plan";
 import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
@@ -134,6 +134,7 @@ function fullDay(d?: Partial<DayLog> | null): DayLog {
     note: e.note || "",
   };
   if (isSlot(e.session)) out.session = e.session;
+  if (Array.isArray(e.order) && e.order.every((n) => typeof n === "string")) out.order = e.order;
   for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
   return out;
 }
@@ -597,15 +598,38 @@ export class GymStore {
   planFor(k: DayKey): PlanDay {
     return this.plan.days[this.slotFor(k)];
   }
-  // Planned lifts for the day, plus anything logged that day that is no longer in the plan.
-  liftsFor(k: DayKey): LiftItem[] {
+  /** The day's lifts as Today shows them, in blocks: a superset of the plan's is one block, its lifts in the plan's
+   *  order, and any other lift a block of its own, as is anything logged that day that's no longer in the plan.
+   *  Blocks follow the day's own order once a lift was moved (DayLog.order), else the plan's. */
+  liftBlocks(k: DayKey, order: string[] | null = this.entry(k).order ?? null): LiftItem[][] {
     const p = this.planFor(k), e = this.entry(k);
-    const items: LiftItem[] = p.exercises.map((x) => ({ x, name: x.name, extra: false }));
-    const planned = new Set(items.map((it) => it.name));
+    const blocks = planBlocks(p.exercises).map((b) => b.map((x): LiftItem => ({ x, name: x.name, extra: false })));
+    const planned = new Set(p.exercises.map((x) => x.name));
     for (const [name, r] of Object.entries(e.exercises)) {
-      if (!planned.has(name) && liftHasData(r)) items.push({ x: { name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false }, name, extra: true });
+      if (!planned.has(name) && liftHasData(r)) blocks.push([{ x: { name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false }, name, extra: true }]);
     }
-    return items;
+    return order ? orderBlocks(blocks, order) : blocks;
+  }
+  // The day's lifts, one after another, in the order they're shown.
+  liftsFor(k: DayKey): LiftItem[] {
+    return this.liftBlocks(k).flat();
+  }
+  /** Moves block `b` of the day's lifts (a lift, or a superset whole) one place up or down, kept with the day as
+   *  the order its lifts were done in. Back in the plan's order, the day keeps none. */
+  moveBlock(k: DayKey, b: number, dir: -1 | 1) {
+    const blocks = this.liftBlocks(k), to = b + dir;
+    if (b < 0 || to < 0 || to >= blocks.length) return;
+    [blocks[b], blocks[to]] = [blocks[to], blocks[b]];
+    const order = blocks.flat().map((it) => it.name);
+    const planOrder = this.liftBlocks(k, null).flat().map((it) => it.name);
+    this.editDay(
+      k,
+      (n) => {
+        if (order.join("\n") === planOrder.join("\n")) delete n.order;
+        else n.order = order;
+      },
+      true,
+    );
   }
   // Most recent earlier day this exercise was actually done (as planned or as a swap).
   lastDone(name: string, before: DayKey): LastDone | null {
@@ -718,10 +742,12 @@ export class GymStore {
   async renameLift(from: string, to: string): Promise<{ ok: boolean; msg: string; days: number }> {
     if (this.user && navigator.onLine) await this.pull();
     if (this.hasHistory(to)) return { ok: false, msg: `“${to}” already has its own history, so ${from}’s can’t be carried over there too.`, days: 0 };
-    const days = this.days().filter((k) => {
+    const logged = (k: DayKey) => {
       const ex = this.logs[k].exercises;
       return from in ex || Object.values(ex).some((r) => r?.swap === from);
-    });
+    };
+    // A day that only names it in the order its lifts were done in has no history of it, but keeps its place.
+    const days = this.days().filter((k) => logged(k) || !!this.logs[k].order?.includes(from)), carried = days.filter(logged).length;
     this.editPlan((p) => {
       for (const d of p.days) for (const x of d.exercises) if (x.name === from) x.name = to;
     });
@@ -732,6 +758,7 @@ export class GymStore {
         delete n.exercises[from];
       }
       for (const r of Object.values(n.exercises)) if (r.swap === from) r.swap = to;
+      if (n.order) n.order = n.order.map((x) => (x === from ? to : x));
       this.logs[k] = n;
       this.pending[k] = n;
     }
@@ -741,8 +768,8 @@ export class GymStore {
       this.changed();
       await this.flush();
     }
-    const named = days.length === 1 ? "1 day" : `${days.length} days`;
-    return { ok: true, msg: days.length ? `Carried ${from}’s history over to ${to}: ${named}.` : `${to} is saved. ${from} had no history yet to carry over.`, days: days.length };
+    const named = carried === 1 ? "1 day" : `${carried} days`;
+    return { ok: true, msg: carried ? `Carried ${from}’s history over to ${to}: ${named}.` : `${to} is saved. ${from} had no history yet to carry over.`, days: carried };
   }
 
   /* ---------- knee, next weight and records ---------- */
@@ -1332,7 +1359,7 @@ export class GymStore {
       healthDays: Object.fromEntries(Object.keys(this.health).sort().map((k) => [k, this.health[k]])),
     };
   }
-  /** Export workouts as CSV: a row for each set with reps or weight, oldest day first and lifts in the plan's order,
+  /** Export workouts as CSV: a row for each set with reps or weight, oldest day first and lifts in the order done,
    *  under CSV_COLUMNS. A lift is its planned name; a swap names what was done instead. */
   workoutRows(): CsvValue[][] {
     const rows: CsvValue[][] = [];

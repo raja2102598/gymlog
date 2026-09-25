@@ -10,8 +10,9 @@ import { CardioFinisher } from "./CardioFinisher";
 import { DayFields } from "./DayFields";
 import { HealthToday } from "./HealthToday";
 import { KneeScale } from "./KneeScale";
-import { LiftItem } from "./LiftItem";
+import { LiftItem, type Moves } from "./LiftItem";
 import { Measurements } from "./Measurements";
+import { SupersetItem } from "./SupersetItem";
 import type { LiftMenu } from "./types";
 import { WarmUp } from "./WarmUp";
 
@@ -47,7 +48,12 @@ function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
  *  lifts, cardio finisher, steps, weight, note and other measurements. Keyed by the day, so a new day starts fresh. */
 export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOpen, onKneeChange, onKneeScored, focusNext, onOpenHealth, onOpenLift }: SessionProps) {
   const store = useGym();
-  const plan = store.plan, p = store.planFor(sel), e = store.entry(sel), items = store.liftsFor(sel);
+  const plan = store.plan, p = store.planFor(sel), e = store.entry(sel);
+  // The day's lifts in cards, in the order done: a superset is one card. Each lift keeps its position in the day's
+  // list, which its element ids use.
+  let n = 0;
+  const blocks = store.liftBlocks(sel).map((b) => b.map((item) => ({ item, i: n++ })));
+  const items = blocks.flat().map((l) => l.item);
   const wus = plan.warmups.concat(e.warmup.filter((w) => !plan.warmups.includes(w)));
   const slot = store.slotFor(sel), own = wdIndex(sel), t = todayKey();
   const missed = !p.exercises.length && sel >= t ? store.missedThisWeek(sel) : [];
@@ -95,6 +101,18 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
       if (value === "") delete n[f];
       else n[f] = Math.round((num(value) as number) * 10) / 10;
     }, false);
+  // Moves card b up or down the day's order; focus follows the lift whose menu moved it, to its new position.
+  const move = (b: number, dir: -1 | 1, i: number) => {
+    const to = b + dir, at = i + dir * blocks[to].length, edge = dir < 0 ? to === 0 : to === blocks.length - 1;
+    store.moveBlock(sel, b, dir);
+    focusNext(`[data-lmove="${at}:${edge ? -dir : dir}"]`);
+  };
+  const movesFor = (b: number, superset?: string): Moves => ({
+    up: b > 0 ? (i) => move(b, -1, i) : null,
+    down: b < blocks.length - 1 ? (i) => move(b, 1, i) : null,
+    superset,
+  });
+  let letters = 0;
   const knee = (field: KneeField, title: string, sub = "", msg = "") => (
     <KneeScale
       field={field}
@@ -122,10 +140,12 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
         {p.exercises.length ? (
           // One segment per planned lift: filled when done, hatched when skipped.
           <div className="segs" aria-hidden="true">
-            {p.exercises.map((x, n) => {
-              const r = e.exercises[x.name];
-              return <i key={n} className={cx(r?.done && "done", r?.skipped && "skip")} />;
-            })}
+            {items
+              .filter((it) => !it.extra)
+              .map((it, n) => {
+                const r = e.exercises[it.name];
+                return <i key={n} className={cx(r?.done && "done", r?.skipped && "skip")} />;
+              })}
           </div>
         ) : null}
         <div className="sess-pick">
@@ -161,22 +181,44 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
       {wake ? knee("kneeWake", "Knee on waking", `after ${store.planFor(yest).name} yesterday`, wakeMsg) : null}
       {wus.length && (p.exercises.length || e.warmup.length) ? <WarmUp all={wus} done={e.warmup} open={warmOpen} onToggle={onToggleWarm} onTick={tickWarmUp} /> : null}
       {kneeHere ? knee("kneeBefore", "Knee pain before you start") : null}
-      {items.length ? (
+      {blocks.length ? (
         <ul className="ex">
-          {items.map((it, i) => (
-            <LiftItem
-              key={`${i}|${it.name}`}
-              item={it}
-              i={i}
-              sel={sel}
-              entry={e}
-              marks={marks}
-              menu={menu && menu.day === sel && menu.name === it.name ? menu.mode : null}
-              setMenu={setMenu}
-              focusNext={focusNext}
-              onOpenLift={onOpenLift}
-            />
-          ))}
+          {blocks.map((b, bi) => {
+            if (b.length > 1) {
+              const letter = String.fromCharCode(65 + letters++);
+              return (
+                <SupersetItem
+                  key={`ss|${b.map((l) => l.item.name).join("|")}`}
+                  lifts={b}
+                  letter={letter}
+                  sel={sel}
+                  entry={e}
+                  marks={marks}
+                  menu={menu}
+                  setMenu={setMenu}
+                  focusNext={focusNext}
+                  onOpenLift={onOpenLift}
+                  moves={movesFor(bi, letter)}
+                />
+              );
+            }
+            const [{ item: it, i }] = b;
+            return (
+              <LiftItem
+                key={`${i}|${it.name}`}
+                item={it}
+                i={i}
+                sel={sel}
+                entry={e}
+                marks={marks}
+                menu={menu && menu.day === sel && menu.name === it.name ? menu.mode : null}
+                setMenu={setMenu}
+                focusNext={focusNext}
+                onOpenLift={onOpenLift}
+                moves={movesFor(bi)}
+              />
+            );
+          })}
         </ul>
       ) : null}
       {kneeHere ? knee("kneeAfter", "Knee pain after the session", "", afterMsg) : null}

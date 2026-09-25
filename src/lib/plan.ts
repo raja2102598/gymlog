@@ -52,12 +52,33 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
             knee: typeof x?.knee === "boolean" ? (x.knee as boolean) : /knee/i.test(str(x?.flag)), // plan.json marks these with a KNEE NOTE
             // Left out (not "") when the plan doesn't set one, so a plan with no overrides round-trips unchanged.
             ...(x?.rest != null ? { rest: str(x.rest) } : {}),
+            ...(x?.superset === true ? { superset: true } : {}),
           }))
-          .filter((x) => x.name),
+          .filter((x) => x.name)
+          // The first lift has none before it to be a superset with.
+          .map(({ superset, ...x }, j) => (superset && j > 0 ? { ...x, superset } : x)),
         cardio: { name: str(cardio.name), detail: str(cardio.detail) },
       };
     }),
   };
+}
+
+/** A day's lifts in blocks: lifts joined to the one before them (PlanExercise.superset) make one block, a
+ *  superset, and any other lift is a block of its own. */
+export function planBlocks<T extends { superset?: boolean }>(xs: T[]): T[][] {
+  const out: T[][] = [];
+  xs.forEach((x, j) => (j > 0 && x.superset ? out[out.length - 1].push(x) : out.push([x])));
+  return out;
+}
+
+/** Blocks in a day's saved order (DayLog.order): each where its first lift named there stands, and blocks it
+ *  names none of after those, in the order they came. */
+export function orderBlocks<T extends { name: string }>(blocks: T[][], order: string[]): T[][] {
+  const at = (b: T[]) => Math.min(...b.map((it) => (order.includes(it.name) ? order.indexOf(it.name) : Infinity)));
+  return blocks
+    .map((b, n) => ({ b, n, at: at(b) }))
+    .sort((a, c) => (a.at === c.at ? a.n - c.n : a.at - c.at))
+    .map((o) => o.b);
 }
 
 /** The plan every account starts from, until it's edited in the app. */

@@ -10,6 +10,10 @@
 .pe-ex{background:var(--sunken);border-radius:var(--r-card);padding:12px;display:grid;gap:10px}
 .pe-ex .field input,.pe-ex .field textarea{background:var(--surface)}
 .pe-ex .ghost{background:var(--surface)}
+/* a superset's lifts: one edge down their side, and closer together */
+.pe-ex.ss{box-shadow:inset 3px 0 0 var(--edge)}
+.pe-ex.ss-join{margin-top:-6px}
+.pe-sstag{font-weight:600;color:var(--ink)}
 .pe-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 76px;gap:8px}
 .pe-row2{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
 .pe-row2 .field{flex:0 1 160px}

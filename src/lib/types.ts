@@ -60,6 +60,9 @@ export interface DayLog {
   cardioMin?: number;
   cardioKmh?: number;
   cardioIncline?: number;
+  /** The order the day's lifts were done in, by name, once one was moved on Today: lifts it doesn't name follow
+   *  in the plan's order. Unset while the day keeps the plan's order. */
+  order?: string[];
   /** Knee pain 0-10 around knee-sensitive sessions, and on waking the next morning. */
   kneeBefore?: number;
   kneeAfter?: number;
@@ -149,6 +152,10 @@ export interface PlanExercise {
   /** Seconds to rest after a set, overriding the plan's default (restSecFor in lib/store.ts). Empty or unset: use
    *  the plan's. Optional so older plans and the plan templates need no change to keep normalizePlan's round trip. */
   rest?: string;
+  /** Done as a superset with the lift before it: lifts joined this way make one superset (planBlocks in
+   *  lib/plan.ts), shown on Today as one card with their sets taken in rounds. Never on a day's first lift, and
+   *  left out rather than false, as `rest` is. */
+  superset?: boolean;
 }
 
 export interface PlanDay {

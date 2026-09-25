@@ -16,6 +16,10 @@ rewriting every logged day for little gain today. What names cost is handled whe
   extras added outside the plan, have none and read today's plan.
 - **Set types.** A set's `type` says what kind of set it is. Unset means a working set, so every day logged
   before types existed reads as it always did.
+- **Order and supersets.** A day whose lifts were moved keeps the order they were done in as a list of names
+  (`DayLog.order`), which a rename rewrites too; a day without one follows the plan. A superset is a flag on
+  a plan lift (`superset`: done with the lift before it), so it belongs to the plan's place for a lift, not
+  to its name.
 
 **Later.** If the exercise library needs to tell apart two lifts with one name, or to follow a lift across
 languages, a stable ID can be added to each plan lift and logged entry then, with names kept as the display

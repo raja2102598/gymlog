@@ -36,6 +36,8 @@ What people expect while lifting. Builds on the model as it is.
 Items that depend on something from outside the repo: a licensed dataset or native code.
 
 - **Exercise library** with search, muscle and equipment tags, and custom exercises. Needs an exercise dataset with a licence that allows redistribution.
+- **My gym:** the equipment your gym has, so the library and swaps offer lifts you can do. Depends on the library.
+- **Weights per kind of equipment:** bar weights for the barbell, EZ bar, trap bar and Smith machine, and steps for dumbbells, kettlebells, machines and cables, so suggested weights are ones the equipment can make. Depends on the library.
 - **Weekly sets per muscle group.** Depends on the library.
 - **Progression options per lift:** linear, double, percentage, simple deload, always showing the rule.
 - **In-app demo mode** with sample data, so people can try it without a database.

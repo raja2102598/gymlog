@@ -5,6 +5,7 @@ import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
+import { planBlocks } from "@/lib/plan";
 import type { Plan, PlanExercise } from "@/lib/types";
 import { TemplateList } from "./TemplateList";
 
@@ -15,6 +16,15 @@ interface Props {
   editDay: number;
   onEditDay: (i: number) => void;
   onDone: () => void;
+}
+
+/** A lift joined to the one before it as a superset, or not: left out rather than false when not, as the plan
+ *  keeps it (PlanExercise.superset). */
+function joined(x: PlanExercise, on: boolean): PlanExercise {
+  const y = { ...x };
+  if (on) y.superset = true;
+  else delete y.superset;
+  return y;
 }
 
 // The fields here are left to the browser (defaultValue): each keystroke saves to the plan, and the
@@ -36,17 +46,30 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
     edit((p) => {
       p.days[editDay].exercises[j][f] = v;
     });
-  const move = (j: number, dir: number) =>
+  // Up and Down keep a superset whole: within one, a lift trades places with its neighbour and the superset stays
+  // as it was; otherwise the lift, or its whole superset, moves past the next lift or superset.
+  const move = (j: number, dir: -1 | 1) =>
     edit((p) => {
-      const xs = p.days[editDay].exercises;
-      [xs[j], xs[j + dir]] = [xs[j + dir], xs[j]];
+      const xs = p.days[editDay].exercises, blocks = planBlocks(xs);
+      const b = blocks.findIndex((bl) => bl.includes(xs[j])), bl = blocks[b], at = bl.indexOf(xs[j]);
+      if (bl[at + dir]) [bl[at], bl[at + dir]] = [bl[at + dir], bl[at]];
+      else if (blocks[b + dir]) [blocks[b], blocks[b + dir]] = [blocks[b + dir], blocks[b]];
+      xs.splice(0, xs.length, ...blocks.flatMap((bl) => bl.map((x, n) => joined(x, n > 0))));
     }, true);
   const remove = (j: number) => {
     if (!confirm(`Remove ${d.exercises[j].name.trim() || "this lift"} from ${wd}? Days you’ve already logged keep it.`)) return;
     edit((p) => {
-      p.days[editDay].exercises.splice(j, 1);
+      const xs = p.days[editDay].exercises;
+      // The first lift of a superset leaves the next one first, rather than joining the lift before.
+      if (!xs[j].superset && xs[j + 1]) xs[j + 1] = joined(xs[j + 1], false);
+      xs.splice(j, 1);
     }, true);
   };
+  const setSuperset = (j: number, on: boolean) =>
+    edit((p) => {
+      const xs = p.days[editDay].exercises;
+      xs[j] = joined(xs[j], on);
+    });
   const add = () => {
     const j = d.exercises.length;
     edit((p) => {
@@ -76,6 +99,11 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
     setRenameMsg({ warn: !r.ok, text: r.msg });
   };
 
+  // Each superset's letter (A, B, …) and each lift's place in it (A1, A2), for the lifts in one.
+  const tags: string[] = [];
+  planBlocks(d.exercises.map((x, j) => ({ ...x, j })))
+    .filter((bl) => bl.length > 1)
+    .forEach((bl, n) => bl.forEach((x, k) => (tags[x.j] = `${String.fromCharCode(65 + n)}${k + 1}`)));
   const names = d.exercises.map((x) => x.name.trim()), dup = names.find((n, i) => n && names.indexOf(n) !== i);
   // A name box that's empty or repeated is marked, and the message says what to do.
   const badName = (n: string) => !n || names.indexOf(n) !== names.lastIndexOf(n);
@@ -95,7 +123,10 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   // history over once the field is left, which none of the other fields do.
   const nameField = (x: PlanExercise, j: number) => (
     <label className="field" htmlFor={`pe_x${j}_name`}>
-      <span>{`Lift ${j + 1}`}</span>
+      <span>
+        {`Lift ${j + 1}`}
+        {tags[j] ? <span className="pe-sstag">{` · superset ${tags[j]}`}</span> : null}
+      </span>
       <input
         id={`pe_x${j}_name`}
         data-px={`${j}:name`}
@@ -176,7 +207,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
           {d.exercises.length ? null : <p className="empty">No lifts: this is a rest day. Add one to make it a gym day.</p>}
           <ol className="pe-list">
             {d.exercises.map((x, j) => (
-              <li className="pe-ex" key={j}>
+              <li className={cx("pe-ex", tags[j] && "ss", x.superset && "ss-join")} key={j}>
                 <div className="pe-row">
                   {nameField(x, j)}
                   {liftField(x, j, "sets", "Sets", { placeholder: "3" })}
@@ -207,6 +238,12 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                 </div>
                 <div className="pe-row2">
                   {liftField(x, j, "rest", "Rest after a set (seconds, optional)", { placeholder: `Plan default (${plan.restSec})`, inputMode: "numeric" })}
+                  {j > 0 ? (
+                    <label className="pe-check" htmlFor={`pe_x${j}_ss`}>
+                      <input type="checkbox" id={`pe_x${j}_ss`} data-pss={j} checked={!!x.superset} onChange={(ev) => setSuperset(j, ev.target.checked)} /> Superset with{" "}
+                      {names[j - 1] || "the lift above"}
+                    </label>
+                  ) : null}
                 </div>
                 <div className="pe-btns">
                   <button className="ghost tiny" data-pmove={`${j}:-1`} disabled={j === 0} aria-label={`Move lift ${j + 1} up`} onClick={() => move(j, -1)}>

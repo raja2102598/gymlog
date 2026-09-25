@@ -11,13 +11,14 @@ export const kindOf = (s: Partial<SetLog>): SetKind => (s.type === "failure" || 
 const MARK: Record<SetKind, string> = { working: "", failure: "F", drop: "D" };
 const WORD: Record<SetKind, string> = { working: "", failure: ", to failure", drop: ", drop set" };
 
-/** A set's number, as the button that opens its menu: 3, or 3F for a set to failure and 3D for a drop set. */
-export function SetNumber({ n, s, id, did, open, onToggle }: { n: number; s: Partial<SetLog>; id: string; did: string; open: boolean; onToggle: () => void }) {
+/** A set's number, as the button that opens its menu: 3, or 3F for a set to failure and 3D for a drop set. In a
+ *  superset, the lift's place there (A1) stands in for the number, which the round gives. */
+export function SetNumber({ n, tag, s, id, did, open, onToggle }: { n: number; tag?: string; s: Partial<SetLog>; id: string; did: string; open: boolean; onToggle: () => void }) {
   const kind = kindOf(s);
   return (
     <button type="button" className="sn" data-kind={kind} aria-expanded={open} aria-controls={id} aria-label={`${did}, set ${n}${WORD[kind]}: kind of set`} onClick={onToggle}>
       <span>
-        {n}
+        {tag ?? n}
         {MARK[kind]}
       </span>
     </button>
