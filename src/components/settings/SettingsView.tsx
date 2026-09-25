@@ -22,18 +22,21 @@ import type { DownloadProgress, LatestUpdate } from "@/native/update";
 const native = () => import("@/native/app");
 
 /** Settings: Health Connect and background sync, daily goals, the plan, the theme, the account and your data.
- *  `dataMsg` is what Your data says as it opens: what a backup restored on the first-run screen brought in. */
+ *  `dataMsg` is what Your data says as it opens: what a backup restored on the first-run screen brought in. In the
+ *  demo, whatever needs a real account or the phone (Health Connect, background sync, password, sign out, backup
+ *  import, updates) is replaced or hidden instead. */
 export function SettingsView({ onEditPlan, dataMsg = "" }: { onEditPlan: () => void; dataMsg?: string }) {
+  const demo = useGym().demo;
   return (
     <>
-      {isNative() ? <HealthNative /> : <HealthWeb />}
+      {demo ? <HealthDemo /> : isNative() ? <HealthNative /> : <HealthWeb />}
       <Goals />
       <Training onEditPlan={onEditPlan} />
       <Voice />
       <Appearance />
-      <Account />
-      <Data first={dataMsg} />
-      <About />
+      {demo ? <AccountDemo /> : <Account />}
+      <Data first={dataMsg} demo={demo} />
+      <About demo={demo} />
     </>
   );
 }
@@ -67,6 +70,18 @@ function Text({ title, sub, id }: { title: ReactNode; sub?: ReactNode; id?: stri
 }
 
 /* ---------- Health Connect ---------- */
+
+/** The demo, in place of HealthNative or HealthWeb: Health Connect needs a real account and, for background sync,
+ *  the phone itself, so neither is offered here. */
+function HealthDemo() {
+  return (
+    <Group title="Health Connect" id="setHealth">
+      <div className="pref-row">
+        <Text title="Health Connect" sub="Not available in the demo. Sign in with a real account to connect it." />
+      </div>
+    </Group>
+  );
+}
 
 function HealthWeb() {
   const at = useGym().healthSyncedAt;
@@ -359,6 +374,22 @@ function Appearance() {
 
 /* ---------- account ---------- */
 
+/** The demo, in place of Account: no password to set and nothing to sign out of, only a way to leave for the real
+ *  sign-in screen (the same one the sync bar's banner offers). */
+function AccountDemo() {
+  const store = useGym();
+  return (
+    <Group title="Account" id="setAccount">
+      <div className="pref-row">
+        <Text title="Trying the sample data" sub="Nothing you do here is saved. Sign in to keep it in your own account." />
+        <button type="button" className="ghost" id="demoAccountSignIn" onClick={() => store.exitDemo()}>
+          Sign in
+        </button>
+      </div>
+    </Group>
+  );
+}
+
 function Account() {
   const store = useGym();
   // The ways this account signs in, as Supabase records them: "email" (a link or password), "google".
@@ -463,7 +494,7 @@ function download(name: string, type: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-function Data({ first }: { first: string }) {
+function Data({ first, demo }: { first: string; demo: boolean }) {
   const store = useGym();
   const file = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState(first);
@@ -498,15 +529,17 @@ function Data({ first }: { first: string }) {
         <Text title="Export data (.json)" sub="Every day you’ve logged, your plan and Health Connect data, as one file" />
         <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
       </button>
-      <button type="button" className="pref-row pref-tap" id="importBtn" onClick={() => file.current?.click()}>
-        <Text title="Import data (.json)" sub="Reads an export back in. You’re asked before a logged day or your plan is replaced." />
-        <UploadSimple className="pref-go" size={18} aria-hidden="true" />
-      </button>
+      {demo ? null : (
+        <button type="button" className="pref-row pref-tap" id="importBtn" onClick={() => file.current?.click()}>
+          <Text title="Import data (.json)" sub="Reads an export back in. You’re asked before a logged day or your plan is replaced." />
+          <UploadSimple className="pref-go" size={18} aria-hidden="true" />
+        </button>
+      )}
       <button type="button" className="pref-row pref-tap" id="csvBtn" onClick={exportCsv}>
         <Text title="Export workouts as CSV" sub="Every set you’ve logged, a row each, for a spreadsheet" />
         <DownloadSimple className="pref-go" size={18} aria-hidden="true" />
       </button>
-      <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />
+      {demo ? null : <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />}
       {/* Focusable, so the app can put you here after a restore on the first-run screen, reading what came in. */}
       <p className="note pref-msg" id="dataMsg" role="status" tabIndex={-1}>
         {msg}
@@ -517,17 +550,18 @@ function Data({ first }: { first: string }) {
 
 /* ---------- about ---------- */
 
-function About() {
+function About({ demo }: { demo: boolean }) {
   const [build, setBuild] = useState("");
   useEffect(() => {
-    if (isNative()) void native().then((m) => m.appVersion().then(setBuild, () => {}));
-  }, []);
+    if (isNative() && !demo) void native().then((m) => m.appVersion().then(setBuild, () => {}));
+  }, [demo]);
   return (
     <Group title="About" id="setAbout">
       <div className="pref-row">
         <Text title={<span translate="no">Gym Log</span>} sub={isNative() ? `Android app${build ? `, version ${build}` : ""}` : "Website. The Android app adds Health Connect."} />
       </div>
-      {isNative() ? <UpdateAndroid /> : <UpdateWeb />}
+      {/* Updates aren't offered in the demo: nothing here is a real, installed copy to update. */}
+      {demo ? null : isNative() ? <UpdateAndroid /> : <UpdateWeb />}
     </Group>
   );
 }

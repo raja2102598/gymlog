@@ -119,6 +119,15 @@ export function LoginView({ hidden }: { hidden: boolean }) {
       <p className="note" id="loginMsg" aria-live="polite">
         {store.authMsg || msg}
       </p>
+      <p className="or" aria-hidden="true">
+        <span>or</span>
+      </p>
+      <div className="login">
+        <button type="button" className="ghost" id="demoBtn" onClick={() => store.startDemo()}>
+          Try it with sample data
+        </button>
+        <p className="sub">No account needed. Nothing you enter is saved, and reloading ends it.</p>
+      </div>
     </section>
   );
 }

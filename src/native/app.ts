@@ -62,9 +62,10 @@ export async function startNative(store: GymStore): Promise<void> {
   startWidget(store);
   // While open, too: a watch's numbers keep arriving through the day. syncHealth skips runs under 5 minutes apart.
   setInterval(() => void syncHealth(store), 15 * 60_000);
-  // The first read, as soon as the account is known.
+  // The first read, as soon as the account is known. Not for the demo: it isn't a real account, and Health
+  // Connect and background sync both need one (GymLog's Settings says so and hides the controls).
   const first = () => {
-    if (store.auth !== "signedIn") return;
+    if (store.auth !== "signedIn" || store.demo) return;
     stop();
     void syncHealth(store, true);
     void checkBackgroundOwner(store).catch(() => {});

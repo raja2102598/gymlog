@@ -12,6 +12,12 @@ Gym Log opens on today and works like a phone app: four tabs along the bottom, *
 
 **Continue with Google**, or your email. With email, tap the link in the email **on the same phone**, or, once you've set a password (**Settings → Set a password**), tap **Use a password instead**. A Google account with the same email as an account made with an email link is the same account, with the same data.
 
+### Try it with sample data
+
+No account yet? **Try it with sample data**, below the sign-in form, drops you straight into a full account: four weeks of made-up history and Health Connect data, ending today. Today, Health and Progress, logging sets, editing the plan and Settings all work as normal. What needs a real account or the phone doesn't: Health Connect, background sync, a password, sign out, backup import and checking for updates are either hidden or say they're not available in the demo.
+
+A banner says it's sample data with **Sign in** to leave it for the real sign-in screen. Nothing you do in the demo is saved anywhere, on the phone or otherwise, and reloading the page ends it the same way sign-in does, back to the sign-in screen.
+
 ### First run
 
 A new account starts by choosing a plan: a **Blank plan** (seven rest days to fill with your own sessions), **Full body, 3 days**, **Upper and lower, 4 days**, or the **Five-day split**. It's saved as your plan and synced, and everything in it can be changed later in **Settings → Edit plan**. Only the five-day split marks lifts as knee-sensitive; with the others, knee tracking stays off until you mark a lift in the plan. An account that already has logged days skips this step and keeps its plan.

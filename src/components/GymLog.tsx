@@ -20,6 +20,7 @@ import { SettingsView } from "./settings/SettingsView";
 import { AppBar } from "./shell/AppBar";
 import { BootView } from "./shell/BootView";
 import { ChoosePlanView } from "./shell/ChoosePlanView";
+import { DemoBar } from "./shell/DemoBar";
 import { LoginView } from "./shell/LoginView";
 import { SetupView } from "./shell/SetupView";
 import { SwUpdateNotice } from "./shell/SwUpdateNotice";
@@ -320,6 +321,7 @@ export default function GymLog() {
 
       <main id="main" tabIndex={-1}>
         <div className="bars" ref={bars}>
+          <DemoBar />
           <SyncBar />
           <SwUpdateNotice show={swUpdated} onReload={() => location.reload()} />
           {isNative() && inApp ? <UpdateNotice onOpenSettings={() => navigate({ view: "settings" })} /> : null}

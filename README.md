@@ -56,6 +56,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Tap a lift, in Strength or on Today's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
 
 **Everywhere**
+- **Try it with sample data** on the sign-in screen: no account or database needed, four weeks of made-up history to look around, and nothing you do is saved.
 - Installable as a PWA from Chrome, or as an Android app. It opens instantly from the phone's cache and works offline; edits queue and sync when you're back online.
 - Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
 - Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.

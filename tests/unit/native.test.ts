@@ -319,6 +319,17 @@ describe("home-screen widget", () => {
     expect(widget.update).toHaveBeenCalledTimes(3);
   });
 
+  it("shows nothing from the demo: the widget is for a real account's day", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const s = new GymStore();
+    s.auth = "signedOut";
+    startWidget(s);
+    s.startDemo();
+    s.setHealthLink({ state: "ok", msg: "" });
+    expect(s.demo).toBe(true);
+    expect(widget.update).not.toHaveBeenCalled();
+  });
+
   it("tries a write that failed again on the next change, rather than taking it as shown", async () => {
     const { startWidget } = await import("@/native/widget");
     const s = new GymStore(), today = todayKey();

@@ -7,7 +7,9 @@ import { createClient, type Session, type SupabaseClient, type User } from "@sup
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
 import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
+import { createDemoSupabase } from "./demoSupabase";
 import { DEFAULT_PLAN, normalizePlan } from "./plan";
+import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
@@ -131,6 +133,8 @@ const SAVES_AT_ONCE = 4;
 const writtenAt = (rows: unknown) => (rows as { updated_at?: string }[] | null)?.[0]?.updated_at ?? null;
 /** What the plan editor and Settings say while the plan waits for you to choose a version. */
 const PLAN_HELD = "Not synced yet: the plan was changed on another device too.";
+/** The account a demo shows: not a real one, so nothing here is ever sent anywhere (GymStore.startDemo). */
+const DEMO_USER: User = { id: "00000000-0000-0000-0000-000000000000", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "" };
 
 /** How a session signed in ("password", "otp", …), from its access token's amr claim. */
 export function signInMethods(accessToken: string): string[] {
@@ -180,6 +184,11 @@ export class GymStore {
   /** Bumped when the plan's shape changes, so the plan editor's fields reload. */
   planShape = 0;
   sb: SupabaseClient | null = null;
+  /** Trying the app with sample data (GymStore.startDemo): fully signed in, but `sb` is a fake and nothing is
+   *  written to the phone (see saveLocal). Screens use this to hide or refuse whatever needs a real account. */
+  demo = false;
+  /** The real client, set aside while the demo's fake stands in for it, and back on leaving the demo. */
+  private liveSb: SupabaseClient | null = null;
 
   private planRev = 0;
   /** The logged days have been loaded from Supabase since signing in, not only read from this phone's copy. */
@@ -244,6 +253,11 @@ export class GymStore {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce", experimental: { appendPkceFlowIdToRedirects: true } },
     }));
     sb.auth.onAuthStateChange((_event, session) => {
+      // A real sign-in (a link opened in another tab, say) ends the demo; nothing else here concerns it.
+      if (this.demo) {
+        if (!session?.user) return;
+        this.exitDemo();
+      }
       if (session?.user && session.user.id !== this.user?.id) void this.onSignedIn(session.user, session);
       else if (session?.user && this.user && this.notePassword(session)) this.changed();
       else if (!session && this.user) this.onSignedOut();
@@ -275,6 +289,55 @@ export class GymStore {
       this.online = false;
       this.setStatus("Offline. Changes stay on this phone");
     });
+  }
+
+  /* ---------- demo mode ---------- */
+  /** "Try it with sample data": skips Supabase entirely and drops straight into a signed-in, fully usable app,
+   *  seeded like scripts/screenshots.mjs (lib/sampleData.js) with four weeks of history ending today. `sb` becomes
+   *  a small fake (lib/demoSupabase.ts) that answers from this store's own fields, so flush, pull and the rest run
+   *  unchanged and nothing ever reaches a network. Nothing here is written to the phone either (see saveLocal): the
+   *  whole demo lives in memory, and a reload starts over at the sign-in screen. */
+  startDemo() {
+    if (this.demo || this.user) return;
+    this.demo = true;
+    this.liveSb = this.sb;
+    this.sb = createDemoSupabase(this);
+    const today = todayKey();
+    this.user = { ...DEMO_USER, created_at: `${addDays(today, -27)}T05:00:00.000Z` };
+    this.plan = copy(DEFAULT_PLAN);
+    const { logs, health } = sampleDays(today, DEFAULT_PLAN.days);
+    this.logs = logs;
+    this.health = health;
+    this.healthSyncedAt = new Date().toISOString();
+    this.pending = {};
+    this.conflicts = {};
+    this.planConflict = null;
+    this.planDirty = false;
+    this.planSource = "server"; // acts as an account that already has its plan: no "choose a plan" first
+    this.logsLoaded = true;
+    this.firstLoad = false;
+    this.hasPassword = false;
+    this.syncTrouble = false;
+    this.status = "Synced";
+    this.logsChanged();
+    this.planShape++;
+    this.auth = "signedIn";
+    this.changed();
+  }
+
+  /** Leaves the demo for the real sign-in screen, with the real client back in place so signing in works. There was
+   *  never a real session to sign out of, so this is onSignedOut's own reset rather than a sign-out. A build with no
+   *  Supabase project goes back to the setup screen it came from. */
+  exitDemo() {
+    if (!this.demo) return;
+    this.demo = false;
+    this.sb = this.liveSb;
+    this.liveSb = null;
+    this.onSignedOut();
+    if (!this.sb) {
+      this.auth = "setup";
+      this.changed();
+    }
   }
 
   /* ---------- auth ---------- */
@@ -403,6 +466,8 @@ export class GymStore {
 
   /** Finishes sign-in from a link that opened the Android app: ...://login?sb_flow_id=…&code=… */
   async finishSignIn(url: string): Promise<void> {
+    // A sign-in link opened during the demo ends it, and signs in.
+    this.exitDemo();
     // Signed in already: the same link again (say, from the app-login page's button) has nothing left to do.
     if (!this.sb || this.user) return;
     const u = new URL(url), q = u.searchParams, h = new URLSearchParams(u.hash.slice(1));
@@ -668,8 +733,10 @@ export class GymStore {
     return r;
   }
 
-  /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) */
+  /** Keeps a copy on the phone, and notes whether that worked. (Callers tell listeners.) In the demo, nothing is
+   *  kept anywhere: a real sign-in afterwards must never find sample data waiting for it. */
   private saveLocal(key: string, value: unknown) {
+    if (this.demo) return;
     if (lsSet(key, value)) this.unsaved.delete(key);
     else this.unsaved.add(key);
     this.localSaveFailed = this.unsaved.size > 0;

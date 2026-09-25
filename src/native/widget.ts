@@ -41,7 +41,8 @@ function writeWidget(store: GymStore): void {
     if (lastWritten !== "") clearWidget();
     return;
   }
-  if (store.auth !== "signedIn") return;
+  // Not the demo's sample data: the widget is for a real account's day.
+  if (store.auth !== "signedIn" || store.demo) return;
   const snapshot = snapshotOf(store), key = JSON.stringify(snapshot);
   if (key === lastWritten) return;
   lastWritten = key;

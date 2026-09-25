@@ -96,7 +96,8 @@ export const openHealthSettings = (): Promise<void> => Health.openHealthConnectS
 
 /** Reads Health Connect and saves the days that changed. Without `now`, at most every 5 minutes. */
 export async function syncHealth(store: GymStore, now = false): Promise<void> {
-  if (busy || !store.user || (!now && Date.now() - lastRun < 5 * 60_000)) return;
+  // Not in the demo: the phone's own readings would land among the sample data.
+  if (busy || !store.user || store.demo || (!now && Date.now() - lastRun < 5 * 60_000)) return;
   busy = true;
   try {
     const avail = await Health.isAvailable();
