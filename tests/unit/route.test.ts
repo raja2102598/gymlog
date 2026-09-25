@@ -18,8 +18,8 @@ describe("routing", () => {
     expect(routeOf("#progress/lift/100%")).toEqual({ view: "progress" });
   });
 
-  it("puts a lift's page at the same depth as a metric's, under Progress, with no change to plain Progress", () => {
-    expect(depthOf({ view: "progress", lift: "Leg Press" })).toBe(2);
+  it("puts a lift's page under Progress, a level deeper than the workout it also opens from, with no change to plain Progress", () => {
+    expect(depthOf({ view: "progress", lift: "Leg Press" })).toBe(3);
     expect(depthOf({ view: "progress" })).toBe(1);
     expect(parentOf({ view: "progress", lift: "Leg Press" })).toEqual({ view: "progress" });
     expect(tabOf({ view: "progress", lift: "Leg Press" })).toBe("progress");

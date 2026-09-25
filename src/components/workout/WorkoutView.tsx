@@ -52,9 +52,16 @@ export function WorkoutView({ day, startAt, onClose, onFinish, onOpenLift, menu,
   // Positions in the day's flat list, which the lifts' element ids use.
   let n0 = 0;
   const indexed = blocks.map((b) => b.map((item) => ({ item, i: n0++ })));
+  // Moving a block: the workout follows it, and focus follows the lift whose menu moved it (as Train's order did).
+  const move = (b: number, dir: -1 | 1, i: number) => {
+    const to = b + dir, at = i + dir * blocks[to].length, edge = dir < 0 ? to === 0 : to === blocks.length - 1;
+    store.moveBlock(day, b, dir);
+    setAt(to);
+    focusNext(`[data-lmove="${at}:${edge ? -dir : dir}"]`);
+  };
   const moves = (b: number, superset?: string): Moves => ({
-    up: b > 0 ? () => (store.moveBlock(day, b, -1), setAt(b - 1)) : null,
-    down: b < blocks.length - 1 ? () => (store.moveBlock(day, b, 1), setAt(b + 1)) : null,
+    up: b > 0 ? (i) => move(b, -1, i) : null,
+    down: b < blocks.length - 1 ? (i) => move(b, 1, i) : null,
     superset,
   });
   const marks = store.recordsOn(day);

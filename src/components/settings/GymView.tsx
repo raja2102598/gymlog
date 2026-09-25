@@ -76,7 +76,7 @@ function WeightsGroup() {
           </label>
         </div>
         <p className="note" id="gearMsg">
-          For the plates button on a set and a lift’s warm-up sets. A lift on a bar goes up by a pair of the smallest
+          For the plates in a set’s menu and a lift’s warm-up sets. A lift on a bar goes up by a pair of the smallest
           plate. {store.planMsg}
         </p>
       </div>

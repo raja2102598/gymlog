@@ -103,7 +103,7 @@ export default function GymLog() {
   useEffect(() => {
     const r = routeOf(location.hash), d = depthOf(r);
     if (!d || typeof (history.state as { gymDepth?: number } | null)?.gymDepth === "number") return;
-    const chain = d === 2 ? [parentOf(r), r] : [r];
+    const chain = d >= 2 ? [parentOf(r), r] : [r];
     history.replaceState({ gymDepth: 0 }, "", address(HOME));
     chain.forEach((c, i) => history.pushState({ gymDepth: i + 1 }, "", address(c)));
   }, []);
