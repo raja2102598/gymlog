@@ -119,7 +119,7 @@ The installed app loads its files from the phone's cache first, so it opens stra
 ## Updates
 
 - **On the website**, a new version downloads in the background as you use the site and runs from the next visit; if it finishes while a tab is still open, that tab shows **Gym Log was updated** with **Reload**. **Settings → About → Check for updates** asks right away instead of waiting for that.
-- **In the Android app**, updates come as a new APK. **Settings → About → Check for updates** downloads and installs one from inside the app — see the [Android app](android.md#updates-and-the-signing-key) for how it's verified — and the app also checks quietly every so often, with a small banner when one's ready.
+- **In the Android app**, updates come as a new APK. **Settings → About → Check for updates** downloads and installs one from inside the app — see the [Android app](android.md#updates-and-the-signing-key) for how it's verified — and the app also checks quietly every so often, with a small banner when one's ready: its **Update** downloads and installs it the same way.
 
 ## Good to know
 

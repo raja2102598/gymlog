@@ -43,6 +43,34 @@ Items that depend on something from outside the repo: a licensed dataset or nati
 - **In-app demo mode** with sample data, so people can try it without a database.
 - **Android home-screen widgets.** Needs native code.
 
+## Next: smooth on the phone
+
+Reported from using the Android app after the redesign.
+
+- **Smooth animations.** Movement isn't smooth on the phone. First measure it on a real, mid-range Android phone,
+  with Chrome's remote DevTools (`chrome://inspect`) on the app's WebView and its Performance panel. Measure:
+  - switching tabs;
+  - opening Health, then a metric's page;
+  - opening the workout, then Complete set and the rest ring.
+
+  What the code points to so far:
+  - **Settings' switches** slide their knob by `left` and `top`, which lays the page out again every frame. They
+    should move with `transform`.
+  - **Every screen fades and rises in** (`rise`, 200 ms) while React is still building it, charts and lists
+    included, so the first frames are dropped. Start the fade once the screen has painted, or paint the screen's
+    frame first and its charts just after.
+  - **The activity rings** draw by animating `stroke-dasharray` for 0.9 s, under an SVG drop-shadow filter on each
+    tip. **The bars** grow by `scaleY` on SVG rectangles for 0.6 s. In Android's WebView both are repainted on the
+    CPU every frame, and Home and Health start several at once. Animate only what's on screen, drop the filter while
+    drawing, or use shapes the GPU can move.
+  - **Things that appear or change jump** instead of moving: a logged set, a lift moved in Train, the how-to
+    opening, a Settings row unfolding. Give each a short `transform` and `opacity` transition, 120–200 ms, with the
+    design's easing.
+
+  Done when:
+  - those interactions hold 60 fps on that phone, with the traces attached to the pull request;
+  - nothing moves with Reduce motion on, as now.
+
 ## Later
 
 New platforms, storage, external services or business decisions. These wait for feedback from other lifters.
