@@ -14,8 +14,29 @@ public domain under the Unlicense, whose text is at the end of this page. They n
 here and in the README all the same.
 
 Only the lifts in the `strength`, `powerlifting` and `olympic weightlifting` categories are kept; stretches,
-cardio, plyometrics and strongman are left out. So are the instructions and the images: each lift keeps its id,
-name, muscles and equipment.
+cardio, plyometrics and strongman are left out. Each lift keeps its id, name, muscles and equipment here; its
+pictures and steps are kept apart (below), so the library itself stays small.
+
+## Pictures and how to do each lift
+
+The same commit gives each lift two photos (start and finish) and its steps. `scripts/build-exercise-media.mjs`
+turns them into what the app ships, in `public/exercises/`:
+
+| File | What it is |
+| --- | --- |
+| `thumbs/<id>.webp` | The first photo, cropped square to 112 px: the lift's picture in Train's rows and the library. 654 of them, about 1.2 MB; free-exercise-db has no photos of three kettlebell lifts, which keep an icon. |
+| `howto/<id>.json` | Its `steps`, `level`, `mechanic` and `force`, and how many `photos` it has. |
+
+The full-size photos aren't shipped: a workout card's **?** and a lift's page under Progress load them from
+jsDelivr, pinned to the commit (`photoUrls` in `src/lib/exerciseMedia.ts`), and show the steps without them when
+there's no connection. The service worker leaves `exercises/` out of the files it downloads up front and keeps
+each one the first time it's shown; the Android app has them all in the APK.
+
+Run it again after updating the library:
+
+```sh
+node scripts/build-exercise-media.mjs
+```
 
 ## What each lift holds
 

@@ -1,7 +1,7 @@
 // Today's training, across Home, Train and the workout: sets, skip and swap, the plan editor, switching a day's
 // workout, and history for a new account. Home shows today; Train lists the selected day's lifts, a row each; the
 // workout shows one lift at a time, with its set table and its ··· menu (Done, skip, swap, its chart).
-import { flat, open, openTab, openWorkout, planDone, ready, session, shot, until } from "./harness.mjs";
+import { flat, open, openTab, openWorkout, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
 export const covers = [
   "src/components/dashboard/LiftDetail.tsx",
@@ -249,7 +249,7 @@ export default async function today({ browser, base, check }) {
   await planDone(page);
   check("Done goes back to Settings, where the plan opened", await page.locator("#settingsView").isVisible());
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openTab(page, "train");
 
   check("Train uses the edited plan", (await sessName()) === "Push A" && (await row("Cable Fly").count()) === 1);
@@ -281,7 +281,8 @@ export default async function today({ browser, base, check }) {
   check("reset to default plan saved", db.plan.days[0].name === "Push" && db.plan.stepGoal === 10000 && db.plan.days[0].exercises.length === 6);
   await planDone(page);
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
+  await openTab(page, "home");
   check("the reload came back to today", (await flat(page.locator("#todayName"))) === "Legs");
   await openTab(page, "train");
   check("and Train is on today too", (await sessName()) === "Legs");

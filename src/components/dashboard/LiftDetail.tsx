@@ -2,6 +2,7 @@
 import { StepsBarChart } from "@/components/ds/StepsBarChart";
 import { WeightTrendChart } from "@/components/ds/WeightTrendChart";
 import { ChartCard, dayAxis } from "@/components/health/parts";
+import { HowTo } from "@/components/exercise/HowTo";
 import { useGym } from "@/hooks/useGym";
 import { liftModel, type LiftModel, type Planned } from "@/lib/dashboard";
 import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
@@ -47,6 +48,7 @@ function denseDays(from: DayKey, to: DayKey): DayKey[] {
 export function LiftDetail({ name }: { name: string }) {
   const store = useGym();
   const m = liftModel(store, todayKey(), name);
+  const ex = store.exerciseOf(name), libId = ex && !ex.custom ? ex.id : null;
   return (
     <>
       <section className="card" id="dashLift">
@@ -79,6 +81,14 @@ export function LiftDetail({ name }: { name: string }) {
         )}
       </section>
       {m.points.length ? <LiftCharts points={m.points} /> : null}
+      {libId ? (
+        <section className="card howto" id="liftHowTo" aria-labelledby="liftHowToH">
+          <h2 className="title-sm" id="liftHowToH">
+            How to do it
+          </h2>
+          <HowTo id={libId} name={name} />
+        </section>
+      ) : null}
     </>
   );
 }

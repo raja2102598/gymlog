@@ -9,7 +9,7 @@ structure changes where the boards say so.
 | Before | After |
 |---|---|
 | Tabs: Today · Health · Progress · Settings (Phosphor icons, green pill) | Tabs: **Home · Train · Progress · Health** (Lucide house, dumbbell, chart-column, heart; 84px, brand-tint pill) |
-| Settings was a tab | Settings is a pushed screen, opened from the avatar on Home (`#settings`, back chevron, no tabs) |
+| Settings was a tab | Settings is a pushed screen, opened from the avatar at the top right of every tab (`#settings`, back chevron to that tab, no tabs) |
 | Today (`./`) did everything for the selected day | Split into **Home** (`./`, today at a glance), **Train** (`#train`, the selected day's session and day log) and **Active workout** (`#workout`, one exercise at a time) → **Workout complete** (`#workout/done`) |
 | Plan editor `#plan`, My gym `#gym` under Settings | Same addresses; opened from Train (Change plan, My gym tile) or Settings; back goes where they were opened from |
 | Health `#health`, metric pages `#health/<metric>` | Same addresses, rebuilt |

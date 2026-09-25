@@ -12,7 +12,7 @@ import { clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTime
 import type { Metric } from "@/lib/route";
 import { measureChange, type MeasureChange } from "@/lib/stats";
 import type { DayKey, HealthWorkout, MeasureField } from "@/lib/types";
-import { ChartCard, dayAxis, dayWords, Stat } from "./parts";
+import { ChartCard, dayAxis, dayDate, Stat } from "./parts";
 
 type Range = "day" | "week" | "month" | "year";
 
@@ -126,7 +126,12 @@ function HeartChart({ s, nums, width, unit }: { s: Series; nums: DayNumbers[]; w
     return { x: axis[i], lo: n.hrMin, hi: n.hrMax, dot: n.restingHr, today: k === t, tip: `${longDay(k)} · ${bits.join(", ") || "no data"}` };
   });
   const rest = s.filter(([, v]) => v != null) as [DayKey, number][];
-  const label = rest.length ? `Heart rate each day, lowest to highest, with the resting rate: resting from ${unit(rest[0][1])} to ${unit(rest[rest.length - 1][1])}.` : "Heart rate each day: no data in this period.";
+  const lows = days.flatMap((d) => (d.lo != null ? [d.lo] : [])), highs = days.flatMap((d) => (d.hi != null ? [d.hi] : []));
+  const label = rest.length
+    ? `Heart rate each day, lowest to highest, with the resting rate: resting from ${unit(rest[0][1])} to ${unit(rest[rest.length - 1][1])}.`
+    : lows.length
+      ? `Heart rate each day, lowest to highest: from ${Math.min(...lows)} to ${Math.max(...highs)} bpm across ${lows.length} day${lows.length === 1 ? "" : "s"}.`
+      : "Heart rate each day: no data in this period.";
   return <RangeChart days={days} width={width} label={label} />;
 }
 
@@ -228,14 +233,18 @@ function RangePage({ metric, days, onDay }: { metric: Metric; days: DayKey[]; on
       const vit = (f: (x: DayNumbers) => number | null) => summarize(seriesOf(store, metric, days, f));
       const spo2 = vit((x) => x.spo2), resp = vit((x) => x.respRate);
       const bp = [...nums].reverse().find((x) => x.bp)?.bp, vo2 = [...nums].reverse().find((x) => x.vo2max)?.vo2max;
-      const lowest = sum.n ? Math.min(...s.flatMap(([, v]) => (v != null ? [v] : []))) : null;
+      // No resting rate (not every watch gives one): the day's average and lowest stand in, as the bars show them.
+      const resting = sum.n > 0, avgHr = summarize(seriesOf(store, metric, days, (x) => x.hrAvg));
+      const lows = resting ? s.flatMap(([, v]) => (v != null ? [v] : [])) : nums.flatMap((x) => (x.hrMin != null ? [x.hrMin] : []));
+      const lowest = lows.length ? Math.min(...lows) : null, head = resting ? sum.avg : avgHr.avg;
+      const measured = nums.filter((x) => x.restingHr != null || x.hrAvg != null || x.hrMin != null).length;
       return (
         <>
-          <MainChart metric="heart" s={s} unit={(v) => `${Math.round(v)} bpm`} goal={null} caption={`Resting average · ${span}`} value={sum.avg != null ? `${Math.round(sum.avg)}` : "–"} valueUnit="bpm" onDay={onDay} />
+          <MainChart metric="heart" s={s} unit={(v) => `${Math.round(v)} bpm`} goal={null} caption={`${resting ? "Resting average" : "Average"} · ${span}`} value={head != null ? `${Math.round(head)}` : "–"} valueUnit="bpm" onDay={onDay} />
           <Stats>
-            <Stat v={lowest != null ? `${lowest}` : "–"} u="bpm" l="lowest resting" />
+            <Stat v={lowest != null ? `${Math.round(lowest)}` : "–"} u="bpm" l={resting ? "lowest resting" : "lowest"} id="hLowest" />
             <Stat v={hs.avg != null ? `${Math.round(hs.avg)}` : "–"} u="ms" l="HRV average" />
-            <Stat v={`${sum.n}`} u={within} l="days measured" />
+            <Stat v={`${measured}`} u={within} l="days measured" id="hMeasured" />
           </Stats>
           {hs.n ? <SideTrend s={hrv} title="Heart rate variability" unit={(v) => `${Math.round(v)} ms`} id="hHrv" tone="heart" minSpan={10} /> : null}
           {spo2.n || resp.n || bp || vo2 ? (
@@ -386,12 +395,13 @@ function YearPage({ metric, end, onDay }: { metric: Metric; end: DayKey; onDay: 
 
 /* ---------- one day ---------- */
 
-function Hero({ value, unit, caption, children, day, onDay }: { value: string; unit?: string; caption: string; children?: ReactNode; day: DayKey; onDay: (k: DayKey) => void }) {
+/** A day's big number, under its date and what the number is, with ‹ › to the day before or after. */
+function Hero({ value, unit, caption, children, day, onDay }: { value: string; unit?: string; caption?: string; children?: ReactNode; day: DayKey; onDay: (k: DayKey) => void }) {
   return (
     <section className="card hero" id="hHero">
       <div className="cc-h">
         <div className="cc-t">
-          <div className="label">{caption}</div>
+          <div className="label" id="hDate">{[dayDate(day), caption].filter(Boolean).join(" · ")}</div>
           <div className="cc-v">
             {value}
             {unit ? <span className="u"> {unit}</span> : null}
@@ -414,13 +424,20 @@ function Meter({ value, goal, tone, label }: { value: number; goal: number; tone
 
 function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (k: DayKey) => void }) {
   const store = useGym();
-  const p = store.plan, n = dayNumbers(store, day), dw = dayWords(day);
-  const empty = <p className="empty card">Nothing from Health Connect for {dw.toLowerCase() === "today" ? "today yet" : dw}.</p>;
+  const p = store.plan, n = dayNumbers(store, day);
+  // A day with nothing still has its date and ‹ ›, so another day is a tap away.
+  const empty = (
+    <Hero value="–" day={day} onDay={onDay}>
+      <p className="sub" id="hEmpty">
+        Nothing from Health Connect for {day === todayKey() ? "today yet" : "this day"}.
+      </p>
+    </Hero>
+  );
   switch (metric) {
     case "steps":
       return (
         <>
-          <Hero caption={dw} value={n.steps != null ? fmt(n.steps) : "–"} unit={`/ ${fmt(p.stepGoal)} steps`} day={day} onDay={onDay}>
+          <Hero value={n.steps != null ? fmt(n.steps) : "–"} unit={`/ ${fmt(p.stepGoal)} steps`} day={day} onDay={onDay}>
             <Meter value={n.steps ?? 0} goal={p.stepGoal} tone="var(--steps)" label={`Steps, ${fmt(n.steps ?? 0)} of ${fmt(p.stepGoal)}`} />
           </Hero>
           <Stats>
@@ -434,7 +451,7 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
     case "sleep":
       return n.sleepMin ? (
         <>
-          <Hero caption={n.bed && n.wake ? `${clock(n.bed)} – ${clock(n.wake)}` : `${dw}, the night before`} value={hoursMin(n.sleepMin)} unit="asleep" day={day} onDay={onDay}>
+          <Hero caption={n.bed && n.wake ? `${clock(n.bed)} – ${clock(n.wake)}` : "the night before"} value={hoursMin(n.sleepMin)} unit="asleep" day={day} onDay={onDay}>
             {n.sleepStages ? <StageLanes stages={n.sleepStages} full /> : null}
           </Hero>
           <InsightCallout id="hGoal">{`${sleepGoalWords(n.sleepMin - p.sleepGoalH * 60)} your ${p.sleepGoalH} h goal.`}</InsightCallout>
@@ -445,7 +462,7 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
     case "heart":
       return n.restingHr || n.hrAvg || n.spo2 || n.bp ? (
         <>
-          <Hero caption={n.restingHr != null ? "Resting" : "Average"} value={n.restingHr != null ? `${n.restingHr}` : n.hrAvg != null ? `${n.hrAvg}` : "–"} unit="bpm" day={day} onDay={onDay} />
+          <Hero caption={n.restingHr != null ? "resting" : "average"} value={n.restingHr != null ? `${n.restingHr}` : n.hrAvg != null ? `${n.hrAvg}` : "–"} unit="bpm" day={day} onDay={onDay} />
           <Stats>
             {n.hrAvg != null ? <Stat v={`${n.hrAvg}`} u="bpm" l="average" /> : null}
             {n.hrMin != null && n.hrMax != null ? <Stat v={`${n.hrMin}–${n.hrMax}`} l="lowest to highest" /> : null}
@@ -464,7 +481,7 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
       const balance = burned != null && n.eatenKcal != null ? n.eatenKcal - burned : null;
       return burned != null || n.eatenKcal != null ? (
         <>
-          <Hero caption={n.totalKcal != null ? "Burned" : "Burned moving"} value={burned != null ? fmt(burned) : "–"} unit="kcal" day={day} onDay={onDay}>
+          <Hero caption={n.totalKcal != null ? "burned" : "burned moving"} value={burned != null ? fmt(burned) : "–"} unit="kcal" day={day} onDay={onDay}>
             <Meter value={n.activeKcal ?? 0} goal={p.activeGoalKcal} tone="var(--energy)" label={`Active calories, ${fmt(n.activeKcal ?? 0)} of ${fmt(p.activeGoalKcal)}`} />
           </Hero>
           <Stats>
@@ -480,16 +497,16 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
     case "exercise":
       return (
         <>
-          <Hero caption={dw} value={hoursMin(n.exerciseMin)} unit={`/ ${p.exerciseGoalMin} min`} day={day} onDay={onDay}>
+          <Hero value={hoursMin(n.exerciseMin)} unit={`/ ${p.exerciseGoalMin} min`} day={day} onDay={onDay}>
             <Meter value={n.exerciseMin} goal={p.exerciseGoalMin} tone="var(--active)" label={`Exercise, ${n.exerciseMin} of ${p.exerciseGoalMin} minutes`} />
           </Hero>
-          {n.workouts.length ? <Sessions title="Workouts" list={n.workouts} /> : empty}
+          {n.workouts.length ? <Sessions title="Workouts" list={n.workouts} /> : <p className="empty card">No workouts recorded {day === todayKey() ? "today yet" : "this day"}.</p>}
         </>
       );
     case "body":
       return n.weight || n.bodyFat || n.chest || n.arms || n.thighs || n.hips ? (
         <>
-          <Hero caption={dw} value={n.weight ? n.weight.toFixed(1) : "–"} unit="kg" day={day} onDay={onDay} />
+          <Hero value={n.weight ? n.weight.toFixed(1) : "–"} unit="kg" day={day} onDay={onDay} />
           <Stats>
             {n.bodyFat != null ? <Stat v={`${n.bodyFat}%`} l="body fat" /> : null}
             {n.bmi != null ? <Stat v={`${n.bmi}`} l="body mass index" /> : null}
@@ -504,7 +521,7 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
       );
     case "water":
       return (
-        <Hero caption={dw} value={n.waterMl != null ? fmt(n.waterMl) : "–"} unit={`/ ${fmt(p.waterGoalMl)} ml`} day={day} onDay={onDay}>
+        <Hero value={n.waterMl != null ? fmt(n.waterMl) : "–"} unit={`/ ${fmt(p.waterGoalMl)} ml`} day={day} onDay={onDay}>
           <Meter value={n.waterMl ?? 0} goal={p.waterGoalMl} tone="var(--water)" label={`Water, ${fmt(n.waterMl ?? 0)} of ${fmt(p.waterGoalMl)} ml`} />
         </Hero>
       );

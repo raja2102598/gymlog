@@ -7,8 +7,10 @@ import path from "node:path";
 
 const OUT = path.resolve("out");
 // Not kept: the service worker itself, the 404 page, React Server Component payloads (only used when
-// moving between pages, and this app has one) and source maps. index.html is kept as "/".
-const skip = (f) => f === "sw.js" || f === "404.html" || f.startsWith("_not-found") || f.startsWith("404/") || f.endsWith(".txt") || f.endsWith(".map");
+// moving between pages, and this app has one) and source maps. index.html is kept as "/". Nor are the exercise
+// library's pictures and steps (public/exercises, over a thousand small files): each is kept the first time it's
+// shown, so a first visit doesn't download them all.
+const skip = (f) => f === "sw.js" || f === "404.html" || f.startsWith("_not-found") || f.startsWith("404/") || f.startsWith("exercises/") || f.endsWith(".txt") || f.endsWith(".map");
 
 async function files(dir, base = "") {
   const out = [];

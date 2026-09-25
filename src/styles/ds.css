@@ -132,3 +132,21 @@
 .chart-card .cc-h .dayswitch{margin:-8px -10px 0 0}
 .dayswitch{display:flex;align-items:center}
 .dayswitch .btn-icon:disabled{background:transparent;color:var(--outline)}
+/* The day switch's label: the day's word over its date. */
+.dayswitch .day2{display:grid;justify-items:center;line-height:1.15;min-width:84px}
+.dayswitch .day2 b{font:var(--type-body-strong);color:var(--ink)}
+.dayswitch .day2 small{font:var(--type-micro);color:var(--ink-muted)}
+
+/* Exercise pictures (free-exercise-db): a lift's small photo in a list, and its how-to (photos, steps). */
+.ex-thumb{width:40px;height:40px;flex:none;border-radius:var(--radius-md);object-fit:cover;background:var(--surface-sunken)}
+.cue-panel{display:flex;flex-direction:column;gap:var(--space-3)}
+.howto-body{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+.howto-photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2);margin:0}
+.howto-photos figure{margin:0;display:flex;flex-direction:column;gap:4px;min-width:0}
+.howto-photos img{width:100%;height:auto;aspect-ratio:3/2;object-fit:cover;border-radius:var(--radius-md);background:var(--surface-sunken)}
+.howto-photos figcaption{font:var(--type-label);color:var(--ink-muted)}
+.howto-tags{display:flex;flex-wrap:wrap;gap:6px;margin:0}
+.howto-steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:var(--space-2);font:var(--type-body);color:var(--ink)}
+.howto-steps li::marker{font-weight:800;color:var(--brand-text)}
+.howto-credit{margin:0;font:var(--type-label);color:var(--ink-muted)}
+.howto-credit a{color:var(--brand-text)}

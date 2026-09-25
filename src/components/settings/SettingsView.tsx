@@ -3,7 +3,7 @@ import type { PermissionState } from "@capacitor/core";
 import { ChevronRight, Download, ExternalLink, LogOut, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { SegmentedControl } from "@/components/ds/parts";
-import { firstName } from "@/components/home/HomeView";
+import { firstName } from "@/components/ds/ProfileButton";
 import { Group, NumField, Text } from "@/components/settings/parts";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";

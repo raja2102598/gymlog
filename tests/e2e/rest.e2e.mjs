@@ -1,7 +1,7 @@
 // The rest timer (RAJ-35): it starts when a set gets its reps, counts down in the workout's rest card with pause,
 // +15 s and skip, buzzes and says "Rest over" at zero, takes the plan's default from Settings and a lift's own length
 // from the plan editor, and survives a reload. The clock runs here, and the test moves it on.
-import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 export default async function rest({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000035", "2026-08-26T05:00:00Z", "t@example.com");
@@ -122,7 +122,7 @@ export default async function rest({ browser, base, check }) {
   await until(() => db.plan?.restSec === 120);
   check("Settings saves the plan's default rest", db.plan?.restSec === 120);
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openWorkout(page, "Hack Squat");
   await box(0, 0, "reps").fill("10");
   await bar.waitFor();

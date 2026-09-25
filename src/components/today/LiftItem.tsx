@@ -7,6 +7,7 @@ import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useVoice, useVoiceOn } from "@/hooks/useVoice";
+import { HowTo } from "@/components/exercise/HowTo";
 import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
 import { mmss, num, setsSummary } from "@/lib/format";
@@ -357,6 +358,8 @@ export function LiftHead({
   const library = useLibrary();
   const { r, i, name, did, x, target, last } = m;
   const [howOpen, setHowOpen] = useState(false);
+  // The library lift being done (the swap's, if swapped), for its photos and steps; none for one of your own.
+  const ex = store.exerciseOf(did, r.swap ? null : x), libId = ex && !ex.custom ? ex.id : null;
 
   const swap = (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault();
@@ -572,7 +575,7 @@ export function LiftHead({
               <Mic size={20} aria-hidden="true" />
             </button>
           ) : null}
-          {m.cue ? (
+          {m.cue || libId ? (
             <button type="button" className="btn btn-icon howto" aria-expanded={howOpen} aria-controls={`cue${i}`} aria-label={`How to do ${did}`} onClick={() => setHowOpen(!howOpen)}>
               <CircleHelp size={22} aria-hidden="true" />
             </button>
@@ -582,10 +585,11 @@ export function LiftHead({
           </button>
         </div>
       </div>
-      {m.cue && howOpen ? (
-        <p className="nt cue" id={`cue${i}`}>
-          {m.cue}
-        </p>
+      {howOpen && (m.cue || libId) ? (
+        <div className="cue-panel" id={`cue${i}`}>
+          {m.cue ? <p className="nt cue">{m.cue}</p> : null}
+          {libId ? <HowTo id={libId} name={did} /> : null}
+        </div>
       ) : null}
       {x.flag && !r.skipped && !r.swap ? (
         <div className="ch">

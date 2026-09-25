@@ -4,6 +4,8 @@
 // off-site is refused and recorded (the app shouldn't need it).
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+/** A stand-in for an exercise photo from the web (see the route in openPage). */
+const PHOTO = fs.readFileSync(new URL("../../public/icons/icon-192.png", import.meta.url));
 
 // The Supabase project the built site talks to: NEXT_PUBLIC_SUPABASE_URL, read from the environment or from
 // .env.local / .env as Next.js reads it for the build (src/lib/config.ts). The tests intercept that address, so it
@@ -169,7 +171,7 @@ export function mockSupabase(db) {
  * throughout, or, with `clock: "running"`, starts at NOW and runs, so a test can move it on with
  * page.clock.fastForward.
  */
-export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base, clock = "fixed" } = {}) {
+export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base, clock = "fixed", photos = "stub" } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, serviceWorkers: sw, colorScheme: scheme });
   if (clock === "running") await ctx.clock.install({ time: NOW });
   else await ctx.clock.setFixedTime(NOW);
@@ -187,6 +189,15 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
   await ctx.route((u) => !u.href.startsWith(base) && !u.href.startsWith(HOST), (route) => {
     db.external.push(route.request().url());
     return route.abort();
+  });
+  // An exercise's how-to photos come from jsDelivr (src/lib/exerciseMedia.ts): a stand-in, counted apart, or
+  // (photos: "live", for the screenshots) the real ones.
+  db.photos ??= [];
+  await ctx.route(/^https:\/\/cdn\.jsdelivr\.net\/gh\/yuhonas\/free-exercise-db@[0-9a-f]{40}\/exercises\/[A-Za-z0-9_-]+\/[01]\.jpg$/, async (route) => {
+    db.photos.push(route.request().url());
+    if (photos !== "live") return route.fulfill({ status: 200, contentType: "image/png", body: PHOTO });
+    const res = await fetch(route.request().url());
+    return route.fulfill({ status: res.status, contentType: "image/jpeg", body: Buffer.from(await res.arrayBuffer()) });
   });
   const page = await ctx.newPage();
   page.errors = [];
@@ -212,6 +223,8 @@ export async function ready(page) {
 }
 
 const VIEWS = { home: "#homeView", train: "#trainView", health: "#healthView", progress: "#dashView", settings: "#settingsView" };
+/** Any of the four tabs: where Settings closes back onto, the one it was opened from. */
+export const TAB_VIEWS = "#homeView, #trainView, #dashView, #healthView";
 /** Taps a tab along the bottom (home, train, progress or health) and waits for its screen. Settings, which isn't a
  *  tab, opens from Home's avatar: from anywhere else, Home first. */
 export async function openTab(page, name) {

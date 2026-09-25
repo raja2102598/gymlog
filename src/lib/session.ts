@@ -18,6 +18,12 @@ export interface SessionSummary {
   min: number;
 }
 
+/** Every lift of day k's workout done or skipped: Train's button then says Review. */
+export function sessionDone(store: GymStore, k: DayKey): boolean {
+  const e = store.entry(k), items = store.liftBlocks(k).flat();
+  return items.length > 0 && items.every((it) => e.exercises[it.name]?.done || e.exercises[it.name]?.skipped);
+}
+
 export function sessionSummary(store: GymStore, k: DayKey): SessionSummary {
   const e = store.entry(k), items = store.liftsFor(k).filter((it) => !it.extra);
   let sets = 0, sec = 0;

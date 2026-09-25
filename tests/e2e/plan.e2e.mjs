@@ -2,7 +2,7 @@
 // name that already has history of its own or clashes with another lift on the same day, and the plain rename
 // when there's no history yet to lose.
 import fs from "node:fs";
-import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 // It opens a renamed lift's page, so it runs with the other suites that do when that page or its charts change.
 export const covers = ["src/components/dashboard/LiftDetail.tsx", "src/components/health/Bars.tsx", "src/components/health/Trend.tsx", "src/lib/scale.ts"];
@@ -66,7 +66,7 @@ export default async function plan({ browser, base, check }) {
   // --- Train and the workout: the renamed lift carries its numbers and its go-up hint, the old name is gone
   await planDone(page);
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openTab(page, "train");
   const todayNames = (await page.locator("#liftRows .lrow-main").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
   check("the old name is gone from Train", todayNames.length > 0 && !todayNames.some((t) => /^Leg Press\b(?! Machine)/.test(t)), todayNames.join(", "));

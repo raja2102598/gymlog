@@ -1,7 +1,7 @@
 // My gym's weights (RAJ-64): what each bar weighs and what the rest go up by, under My gym → Weights; a lift
 // given an EZ bar in the plan editor, whose plates (in a set's menu in the workout) and warm-up sets then use the
 // 10 kg bar; and a lift given dumbbells, which takes no plates and goes up by the dumbbells' step, to a weight they make.
-import { K, flat, open, openTab, openWorkout, planDone, ready, savedPlan, session, shot, until } from "./harness.mjs";
+import { K, flat, open, openTab, openWorkout, planDone, ready, savedPlan, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
 export default async function weights({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000064", "2026-08-26T05:00:00Z", "t@example.com");
@@ -60,7 +60,7 @@ export default async function weights({ browser, base, check }) {
 
   // --- the workout: the barbell curl on its EZ bar. Its plates are in the set's menu (its number).
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openWorkout(page, "Barbell Curl");
   const card = page.locator("#workoutView section.ex-card");
   const plates = async () => {
@@ -107,7 +107,7 @@ export default async function weights({ browser, base, check }) {
   await page.click("#gymDone");
   await page.waitForSelector("#settingsView");
   await page.click("#backBtn");
-  await page.waitForSelector("#homeView");
+  await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
   await openWorkout(page, "Barbell Curl");
   info = await plates();
   check("a lighter EZ bar takes more plates", info === "10 kg, 1.25 kg per side, 7.5 kg bar: 30 kg.", info);

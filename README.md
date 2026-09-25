@@ -158,4 +158,4 @@ Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the
 
 ## License
 
-[MIT](LICENSE). The fonts, Oswald and IBM Plex, are under the SIL Open Font License, with their licences in `src/fonts/`; the icons are [Phosphor](https://phosphoricons.com) (MIT). The exercise library comes from [free-exercise-db](https://github.com/yuhonas/free-exercise-db), itself from [exercises.json](https://github.com/wrkout/exercises.json), both public domain under the Unlicense; see [docs/exercise-library.md](docs/exercise-library.md).
+[MIT](LICENSE). The font, Nunito, is under the SIL Open Font License, with its licence in `src/fonts/`; the icons are [Lucide](https://lucide.dev) (ISC). The exercise library, with each lift's photos and steps, comes from [free-exercise-db](https://github.com/yuhonas/free-exercise-db), itself from [exercises.json](https://github.com/wrkout/exercises.json), both public domain under the Unlicense; see [docs/exercise-library.md](docs/exercise-library.md).

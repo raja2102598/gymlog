@@ -13,7 +13,7 @@ import { dayNumbers, daysTo, fromHealthConnect } from "@/lib/healthView";
 import { isNative } from "@/lib/native";
 import { hashOf, type Metric } from "@/lib/route";
 import type { DayKey } from "@/lib/types";
-import { dayWords } from "./parts";
+import { dayParts } from "./parts";
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase();
 
@@ -55,11 +55,7 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
         eyebrow={hc ? `Health Connect${store.healthSyncedAt ? ` · synced ${syncedWhen(store.healthSyncedAt)}` : ""}` : "Logged in Gym Log"}
         eyebrowId="healthNote"
         title="Health"
-        action={
-          <LinkButton variant="raised" id="editGoals" href="#settings" aria-label="Edit daily goals" onOpen={onOpenSettings}>
-            Edit
-          </LinkButton>
-        }
+        onProfile={onOpenSettings}
       />
       <div className="screen">
         {!hc ? (
@@ -84,8 +80,8 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
               <button type="button" className="btn btn-icon btn-quiet" id="hPrev" aria-label="Previous day" onClick={() => onDay(addDays(day, -1))}>
                 <ChevronLeft size={18} aria-hidden="true" />
               </button>
-              <span className="label" aria-live="polite">
-                {dayWords(day)}
+              <span className="label day2" aria-live="polite">
+                <b>{dayParts(day)[0]}</b> <small>{dayParts(day)[1]}</small>
               </span>
               <button type="button" className="btn btn-icon btn-quiet" id="hNext" aria-label="Next day" disabled={day >= t} onClick={() => onDay(addDays(day, 1))}>
                 <ChevronRight size={18} aria-hidden="true" />

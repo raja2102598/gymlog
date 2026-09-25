@@ -253,7 +253,10 @@ export default async function dashboard({ browser, base, check }) {
     await page.waitForSelector("#trainView", { timeout: 15000 });
     await until(async () => page.evaluate(() => document.activeElement?.id === "weight"));
     check("Log weight shortcut opens Train and focuses weight", await page.evaluate(() => document.activeElement?.id === "weight"));
-    check("shortcut parameter removed from the address", !page.url().includes("go="), page.url());
+    check("shortcut parameter removed from the address, which is Train's", !page.url().includes("go=") && page.url().endsWith("/#train"), page.url());
+    await page.goBack();
+    await page.waitForSelector("#homeView");
+    check("with Home behind it: Back goes Home", !page.url().includes("#"), page.url());
     await openTab(page, "progress");
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     check("dark mode colours", bg === "rgb(14, 15, 17)", bg);

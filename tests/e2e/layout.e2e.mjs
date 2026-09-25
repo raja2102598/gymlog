@@ -1,6 +1,6 @@
 // Layout and readability on a small phone (360 x 800): the fixes from the UI audit, in the redesign's Home, Train,
 // the workout, Settings and Progress.
-import { flat, K, open, openSetting, openTab, openWorkout, ready, session, until } from "./harness.mjs";
+import { flat, K, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
 
 const today = () => ({
   "2026-09-23": {
@@ -131,7 +131,7 @@ export default async function layout({ browser, base, check }) {
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);
     check("Settings fits at 360px (no sideways scroll)", wide <= 360, `${wide}px`);
     await page.click("#backBtn");
-    await page.waitForSelector("#homeView");
+    await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
 
     // Progress on a new account
     await openTab(page, "progress");
