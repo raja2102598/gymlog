@@ -28,7 +28,7 @@ export function StrengthCard({ m, onOpenLift }: { m: StrengthModel; onOpenLift: 
         <p className="empty">Log a session to start tracking strength.</p>
       )}
       <h3 className="dh">Ready to add weight</h3>
-      {m.ready.length || m.held.length ? (
+      {m.ready.length || m.held.length || m.deload.length ? (
         <ul className="plain">
           {m.ready.map((x) => (
             <li key={x.name}>
@@ -38,6 +38,11 @@ export function StrengthCard({ m, onOpenLift }: { m: StrengthModel; onOpenLift: 
           {m.held.map((x) => (
             <li key={x.name}>
               <b>{x.name}</b> <span className="sub">{x.day}</span>: hold {x.from}&nbsp;kg (knee)
+            </li>
+          ))}
+          {m.deload.map((x) => (
+            <li key={x.name}>
+              <b>{x.name}</b> <span className="sub">{x.day}</span>: {x.from} → <b>{x.to}&nbsp;kg</b> (deload)
             </li>
           ))}
         </ul>

@@ -6,7 +6,7 @@
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
-import { addDays, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
+import { addDays, dayMonth, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { createDemoSupabase } from "./demoSupabase";
 import { DEFAULT_PLAN, normalizePlan, orderBlocks, planBlocks } from "./plan";
 import { sampleDays } from "./sampleData";
@@ -106,6 +106,19 @@ export const restSecFor = (plan: Plan, x: PlanExercise) => {
 };
 export const PR_WORDS: Record<S.RecordKind, string> = { weight: "heaviest yet", e1rm: "best estimated 1RM", reps: "most reps at this weight" };
 export const prTitle = (kinds?: S.RecordKind[]) => (kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : "");
+/** A lift's next-weight hint, in words that name the rule behind it: what to do, the weight (bold on Today, empty
+ *  for a knee hold, whose weight is in `lead`), and why. */
+export function progWords(n: NextWeight): { lead: string; kg: string; why: string } {
+  const kg = String(n.to);
+  if (n.held) return { lead: `Hold ${n.from}\u00a0kg: your knee was sore after ${dayMonth(n.day)}.`, kg: "", why: "" };
+  if (n.rule === "linear") return { lead: "Go up to ", kg, why: `: linear, +${Math.round((n.to - (n.from ?? n.to)) * 100) / 100}\u00a0kg a session while every set hits ${n.top} reps.` };
+  if (n.rule === "percent") return { lead: "Work at ", kg, why: `: ${n.pct}% of your ${n.oneRm}\u00a0kg 1RM.` };
+  if (n.rule === "deload") {
+    const short = n.fails === 1 ? "last session fell short" : `${n.fails} sessions in a row fell short`;
+    return { lead: "Deload to ", kg, why: `: ${short}, so ${n.off}% off ${n.from}\u00a0kg.` };
+  }
+  return { lead: "Go up to ", kg, why: `: every set hit ${n.top} reps last time.` };
+}
 
 /** Why a sign-in link didn't work, and what to do, from the error Supabase or the auth client gave. */
 function linkTrouble(e: { message: string; code?: string }): string {
@@ -731,22 +744,30 @@ export class GymStore {
 
   // Most recent earlier day this exercise was actually done (as planned or as a swap).
   lastDone(name: string, before: DayKey): LastDone | null {
-    const ks = this.days();
-    for (let i = ks.length - 1; i >= 0; i--) {
+    return this.doneBefore(name, before, 1)[0] ?? null;
+  }
+  // The `n` most recent days before `before` that this exercise was actually done, the latest first.
+  doneBefore(name: string, before: DayKey, n: number): LastDone[] {
+    const ks = this.days(), out: LastDone[] = [];
+    for (let i = ks.length - 1; i >= 0 && out.length < n; i--) {
       const k = ks[i];
       if (k >= before) continue;
       for (const [key, r] of Object.entries(this.logs[k].exercises || {})) {
-        if (r && !r.skipped && performed(key, r) === name && setsOf(r).some((s) => S.isWorkingSet(s) && (s.reps != null || s.kg != null))) return { day: k, r };
+        if (r && !r.skipped && performed(key, r) === name && setsOf(r).some((s) => S.isWorkingSet(s) && (s.reps != null || s.kg != null))) {
+          out.push({ day: k, r });
+          break;
+        }
       }
     }
-    return null;
+    return out;
   }
   // Placeholders show what you did last time, so there's something to beat; when it's time to add
   // weight, they show the new weight at the bottom of the rep range.
   placeholders(x: PlanExercise, L: LastDone | null, j: number, next: NextWeight | null): [string, string] {
-    if (next && !next.held) return [String(S.repRange(x.reps)![0]), String(next.to)];
     const ls = L ? setsOf(L.r).filter(S.isWorkingSet) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
-    return [String(s.reps ?? (parseInt(x.reps, 10) || "-")), String(s.kg ?? "-")];
+    const reps = String(s.reps ?? (parseInt(x.reps, 10) || "-"));
+    if (next && !next.held) return [String(S.repRange(x.reps)?.[0] ?? reps), String(next.to)];
+    return [reps, String(s.kg ?? "-")];
   }
   // Warm-ups alone don't count: a workout left after them wasn't done.
   worked(k: DayKey): boolean {
@@ -888,16 +909,33 @@ export class GymStore {
     const e = this.entry(k), w = this.entry(addDays(k, 1)).kneeWake, lim = this.plan.kneeLimit;
     return [e.kneeAfter, w].some((v) => v != null && v > lim) || (w != null && e.kneeBefore != null && w > e.kneeBefore);
   }
-  // Double progression from the last time this exercise was done, held back on knee-sensitive lifts
-  // when that session was hard on the knee. Whether every set reached the top of the rep range is checked
-  // against what that last session was actually asked for (its own stored target, once it has one) rather
-  // than today's plan, so a rep range or sets change doesn't retroactively call an old session incomplete;
-  // the step to add stays today's, since that part is about what to do next, not what was done then.
+  // The next weight by the lift's rule (PlanExercise.prog): double progression from the last time it was done, by
+  // default; linear; or a percentage of a stored 1RM. A deload comes first, once enough sessions in a row fell
+  // short. Whether a session reached its rep range is checked against what that session was actually asked for
+  // (its own stored target, once it has one) rather than today's plan, so a rep range or sets change doesn't
+  // retroactively call an old session incomplete; the step stays today's, since that part is about what to do next,
+  // not what was done then. A knee-sensitive lift holds its weight rather than add to it after a session that was
+  // hard on the knee, whatever the rule; a deload, which only takes weight off, still shows.
   nextWeight(x: PlanExercise, did: string, k: DayKey): NextWeight | null {
-    const L = this.lastDone(did, k);
-    if (!L) return null;
-    const t = targetOf(L.r, x), r = S.readyToAdd(setsOf(L.r), t.reps, minSets(t), stepOf(x));
-    return r ? { ...r, day: L.day, held: !!x.knee && this.kneeBad(L.day) } : null;
+    const L = this.lastDone(did, k), step = stepOf(x), after = parseInt(x.deloadAfter ?? "", 10);
+    if (L && after > 0) {
+      const sessions = this.doneBefore(did, k, after).map(({ r }): S.Session => {
+        const t = targetOf(r, x);
+        return { sets: setsOf(r), reps: t.reps, minSets: minSets(t) };
+      });
+      const d = S.deloadStep(sessions, after, parseFloat(x.deloadPct ?? "") || 10, step);
+      if (d) return { ...d, day: L.day, held: false };
+    }
+    let r: S.NextStep | null = null;
+    if (x.prog === "percent") {
+      const oneRm = parseFloat(x.oneRm ?? ""), pct = parseFloat(x.pct ?? "");
+      if (oneRm > 0 && pct > 0 && pct <= 100) r = { rule: "percent", from: L ? topKg(setsOf(L.r).filter(S.isStraightSet)) : null, to: S.percentOf(oneRm, pct, step), top: S.repRange(x.reps)?.[0] ?? 0, pct, oneRm };
+    } else if (L) {
+      const t = targetOf(L.r, x);
+      r = (x.prog === "linear" ? S.linearStep : S.readyToAdd)(setsOf(L.r), t.reps, minSets(t), step);
+    }
+    if (!r) return null;
+    return { ...r, day: L?.day ?? k, held: !!x.knee && !!L && this.kneeBad(L.day) && r.from != null && r.to > r.from };
   }
   // Working sets only: a warm-up never sets a record or counts toward volume.
   liftSets(d: DayKey) {

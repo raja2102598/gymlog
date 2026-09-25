@@ -14,7 +14,7 @@ const set = (reps: number, kg: number, type?: SetLog["type"]): SetLog => ({ reps
 describe("set types", () => {
   it("don't let a drop set hold back the go-up rule, or a warm-up count toward it", () => {
     const sets = [set(8, 20, "warmup"), set(12, 50), set(12, 50), set(12, 50, "failure"), set(15, 30, "drop")];
-    expect(G.readyToAdd(sets, "10-12", 3, 2.5)).toEqual({ from: 50, to: 52.5, top: 12 });
+    expect(G.readyToAdd(sets, "10-12", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 12 });
     // Without the drop set's exclusion, 15 reps at 30 kg would have broken "every set at one weight".
     expect(G.readyToAdd([set(12, 50), set(12, 50), set(15, 30, "drop")], "10-12", 3, 2.5)).toBeNull(); // only 2 count
   });

@@ -132,7 +132,7 @@ describe("lifts", () => {
 
   it("adds weight when every set reached the top of the range (double progression)", () => {
     const s = (reps: number | null, kg: number): SetLog => ({ reps, kg });
-    expect(G.readyToAdd([s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ from: 50, to: 52.5, top: 10 });
+    expect(G.readyToAdd([s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 10 });
     expect(G.readyToAdd([s(10, 50), s(9, 50), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // one set short
     expect(G.readyToAdd([s(10, 50), s(10, 45), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // mixed weights
     expect(G.readyToAdd([s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // fewer sets than planned
@@ -145,7 +145,7 @@ describe("lifts", () => {
     const s = (reps: number, kg: number): SetLog => ({ reps, kg });
     // Two warm-ups ahead of the three planned working sets: they don't count toward minSets, and a heavier
     // warm-up doesn't stop the real top set from being read as the one weight used.
-    expect(G.readyToAdd([w(5, 60), w(3, 70), s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ from: 50, to: 52.5, top: 10 });
+    expect(G.readyToAdd([w(5, 60), w(3, 70), s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 10 });
     // All warm-up, no working sets: nothing to progress from.
     expect(G.readyToAdd([w(8, 20), w(5, 30)], "8-10", 1, 2.5)).toBeNull();
   });

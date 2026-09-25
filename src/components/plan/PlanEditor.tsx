@@ -1,4 +1,5 @@
 "use client";
+import { CaretDown } from "@phosphor-icons/react";
 import { useState, type InputHTMLAttributes } from "react";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
@@ -6,10 +7,18 @@ import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
 import { planBlocks } from "@/lib/plan";
+import type { ProgRule } from "@/lib/stats";
 import type { Plan, PlanExercise } from "@/lib/types";
 import { TemplateList } from "./TemplateList";
 
-type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step" | "rest";
+type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step" | "rest" | "oneRm" | "pct" | "deloadAfter" | "deloadPct";
+
+/** Each progression rule's name, and what it does, under the choice. */
+const PROG: Record<ProgRule, [string, string]> = {
+  double: ["Double progression", "Every set at the top of the rep range, then add the step."],
+  linear: ["Linear", "Add the step every session each set reaches the bottom of the rep range."],
+  percent: ["% of 1RM", "Work at a percentage of a 1RM you enter, to the nearest step."],
+};
 
 interface Props {
   /** Weekday open in the editor, 0 = Monday. */
@@ -65,6 +74,14 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       xs.splice(j, 1);
     }, true);
   };
+  // Double progression is the default, so it's left out of the plan rather than stored. A 1RM and percentage stay
+  // when another rule is picked, ready for switching back.
+  const setProg = (j: number, v: string) =>
+    edit((p) => {
+      const x = p.days[editDay].exercises[j];
+      if (v === "linear" || v === "percent") x.prog = v;
+      else delete x.prog;
+    });
   const setSuperset = (j: number, on: boolean) =>
     edit((p) => {
       const xs = p.days[editDay].exercises;
@@ -245,6 +262,39 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                     </label>
                   ) : null}
                 </div>
+                <details className="pe-prog">
+                  <summary>
+                    <span>
+                      Progression: {PROG[x.prog ?? "double"][0]}
+                      {parseInt(x.deloadAfter ?? "", 10) > 0 ? `, deload after ${parseInt(x.deloadAfter ?? "", 10)} short` : ""}
+                    </span>
+                    <CaretDown size={14} weight="bold" aria-hidden="true" />
+                  </summary>
+                  <label className="field" htmlFor={`pe_x${j}_prog`}>
+                    <span>How the weight goes up</span>
+                    <select id={`pe_x${j}_prog`} data-pprog={j} value={x.prog ?? "double"} aria-describedby={`pe_x${j}_proghow`} onChange={(ev) => setProg(j, ev.target.value)}>
+                      {Object.entries(PROG).map(([k, [label]]) => (
+                        <option key={k} value={k}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="sub" id={`pe_x${j}_proghow`}>
+                    {PROG[x.prog ?? "double"][1]}
+                  </p>
+                  {x.prog === "percent" ? (
+                    <div className="pe-row2">
+                      {liftField(x, j, "oneRm", "1RM (kg)", { placeholder: "e.g. 100", inputMode: "decimal" })}
+                      {liftField(x, j, "pct", "Work at (% of 1RM)", { placeholder: "e.g. 75", inputMode: "decimal" })}
+                    </div>
+                  ) : null}
+                  <div className="pe-row2">
+                    {liftField(x, j, "deloadAfter", "Deload after (sessions short)", { placeholder: "Off", inputMode: "numeric" })}
+                    {liftField(x, j, "deloadPct", "Deload by (%)", { placeholder: "10", inputMode: "decimal" })}
+                  </div>
+                  <p className="sub">A deload takes weight off once that many sessions in a row fall short of the sets and reps.</p>
+                </details>
                 <div className="pe-btns">
                   <button className="ghost tiny" data-pmove={`${j}:-1`} disabled={j === 0} aria-label={`Move lift ${j + 1} up`} onClick={() => move(j, -1)}>
                     ↑ Up

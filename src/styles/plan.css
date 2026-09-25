@@ -17,6 +17,15 @@
 .pe-row{display:grid;grid-template-columns:minmax(0,1fr) 64px 76px;gap:8px}
 .pe-row2{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
 .pe-row2 .field{flex:0 1 160px}
+/* a lift's progression and deload, folded: its summary names the rule */
+.pe-prog{display:grid;gap:8px}
+.pe-prog[open]{padding-bottom:4px}
+.pe-prog summary{cursor:pointer;font-size:14px;min-height:44px;display:flex;align-items:center;gap:8px;list-style:none}
+.pe-prog summary::-webkit-details-marker{display:none}
+.pe-prog summary svg{flex:none;color:var(--muted);transition:transform .15s}
+.pe-prog[open] summary svg{transform:rotate(180deg)}
+.pe-prog .sub{margin:0;font-size:var(--t-sm)}
+.pe-prog .field select{appearance:none;-webkit-appearance:none;font:15px/1.4 var(--body);color:var(--ink);padding:10px 34px 10px 12px;min-height:48px;width:100%;max-width:320px;border:1px solid var(--edge);border-radius:var(--r-ctl);background:var(--surface) no-repeat;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 55%,calc(100% - 12px) 55%;background-size:5px 5px,5px 5px}
 .pe-check{display:flex;align-items:center;gap:8px;font-size:14px;min-height:44px;cursor:pointer}
 .pe-check input{width:20px;height:20px;accent-color:var(--good)}
 .pe-stack{display:grid;gap:8px}

@@ -250,6 +250,8 @@ export interface StrengthModel {
   rows: StrengthRow[];
   ready: NextUp[];
   held: NextUp[];
+  /** Lifts due a deload: enough sessions in a row fell short of the rep range. */
+  deload: NextUp[];
   records: S.LiftRecord[];
 }
 
@@ -269,23 +271,30 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
       change: points.length ? e1rmChange(points) : logged ? "no estimate yet: needs a set with weight and 1-12 reps" : "not logged yet",
     };
   });
-  // Lifts ready for more weight next time, and knee lifts held back after a sore day.
-  const tomorrow = addDays(t, 1), seen = new Set<string>(), ready: NextUp[] = [], held: NextUp[] = [];
+  // Lifts ready for more weight next time, knee lifts held back after a sore day, and lifts due a deload. A lift
+  // worked at a percentage of its 1RM is only ready when that's more than it last lifted.
+  const tomorrow = addDays(t, 1), seen = new Set<string>(), ready: NextUp[] = [], held: NextUp[] = [], deload: NextUp[] = [];
   store.plan.days.forEach((d) =>
     d.exercises.forEach((x: PlanExercise) => {
       if (seen.has(x.name)) return;
       seen.add(x.name);
       const nw = store.nextWeight(x, x.name, tomorrow);
-      if (nw) (nw.held ? held : ready).push({ name: x.name, day: d.name, from: nw.from, to: nw.to });
+      if (!nw || nw.from == null) return;
+      const up = { name: x.name, day: d.name, from: nw.from, to: nw.to };
+      if (nw.rule === "deload") deload.push(up);
+      else if (nw.held) held.push(up);
+      else if (nw.to > nw.from) ready.push(up);
     }),
   );
   if (ready.length) flags.push({ pri: 4, text: `${ready.length} lift${ready.length === 1 ? " is" : "s are"} ready for more weight. See Strength.` });
+  if (deload.length) flags.push({ pri: 4, text: `${deload.length} lift${deload.length === 1 ? " is" : "s are"} due a deload. See Strength.` });
   return {
     flags,
     anyLogged: days.some((k) => store.liftSets(k).length > 0),
     rows,
     ready,
     held,
+    deload,
     records: store.recentRecords(t, 30).reverse().slice(0, 8),
   };
 }

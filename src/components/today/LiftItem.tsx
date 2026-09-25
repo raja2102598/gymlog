@@ -15,6 +15,7 @@ import {
   minSets,
   performed,
   prTitle,
+  progWords,
   restSecFor,
   setsComplete,
   setsOf,
@@ -288,18 +289,15 @@ function LastHint({ last, cur }: { last: LastDone | null; cur: number | null }) 
   );
 }
 
-/** The next-weight hint: go up, or hold for the knee. */
+/** The next-weight hint, by the lift's progression rule: go up, work at a percentage, deload, or hold for the knee. */
 export function ProgHint({ next }: { next: NextWeight | null }) {
   if (!next) return null;
+  const w = progWords(next);
   return (
-    <div className={cx("prog callout", next.held ? "hold warn" : "good")}>
-      {next.held ? (
-        `Hold ${next.from} kg: your knee was sore after ${dayMonth(next.day)}.`
-      ) : (
-        <>
-          Go up to <b>{next.to}&nbsp;kg</b>: every set hit {next.top} reps last time.
-        </>
-      )}
+    <div className={cx("prog callout", next.held || next.rule === "deload" ? "hold warn" : "good")} data-rule={next.held ? "hold" : next.rule}>
+      {w.lead}
+      {w.kg ? <b>{w.kg}&nbsp;kg</b> : null}
+      {w.why}
     </div>
   );
 }

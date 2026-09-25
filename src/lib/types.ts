@@ -164,6 +164,16 @@ export interface PlanExercise {
    *  lib/plan.ts), shown on Today as one card with their sets taken in rounds. Never on a day's first lift, and
    *  left out rather than false, as `rest` is. */
   superset?: boolean;
+  /** How its weight goes up: unset for double progression (every set at the top of the rep range, then add the
+   *  step), "linear" (add the step each session every set reaches the bottom of it), or "percent" (`pct` percent of
+   *  a stored 1RM, `oneRm` kg). Each left out until set, as `rest` is. */
+  prog?: "linear" | "percent";
+  oneRm?: string;
+  pct?: string;
+  /** A simple deload, with any rule: after `deloadAfter` sessions in a row short of the rep range, take
+   *  `deloadPct` percent off (10 when empty). Off while `deloadAfter` is empty. */
+  deloadAfter?: string;
+  deloadPct?: string;
 }
 
 export interface PlanDay {

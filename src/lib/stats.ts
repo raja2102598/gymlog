@@ -130,22 +130,86 @@ export function repRange(s: string | null | undefined): [number, number] | null 
   return lo > 0 && hi >= lo ? [lo, hi] : null;
 }
 
+/** How a lift's weight goes up (PlanExercise.prog): double progression, the default; linear; or a percentage of a
+ *  stored 1RM. A deload can follow any of them. */
+export type ProgRule = "double" | "linear" | "percent";
+
+/** The next weight for a lift, and the rule that set it, so the hint can say why. */
 export interface NextStep {
-  from: number;
+  rule: ProgRule | "deload";
+  /** Last session's weight, or null when there's none (a percentage of a 1RM needs none). */
+  from: number | null;
   to: number;
+  /** Reps: the top of the range every set hit (double), the bottom of it (linear, and what a deload fell short of). */
   top: number;
+  /** A percentage of a 1RM: the percentage, and the 1RM. */
+  pct?: number;
+  oneRm?: number;
+  /** A deload: sessions in a row that fell short, and the percentage taken off. */
+  fails?: number;
+  off?: number;
 }
+
+type Straight = { reps: number; kg: number };
+// Straight sets with reps and a weight: the ones a rule reads.
+const straight = (sets: SetLog[] | undefined) => (sets || []).filter((s) => s && isStraightSet(s) && s.reps != null && s.kg != null && s.kg >= 0) as Straight[];
+const add = (kg: number, step: number) => Math.round((kg + step) * 100) / 100;
 
 // Double progression: when every working set last time reached the top of the rep range at one
 // weight, it's time to add `step` kg.
 export function readyToAdd(sets: SetLog[] | undefined, reps: string, minSets: number, step: number): NextStep | null {
   const range = repRange(reps);
   if (!range || !(step > 0)) return null;
-  const work = (sets || []).filter((s) => s && isStraightSet(s) && s.reps != null && s.kg != null && s.kg >= 0) as { reps: number; kg: number }[];
+  const work = straight(sets);
   if (!work.length || work.length < minSets) return null;
   const kg = work[0].kg;
   if (!work.every((s) => s.kg === kg && s.reps >= range[1])) return null;
-  return { from: kg, to: Math.round((kg + step) * 100) / 100, top: range[1] };
+  return { rule: "double", from: kg, to: add(kg, step), top: range[1] };
+}
+
+// Linear progression: add `step` kg every session that every working set reached the bottom of the rep range
+// (the 5 of a 5 × 5) at one weight.
+export function linearStep(sets: SetLog[] | undefined, reps: string, minSets: number, step: number): NextStep | null {
+  const range = repRange(reps);
+  if (!range || !(step > 0)) return null;
+  const work = straight(sets);
+  if (!work.length || work.length < minSets) return null;
+  const kg = work[0].kg;
+  if (!work.every((s) => s.kg === kg && s.reps >= range[0])) return null;
+  return { rule: "linear", from: kg, to: add(kg, step), top: range[0] };
+}
+
+// A percentage of a 1RM, to the nearest `step` (2.5 kg when there's none).
+export function percentOf(oneRm: number, pct: number, step: number): number {
+  const s = step > 0 ? step : 2.5;
+  return Math.round(Math.round((oneRm * pct) / 100 / s) * s * 100) / 100;
+}
+
+// Whether a session fell short of what it was asked: fewer working sets than planned, or one under the bottom
+// of the rep range. Null when there's nothing to judge: no rep range, or nothing logged.
+export function fellShort(sets: SetLog[] | undefined, reps: string, minSets: number): boolean | null {
+  const range = repRange(reps), work = (sets || []).filter((s) => s && isStraightSet(s) && s.reps != null) as { reps: number }[];
+  if (!range || !work.length) return null;
+  return work.length < minSets || work.some((s) => s.reps < range[0]);
+}
+
+export interface Session {
+  sets: SetLog[];
+  reps: string;
+  minSets: number;
+}
+
+// A simple deload: after `after` sessions in a row that fell short (the latest first in `sessions`), take `off`
+// percent off the latest one's heaviest working set, down to a whole `step`.
+export function deloadStep(sessions: Session[], after: number, off: number, step: number): NextStep | null {
+  if (!(after >= 1) || !(off > 0 && off < 100) || sessions.length < after) return null;
+  let fails = 0;
+  while (fails < sessions.length && fellShort(sessions[fails].sets, sessions[fails].reps, sessions[fails].minSets) === true) fails++;
+  if (fails < after) return null;
+  const work = straight(sessions[0].sets), range = repRange(sessions[0].reps);
+  if (!work.length || !range) return null;
+  const kg = Math.max(...work.map((s) => s.kg)), s = step > 0 ? step : 2.5;
+  return { rule: "deload", from: kg, to: Math.round(Math.floor((kg * (1 - off / 100)) / s + 1e-9) * s * 100) / 100, top: range[0], fails, off };
 }
 
 /* ---------- plates ---------- */
