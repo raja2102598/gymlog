@@ -1,5 +1,6 @@
 "use client";
 import { Fragment, type FormEvent } from "react";
+import { useLibrary } from "@/components/library/LibraryContext";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
@@ -49,6 +50,7 @@ function LiftPill({ p, e }: { p: PlanDay; e: DayLog }) {
  *  lifts, cardio finisher, steps, weight, note and other measurements. Keyed by the day, so a new day starts fresh. */
 export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOpen, onKneeChange, onKneeScored, focusNext, onOpenHealth, onOpenLift }: SessionProps) {
   const store = useGym();
+  const library = useLibrary();
   const plan = store.plan, p = store.planFor(sel), e = store.entry(sel);
   // The day's lifts in cards, in the order done: a superset is one card. Each lift keeps its position in the day's
   // list, which its element ids use.
@@ -270,6 +272,24 @@ export function SessionCard({ sel, menu, setMenu, warmOpen, onToggleWarm, kneeOp
           </label>
           <button className="ghost" type="submit">
             Add
+          </button>
+          <button
+            className="ghost"
+            type="button"
+            id="addLiftLib"
+            onClick={() =>
+              library({
+                title: `Add to ${free.name.trim() || "this workout"}`,
+                many: true,
+                have: free.lifts.flatMap((n) => [n, store.exerciseOf(n)?.name ?? n]),
+                onPick: (xs) => {
+                  store.addFreeLifts(sel, xs.map((x) => x.name));
+                  focusNext("#addLift");
+                },
+              })
+            }
+          >
+            Library…
           </button>
           <datalist id="addLiftList">
             {store.liftSuggestions(free.lifts).map((n) => (

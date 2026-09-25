@@ -3,9 +3,11 @@ import { CaretDown } from "@phosphor-icons/react";
 import { useState, type InputHTMLAttributes } from "react";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
+import { useLibrary } from "@/components/library/LibraryContext";
 import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
+import { equipText, muscleText, type Exercise } from "@/lib/library";
 import { planBlocks } from "@/lib/plan";
 import type { ProgRule } from "@/lib/stats";
 import type { Plan, PlanExercise } from "@/lib/types";
@@ -41,6 +43,7 @@ function joined(x: PlanExercise, on: boolean): PlanExercise {
 export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   const store = useGym();
   const focusNext = useFocusNext();
+  const library = useLibrary();
   const [templates, setTemplates] = useState(false);
   const [renameMsg, setRenameMsg] = useState<{ text: string; warn?: boolean } | null>(null);
   // Cleared on its own when another day opens, rather than lingering under a lift it no longer names.
@@ -51,9 +54,12 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   }
   const plan = store.plan, d = plan.days[editDay], last = d.exercises.length - 1, wd = DOW[editDay];
   const edit = (fn: (p: Plan) => void, shape = false) => store.editPlan(fn, shape);
+  // A lift given a name that is a library lift's or one of your own is that lift: its link to another goes.
   const setLift = (j: number, f: LiftText, v: string) =>
     edit((p) => {
-      p.days[editDay].exercises[j][f] = v;
+      const x = p.days[editDay].exercises[j];
+      x[f] = v;
+      if (f === "name" && store.namesALift(v)) delete x.lib;
     });
   // Up and Down keep a superset whole: within one, a lift trades places with its neighbour and the superset stays
   // as it was; otherwise the lift, or its whole superset, moves past the next lift or superset.
@@ -94,6 +100,39 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
     }, true);
     focusNext(`#pe_x${j}_name`);
   };
+  // Lifts from the exercise library, after the day's others; the first one's name takes focus. A lift on the day
+  // shows as added under its own name and the library's.
+  const addFromLibrary = () =>
+    library({
+      title: `Add lifts to ${d.name}`,
+      many: true,
+      have: d.exercises.flatMap((x) => [x.name, store.exerciseOf(x.name, x)?.name ?? x.name]),
+      onPick: (xs) => {
+        const j = d.exercises.length;
+        store.addLibraryLifts(editDay, xs);
+        focusNext(`#pe_x${j}_name`);
+      },
+    });
+  // A plan lift's library lift: picked (or one of your own made) for it. A lift with no name yet takes the pick's.
+  // One of your own opens on its form (`own`), for its muscles.
+  const findInLibrary = (name: string, j?: number, own = false) =>
+    library({
+      title: name ? `${name} in the library` : "Pick from the library",
+      many: false,
+      text: name,
+      name: name || undefined,
+      edit: own && !!name,
+      onPick: ([x]: Exercise[]) => {
+        if (name) store.linkLift(name, x);
+        else if (j != null)
+          edit((p) => {
+            const y = p.days[editDay].exercises[j];
+            y.name = x.name;
+            if (!x.custom) y.lib = x.id;
+          }, true);
+        if (j != null) focusNext(`[data-plib="${j}"]`);
+      },
+    });
   // Offered when a name that has history is changed and the field is left, never on every keystroke: carries
   // every logged day (and any swap) over to the new name, and every other plan day still using the old one,
   // since a lift kept on two days (Seated Row on Pull and Upper) shares one history. Declining, or a name with
@@ -116,6 +155,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
     setRenameMsg({ warn: !r.ok, text: r.msg });
   };
 
+  const questions = store.libraryQuestions();
   // Each superset's letter (A, B, …) and each lift's place in it (A1, A2), for the lifts in one.
   const tags: string[] = [];
   planBlocks(d.exercises.map((x, j) => ({ ...x, j })))
@@ -181,6 +221,38 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
             </button>
           ))}
         </div>
+        {questions.length ? (
+          <div className="pe-match" id="peMatch" role="group" aria-labelledby="peMatchH">
+            <h3 className="pe-h" id="peMatchH">
+              Lifts the library may know
+            </h3>
+            <p className="note">Say once whether each is the same lift, so its muscles and equipment are known. It keeps its name and its history either way.</p>
+            <ul>
+              {questions.slice(0, 4).map((q) => (
+                <li key={q.name} data-match={q.name}>
+                  <p>
+                    <b>{q.name}</b>: the same as <b>{q.like[0].name}</b>?{" "}
+                    <span className="sub">
+                      {equipText(q.like[0])} · {muscleText(q.like[0])}
+                    </span>
+                  </p>
+                  <div className="pe-btns">
+                    <button className="ghost tiny" data-same={q.name} onClick={() => store.linkLift(q.name, q.like[0])}>
+                      Same lift
+                    </button>
+                    <button className="ghost tiny" data-another={q.name} onClick={() => findInLibrary(q.name)}>
+                      Another one…
+                    </button>
+                    <button className="ghost tiny" data-mine={q.name} onClick={() => store.keepOwn(q.name)}>
+                      It’s my own
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {questions.length > 4 ? <p className="note">{questions.length - 4} more after these.</p> : null}
+          </div>
+        ) : null}
         <div id="planDay" key={`${editDay}:${store.planShape}`}>
           <div className="pe-grid">
             <label className="field" htmlFor="pe_name">
@@ -230,6 +302,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                   {liftField(x, j, "sets", "Sets", { placeholder: "3" })}
                   {liftField(x, j, "reps", "Reps", { placeholder: "8-10" })}
                 </div>
+                <LibLine x={x} j={j} ex={store.exerciseOf(x.name, x)} onFind={(own) => findInLibrary(x.name.trim(), j, own)} />
                 <label className="field" htmlFor={`pe_x${j}_cue`}>
                   <span>How to do it</span>
                   <textarea id={`pe_x${j}_cue`} data-px={`${j}:cue`} rows={2} defaultValue={x.cue} autoComplete="off" onChange={(ev) => setLift(j, "cue", ev.target.value)} />
@@ -309,9 +382,14 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
               </li>
             ))}
           </ol>
-          <button className="ghost" id="pe_add" onClick={add}>
-            + Add lift
-          </button>
+          <div className="pe-btns">
+            <button className="ghost" id="pe_add" onClick={add}>
+              + Add lift
+            </button>
+            <button className="ghost" id="pe_lib" onClick={addFromLibrary}>
+              + From the library
+            </button>
+          </div>
           <h3 className="pe-h">Cardio finisher</h3>
           <div className="pe-stack">
             <label className="field" htmlFor="pe_cname">
@@ -488,5 +566,27 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
         />
       </section>
     </>
+  );
+}
+
+/** What the exercise library knows of a plan lift: its equipment and muscles, and a way to pick another, or to
+ *  give one of your own its muscles (`onFind(true)`). */
+function LibLine({ x, j, ex, onFind }: { x: PlanExercise; j: number; ex: Exercise | null; onFind: (own: boolean) => void }) {
+  const what = !ex
+    ? "Not in the library yet"
+    : ex.custom
+      ? ex.primary.length
+        ? `Your own lift · ${equipText(ex)} · ${muscleText(ex)}`
+        : "Your own lift · no muscles given yet"
+      : `${ex.name.toLowerCase() === x.name.trim().toLowerCase() ? "" : `${ex.name} · `}${equipText(ex)} · ${muscleText(ex)}`;
+  return (
+    <div className="pe-lib">
+      <span className="sub" id={`pe_x${j}_lib`}>
+        {what}
+      </span>
+      <button className="ghost tiny" data-plib={j} aria-describedby={`pe_x${j}_lib`} onClick={() => onFind(!!ex?.custom)}>
+        {ex ? (ex.custom ? "Muscles…" : "Change…") : "Find in library…"}
+      </button>
+    </div>
   );
 }

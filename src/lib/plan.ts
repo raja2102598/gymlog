@@ -1,6 +1,7 @@
 import planJson from "@/data/plan.json";
 import { DOW } from "./dates";
-import type { Plan } from "./types";
+import { EQUIPMENT, isEquip, isMuscle, MUSCLES, type Equip, type Muscle } from "./library";
+import type { CustomExercise, Plan } from "./types";
 
 type Loose = Record<string, unknown> | null | undefined;
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -55,6 +56,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
             ...(x?.superset === true ? { superset: true } : {}),
             ...(x?.prog === "linear" || x?.prog === "percent" ? { prog: x.prog as "linear" | "percent" } : {}),
             ...Object.fromEntries((["oneRm", "pct", "deloadAfter", "deloadPct"] as const).filter((k) => x?.[k] != null).map((k) => [k, str(x?.[k])])),
+            ...(typeof x?.lib === "string" && x.lib ? { lib: x.lib } : {}),
           }))
           .filter((x) => x.name)
           // The first lift has none before it to be a superset with.
@@ -62,7 +64,25 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
         cardio: { name: str(cardio.name), detail: str(cardio.detail) },
       };
     }),
+    ...(Array.isArray(q.custom) ? { custom: normalizeCustom(q.custom) } : d?.custom ? { custom: normalizeCustom(d.custom) } : {}),
   };
+}
+
+// In the vocabulary's own order, each once: what a hand-edited or older plan says, sanitized.
+const inOrder = <T extends string>(all: Record<T, string>, ok: (v: unknown) => v is T, v: unknown): T[] =>
+  Array.isArray(v) ? (Object.keys(all) as T[]).filter((k) => v.some((e) => ok(e) && e === k)) : [];
+
+/** Lifts of your own: named, each name once (whatever its case), with known equipment and muscles only, and a main
+ *  muscle never listed again as a secondary one. */
+export function normalizeCustom(v: unknown): CustomExercise[] {
+  const seen = new Set<string>();
+  return (Array.isArray(v) ? (v as Loose[]) : []).flatMap((c) => {
+    const name = str(c?.name).trim();
+    if (!name || seen.has(name.toLowerCase())) return [];
+    seen.add(name.toLowerCase());
+    const primary = inOrder<Muscle>(MUSCLES, isMuscle, c?.primary);
+    return [{ name, equip: inOrder<Equip>(EQUIPMENT, isEquip, c?.equip), primary, secondary: inOrder<Muscle>(MUSCLES, isMuscle, c?.secondary).filter((m) => !primary.includes(m)) }];
+  });
 }
 
 /** A day's lifts in blocks: lifts joined to the one before them (PlanExercise.superset) make one block, a

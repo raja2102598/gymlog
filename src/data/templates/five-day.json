@@ -35,6 +35,7 @@
       "exercises": [
         {
           "name": "Incline Machine Press",
+          "lib": "Leverage_Incline_Chest_Press",
           "sets": "3-4",
           "reps": "8-10",
           "cue": "Lower slowly to upper chest, elbows slightly tucked, smooth press.",
@@ -44,6 +45,7 @@
         },
         {
           "name": "Chest Press Machine",
+          "lib": "Leverage_Chest_Press",
           "sets": "3",
           "reps": "10-12",
           "cue": "Shoulders back, grip slightly wide, squeeze chest at the top.",
@@ -53,6 +55,7 @@
         },
         {
           "name": "Machine Shoulder Press",
+          "lib": "Leverage_Shoulder_Press",
           "sets": "3",
           "reps": "8-10",
           "cue": "Lower to chin height, core braced, press with control.",
@@ -62,6 +65,7 @@
         },
         {
           "name": "DB Lateral Raises",
+          "lib": "Side_Lateral_Raise",
           "sets": "3",
           "reps": "12-15",
           "cue": "Lead with elbows, lift to shoulder height, don't swing.",
@@ -71,6 +75,7 @@
         },
         {
           "name": "Cable Triceps Pushdown",
+          "lib": "Triceps_Pushdown",
           "sets": "3",
           "reps": "12-15",
           "cue": "Elbows locked in, extend fully, pause at bottom.",
@@ -80,6 +85,7 @@
         },
         {
           "name": "Overhead Rope Extension",
+          "lib": "Cable_Rope_Overhead_Triceps_Extension",
           "sets": "3",
           "reps": "12-15",
           "cue": "Stretch behind head, extend straight up, keep back still.",
@@ -100,6 +106,7 @@
       "exercises": [
         {
           "name": "Lat Pulldown",
+          "lib": "Wide-Grip_Lat_Pulldown",
           "sets": "3-4",
           "reps": "8-10",
           "cue": "Pull elbows down to ribs, chest tall, no momentum.",
@@ -109,6 +116,7 @@
         },
         {
           "name": "Chest-Supported Row",
+          "lib": "Lying_T-Bar_Row",
           "sets": "3",
           "reps": "8-10",
           "cue": "Pull to lower chest, squeeze shoulder blades, stay supported.",
@@ -118,6 +126,7 @@
         },
         {
           "name": "Seated Row",
+          "lib": "Seated_Cable_Rows",
           "sets": "3",
           "reps": "10-12",
           "cue": "Sit tall, pull handle to belly button, control the return.",
@@ -127,6 +136,7 @@
         },
         {
           "name": "Rear Delt Fly",
+          "lib": "Reverse_Machine_Flyes",
           "sets": "3",
           "reps": "12-15",
           "cue": "Arms wide, feel rear delts, don't shrug.",
@@ -136,6 +146,7 @@
         },
         {
           "name": "Dumbbell Curls",
+          "lib": "Dumbbell_Bicep_Curl",
           "sets": "3",
           "reps": "10-12",
           "cue": "Elbows by your sides, curl slowly, palms up, full squeeze.",
@@ -145,6 +156,7 @@
         },
         {
           "name": "Cable Curls",
+          "lib": "Standing_Biceps_Cable_Curl",
           "sets": "2-3",
           "reps": "10-12",
           "cue": "Face the stack, elbows pinned, full stretch at bottom, squeeze at top.",
@@ -183,6 +195,7 @@
         },
         {
           "name": "Leg Extension",
+          "lib": "Leg_Extensions",
           "sets": "3",
           "reps": "12-15",
           "cue": "Light weight, slow, pain-free range only. Skip it if it hurts the knee.",
@@ -192,6 +205,7 @@
         },
         {
           "name": "Hamstring Curl",
+          "lib": "Lying_Leg_Curls",
           "sets": "3",
           "reps": "10-12",
           "cue": "Hips down, curl smoothly, squeeze at bottom.",
@@ -201,6 +215,7 @@
         },
         {
           "name": "Calf Raise",
+          "lib": "Standing_Calf_Raises",
           "sets": "3-4",
           "reps": "12-15",
           "cue": "Full stretch, push through big toe, slow descent.",
@@ -231,6 +246,7 @@
       "exercises": [
         {
           "name": "Flat DB Press",
+          "lib": "Dumbbell_Bench_Press",
           "sets": "3-4",
           "reps": "6-8",
           "cue": "Lower smoothly, elbows tucked, press evenly.",
@@ -240,6 +256,7 @@
         },
         {
           "name": "Cable Chest Fly",
+          "lib": "Cable_Crossover",
           "sets": "3",
           "reps": "12-15",
           "cue": "Slight elbow bend, hands meet at chest height.",
@@ -249,6 +266,7 @@
         },
         {
           "name": "Lat Pulldown (Neutral Grip)",
+          "lib": "V-Bar_Pulldown",
           "sets": "3",
           "reps": "10-12",
           "cue": "Pull elbows down and forward, chest stays up.",
@@ -258,6 +276,7 @@
         },
         {
           "name": "Seated Row",
+          "lib": "Seated_Cable_Rows",
           "sets": "3",
           "reps": "10-12",
           "cue": "Pull to stomach, squeeze mid-back, slow return.",
@@ -267,6 +286,7 @@
         },
         {
           "name": "Cable Bicep Curls",
+          "lib": "Standing_Biceps_Cable_Curl",
           "sets": "3",
           "reps": "12-15",
           "cue": "Elbows still, curl smoothly, full squeeze.",
@@ -276,6 +296,7 @@
         },
         {
           "name": "Cable Rope Pushdown",
+          "lib": "Triceps_Pushdown_-_Rope_Attachment",
           "sets": "3",
           "reps": "12-15",
           "cue": "Elbows pinned, spread the rope at the bottom, slow return.",
@@ -296,6 +317,7 @@
       "exercises": [
         {
           "name": "DB Shoulder Press",
+          "lib": "Dumbbell_Shoulder_Press",
           "sets": "3-4",
           "reps": "6-8",
           "cue": "Lower to chin height, don't lock elbows, stay braced.",
@@ -305,6 +327,7 @@
         },
         {
           "name": "Lateral Raises",
+          "lib": "Side_Lateral_Raise",
           "sets": "3",
           "reps": "12-15",
           "cue": "Lift to shoulder height, soft elbows, slow lower.",
@@ -314,6 +337,7 @@
         },
         {
           "name": "Hip Thrust (machine or barbell)",
+          "lib": "Barbell_Hip_Thrust",
           "sets": "3",
           "reps": "8-10",
           "cue": "Upper back on the bench, drive through heels, squeeze glutes at the top, shins vertical.",
@@ -323,6 +347,7 @@
         },
         {
           "name": "Hamstring Curl",
+          "lib": "Lying_Leg_Curls",
           "sets": "3",
           "reps": "10-12",
           "cue": "Curl smoothly, squeeze hard, control the stretch.",
@@ -332,6 +357,7 @@
         },
         {
           "name": "Leg Extension",
+          "lib": "Leg_Extensions",
           "sets": "3",
           "reps": "12-15",
           "cue": "Light weight, slow, pain-free range only. Skip it if it hurts the knee.",

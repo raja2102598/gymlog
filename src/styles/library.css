@@ -1,0 +1,36 @@
+/* The exercise library: a dialog over the screen, full screen on a phone. */
+.lib{padding:0;border:0;border-radius:var(--r-card);background:var(--surface);color:var(--ink);width:min(640px,calc(100vw - 24px));height:min(88dvh,860px);max-width:none;max-height:none;box-shadow:var(--shadow)}
+.lib::backdrop{background:rgb(0 0 0/.45)}
+@media (max-width:560px){.lib{width:100vw;height:100dvh;border-radius:0;margin:0}}
+.lib-in{display:flex;flex-direction:column;height:100%;min-height:0}
+.lib-head{display:flex;align-items:center;gap:8px;padding:14px 16px 6px;padding-top:max(14px,env(safe-area-inset-top))}
+.lib-head h2{flex:1;min-width:0;overflow-wrap:anywhere}
+.lib-tools{display:grid;gap:8px;padding:0 16px 8px}
+.lib-tools .field input{background:var(--sunken)}
+.lib-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.lib-tools select.ghost{background-color:var(--sunken);min-width:0;padding-right:34px}
+.lib-filters select.ghost{width:100%}
+.lib-count{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lib-tools .sub{font-size:var(--t-sm);margin:0}
+.lib-list{list-style:none;margin:0;padding:0 8px;overflow:auto;flex:1;min-height:0;overscroll-behavior:contain;border-top:1px solid var(--line)}
+.lib-list li{border-bottom:1px solid var(--line)}
+.lib-list li:last-child{border-bottom:0}
+.lib-row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px;border:0;border-radius:var(--r-ctl);background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.lib-row:hover:not(:disabled){background:var(--sunken)}
+.lib-row.on{background:var(--good-soft)}
+.lib-row:disabled,.lib-row.had{cursor:default;opacity:.6}
+.lib-row input{flex:none;width:20px;height:20px;accent-color:var(--good)}
+.lib-t{display:grid;gap:2px;min-width:0}
+.lib-n{font-weight:600;overflow-wrap:anywhere}
+.lib-t .sub{font-size:var(--t-sm);margin:0}
+.lib-tag{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:99px;background:var(--chip);color:var(--ink);font-size:var(--t-xs);font-weight:600;vertical-align:1px}
+.lib-more{margin:8px}
+.lib-list .empty{padding:16px 8px}
+.lib-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;padding:10px 16px;padding-bottom:max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.lib-body{display:grid;align-content:start;gap:12px;padding:8px 16px 16px;overflow:auto;flex:1;min-height:0}
+.lib-body select.ghost{width:100%;min-height:48px;background-color:var(--sunken)}
+.lib-sec{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.lib-sec legend{font-size:var(--t-sm);font-weight:500;color:var(--muted);margin-bottom:6px;padding:0}
+.lib-chip{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:6px 12px;border-radius:99px;background:var(--sunken);font-size:14px;cursor:pointer}
+.lib-chip input{width:18px;height:18px;accent-color:var(--good)}
+.lib .warn{color:var(--ink);font-size:var(--t-sm);margin:0;padding:10px 12px;border-radius:var(--r-ctl);background:var(--warn-soft);box-shadow:inset 3px 0 0 var(--warn)}

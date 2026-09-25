@@ -4,17 +4,19 @@
  * Everything is kept on the phone first (localStorage) and saved to Supabase in the background: `pending`
  * holds days not yet saved, and a failed save retries every 15 seconds. */
 import { createClient, type Session, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { TEMPLATES } from "@/data/templates";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
 import { addDays, dayMonth, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { createDemoSupabase } from "./demoSupabase";
-import { DEFAULT_PLAN, normalizePlan, orderBlocks, planBlocks } from "./plan";
+import { CATALOGUE, closeMatches, customLift, exerciseFor, libraryLift, libraryNamed, type Exercise } from "./library";
+import { DEFAULT_PLAN, normalizeCustom, normalizePlan, orderBlocks, planBlocks } from "./plan";
 import { sampleDays } from "./sampleData";
 import { canon } from "./health";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
-import { EXTRA_FIELDS, MEASURE_FIELDS, type DayKey, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -186,6 +188,11 @@ const SAVES_AT_ONCE = 4;
 const writtenAt = (rows: unknown) => (rows as { updated_at?: string }[] | null)?.[0]?.updated_at ?? null;
 /** What the plan editor and Settings say while the plan waits for you to choose a version. */
 const PLAN_HELD = "Not synced yet: the plan was changed on another device too.";
+/** The library lift picked by hand for each name in the plans the app comes with (the default plan and the
+ *  templates), by name in lower case: asked about first when a plan saved before the library uses the name. */
+const SHIPPED = new Map<string, string>();
+for (const p of [DEFAULT_PLAN, ...TEMPLATES.map((t) => t.plan)])
+  for (const d of p.days) for (const x of d.exercises) if (x.lib && !SHIPPED.has(x.name.toLowerCase())) SHIPPED.set(x.name.toLowerCase(), x.lib);
 /** The account a demo shows: not a real one, so nothing here is ever sent anywhere (GymStore.startDemo). */
 const DEMO_USER: User = { id: "00000000-0000-0000-0000-000000000000", aud: "authenticated", role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "" };
 
@@ -696,16 +703,21 @@ export class GymStore {
   }
   /** Adds a lift to day k's free-form workout, by name: false when there's no name, or it's there already. */
   addFreeLift(k: DayKey, name: string): boolean {
-    const v = name.trim(), f = freeOf(this.logs[k]);
-    if (!v || !f || f.lifts.includes(v)) return false;
+    return this.addFreeLifts(k, [name]) > 0;
+  }
+  /** Adds lifts to day k's free-form workout, by name, in one save; says how many were new. */
+  addFreeLifts(k: DayKey, names: string[]): number {
+    const f = freeOf(this.logs[k]);
+    const add = [...new Set(names.map((n) => n.trim()).filter((v) => v && !f?.lifts.includes(v)))];
+    if (!f || !add.length) return 0;
     this.editDay(
       k,
       (n) => {
-        n.free?.lifts.push(v);
+        n.free?.lifts.push(...add);
       },
       true,
     );
-    return true;
+    return add.length;
   }
   /** Takes a lift out of day k's free-form workout, with anything logged for it. */
   removeFreeLift(k: DayKey, name: string) {
@@ -729,7 +741,8 @@ export class GymStore {
       true,
     );
   }
-  /** Names to offer when adding a lift: the plan's lifts, anything swapped in, and every lift logged, less `except`. */
+  /** Names to offer when adding a lift: the plan's lifts, anything swapped in, every lift logged, and the exercise
+   *  library's, less `except`. */
   liftSuggestions(except: string[] = []): string[] {
     const s = new Set<string>();
     for (const d of this.plan.days) for (const x of d.exercises) s.add(x.name);
@@ -738,8 +751,87 @@ export class GymStore {
         s.add(name);
         if (r?.swap) s.add(r.swap);
       }
+    for (const x of this.library()) s.add(x.name);
     for (const x of except) s.delete(x);
     return [...s].sort((a, b) => a.localeCompare(b));
+  }
+
+  /* ---------- the exercise library ---------- */
+  /** Every lift the library offers: your own, then the catalogue's. */
+  library(): Exercise[] {
+    return [...(this.plan.custom ?? []).map(customLift), ...CATALOGUE];
+  }
+  /** Whether a name is a library lift's or one of your own exactly: then it says what the lift is, and a plan lift
+   *  given it keeps no link to another. */
+  namesALift(name: string): boolean {
+    const key = name.trim().toLowerCase();
+    return !!libraryNamed(key) || (this.plan.custom ?? []).some((c) => c.name.toLowerCase() === key);
+  }
+  /** A lift's exercise, when the library or your own lifts know it: through the plan's lift of that name when `x`
+   *  isn't given. Null for an untagged lift. */
+  exerciseOf(name: string, x?: Pick<PlanExercise, "lib"> | null): Exercise | null {
+    return exerciseFor(name, this.plan.custom ?? [], x === undefined ? this.planLift(name) : x);
+  }
+  /** Saves a lift of your own, new or (`again`) changed, and says what's wrong, if anything. Its name stays its
+   *  name: a plan lift of that name takes its muscles and equipment, since your own lifts are found by name. */
+  saveCustom(c: CustomExercise, again = false): string {
+    const name = c.name.trim(), key = name.toLowerCase(), lib = libraryNamed(name);
+    if (!name) return "Give it a name.";
+    if (lib) return `The library has ${lib.name}: pick it from the list instead.`;
+    if (!again && (this.plan.custom ?? []).some((x) => x.name.toLowerCase() === key)) return `You have a lift called ${name} already.`;
+    this.editPlan((p) => {
+      p.custom = normalizeCustom([...(p.custom ?? []).filter((x) => x.name.toLowerCase() !== key), { ...c, name }]);
+      // Your own lift is what a plan lift of that name is now, whatever library lift it pointed at.
+      for (const d of p.days) for (const x of d.exercises) if (x.name.trim().toLowerCase() === key) delete x.lib;
+    });
+    return "";
+  }
+  /** Adds library lifts to plan day `day`, after its others, each with the usual 3 × 10-12 to start from; one
+   *  already on the day, by name or pointed at, isn't added again. */
+  addLibraryLifts(day: number, xs: Exercise[]) {
+    this.editPlan((p) => {
+      const ex = p.days[day].exercises;
+      for (const x of xs)
+        if (!ex.some((y) => y.name === x.name || (!x.custom && y.lib === x.id))) ex.push({ name: x.name, sets: "3", reps: "10-12", cue: "", flag: "", step: "", knee: false, rest: "", ...(x.custom ? {} : { lib: x.id }) });
+    }, true);
+  }
+  /** Points every plan lift called `name` at library lift `x`. Your own lift is found by its name, so one of
+   *  another name lends this one its muscles and equipment, as a lift of your own. */
+  linkLift(name: string, x: Exercise) {
+    if (x.custom && x.name.toLowerCase() !== name.trim().toLowerCase()) {
+      this.saveCustom({ name, equip: x.equip, primary: x.primary, secondary: x.secondary }, true);
+      return;
+    }
+    this.editPlan((p) => {
+      for (const d of p.days)
+        for (const y of d.exercises)
+          if (y.name === name) {
+            if (x.custom) delete y.lib;
+            else y.lib = x.id;
+          }
+    });
+  }
+  /** The plan's lifts to ask about once: each not pointing at the library, not named exactly as one of its lifts
+   *  and not one of your own, with the library lifts close to its name, best first: for a name from the plans the
+   *  app comes with, the one picked for it by hand. Answered with linkLift or keepOwn. */
+  libraryQuestions(): { name: string; like: Exercise[] }[] {
+    const own = new Set((this.plan.custom ?? []).map((c) => c.name.toLowerCase())), all = this.plan.days.flatMap((d) => d.exercises);
+    const names = [...new Set(all.map((x) => x.name.trim()).filter(Boolean))];
+    return names
+      .filter((name) => !own.has(name.toLowerCase()) && !all.some((x) => x.name.trim() === name && x.lib))
+      .map((name) => {
+        const known = libraryLift(SHIPPED.get(name.toLowerCase())), like = closeMatches(name);
+        return { name, like: known ? [known, ...like.filter((x) => x !== known)].slice(0, 3) : like };
+      })
+      .filter((q) => q.like.length);
+  }
+  /** A plan lift that isn't the library's, kept as one of your own (untagged until you give it muscles). */
+  keepOwn(name: string) {
+    const v = name.trim();
+    if (!v || (this.plan.custom ?? []).some((c) => c.name.toLowerCase() === v.toLowerCase())) return;
+    this.editPlan((p) => {
+      p.custom = normalizeCustom([...(p.custom ?? []), { name: v, equip: [], primary: [], secondary: [] }]);
+    });
   }
 
   // Most recent earlier day this exercise was actually done (as planned or as a swap).
@@ -839,6 +931,9 @@ export class GymStore {
     const s = new Set<string>();
     for (const d of this.plan.days) for (const x of d.exercises) s.add(x.name);
     for (const k of this.days()) for (const r of Object.values(this.logs[k].exercises || {})) if (r?.swap) s.add(r.swap);
+    // The library's lifts for the same main muscles, when the lift's are known; all of them otherwise.
+    const main = this.exerciseOf(exclude)?.primary ?? [];
+    for (const x of this.library()) if (!main.length || x.primary.some((m) => main.includes(m))) s.add(x.name);
     s.delete(exclude);
     return [...s].sort((a, b) => a.localeCompare(b));
   }
@@ -871,8 +966,14 @@ export class GymStore {
     // not logged in) has no history of it, but keeps its place.
     const named = (k: DayKey) => !!this.logs[k].order?.includes(from) || !!freeOf(this.logs[k])?.lifts.includes(from);
     const days = this.days().filter((k) => logged(k) || named(k)), carried = days.filter(logged).length;
+    const known = this.namesALift(to);
     this.editPlan((p) => {
-      for (const d of p.days) for (const x of d.exercises) if (x.name === from) x.name = to;
+      for (const d of p.days)
+        for (const x of d.exercises)
+          if (x.name === from) {
+            x.name = to;
+            if (known) delete x.lib;
+          }
     });
     for (const k of days) {
       const n = this.clone(k);
@@ -1300,7 +1401,9 @@ export class GymStore {
     this.changed();
   }
   resetPlan() {
-    this.plan = copy(DEFAULT_PLAN);
+    // Your own lifts stay: they name lifts in your history, whatever the plan.
+    const custom = this.plan.custom;
+    this.plan = { ...copy(DEFAULT_PLAN), ...(custom ? { custom } : {}) };
     this.planChanged(true);
   }
   /** Starts the plan over from a template (src/data/templates): its sessions, lifts, warm-ups and tempo. The goals

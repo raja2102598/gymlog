@@ -1,6 +1,7 @@
 "use client";
 import { CaretDown, DotsThree, Microphone } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
+import { useLibrary } from "@/components/library/LibraryContext";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
@@ -329,6 +330,7 @@ export function LiftHead({
   onRemove?: () => void;
 }) {
   const store = useGym();
+  const library = useLibrary();
   const { r, i, name, did, x, target, last } = m;
 
   const swap = (ev: FormEvent<HTMLFormElement>) => {
@@ -464,6 +466,27 @@ export function LiftHead({
           </label>
           <button className="ghost tiny" type="submit">
             Swap
+          </button>
+          <button
+            className="ghost tiny"
+            type="button"
+            data-swaplib={i}
+            onClick={() =>
+              library({
+                title: `Swap ${did} for`,
+                many: false,
+                have: [name, store.exerciseOf(name, x)?.name ?? name],
+                muscle: store.exerciseOf(name, x)?.primary[0],
+                onPick: ([y]) => {
+                  setMenu(null);
+                  m.edit((r) => {
+                    r.swap = y.name;
+                  }, true);
+                },
+              })
+            }
+          >
+            Library…
           </button>
           <button className="ghost tiny" type="button" data-actsclose="" onClick={() => setMenu(null)}>
             Cancel

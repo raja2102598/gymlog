@@ -4,6 +4,8 @@
  * data is one row per (user, day) in table `health_days`, shaped like HealthDay, kept apart from what you
  * type so neither overwrites the other. */
 
+import type { Equip, Muscle } from "./library";
+
 /** "YYYY-MM-DD" in the phone's local time. */
 export type DayKey = string;
 
@@ -174,6 +176,18 @@ export interface PlanExercise {
    *  `deloadPct` percent off (10 when empty). Off while `deloadAfter` is empty. */
   deloadAfter?: string;
   deloadPct?: string;
+  /** The exercise library's lift this is (lib/library.ts), when its name isn't exactly that lift's: its muscles
+   *  and equipment. Left out for a lift of your own, or one named as the library names it. */
+  lib?: string;
+}
+
+/** A lift of your own in the exercise library, kept with the plan: the same fields as a library lift, found by
+ *  its name. One with no muscles is untagged. */
+export interface CustomExercise {
+  name: string;
+  equip: Equip[];
+  primary: Muscle[];
+  secondary: Muscle[];
 }
 
 export interface PlanDay {
@@ -204,4 +218,6 @@ export interface Plan {
   effort: Effort;
   warmups: string[];
   days: PlanDay[];
+  /** Lifts of your own for the exercise library. Left out until there's one, so older plans round-trip. */
+  custom?: CustomExercise[];
 }
