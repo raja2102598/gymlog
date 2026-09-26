@@ -10,4 +10,6 @@
     <string name="widget_description">Today\'s session and lift progress.</string>
     <string name="widget_log_weight">Log weight</string>
     <string name="widget_log_steps">Log steps</string>
+    <!-- The widget's clock while a rest timer runs: "Rest 1:12", counting down. A workout's clock is the time alone. -->
+    <string name="widget_rest_clock">Rest %s</string>
 </resources>

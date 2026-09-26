@@ -12,7 +12,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
  */
 @CapacitorPlugin(name = "GymWidget")
 class WidgetPlugin : Plugin() {
-    /** { date, session, done, planned, restEndsAt, skipped } */
+    /** { date, session, done, planned, restEndsAt, skipped, workoutSince } */
     @PluginMethod
     fun update(call: PluginCall) {
         val date = call.getString("date")
@@ -23,7 +23,7 @@ class WidgetPlugin : Plugin() {
             call.reject("date, session, done and planned are needed")
             return
         }
-        val json = GymWidgetLogic.toJson(date, session, done, planned, call.getString("restEndsAt"), call.getBoolean("skipped", false) == true)
+        val json = GymWidgetLogic.toJson(date, session, done, planned, call.getString("restEndsAt"), call.getBoolean("skipped", false) == true, call.getString("workoutSince"))
         GymWidgetStore.write(context, json)
         GymWidgetProvider.refresh(context)
         call.resolve()

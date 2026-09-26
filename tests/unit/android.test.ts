@@ -76,7 +76,7 @@ describe("home-screen widget", () => {
     s.auth = "signedIn";
     s.setHealthLink({ state: "web", msg: "" }); // any store change tells listeners
     expect(widget.update).toHaveBeenCalledTimes(1);
-    expect(widget.update).toHaveBeenCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, skipped: false });
+    expect(widget.update).toHaveBeenCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, workoutSince: null, skipped: false });
 
     // A change that touches neither today's session nor its lifts: no second write.
     s.setHealthLink({ state: "ok", msg: "Up to date." });
@@ -85,15 +85,15 @@ describe("home-screen widget", () => {
     // Skipping the day says so, instead of 0/1 lifts; taking the skip back undoes that.
     s.skipDay(today, "travelling");
     expect(widget.update).toHaveBeenCalledTimes(2);
-    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, skipped: true });
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, workoutSince: null, skipped: true });
     s.unskipDay(today);
     expect(widget.update).toHaveBeenCalledTimes(3);
-    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, skipped: false });
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 0, planned: 1, restEndsAt: null, workoutSince: null, skipped: false });
 
     // Ticking the lift changes the count, so it writes again.
     s.editLift(today, "Bench press", (r) => (r.done = true), true);
     expect(widget.update).toHaveBeenCalledTimes(4);
-    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 1, planned: 1, restEndsAt: null, skipped: false });
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Push day", done: 1, planned: 1, restEndsAt: null, workoutSince: null, skipped: false });
 
     // Signed out, whether by Sign out or by a session that expired or was revoked: cleared, once.
     s.auth = "signedOut";
@@ -118,6 +118,27 @@ describe("home-screen widget", () => {
     expect(widget.update).not.toHaveBeenCalled();
   });
 
+  it("gives it a workout under way's start, for its clock, and follows the clock paused, resumed and finished", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const { endRun, pauseRun, resumeRun, runsFor, startRun } = await import("@/lib/workout");
+    const s = new GymStore(), today = todayKey();
+    s.user = { id: "u" } as GymStore["user"];
+    s.auth = "signedIn";
+    runsFor("u");
+    startWidget(s);
+    const since = () => (widget.update.mock.lastCall as unknown as [{ workoutSince: string | null }] | undefined)?.[0].workoutSince;
+    expect(since()).toBeNull();
+    const started = new Date(2026, 8, 23, 11, 40).getTime();
+    startRun(today, started); // opening the workout: no store change, but the clock's own
+    expect(since()).toBe(new Date(started).toISOString());
+    pauseRun(today, started + 10 * 60_000);
+    expect(since()).toBeNull(); // a paused clock isn't counting
+    resumeRun(today, started + 15 * 60_000);
+    expect(since()).toBe(new Date(started + 5 * 60_000).toISOString()); // the five minutes paused don't count
+    endRun(today, started + 30 * 60_000);
+    expect(since()).toBeNull();
+  });
+
   it("tries a write that failed again on the next change, rather than taking it as shown", async () => {
     const { startWidget } = await import("@/native/widget");
     const s = new GymStore(), today = todayKey();
@@ -136,6 +157,6 @@ describe("home-screen widget", () => {
 
     s.setHealthLink({ state: "ok", msg: "Up to date." });
     expect(widget.update).toHaveBeenCalledTimes(2);
-    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Leg day", done: 0, planned: 1, restEndsAt: null, skipped: false });
+    expect(widget.update).toHaveBeenLastCalledWith({ date: today, session: "Leg day", done: 0, planned: 1, restEndsAt: null, workoutSince: null, skipped: false });
   });
 });

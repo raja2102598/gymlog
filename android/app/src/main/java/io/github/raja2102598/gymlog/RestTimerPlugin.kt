@@ -12,11 +12,11 @@ import com.getcapacitor.annotation.Permission
 private const val NOTIFICATIONS = "notifications"
 
 /**
- * The rest timer's alert while Gym Log is backgrounded or closed (src/native/rest.ts). schedule() arms RestAlarm for
- * when a running timer ends; cancel() disarms it. Called from JavaScript as the app goes to the background with a
- * timer running, and again on coming back (where the page counts down and says when rest is over itself) or on any
- * change to the timer, so the native alert always matches the page's without a method here for each of those
- * separately. checkPermissions() and
+ * The lock screen while Gym Log is backgrounded or closed (src/native/rest.ts). schedule() arms RestAlarm for when a
+ * running rest timer ends; workout() shows the workout under way instead; cancel() takes either down. Called from
+ * JavaScript as the app goes to the background, and again on coming back (where the page counts down and says when
+ * rest is over itself) or on any change to either, so the native side always matches the page's without a method
+ * here for each of those separately. checkPermissions() and
  * requestPermissions() (asking for POST_NOTIFICATIONS, Android 13 and later; older versions grant it on install) are
  * Plugin's own, built from `permissions` below, exactly as SpeechPlugin uses them for the microphone; Settings'
  * "Rest timer notifications" row (SettingsView.tsx) is what calls them.
@@ -29,6 +29,13 @@ class RestTimerPlugin : Plugin() {
         val lift = call.getString("lift") ?: ""
         val endAt = call.getLong("endAt", 0L) ?: 0L
         RestAlarm.schedule(context, lift, endAt)
+        call.resolve()
+    }
+
+    /** { title, text, since, forMs }: the workout under way, its clock counting up from `since` (RestAlarm.showWorkout). */
+    @PluginMethod
+    fun workout(call: PluginCall) {
+        RestAlarm.showWorkout(context, call.getString("title") ?: "", call.getString("text") ?: "", call.getLong("since", 0L) ?: 0L, call.getLong("forMs", 0L) ?: 0L)
         call.resolve()
     }
 

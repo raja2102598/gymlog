@@ -1,10 +1,14 @@
 /* The home-screen widget (android/.../GymWidgetProvider.kt): a small JSON of today's session and lift progress,
  * written through this plugin whenever they change, so the widget can show them without opening the app. Taps on
  * it open the app the same way a sign-in link does (native.ts's NATIVE_GO, app.ts's appUrlOpen listener).
- * restEndsAt is when a running rest timer ends (store.ts's rest), or null. */
+ * restEndsAt is when a running rest timer ends (store.ts's rest), and workoutSince when the workout under way would
+ * have started with no pauses (lib/session.ts's liveWorkout), or null: the widget's clock ticks from them on its own,
+ * counting the rest down, or else the workout up. */
 import { registerPlugin } from "@capacitor/core";
 import { todayKey } from "@/lib/dates";
+import { liveWorkout } from "@/lib/session";
 import type { GymStore } from "@/lib/store";
+import { onRunChange } from "@/lib/workout";
 import { onAppResume } from "./update";
 
 interface WidgetSnapshot {
@@ -13,6 +17,7 @@ interface WidgetSnapshot {
   done: number;
   planned: number;
   restEndsAt: string | null;
+  workoutSince: string | null;
   /** Today's workout skipped (Skip day), which the widget says instead of "0/5 lifts". */
   skipped: boolean;
 }
@@ -32,9 +37,18 @@ let lastWritten: string | null = null;
 function snapshotOf(store: GymStore): WidgetSnapshot {
   const date = todayKey(), p = store.planFor(date), e = store.entry(date);
   const done = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
-  // A running rest timer's end, which the widget shows as "rest until 10:32", since it can't tick every second.
-  const r = store.rest, resting = r && r.pausedAt == null && !r.ended;
-  return { date, session: p.name, done, planned: p.exercises.length, restEndsAt: resting ? new Date(r.endAt).toISOString() : null, skipped: e.skip != null };
+  // A running rest timer's end, and a workout under way's start: the widget's clock counts down to the one, or up
+  // from the other. Not a paused clock of either kind, which isn't counting.
+  const r = store.rest, resting = r && r.pausedAt == null && !r.ended, w = liveWorkout(store, date);
+  return {
+    date,
+    session: p.name,
+    done,
+    planned: p.exercises.length,
+    restEndsAt: resting ? new Date(r.endAt).toISOString() : null,
+    workoutSince: w ? new Date(w.since).toISOString() : null,
+    skipped: e.skip != null,
+  };
 }
 
 /** Writes today's session and progress, if they've changed since the last write. Signed out, however that came
@@ -55,11 +69,12 @@ function writeWidget(store: GymStore): void {
 }
 
 /** Keeps the widget current: right away, on every change to the store (a set logged, a lift ticked, health data
- *  arriving, signing out), coming back to the app, and every few minutes so a new day shows up even with the app
- *  merely open. */
+ *  arriving, signing out) or to the workout's clock, coming back to the app, and every few minutes so a new day
+ *  shows up even with the app merely open. */
 export function startWidget(store: GymStore): void {
   writeWidget(store);
   store.subscribe(() => writeWidget(store));
+  onRunChange(() => writeWidget(store));
   onAppResume(() => writeWidget(store));
   setInterval(() => writeWidget(store), 5 * 60_000);
 }

@@ -14,15 +14,22 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
 /**
- * The rest timer's alert while Gym Log is backgrounded or closed: an alarm for when it ends (RestTimerPlugin
- * schedules and cancels it from JavaScript, following the in-page timer in store.ts), and a notification that counts
- * down on its own (setUsesChronometer, so nothing has to wake the app every second just to redraw it) until
- * RestTimerReceiver, below, turns it into "Rest over" when the alarm fires. The pure decisions are RestTimerLogic.
+ * The lock screen while Gym Log is backgrounded or closed (src/native/rest.ts). Resting: an alarm for when the rest
+ * timer ends (RestTimerPlugin schedules and cancels it from JavaScript, following the in-page timer in store.ts), and
+ * a notification that counts down on its own (setUsesChronometer, so nothing has to wake the app every second just
+ * to redraw it) until RestTimerReceiver, below, turns it into "Rest over" when the alarm fires. Otherwise, a workout
+ * under way, its clock counting up the same way. Both running ones ask to be promoted, with Android's own API: Android
+ * 16 shows them as Live Updates, on the lock screen and as the status bar's chip, and earlier versions as ordinary
+ * notifications. Samsung's One UI puts other apps' Live Updates in its Now Bar only if Samsung has approved the app,
+ * or with Developer options → Live notifications for all apps on (docs/android.md). The pure decisions are
+ * RestTimerLogic.
  */
 object RestAlarm {
-    // Two channels, so logging a set never makes a sound: the countdown is quiet, and only "Rest over" alerts.
+    // Three channels, so logging a set never makes a sound: the countdown and the workout's clock are quiet, and only
+    // "Rest over" alerts.
     private const val CHANNEL_OVER = "rest-timer"
     private const val CHANNEL_RUNNING = "rest-timer-running"
+    private const val CHANNEL_WORKOUT = "workout-live"
     private const val NOTIFICATION_ID = 4201
     private const val REQUEST_CODE = 4201
     const val EXTRA_LIFT = "lift"
@@ -42,6 +49,14 @@ object RestAlarm {
                 NotificationChannelCompat.Builder(CHANNEL_RUNNING, NotificationManagerCompat.IMPORTANCE_LOW)
                     .setName("Rest timer running")
                     .setDescription("The countdown while you rest, without a sound.")
+                    .build(),
+            )
+        }
+        if (nm.getNotificationChannelCompat(CHANNEL_WORKOUT) == null) {
+            nm.createNotificationChannel(
+                NotificationChannelCompat.Builder(CHANNEL_WORKOUT, NotificationManagerCompat.IMPORTANCE_LOW)
+                    .setName("Workout under way")
+                    .setDescription("Your workout's clock and how far it's got, while Gym Log is out of sight, without a sound.")
                     .build(),
             )
         }
@@ -119,7 +134,30 @@ object RestAlarm {
             .setOngoing(!ended)
             .setAutoCancel(ended)
             .setCategory(if (ended) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_PROGRESS)
-        if (!ended) b.setUsesChronometer(true).setChronometerCountDown(true).setWhen(endAt)
+        if (!ended) b.setUsesChronometer(true).setChronometerCountDown(true).setWhen(endAt).setRequestPromotedOngoing(true)
+        NotificationManagerCompat.from(ctx).notify(NOTIFICATION_ID, b.build())
+    }
+
+    /** The workout under way: its session and how far it's got, and its clock counting up on its own from `since`,
+     *  in place of any rest countdown (same id; no rest timer runs, so no alarm is left either). Android takes it
+     *  down after `forMs`, when the app would count the workout as left behind (lib/workout.ts, STALE_RUN_MS). */
+    fun showWorkout(ctx: Context, title: String, text: String, since: Long, forMs: Long) {
+        if (!canNotify(ctx)) return
+        (ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(pendingIntent(ctx, ""))
+        channels(ctx)
+        val b = NotificationCompat.Builder(ctx, CHANNEL_WORKOUT)
+            .setSmallIcon(R.drawable.ic_rest_timer)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(openAppIntent(ctx))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_WORKOUT)
+            .setUsesChronometer(true)
+            .setWhen(since)
+            .setShowWhen(true)
+            .setTimeoutAfter(forMs.coerceAtLeast(1L))
+            .setRequestPromotedOngoing(true)
         NotificationManagerCompat.from(ctx).notify(NOTIFICATION_ID, b.build())
     }
 }
@@ -130,7 +168,7 @@ object RestAlarm {
 class RestTimerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         RestAlarm.show(context, intent.getStringExtra(RestAlarm.EXTRA_LIFT) ?: "", ended = true)
-        // The home-screen widget says "rest until …" while a timer runs: redrawn now, it drops that line.
+        // The home-screen widget counts the rest down while it runs: redrawn now, its clock moves on to the workout.
         GymWidgetProvider.refresh(context)
     }
 }

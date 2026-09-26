@@ -37,17 +37,34 @@ With **Settings → Voice** on, the exercise in the workout gets a microphone: t
 
 ## Home-screen widget
 
-Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, **Skipped** once you skip it, or **Rest day** with none planned, and while a rest timer runs, when it ends. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Home**; the small buttons open **Train** at today with that field ready to type in, even when the app wasn't running.
+Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, **Skipped** once you skip it, or **Rest day** with none planned. Beside that, a clock ticks on its own, even with the app closed: a rest counting down (*Rest 1:12*), or else the workout under way counting up from when you started, less any pauses. It's gone while the clock is paused, once the workout is finished, and after three hours, when the app would count the workout as left behind. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Home**; the small buttons open **Train** at today with that field ready to type in, even when the app wasn't running.
 
 It updates itself as you log a set, tick a lift or a new day begins, and settles to a plain **Open Gym Log** once the day it was showing has passed, so it never shows yesterday's session as today's.
 
 ## Rest timer
 
-The rest timer started by logging a set keeps counting with the app in the background or closed: a quiet notification counts down, and when it reaches zero a second one says **Rest over**, with a sound and a buzz. While the timer runs, the home-screen widget adds when it ends (*rest until 10:32*).
+The rest timer started by logging a set keeps counting with the app in the background or closed: a quiet notification counts down, and when it reaches zero a second one says **Rest over**, with a sound and a buzz. While the timer runs, the home-screen widget counts it down too (*Rest 1:12*).
 
 - **Notifications:** Android 13 and later ask first. Tap **Allow** under **Settings → Rest timer & effort → Rest timer notifications**. If Android has stopped asking, turn notifications on for Gym Log in the phone's own settings. Older versions allow them when the app is installed.
 - **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 13 and later leave off by default). Without it, Android may deliver it a little late while the phone is idle. The countdown in the app is exact either way.
-- **Two notification channels** in the phone's settings let you silence either: *Rest timer running* for the countdown (never makes a sound) and *Rest over* for the alert.
+- **Notification channels** in the phone's settings let you silence each: *Rest timer running* for the countdown and *Workout under way* for the workout's clock (neither makes a sound), and *Rest over* for the alert.
+
+## Lock screen and Samsung's Now Bar
+
+With the app in the background or the phone locked, a workout under way stays in view. It shows the session, how many exercises are done, and its clock counting up. While a rest timer runs, it shows the countdown in the same place. Pausing the clock or finishing the workout takes it down. So does coming back to the app, which shows all of it itself. If a workout is left running, Android takes it down once it has run for three hours, the point at which the app counts it as left behind.
+
+Both use Android 16's standard *Live Updates* (Google's API, not a Samsung one):
+
+- **Android 16 phones such as Pixels:** they show as a chip in the status bar and at the top of the lock screen.
+- **Samsung phones:** they're notifications with a running clock on the lock screen. One UI 8 puts other apps' Live
+  Updates in the **Now Bar** only for apps Samsung has approved. To see Gym Log there on your own phone, turn on
+  **Developer options → Live notifications for all apps** (tap **Build number** seven times, under **Settings → About
+  phone → Software information**, to show Developer options).
+- **Earlier versions:** they're ordinary notifications.
+
+Samsung also has an API of its own for the Now Bar, *Live Notifications*, but it only works for apps on Samsung's
+allowlist, so Gym Log doesn't use it. Live Updates need the same notification permission as the rest timer, and the
+phone's own settings can turn them off for Gym Log, which leaves them ordinary notifications.
 
 ## Updates and the signing key
 

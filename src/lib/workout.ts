@@ -39,6 +39,13 @@ const read = () => {
   const r = memoryOnly ? inMemory : lsGet<WorkoutRun | null>(WORKOUT_KEY, null);
   return r && (r.user ?? null) === owner ? r : null;
 };
+/** Told of every change to the clock (started, paused, resumed, restarted, finished, dropped), which happens
+ *  outside the store: the home-screen widget follows it (native/widget.ts). */
+const listeners = new Set<() => void>();
+export function onRunChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => void listeners.delete(fn);
+}
 function write(r: WorkoutRun): WorkoutRun;
 function write(r: null): null;
 function write(r: WorkoutRun | null): WorkoutRun | null {
@@ -46,6 +53,7 @@ function write(r: WorkoutRun | null): WorkoutRun | null {
   if (memoryOnly) inMemory = w;
   else if (w) lsSet(WORKOUT_KEY, w);
   else lsDel(WORKOUT_KEY);
+  for (const fn of listeners) fn();
   return w;
 }
 
@@ -69,10 +77,10 @@ export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
   return write({ day, startedAt: now });
 }
 
-/** Starts the day's clock again from 0:00: the top bar's clock, tapped. */
+/** Starts the day's clock again from 0:00: ↺ beside the top bar's clock, while it's paused. */
 export const restartRun = (day: DayKey, now = Date.now()): WorkoutRun => write({ day, startedAt: now });
 
-/** Stops the day's clock where it is (the top bar's clock, tapped, then Pause), until resumeRun. Nothing for a
+/** Stops the day's clock where it is (the top bar's clock, tapped), until resumeRun. Nothing for a
  *  finished or already paused one. */
 export function pauseRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);
@@ -107,7 +115,7 @@ export function clearRun(day?: DayKey) {
 }
 
 /** How long a run has lasted, ms, to its end or to now, less the time it was paused (still paused: up to then). */
-function runMs(r: WorkoutRun, now: number): number {
+export function runMs(r: WorkoutRun, now: number): number {
   const end = r.endedAt ?? now, paused = (r.pausedMs ?? 0) + (r.pausedAt != null ? Math.max(0, end - r.pausedAt) : 0);
   return Math.max(0, end - r.startedAt - paused);
 }

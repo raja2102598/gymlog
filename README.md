@@ -39,7 +39,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 
 **Home, Train and the workout, set by set**
 - Home shows today at a glance: the week, today's workout with **Start workout**, activity rings, water and weight in one tap. Train has the selected day's lifts, reordered by dragging, and the day's log.
-- The workout goes one exercise at a time: the target (3 × 8-10), what you did last time, and a row per set with kg and reps already suggested, so **Complete set** logs it; then a rest timer, and a summary with your personal bests when you finish.
+- The workout goes one exercise at a time: the target (3 × 8-10), what you did last time, and a row per set with kg and reps already suggested, so **Complete set** logs it; then a rest timer, and a summary with your personal bests when you finish. In the Android app, with the phone locked, the workout's clock and the rest countdown stay on the lock screen as Android 16 Live Updates (in Samsung's Now Bar with *Live notifications for all apps* on; see [docs/android.md](docs/android.md#lock-screen-and-samsungs-now-bar)).
 - Log a set by voice: tap the microphone and say *10 at 45*, or *again*, *undo*, *done* or *skip*. Once switched on in Settings: in the browser, or in the Android app with the phone's own speech recognition.
 - Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
 - Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.
@@ -62,7 +62,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
 - Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.
 - An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. Start from a blank week or a 3, 4 or 5-day template.
-- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own. My gym leaves out what your equipment can't do, and knows what each bar weighs and what dumbbells, machines and cables go up by, so plates, warm-up sets and *Go up to* suggest weights you can load.
+- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own. Each lift's photos take turns so you see it move, and its YouTube videos play right in the app. My gym leaves out what your equipment can't do, and knows what each bar weighs and what dumbbells, machines and cables go up by, so plates, warm-up sets and *Go up to* suggest weights you can load.
 
 ## How it works
 
@@ -115,7 +115,7 @@ The build and the browser tests read `.env.local` too, so one file covers everyt
 
 The button copies the repo into your GitHub account, deploys it on Vercel and asks for the two Supabase values. Run `supabase/schema.sql` in your project first (step 1 below), and add the site's address and the Google client ID afterwards (steps 2 and 5). Or by hand:
 
-Nothing about a deployment lives in the source. A build reads four `NEXT_PUBLIC_*` variables, listed in `.env.example`, and all four are public values: they end up in the site's JavaScript anyway.
+Nothing about a deployment lives in the source. A build reads five `NEXT_PUBLIC_*` variables, listed in `.env.example`, and all five are public values: they end up in the site's JavaScript anyway.
 
 1. **Supabase:** create a project and run `supabase/schema.sql` in the SQL Editor. It creates the tables (`logs`, `plans`, `health_days`, `health_sync_keys`), their row-level security and the two functions background sync uses, and is safe to re-run. The project URL and publishable key are under Project Settings → API.
 2. **Vercel:** Add New → Project → import your fork; `vercel.json` sets the build. Under Settings → Environment Variables add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and `NEXT_PUBLIC_SITE_URL` (the site's address) once you know it, then deploy again. Every push to `main` deploys.
@@ -123,6 +123,7 @@ Nothing about a deployment lives in the source. A build reads four `NEXT_PUBLIC_
    **Privacy page:** `public/privacypolicy.html` is what Health Connect and Google's consent screen show. It describes the app; add who runs your copy, where its database is hosted and how to reach you.
 4. **Android build, optional:** add the same variables as repository variables on GitHub (Settings → Secrets and variables → Actions → Variables) and the signing key as the two secrets in [docs/android.md](docs/android.md#updates-and-the-signing-key). Every push to `main` then publishes an APK as the `android-latest` release.
 5. **Google sign-in, optional:** [docs/google-sign-in.md](docs/google-sign-in.md).
+6. **Videos in the app, optional:** a YouTube Data API key; see [docs/videos.md](docs/videos.md).
 
 The site is plain static files, so it can be hosted anywhere; Vercel is just what `vercel.json` is written for.
 
@@ -149,6 +150,7 @@ scripts/           The service-worker generator, a static server, the screenshot
 - [User guide](docs/user-guide.md): every screen, and how the numbers are worked out
 - [Android app and Health Connect](docs/android.md): install, background sync, what happens to the data, building and signing
 - [Continue with Google](docs/google-sign-in.md): the Google Cloud and Supabase set-up
+- [Videos in the app](docs/videos.md): how a lift's videos are found and played, and the YouTube key they need
 - [Exercise library](docs/exercise-library.md): where its lifts come from, their licence, and how to update them
 - [Roadmap](docs/roadmap.md): what's planned, in order, and what needs new pieces
 - [Contributing](CONTRIBUTING.md) and [Security](SECURITY.md)

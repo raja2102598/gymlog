@@ -275,9 +275,46 @@ async function photosAndHowTo({ browser, base, check }) {
     await info.click();
     await page.waitForSelector("#libHow_Barbell_Squat .howto-steps li");
     check("tapping one shows its photos and steps under it", (await info.getAttribute("aria-expanded")) === "true" && (await page.locator("#libHow_Barbell_Squat .howto-photos img").count()) === 2 && (await page.locator("#libHow_Barbell_Squat .howto-steps li").count()) >= 3);
-    check("and a way to videos of it", /^https:\/\/www\.youtube\.com\/results\?search_query=how%20to%20do%20Barbell%20Squat%20exercise$/.test(await page.getAttribute("#libHow_Barbell_Squat .howto-video", "href")), await page.getAttribute("#libHow_Barbell_Squat .howto-video", "href"));
+    const squatHow = page.locator("#libHow_Barbell_Squat");
+    check("and Watch a video, with nothing searched for until it's tapped", (await flat(squatHow.locator('[data-video="play"]'))) === "Watch a video" && db.videoSearches.length === 0, db.videoSearches.join(", "));
     const moving = await page.$eval("#libHow_Barbell_Squat .howto-photos figure + figure", (e) => getComputedStyle(e).animationName);
     check("the two photos take turns, so the lift is seen moving", moving === "howtoMove", moving);
+
+    // Its videos play right here: YouTube's top few for the lift, found when asked, then remembered.
+    const playing = async () => `${(await squatHow.locator(".howto-player iframe").getAttribute("src"))?.replace(/\?.*/, "")} / ${await flat(squatHow.locator(".howto-vid-t"))}`;
+    await squatHow.locator('[data-video="play"]').click();
+    await squatHow.locator(".howto-player iframe").waitFor();
+    const asked = new URL(db.videoSearches[0]);
+    check(
+      "tapped, it plays YouTube's first video for the lift in the app, named with its channel",
+      db.videoSearches.length === 1 && asked.searchParams.get("q") === "how to do Barbell Squat exercise" && asked.searchParams.get("videoEmbeddable") === "true" && (await playing()) === "https://www.youtube-nocookie.com/embed/vidOne / How to do it & why · Coach One",
+      `${db.videoSearches.join(", ")} / ${await playing()}`,
+    );
+    await squatHow.locator('[data-video="next"]').click();
+    await until(async () => (await playing()).includes("vidTwo"));
+    check("Another video plays the next one", (await playing()) === "https://www.youtube-nocookie.com/embed/vidTwo / Second video · Coach Two", await playing());
+    check("and More on YouTube has the rest, outside the app", (await squatHow.locator("a.howto-video").getAttribute("href")) === "https://www.youtube.com/results?search_query=how%20to%20do%20Barbell%20Squat%20exercise");
+    await info.click();
+    await info.click();
+    await squatHow.locator('[data-video="play"]').click();
+    await squatHow.locator(".howto-player iframe").waitFor();
+    check("closed and opened again, it plays what it found before, with no second search", db.videoSearches.length === 1 && (await playing()).includes("vidOne"), `${db.videoSearches.length} / ${await playing()}`);
+    // A search YouTube turns down (the day's quota spent, say): it says so, and links to YouTube's results instead.
+    db.youtube = { status: 403 };
+    await page.fill("#libSearch", "leg press");
+    const other = page.locator("[data-info]").first(), otherId = await other.getAttribute("data-info");
+    await other.click();
+    const otherHow = page.locator(`#libHow_${otherId}`);
+    await otherHow.locator('[data-video="play"]').click();
+    await otherHow.locator(".howto-vid .sub").waitFor();
+    check(
+      "with no video found, it says so, and links to YouTube's results",
+      (await flat(otherHow.locator(".howto-vid .sub"))) === "No video to play here right now." && /^https:\/\/www\.youtube\.com\/results\?search_query=how%20to%20do%20.*Leg%20Press/i.test(await otherHow.locator("a.howto-video").getAttribute("href")),
+      await otherHow.locator("a.howto-video").getAttribute("href"),
+    );
+    delete db.youtube;
+    // That search was turned down on purpose: the browser's note of the 403 isn't a page error.
+    page.errors = page.errors.filter((e) => !/status of 403 \(Forbidden\)/.test(e));
     await page.keyboard.press("Escape");
     await page.waitForSelector("#libList", { state: "hidden" });
 

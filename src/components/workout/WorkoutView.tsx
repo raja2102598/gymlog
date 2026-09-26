@@ -1,7 +1,7 @@
 "use client";
-import { Check, ChevronRight, Pause, Play, X } from "lucide-react";
+import { Check, ChevronRight, Pause, Play, RotateCcw, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { choose } from "@/components/ds/Ask";
+import { ask } from "@/components/ds/Ask";
 import { Button } from "@/components/ds/parts";
 import { CardioFinisher } from "@/components/today/CardioFinisher";
 import { LiftItem, logSet, nextSet, type Moves } from "@/components/today/LiftItem";
@@ -234,36 +234,45 @@ function TopBar({ name, day, onClose, onFinish }: { name: string; day: DayKey; o
       <div className="wtop-t">
         <h1 id="screenTitle">{name}</h1>
         {run?.endedAt ? (
-          // Finished: its duration, kept as it was (opened again to review it, say), with nothing to restart.
-          <span className="wclock" id="wclock" role="timer" aria-label={`Took ${Math.floor(runSeconds(run) / 60)} minutes`}>
+          // Finished: how long it took, kept as it was (opened again to review it, say), with nothing to tap.
+          <span className="wclock done" id="wclock" role="timer" aria-label={`Took ${Math.floor(runSeconds(run) / 60)} minutes`}>
+            <Check size={14} strokeWidth={3} aria-hidden="true" />
             {clock(runSeconds(run))}
           </span>
         ) : run ? (
-          // Tapped: the clock's own sheet, to stop it for a while (Pause, then Resume) or start it again from 0:00.
-          <button
-            type="button"
-            className={cx("wclock", paused && "paused")}
-            id="wclock"
-            aria-label={paused ? `Clock paused at ${Math.floor(runSeconds(run) / 60)} minutes. Resume or restart it` : `${Math.floor(runSeconds(run) / 60)} minutes in. Pause or restart the clock`}
-            onClick={async () => {
-              const t = clock(runSeconds(run));
-              const pick = await choose(
-                "Workout clock",
-                [
-                  paused ? { id: "resume", label: "Resume the clock" } : { id: "pause", label: "Pause the clock" },
-                  { id: "restart", label: "Restart from 0:00", tone: "plain" },
-                ],
-                paused ? `Paused at ${t}. Time paused doesn’t count toward the workout.` : `${t} so far. Pause it while you’re away; the time paused doesn’t count.`,
-              );
-              if (pick === "pause") pauseRun(day);
-              else if (pick === "resume") resumeRun(day);
-              else if (pick === "restart") restartRun(day);
-              tick((n) => n + 1);
-            }}
-          >
-            {clock(runSeconds(run))}
-            {paused ? <Play size={14} strokeWidth={2.5} aria-hidden="true" /> : <Pause size={14} strokeWidth={2.5} aria-hidden="true" />}
-          </button>
+          // One pill: a tap pauses the clock, and another resumes it; the time paused doesn't count. Paused, it's grey
+          // with a play mark, and ↺ beside it starts the clock again from 0:00 (it asks first).
+          <div className="wclock-row">
+            <button
+              type="button"
+              className={cx("wclock", paused && "paused")}
+              id="wclock"
+              aria-label={paused ? `Resume the clock, paused at ${Math.floor(runSeconds(run) / 60)} minutes` : `Pause the clock, ${Math.floor(runSeconds(run) / 60)} minutes in`}
+              onClick={() => {
+                if (paused) resumeRun(day);
+                else pauseRun(day);
+                tick((n) => n + 1);
+              }}
+            >
+              {paused ? <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" /> : <Pause size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
+              {clock(runSeconds(run))}
+            </button>
+            {paused ? (
+              <button
+                type="button"
+                className="wclock-restart"
+                id="wclockRestart"
+                aria-label="Restart the clock from 0:00"
+                onClick={async () => {
+                  if (!(await ask("Restart the clock from 0:00?", "Restart", { body: `It's at ${clock(runSeconds(run))}, paused. Restarted, it runs from 0:00.` }))) return;
+                  restartRun(day);
+                  tick((n) => n + 1);
+                }}
+              >
+                <RotateCcw size={15} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <button type="button" className="btn btn-raised" id="finishBtn" onClick={onFinish}>
