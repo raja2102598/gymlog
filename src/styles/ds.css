@@ -4,7 +4,6 @@
 /* ---------- ActivityRings ---------- */
 .rings{flex:none;display:block}
 .ring-track{stroke-opacity:.16}
-.ring-arrow{stroke:var(--bg)}
 .ring-leg{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 auto}
 .ring-it{display:flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none;min-height:44px}
 .ring-it .dot{width:10px;height:10px;border-radius:5px;flex:none}

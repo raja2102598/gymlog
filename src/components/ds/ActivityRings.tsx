@@ -2,7 +2,7 @@
 import { useId } from "react";
 import { useOnScreen } from "@/hooks/useOnScreen";
 import { cx } from "@/lib/cx";
-import { heartRing, type Heart } from "@/lib/heart";
+import { heartRings } from "@/lib/heart";
 
 export type RingTone = "steps" | "active" | "energy";
 export interface RingValue {
@@ -11,14 +11,10 @@ export interface RingValue {
   goal: number;
 }
 
-/** Box, stroke and the gap between the hearts for each place the rings show (ActivityRings spec). */
-const SIZES = {
-  home: { box: 124, stroke: 10, gap: 2.5, arrows: true },
-  health: { box: 136, stroke: 11, gap: 2.5, arrows: true },
-  inline: { box: 58, stroke: 5, gap: 1.5, arrows: false },
-} as const;
-/** Each size's three hearts, worked out once. */
-const HEARTS = Object.fromEntries(Object.entries(SIZES).map(([k, v]) => [k, [0, 1, 2].map((i) => heartRing(v.box, v.stroke, v.gap, i))])) as Record<keyof typeof SIZES, Heart[]>;
+/** The box each place the rings show draws them in (ActivityRings spec); the rings' width and gaps follow from it. */
+const SIZES = { home: 124, health: 136, inline: 58 } as const;
+/** Each size's three rings, worked out once. */
+const HEARTS = Object.fromEntries(Object.entries(SIZES).map(([k, box]) => [k, heartRings(box)])) as Record<keyof typeof SIZES, ReturnType<typeof heartRings>>;
 /** How far a second lap's shadow reaches past its round end. */
 const TIP_FADE = 4;
 
@@ -34,10 +30,10 @@ export const ringPct = (value: number, goal: number) => (goal > 0 ? Math.max(0, 
 export function ActivityRings({ rings, size = "home", label }: { rings: RingValue[]; size?: keyof typeof SIZES; label: string }) {
   const id = useId().replace(/:/g, "");
   const [ref, on] = useOnScreen<SVGSVGElement>();
-  const s = SIZES[size], hearts = HEARTS[size];
-  const tipR = s.stroke / 2 + TIP_FADE, edge = s.stroke / 2 / tipR;
+  const box = SIZES[size], { stroke, rings: hearts } = HEARTS[size];
+  const tipR = stroke / 2 + TIP_FADE, edge = stroke / 2 / tipR;
   return (
-    <svg ref={ref} className={cx("rings", on && "in")} width={s.box} height={s.box} viewBox={`0 0 ${s.box} ${s.box}`} role="img" aria-label={label}>
+    <svg ref={ref} className={cx("rings", on && "in")} width={box} height={box} viewBox={`0 0 ${box} ${box}`} role="img" aria-label={label}>
       <defs>
         {/* A second lap's shadow: dark at the edge of its round end, fading out over 4px, like the blur it replaces. */}
         <radialGradient id={`${id}tip`}>
@@ -53,19 +49,18 @@ export function ActivityRings({ rings, size = "home", label }: { rings: RingValu
         ))}
       </defs>
       {rings.map((r, i) => {
-        const h = hearts[i], pct = ringPct(r.value, r.goal), { x, y } = h.start;
-        const k = s.box / 124; // the start arrow scales with the ring's size
+        const h = hearts[i], pct = ringPct(r.value, r.goal);
         const tip = pct > 100 ? h.at((pct - 100) / 100) : null;
         return (
           <g key={r.tone}>
-            <path d={h.d} fill="none" strokeWidth={s.stroke} strokeLinejoin="round" className="ring-track" style={{ stroke: `var(--${r.tone}-end)` }} />
+            <path d={h.d} fill="none" strokeWidth={stroke} strokeLinejoin="round" className="ring-track" style={{ stroke: `var(--${r.tone}-end)` }} />
             {pct > 0 ? (
               <path
                 className="ring-arc"
                 d={h.d}
                 fill="none"
                 stroke={`url(#${id}${r.tone})`}
-                strokeWidth={s.stroke}
+                strokeWidth={stroke}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 pathLength={100}
@@ -83,24 +78,12 @@ export function ActivityRings({ rings, size = "home", label }: { rings: RingValu
                 className="ring-arc"
                 d={h.d}
                 fill="none"
-                strokeWidth={s.stroke}
+                strokeWidth={stroke}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 pathLength={100}
                 strokeDasharray={`${(pct - 100).toFixed(1)} 100`}
                 style={{ stroke: `var(--${r.tone}-end)` }}
-              />
-            ) : null}
-            {s.arrows ? (
-              // Where each ring starts, in the dip at the top, and the way it fills: up and round the right lobe.
-              <path
-                className="ring-arrow"
-                transform={`rotate(${h.startAngle.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})`}
-                d={`M${(x - 3.1 * k).toFixed(1)} ${y.toFixed(1)}h${(6.2 * k).toFixed(1)}M${(x + 0.3 * k).toFixed(1)} ${(y - 3.1 * k).toFixed(1)}l${(3.1 * k).toFixed(1)} ${(3.1 * k).toFixed(1)}-${(3.1 * k).toFixed(1)} ${(3.1 * k).toFixed(1)}`}
-                fill="none"
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
               />
             ) : null}
           </g>
