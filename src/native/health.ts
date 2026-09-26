@@ -102,6 +102,10 @@ export const openHealthSettings = (): Promise<void> => Health.openHealthConnectS
 export async function syncHealth(store: GymStore, now = false): Promise<void> {
   // Not in the demo: the phone's own readings would land among the sample data.
   if (busy || !store.user || store.demo || (!now && Date.now() - lastRun < 5 * 60_000)) return;
+  // The account it reads for. Signed out, or into another account, before it's done, it saves nothing, and the one
+  // signed in now gets a read of its own.
+  const uid = store.user.id;
+  let moved = false;
   busy = true;
   try {
     // A quick read of today under way finishes first. Seeing this one started, it saves nothing, so its older copy of
@@ -118,15 +122,17 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
       return;
     }
     store.setHealthLink({ state: "syncing", msg: "Reading Health Connect…" });
-    const uid = store.user.id, seen = lsGet<Record<string, string[]>>(GRANTED_KEY, {});
+    const seen = lsGet<Record<string, string[]>>(GRANTED_KEY, {});
     const t = todayKey(), fresh = granted.some((k) => !seen[uid]?.includes(k));
     // A first read (or one with newly allowed data) goes back to when the log started (at least 30 days, at most
     // 90); later ones, 10 days.
     const from = fresh ? [addDays(t, -90), [store.firstDay(), addDays(t, -30)].sort()[0]].sort()[1] : addDays(t, -9);
     const { days, failed } = await readDays(from, granted);
+    if ((moved = store.user?.id !== uid)) return;
     lastFailed = failed;
     const n = await store.saveHealth(days);
     lsSet(GRANTED_KEY, { ...seen, [uid]: granted });
+    if ((moved = store.user?.id !== uid)) return;
     const saved = n ? `${n} day${n === 1 ? "" : "s"} updated` : "Up to date";
     store.setHealthLink({ state: "ok", msg: failed.length ? `${saved}; couldn’t read ${failed.join(", ")}.` : `${saved}.` });
   } catch (e) {
@@ -134,6 +140,7 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
   } finally {
     busy = false;
     lastRun = Date.now();
+    if (moved) void syncHealth(store, true);
   }
 }
 
@@ -147,13 +154,14 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
 export async function syncToday(store: GymStore): Promise<void> {
   if (busy || quickRun || !store.user || store.demo || store.healthLink.state !== "ok") return;
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-  const granted = lsGet<Record<string, string[]>>(GRANTED_KEY, {})[store.user.id];
+  const uid = store.user.id, granted = lsGet<Record<string, string[]>>(GRANTED_KEY, {})[uid];
   if (!granted?.length) return;
   quickRun = (async () => {
     try {
       const { days, failed } = await readDays(todayKey(), granted);
-      // A full read that started meanwhile (waiting for this) saves its own, newer, copy.
-      if (!busy && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true });
+      // A full read that started meanwhile (waiting for this) saves its own, newer, copy; and signed out, or into
+      // another account, meanwhile, these numbers aren't that account's to save.
+      if (!busy && store.user?.id === uid && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true });
     } catch {
       // Quiet: the next full read says what's wrong.
     }

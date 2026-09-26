@@ -135,6 +135,23 @@ describe("backup", () => {
     expect(again).not.toHaveBeenCalled();
   });
 
+  it("imports nothing when the account changed while it asked", async () => {
+    for (const next of [null, { id: "u2", created_at: "2026-09-01T05:00:00Z" }]) {
+      const s = storeWith({ "2026-09-22": day({ steps: 8000 }) }), db = supabase();
+      s.sb = db.sb;
+      const other = { "2026-09-01": day() };
+      // Signed out, or into another account, while "Replace them with the file's version?" was up: then Replace.
+      const later = async () => {
+        s.user = next as GymStore["user"];
+        s.logs = other;
+        return true;
+      };
+      const f = file(backupOf({ plan: myPlan(), logs: [{ day: "2026-09-22", data: day({ steps: 1234 }) }] }));
+      expect(await s.importFile(f, later)).toBe("Import cancelled: the account changed while it waited. Nothing changed.");
+      expect([s.logs, s.pending, s.plan, db.writes]).toEqual([other, {}, DEFAULT_PLAN, []]);
+    }
+  });
+
   it("says why a file can't be imported, and what to do instead", async () => {
     const s = storeWith({});
     const why = (v: unknown) => s.importFile(file(v), () => true);
