@@ -18,9 +18,11 @@ import androidx.core.content.ContextCompat
  * timer ends (RestTimerPlugin schedules and cancels it from JavaScript, following the in-page timer in store.ts), and
  * a notification that counts down on its own (setUsesChronometer, so nothing has to wake the app every second just
  * to redraw it) until RestTimerReceiver, below, turns it into "Rest over" when the alarm fires. Otherwise, a workout
- * under way, its clock counting up the same way. Both running ones ask to be promoted: Android 16 shows them as Live
- * Updates, in Samsung's Now Bar (One UI 8), on the lock screen and as the status bar's chip, and earlier versions
- * show an ordinary notification. The pure decisions are RestTimerLogic.
+ * under way, its clock counting up the same way. Both running ones ask to be promoted, with Android's own API: Android
+ * 16 shows them as Live Updates, on the lock screen and as the status bar's chip, and earlier versions as ordinary
+ * notifications. Samsung's One UI puts other apps' Live Updates in its Now Bar only if Samsung has approved the app,
+ * or with Developer options → Live notifications for all apps on (docs/android.md). The pure decisions are
+ * RestTimerLogic.
  */
 object RestAlarm {
     // Three channels, so logging a set never makes a sound: the countdown and the workout's clock are quiet, and only

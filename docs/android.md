@@ -53,13 +53,18 @@ The rest timer started by logging a set keeps counting with the app in the backg
 
 With the app in the background or the phone locked, a workout under way stays in view. It shows the session, how many exercises are done, and its clock counting up. While a rest timer runs, it shows the countdown in the same place. Pausing the clock or finishing the workout takes it down. So does coming back to the app, which shows all of it itself. If a workout is left running, Android takes it down once it has run for three hours, the point at which the app counts it as left behind.
 
-Both are Android 16 *Live Updates*:
+Both use Android 16's standard *Live Updates* (Google's API, not a Samsung one):
 
-- **Samsung's One UI 8 and later:** they show in the **Now Bar** on the lock screen.
-- **Other phones on Android 16:** they show as a chip in the status bar and at the top of the lock screen.
+- **Android 16 phones such as Pixels:** they show as a chip in the status bar and at the top of the lock screen.
+- **Samsung phones:** they're notifications with a running clock on the lock screen. One UI 8 puts other apps' Live
+  Updates in the **Now Bar** only for apps Samsung has approved. To see Gym Log there on your own phone, turn on
+  **Developer options → Live notifications for all apps** (tap **Build number** seven times, under **Settings → About
+  phone → Software information**, to show Developer options).
 - **Earlier versions:** they're ordinary notifications.
 
-They need the same notification permission as the rest timer. The phone's own settings can turn Live Updates off for Gym Log, which leaves them ordinary notifications.
+Samsung also has an API of its own for the Now Bar, *Live Notifications*, but it only works for apps on Samsung's
+allowlist, so Gym Log doesn't use it. Live Updates need the same notification permission as the rest timer, and the
+phone's own settings can turn them off for Gym Log, which leaves them ordinary notifications.
 
 ## Updates and the signing key
 

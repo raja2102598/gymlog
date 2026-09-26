@@ -130,7 +130,7 @@ export const topOfRange = (reps: string) => repRange(reps)?.[1] ?? null;
 export const yesterday = (k: DayKey) => addDays(k, -1);
 
 /** A workout under way, as the phone shows it while Gym Log is out of sight (native/rest.ts): an Android 16 Live
- *  Update, in Samsung's Now Bar, on the lock screen and in the status bar's chip. */
+ *  Update, on the lock screen and in the status bar's chip (and in Samsung's Now Bar where it allows; docs/android.md). */
 export interface LiveWorkout {
   /** The session's name, as the workout's top bar has it. */
   title: string;

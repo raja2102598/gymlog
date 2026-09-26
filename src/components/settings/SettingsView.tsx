@@ -368,7 +368,7 @@ function RestNotifications() {
         sub={
           <span id="restNotifStatus" role="status">
             {state === "granted"
-              ? "On. While Gym Log is out of sight, your workout’s clock and rest countdown show on the lock screen (in the Now Bar on Samsung), and it tells you when a rest ends."
+              ? "On. While Gym Log is out of sight, your workout’s clock and rest countdown stay on the lock screen, and it tells you when a rest ends."
               : canAsk
                 ? "Off. Gym Log can show your workout’s clock and rest countdown on the lock screen while it’s out of sight, and tell you when a rest ends."
                 : "Off, and Android is blocking it. Allow notifications for Gym Log in Android’s settings to get one when a rest timer ends in the background."}

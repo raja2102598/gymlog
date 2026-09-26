@@ -107,8 +107,8 @@ describe("workout runs", () => {
   });
 });
 
-// What the phone shows of a workout under way while Gym Log is out of sight: an Android 16 Live Update, in Samsung's
-// Now Bar, on the lock screen and in the status bar (src/native/rest.ts sends it; tests/unit/rest.test.ts, when).
+// What the phone shows of a workout under way while Gym Log is out of sight: an Android 16 Live Update, on the lock
+// screen and in the status bar (src/native/rest.ts sends it; tests/unit/rest.test.ts, when).
 describe("the workout on the lock screen", () => {
   beforeEach(() => {
     mem.clear();

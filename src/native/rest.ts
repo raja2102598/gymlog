@@ -1,8 +1,9 @@
 /* What the lock screen shows while Gym Log is backgrounded or closed, through the app's own RestTimer plugin
  * (RestTimerPlugin.kt): a rest timer's countdown, with an Android alarm for when it ends, or else the workout under
- * way, its clock counting up. One notification either way, which counts on its own and which Android 16 shows as a
- * Live Update: in Samsung's Now Bar, on the lock screen and in the status bar's chip. It goes up as the app goes to
- * the background and comes down on coming back. Settings asks for POST_NOTIFICATIONS (13+) before this can do
+ * way, its clock counting up. One notification either way, which counts on its own and asks to be an Android 16
+ * Live Update: on the lock screen and in the status bar's chip (Samsung's Now Bar only for apps Samsung approves, or
+ * with Live notifications for all apps on; docs/android.md). It goes up as the app goes to the background and comes
+ * down on coming back. Settings asks for POST_NOTIFICATIONS (13+) before this can do
  * anything; older versions grant it on install (see the "Rest timer notifications" row, SettingsView.tsx). */
 import { App } from "@capacitor/app";
 import { registerPlugin, type PermissionState } from "@capacitor/core";
