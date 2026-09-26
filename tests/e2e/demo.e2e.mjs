@@ -41,6 +41,9 @@ export default async function demo({ browser, base, check }) {
   const signIn = bar.locator("#demoSignIn");
   const signInBox = await signIn.boundingBox();
   check("its Sign in button is named and full-size", (await flat(signIn)) === "Sign in" && signInBox.height >= 44);
+  // As on every banner (the update banner's Install and × too): the message takes the room left, the button the right edge.
+  const barEnd = await bar.evaluate((b) => b.getBoundingClientRect().right - parseFloat(getComputedStyle(b).paddingRight));
+  check("and it sits at the banner's right edge, beside the message", Math.abs(signInBox.x + signInBox.width - barEnd) < 1 && signInBox.y < (await bar.locator("#demoMsg").boundingBox()).y + 20, `${signInBox.x + signInBox.width} / ${barEnd}`);
 
   // ---------- Home and Train: a real week of history; the workout: logging a set works ----------
   const doneDays = await page.locator("#week .wd.done, #week .wd.part").count();

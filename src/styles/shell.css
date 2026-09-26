@@ -53,9 +53,11 @@
 .wrap:not([data-tabs]) .restpill{bottom:calc(max(20px,var(--sab)) + 10px)}
 
 /* sync trouble and notices: one sticky stack under the top of the screen */
-.bars{position:sticky;top:calc(var(--sat) + 8px);z-index:9;display:grid;gap:8px;padding:0 var(--gut-r) 0 var(--gut-l)}
+.bars{position:sticky;top:calc(var(--sat) + 8px);z-index:9;display:grid;gap:8px;padding:0 var(--gut-r) 0 var(--gut-l);margin-bottom:12px}
 .bars:not(:has(>:not([hidden]))){display:none}
 .syncbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:12px 14px;border-radius:var(--radius-lg);background:var(--warn-bg);color:var(--warn-ink);font:700 14px/1.35 var(--font-sans)}
+/* The message takes the room left, so the buttons sit at the right edge. */
+.syncbar>span{flex:1 1 10em;min-width:0}
 .syncbar .ghost{margin-left:auto;background:var(--surface);color:var(--ink)}
 .syncbar p{margin:0;flex-basis:100%}
 .syncbar .conflict{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px}

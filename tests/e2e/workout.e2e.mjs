@@ -52,6 +52,16 @@ export default async function workout({ browser, base, check }) {
     await until(async () => /^0:0\d$/.test(await shown()));
     check("and when the app reloads on the workout", /^0:0\d$/.test(await shown()), await shown());
     check("the clock names what a tap does", /Pause or restart the clock$/.test(await page.getAttribute("#wclock", "aria-label")));
+    // In the middle of the screen, however wide × and Finish are: the title, and the time itself, its mark beside it.
+    const middle = page.viewportSize().width / 2;
+    const title = await page.locator("#screenTitle").boundingBox();
+    const time = await page.evaluate(() => {
+      const r = document.createRange();
+      r.selectNodeContents(document.querySelector("#wclock").firstChild);
+      const b = r.getBoundingClientRect();
+      return b.x + b.width / 2;
+    });
+    check("the title and the time sit in the middle of the screen", Math.abs(title.x + title.width / 2 - middle) < 1 && Math.abs(time - middle) < 1, `${title.x + title.width / 2} / ${time} / ${middle}`);
     await ctx.close();
   }
 

@@ -41,12 +41,17 @@
 
 /* ---------- the active workout ---------- */
 .workout{display:flex;flex-direction:column;min-height:100dvh}
-.wtop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(var(--sat) + 12px) var(--gut-r) 0 var(--gut-l)}
+/* × and Finish in equal side columns, so the title and clock sit in the middle of the screen, not of the space between. */
+.wtop{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:calc(var(--sat) + 12px) var(--gut-r) 0 var(--gut-l)}
+.wtop>:first-child{justify-self:start}
+.wtop>:last-child{justify-self:end}
 .wtop-t{display:flex;flex-direction:column;align-items:center;min-width:0;text-align:center}
 .wtop h1{font:800 15px/20px var(--font-sans);overflow-wrap:anywhere}
-/* The workout's clock: tap to start it again from 0:00 (it asks first). A 44px target around the small label. */
-.wclock{position:relative;display:inline-flex;align-items:center;gap:5px;padding:0 6px;border:0;border-radius:var(--radius-pill);background:transparent;color:var(--brand-text);font:900 15px/20px var(--font-sans);cursor:pointer}
-.wclock::before{content:"";position:absolute;inset:-12px -8px}
+/* The workout's clock: tap for its sheet (pause, resume, restart). A 44px target around the small label. The time
+   is what's centred, in figures of one width so it holds still; the pause or play mark hangs to its right. */
+.wclock{position:relative;display:inline-flex;align-items:center;padding:0 6px;border:0;border-radius:var(--radius-pill);background:transparent;color:var(--brand-text);font:900 15px/20px var(--font-sans);font-variant-numeric:tabular-nums;cursor:pointer}
+.wclock svg{position:absolute;left:100%;top:50%;translate:0 -50%}
+.wclock::before{content:"";position:absolute;inset:-12px -26px}
 .wclock:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}
 /* Paused: the time in plain ink, not counting, with a play mark to say a tap starts it again. */
 .wclock.paused{color:var(--ink-muted)}
