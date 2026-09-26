@@ -497,6 +497,8 @@ export function LiftHead({
             onClick={async () => {
               const n = m.sets.filter((s) => s.reps != null || s.kg != null).length;
               if (n && !(await ask(`Remove ${did} and its ${n === 1 ? "set" : `${n} sets`} from this workout?`, "Remove", { danger: true }))) return;
+              // Only with the sets asked about: not one logged by voice, or synced from another phone, meanwhile.
+              if (!m.sameSets()) return;
               setMenu(null);
               onRemove();
             }}

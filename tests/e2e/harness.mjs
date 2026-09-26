@@ -66,6 +66,13 @@ const FIRST_SAVE = "2026-09-23T04:12:00+00:00";
  * there already (409, code 23505), adding none.
  * Several pages can share one `db`, like phones on one account.
  */
+/** Another phone on the account saves `day` as `data`, with a newer updated_at: what this phone's next load brings. */
+export function savedElsewhere(db, day, data) {
+  db.clock = (db.clock ?? 0) + 1;
+  db.logs[day] = data;
+  db.logsAt[day] = new Date(Date.UTC(2026, 8, 23, 6, 0, 0, db.clock)).toISOString().replace("Z", "+00:00");
+}
+
 export function mockSupabase(db) {
   db.writes ??= { logs: 0, plans: 0, health: 0 };
   db.unexpected ??= [];
