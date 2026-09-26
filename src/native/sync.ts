@@ -25,6 +25,7 @@ interface GymSyncPlugin {
   enable(o: { key: string; url: string; anonKey: string }): Promise<void>;
   disable(): Promise<void>;
   runNow(): Promise<void>;
+  running(): Promise<{ running: boolean }>;
 }
 
 const GymSync = registerPlugin<GymSyncPlugin>("GymSync");
@@ -70,6 +71,9 @@ export async function turnOffBackground(store: GymStore): Promise<string> {
 }
 
 export const runBackgroundNow = (): Promise<void> => GymSync.runNow();
+
+/** Whether a background run is reading or sending right now; false when that can't be told. */
+export const backgroundRunning = (): Promise<boolean> => GymSync.running().then((r) => r.running, () => false);
 
 /** On sign-in: background sync left on by another account stops here. (Its key stays unused in that account.) */
 export async function checkBackgroundOwner(store: GymStore): Promise<void> {

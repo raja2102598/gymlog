@@ -23,6 +23,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Background sync: about every hour, even with the app closed, read the last three days from Health Connect and
@@ -36,6 +37,20 @@ object HealthSync {
     const val BACKGROUND = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
 
     class Config(val key: String, val url: String, val anonKey: String)
+
+    /** Runs under way in this process (the hourly one and a "now" one can overlap). */
+    private val runs = AtomicInteger(0)
+
+    /** A run is reading or sending: the app's read of today every 30 seconds waits it out (native/health.ts). */
+    val running: Boolean get() = runs.get() > 0
+
+    fun begin() {
+        runs.incrementAndGet()
+    }
+
+    fun end() {
+        runs.decrementAndGet()
+    }
 
     fun config(ctx: Context): Config? {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -104,6 +119,15 @@ object HealthSync {
 
 class HealthSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
+        HealthSync.begin()
+        try {
+            return sync()
+        } finally {
+            HealthSync.end()
+        }
+    }
+
+    private suspend fun sync(): Result {
         val ctx = applicationContext
         val c = HealthSync.config(ctx) ?: return Result.success()
         if (HealthConnectClient.getSdkStatus(ctx) != HealthConnectClient.SDK_AVAILABLE) {

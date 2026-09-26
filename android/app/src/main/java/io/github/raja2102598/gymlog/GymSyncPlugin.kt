@@ -60,6 +60,12 @@ class GymSyncPlugin : Plugin() {
         )
     }
 
+    /** { running }: a background run is reading or sending right now, in this process. */
+    @PluginMethod
+    fun running(call: PluginCall) {
+        call.resolve(JSObject().put("running", HealthSync.running))
+    }
+
     /** Asks Health Connect for background reading, where it exists. Resolves { available, allowed }. */
     @PluginMethod
     fun requestBackground(call: PluginCall) = safely(call) {

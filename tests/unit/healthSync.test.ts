@@ -208,7 +208,7 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     expect(rows.some((r) => r.data.steps === 5100) && rows.every((r) => r.data.steps !== 4200)).toBe(true);
   });
 
-  it("doesn't read while the app isn't on screen, or while the phone is offline", async () => {
+  it("doesn't read while the app isn't on screen, the phone is offline, or background sync is reading", async () => {
     const { s } = signedIn();
     phoneHas();
     await syncHealth(s, true);
@@ -221,8 +221,12 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     vi.stubGlobal("navigator", { onLine: false });
     await syncToday(s);
     expect(health.queryAggregated).not.toHaveBeenCalled();
-    // Back online, it reads again.
+    // Online, while background sync reads and sends: its copy, read first, would land after this one's.
     vi.stubGlobal("navigator", { onLine: true });
+    gymSync.running.mockResolvedValueOnce({ running: true });
+    await syncToday(s);
+    expect(health.queryAggregated).not.toHaveBeenCalled();
+    // Once it's done, the next tick reads.
     await syncToday(s);
     expect(health.queryAggregated).toHaveBeenCalled();
   });
