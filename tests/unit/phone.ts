@@ -23,8 +23,17 @@ export function signedIn() {
   return { s, upserts };
 }
 
-/** Health Connect with everything allowed: steps on 22 and 23 September (23's by the hour too), a resting heart rate
- *  and a weigh-in on the 23rd. */
+/** A steps record of the 23rd, from `h:m` for `min` minutes, shared by the app `from` (a package name). */
+export const stepsRecord = (h: number, m: number, min: number, value: number, from: string) => ({
+  startDate: new Date(2026, 8, 23, h, m).toISOString(),
+  endDate: new Date(2026, 8, 23, h, m + min).toISOString(),
+  value,
+  sourceId: from,
+});
+export const SAMSUNG = "com.sec.android.app.shealth";
+
+/** Health Connect with everything allowed: steps on 22 and 23 September (23's by the hour too, and its records, most
+ *  from Samsung Health up to 9:40 and a few from Google Fit after), a resting heart rate and a weigh-in on the 23rd. */
 export function phoneHas() {
   health.isAvailable.mockResolvedValue({ available: true, platform: "android" });
   health.checkAuthorization.mockResolvedValue({ readAuthorized: READ, readDenied: [], writeAuthorized: [], writeDenied: [] });
@@ -39,7 +48,12 @@ export function phoneHas() {
             : [],
   }));
   health.readSamples.mockImplementation(async ({ dataType }: { dataType: string }) => ({
-    samples: dataType === "weight" ? [{ startDate: new Date(2026, 8, 23, 7).toISOString(), endDate: new Date(2026, 8, 23, 7).toISOString(), value: 81.2 }] : [],
+    samples:
+      dataType === "weight"
+        ? [{ startDate: new Date(2026, 8, 23, 7).toISOString(), endDate: new Date(2026, 8, 23, 7).toISOString(), value: 81.2 }]
+        : dataType === "steps"
+          ? [stepsRecord(9, 0, 10, 1800, SAMSUNG), stepsRecord(9, 30, 10, 1212, SAMSUNG), stepsRecord(9, 45, 5, 40, "com.google.android.apps.fitness")]
+          : [],
   }));
   health.queryWorkouts.mockResolvedValue({ workouts: [] });
 }

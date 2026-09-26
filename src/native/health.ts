@@ -2,7 +2,7 @@
  * website doesn't carry the plugin. The numbers are turned into days by healthDays() in lib/health.ts. */
 import { Health, type HealthDataType } from "@capgo/capacitor-health";
 import { addDays, parseKey, todayKey } from "@/lib/dates";
-import { healthDays, type HealthReadings, type Workout } from "@/lib/health";
+import { healthDays, stepsShared, type HealthReadings, type StepsShared, type Workout } from "@/lib/health";
 import { lsGet, lsSet } from "@/lib/storage";
 import type { GymStore } from "@/lib/store";
 import type { DayKey, HealthDay } from "@/lib/types";
@@ -124,9 +124,9 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
     // A first read (or one with newly allowed data) goes back to when the log started (at least 30 days, at most
     // 90); later ones, 10 days.
     const from = fresh ? [addDays(t, -90), [store.firstDay(), addDays(t, -30)].sort()[0]].sort()[1] : addDays(t, -9);
-    const { days, failed } = await readDays(from, granted);
+    const { days, failed, shared } = await readDays(from, granted);
     lastFailed = failed;
-    const n = await store.saveHealth(days);
+    const n = await store.saveHealth(days, { shared });
     lsSet(GRANTED_KEY, { ...seen, [uid]: granted });
     const saved = n ? `${n} day${n === 1 ? "" : "s"} updated` : "Up to date";
     store.setHealthLink({ state: "ok", msg: failed.length ? `${saved}; couldn’t read ${failed.join(", ")}.` : `${saved}.` });
@@ -158,10 +158,10 @@ export async function syncToday(store: GymStore): Promise<void> {
       // before this one's, could land after it, and this phone would think the newer one saved. The next tick reads.
       const bg = await backgroundRuns();
       if (bg.running) return;
-      const { days, failed } = await readDays(todayKey(), granted);
+      const { days, failed, shared } = await readDays(todayKey(), granted);
       if ((await backgroundRuns()).started !== bg.started) return;
       // A full read that started meanwhile (waiting for this) saves its own, newer, copy.
-      if (!busy && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true });
+      if (!busy && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true, shared });
     } catch {
       // Quiet: the next full read says what's wrong.
     }
@@ -173,8 +173,8 @@ export async function syncToday(store: GymStore): Promise<void> {
   }
 }
 
-/** Day totals, samples and workouts from `from` (local midnight) to now, as days. */
-async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record<DayKey, HealthDay>; failed: string[] }> {
+/** Day totals, samples and workouts from `from` (local midnight) to now, as days, and how far today's steps go. */
+async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record<DayKey, HealthDay>; failed: string[]; shared: StepsShared | null | undefined }> {
   const start = parseKey(from).toISOString(), end = new Date().toISOString(), failed: string[] = [];
   // One kind of data failing (none recorded, or access removed) shouldn't stop the others.
   const read = async <T,>(type: HealthDataType, label: string, get: () => Promise<T>): Promise<T | undefined> => {
@@ -228,5 +228,15 @@ async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record
   };
   const days = healthDays(r);
   for (const k of Object.keys(days)) if (k < from) delete days[k];
-  return { days, failed };
+  // Today's steps records, for how far they go and which app shared them (the Health tab says so). Quietly unknown
+  // (undefined: the last read's stays) when they can't be read: the day's steps above are what count.
+  let shared: StepsShared | null | undefined = null;
+  if (granted.includes("steps")) {
+    try {
+      shared = stepsShared((await Health.readSamples({ dataType: "steps", startDate: parseKey(todayKey()).toISOString(), endDate: end, limit: 5000, ascending: false })).samples);
+    } catch {
+      shared = undefined;
+    }
+  }
+  return { days, failed, shared };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anyHealth, clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTimes, summarize } from "@/lib/healthView";
+import { anyHealth, clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTimes, stepsSharedText, summarize } from "@/lib/healthView";
 import { DEFAULT_PLAN } from "@/lib/plan";
 import { niceMax, trendScale } from "@/lib/scale";
 import type { DayLog, HealthDay } from "@/lib/types";
@@ -47,6 +47,33 @@ describe("a day's numbers", () => {
     expect(metricValue("heart", n)).toBe(60);
     expect(metricValue("exercise", n)).toBeNull();
     expect(metricValue("energy", dayNumbers(store({ [WED]: { activeKcal: 400 } }), WED))).toBe(400);
+  });
+
+  it("counts calories burned as resting and active together, today's resting only up to now", () => {
+    // Samsung Health's case: total-calorie records for a workout (223), less than the day's active calories (511).
+    const s = store({ "2026-09-01": { bmr: 1680 }, "2026-09-22": { activeKcal: 600 }, [WED]: { activeKcal: 511, totalKcal: 223 } });
+    expect(dayNumbers(s, WED)).toMatchObject({ totalKcal: 840 + 511, restingEstimated: false }); // noon: half the day's resting
+    expect(dayNumbers(s, "2026-09-22").totalKcal).toBe(1680 + 600); // a whole day gone by
+    // A source whose totals are the whole day's wins.
+    expect(dayNumbers(store({ "2026-09-01": { bmr: 1680 }, [WED]: { activeKcal: 511, totalKcal: 2400 } }), WED).totalKcal).toBe(2400);
+    // No resting rate measured: estimated from the latest weight, and said so.
+    expect(dayNumbers(store({ "2026-09-20": { weight: 80 }, [WED]: { activeKcal: 511, totalKcal: 223 } }), WED)).toMatchObject({ totalKcal: 880 + 511, restingEstimated: true });
+    // The latest weight, typed or weighed: one typed since the weigh-in is the one (78 kg, 1,716 a day).
+    expect(dayNumbers(store({ "2026-09-10": { weight: 80 }, [WED]: { activeKcal: 511 } }, { "2026-09-21": { weight: 78 } }), WED).totalKcal).toBe(858 + 511);
+    // Neither: no total below the active calories; the tile shows those, burned moving.
+    expect(dayNumbers(store({ [WED]: { activeKcal: 511, totalKcal: 223 } }), WED).totalKcal).toBeNull();
+    // A day with no activity from Health Connect gets no total made up from resting alone.
+    expect(dayNumbers(store({ "2026-09-01": { bmr: 1680 } }), "2026-09-10").totalKcal).toBeNull();
+  });
+
+  it("says how far today's steps go, and which app shared them", () => {
+    const at = (d: number, h: number, m: number) => new Date(2026, 8, d, h, m).toISOString();
+    expect(stepsSharedText({ at: at(23, 20, 40), from: "com.sec.android.app.shealth" }, WED)).toMatch(/^Samsung Health shared steps up to 8:40\s?pm$/);
+    expect(stepsSharedText({ at: at(23, 9, 5), from: "com.example.pedometer" }, WED)).toMatch(/^Health Connect has steps up to 9:05\s?am$/);
+    // Not for another day, nor from yesterday's read, nor before a read on this phone.
+    expect(stepsSharedText({ at: at(23, 20, 40), from: "com.sec.android.app.shealth" }, "2026-09-22")).toBeNull();
+    expect(stepsSharedText({ at: at(22, 23, 50), from: "com.sec.android.app.shealth" }, WED)).toBeNull();
+    expect(stepsSharedText(null, WED)).toBeNull();
   });
 
   it("reads chest, arms, thighs and hips as typed only, and body fat typed over Health Connect's, like weight", () => {
