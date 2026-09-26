@@ -1705,16 +1705,16 @@ export class GymStore {
     this.changed();
   }
   /** Saves days read from Health Connect on this phone; only days that changed are written. Returns how many. With
-   *  them, how far the read's steps went (`shared`, kept on this phone only). */
+   *  them, how far the read's steps went (`shared`, kept on this phone only; undefined when it couldn't tell). */
   async saveHealth(days: Record<DayKey, HealthDay>, { quiet = false, shared }: { quiet?: boolean; shared?: StepsShared | null } = {}): Promise<number> {
     if (!this.user || !this.sb) return 0;
     // Compared key-order blind: rows read back from Supabase have jsonb's key order, not ours.
     const changed = Object.entries(days).filter(([k, d]) => canon(d) !== canon(this.health[k]));
+    const sharedMoved = shared !== undefined && canon(shared) !== canon(this.stepsShared);
     // `quiet` (native/health.ts's read of today every 30 seconds): nothing new, nothing to redraw. The time it
     // synced shows at the next redraw.
-    if (quiet && !changed.length) {
+    if (quiet && !changed.length && !sharedMoved) {
       this.healthSyncedAt = new Date().toISOString();
-      if (shared !== undefined) this.stepsShared = shared;
       return 0;
     }
     if (changed.length) {

@@ -178,6 +178,21 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     await syncToday(s);
     expect(upserts).toHaveLength(saves + 1);
     expect(redraws).toBe(0);
+    // Only how far the steps go moved (a record rewritten, the day's total the same): nothing written, but the line
+    // redrawn and kept on the phone.
+    health.readSamples.mockImplementation(async (o: { dataType: string }) => (o.dataType === "steps" ? { samples: [stepsRecord(9, 0, 10, 3000, SAMSUNG), stepsRecord(11, 50, 9, 1200, SAMSUNG)] } : had(o)));
+    await syncToday(s);
+    expect(upserts).toHaveLength(saves + 1);
+    expect(redraws).toBe(1);
+    expect(s.stepsShared?.at).toBe(new Date(2026, 8, 23, 11, 59).toISOString());
+    expect(JSON.parse(localStorage.getItem(HEALTH_KEY)!).stepsShared).toEqual(s.stepsShared);
+    // Those records failing to read: the last read's line stays.
+    health.readSamples.mockImplementation(async (o: { dataType: string }) => {
+      if (o.dataType === "steps") throw new Error("RemoteException");
+      return had(o);
+    });
+    await syncToday(s);
+    expect(s.stepsShared?.at).toBe(new Date(2026, 8, 23, 11, 59).toISOString());
   });
 
   it("saves nothing from a read where something failed that the full read could read", async () => {

@@ -29,6 +29,8 @@ export interface HealthSource {
   anyMeasured(): boolean;
   /** Health Connect days, for the latest height. */
   health: Record<DayKey, HealthDay>;
+  /** The days logged in Gym Log, oldest first. */
+  days(): DayKey[];
 }
 
 export interface DayNumbers {
@@ -79,15 +81,20 @@ export function heightBy(src: HealthSource, k: DayKey): number | null {
  *  composition, say), or else an estimate from the latest weight, 22 kcal a kilo, close to what the usual formulas
  *  give an adult. Null with neither. */
 export function restingPerDay(src: HealthSource, k: DayKey): { kcal: number; estimated: boolean } | null {
-  let rate: DayKey | null = null, weighed: DayKey | null = null;
-  for (const [d, h] of Object.entries(src.health)) {
-    if (d > k) continue;
-    if (h.bmr && (!rate || d > rate)) rate = d;
-    if (h.weight && (!weighed || d > weighed)) weighed = d;
-  }
+  let rate: DayKey | null = null;
+  for (const [d, h] of Object.entries(src.health)) if (d <= k && h.bmr && (!rate || d > rate)) rate = d;
   if (rate) return { kcal: src.health[rate].bmr!, estimated: false };
-  const w = src.weightOf(k) ?? (weighed ? src.health[weighed].weight! : null);
+  const w = weightBy(src, k);
   return w ? { kcal: Math.round(w * 22), estimated: true } : null;
+}
+
+/** The latest weight on or before `k`: typed in Gym Log or weighed in Health Connect, whichever day is later (the
+ *  typed one on the same day, as everywhere). */
+export function weightBy(src: HealthSource, k: DayKey): number | null {
+  let last: DayKey | null = null;
+  for (const d of src.days()) if (d <= k && (!last || d > last) && src.weightOf(d) != null) last = d;
+  for (const [d, h] of Object.entries(src.health)) if (d <= k && h.weight && (!last || d > last)) last = d;
+  return last ? src.weightOf(last) : null;
 }
 
 /** How much of day `k` has gone by at `now`: all of a day before, none of one after. */

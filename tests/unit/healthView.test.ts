@@ -58,6 +58,8 @@ describe("a day's numbers", () => {
     expect(dayNumbers(store({ "2026-09-01": { bmr: 1680 }, [WED]: { activeKcal: 511, totalKcal: 2400 } }), WED).totalKcal).toBe(2400);
     // No resting rate measured: estimated from the latest weight, and said so.
     expect(dayNumbers(store({ "2026-09-20": { weight: 80 }, [WED]: { activeKcal: 511, totalKcal: 223 } }), WED)).toMatchObject({ totalKcal: 880 + 511, restingEstimated: true });
+    // The latest weight, typed or weighed: one typed since the weigh-in is the one (78 kg, 1,716 a day).
+    expect(dayNumbers(store({ "2026-09-10": { weight: 80 }, [WED]: { activeKcal: 511 } }, { "2026-09-21": { weight: 78 } }), WED).totalKcal).toBe(858 + 511);
     // Neither: no total below the active calories; the tile shows those, burned moving.
     expect(dayNumbers(store({ [WED]: { activeKcal: 511, totalKcal: 223 } }), WED).totalKcal).toBeNull();
     // A day with no activity from Health Connect gets no total made up from resting alone.

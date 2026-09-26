@@ -174,7 +174,7 @@ export async function syncToday(store: GymStore): Promise<void> {
 }
 
 /** Day totals, samples and workouts from `from` (local midnight) to now, as days, and how far today's steps go. */
-async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record<DayKey, HealthDay>; failed: string[]; shared: StepsShared | null }> {
+async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record<DayKey, HealthDay>; failed: string[]; shared: StepsShared | null | undefined }> {
   const start = parseKey(from).toISOString(), end = new Date().toISOString(), failed: string[] = [];
   // One kind of data failing (none recorded, or access removed) shouldn't stop the others.
   const read = async <T,>(type: HealthDataType, label: string, get: () => Promise<T>): Promise<T | undefined> => {
@@ -228,14 +228,14 @@ async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record
   };
   const days = healthDays(r);
   for (const k of Object.keys(days)) if (k < from) delete days[k];
-  // Today's steps records, for how far they go and which app shared them (the Health tab says so). Quietly none when
-  // they can't be read: the day's steps above are what count.
-  let shared: StepsShared | null = null;
+  // Today's steps records, for how far they go and which app shared them (the Health tab says so). Quietly unknown
+  // (undefined: the last read's stays) when they can't be read: the day's steps above are what count.
+  let shared: StepsShared | null | undefined = null;
   if (granted.includes("steps")) {
     try {
       shared = stepsShared((await Health.readSamples({ dataType: "steps", startDate: parseKey(todayKey()).toISOString(), endDate: end, limit: 5000, ascending: false })).samples);
     } catch {
-      // As none.
+      shared = undefined;
     }
   }
   return { days, failed, shared };
