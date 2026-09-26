@@ -58,25 +58,26 @@ export default async function freeform({ browser, base, check }) {
   check("the day counts its lifts: one of two done", (await page.locator("ol.wprog li").count()) === 2 && (await page.locator("ol.wprog li.done").count()) === 1);
   await page.click("#nextEx");
   await until(async () => (await flat(page.locator("#workoutView .ex-name .nm"))) === "Leg Press");
-  // Remove from this workout asks first when the lift has sets. Another phone logs one more for it while the question
-  // is up: Remove then takes nothing, and asked again it names both.
+  // Remove from this workout asks first when the lift has sets, and counts them all. Another phone logs a warm-up
+  // for it while the question is up: Remove then takes nothing, and asked again it counts the warm-up too.
   await page.fill("#s1_0_r", "10");
   await page.fill("#s1_0_k", "50");
   await until(() => today()?.exercises?.["Leg Press"]?.sets?.[0]?.kg === 50);
   await answerAsk(page, "leave");
+  await page.click('[aria-controls="wset1"]');
   await page.click('[data-more="1"]');
   await page.click('[data-freerm="1"]');
   await page.waitForSelector("#askDialog[open]");
   const first = await lastAsked(page);
   const lp = today().exercises["Leg Press"];
-  savedElsewhere(db, K(28), { ...today(), exercises: { ...today().exercises, "Leg Press": { ...lp, sets: [...lp.sets, { reps: 8, kg: 50 }] } } });
+  savedElsewhere(db, K(28), { ...today(), exercises: { ...today().exercises, "Leg Press": { ...lp, sets: [{ reps: 10, kg: 20, type: "warmup" }, ...lp.sets] } } });
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await until(async () => (await page.locator("#s1_1_r").inputValue()) === "8");
+  await until(async () => (await page.locator("#wset1 .wset-done").count()) === 1);
   await page.click("#askDialog [data-choice]");
   await until(async () => (await page.locator("#askDialog[open]").count()) === 0);
   await page.waitForTimeout(300);
   check(
-    "Remove, with a set synced in while it asked, takes nothing",
+    "Remove, with a warm-up synced in while it asked, takes nothing",
     first === "Remove Leg Press and its set from this workout?" && today().free.lifts.length === 2 && (await page.locator("ol.wprog li").count()) === 2,
     `${first} / ${JSON.stringify(today().free)}`,
   );
@@ -84,7 +85,7 @@ export default async function freeform({ browser, base, check }) {
   await page.click('[data-freerm="1"]');
   await until(() => today()?.free?.lifts?.length === 1);
   check(
-    "asked again, it names both sets, and Remove from this workout takes the lift out",
+    "asked again, it counts the warm-up too, and Remove from this workout takes the lift out",
     (await lastAsked(page)) === "Remove Leg Press and its 2 sets from this workout?" && JSON.stringify(today()?.free?.lifts) === '["Goblet Squat"]' && (await page.locator("ol.wprog li").count()) === 1,
     await lastAsked(page),
   );

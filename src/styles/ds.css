@@ -197,6 +197,7 @@
 .xsheet-head::before{content:"";position:absolute;top:8px;left:50%;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--outline)}
 .xsheet-head h2{flex:1;min-width:0;margin:0;font:var(--type-title-md);overflow-wrap:anywhere}
 .xsheet-body{display:flex;flex-direction:column;gap:var(--space-4);padding:0 20px max(24px,calc(var(--sab) + 16px))}
+.xsheet-pick{display:flex;flex-wrap:wrap;gap:8px}
 .xsheet-facts{display:grid;gap:10px;margin:0}
 .xsheet-facts div{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px}
 .xsheet-facts dt{font:var(--type-label);color:var(--ink-muted);padding-top:2px}

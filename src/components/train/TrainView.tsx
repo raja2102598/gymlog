@@ -281,7 +281,7 @@ function LiftRows({ sel, onOpen, focusNext, cardio, cardioDone }: { sel: DayKey;
   const store = useGym();
   const e = store.entry(sel), blocks = store.liftBlocks(sel);
   const [drag, setDrag] = useState<{ b: number; dy: number; h: number } | null>(null);
-  const [about, setAbout] = useState<SheetLift | null>(null);
+  const [about, setAbout] = useState<SheetLift[] | null>(null);
   const start = useRef(0);
   const shift = drag ? Math.max(-drag.b, Math.min(blocks.length - 1 - drag.b, Math.round(drag.dy / drag.h))) : 0;
   const moveTo = (b: number, by: number) => {
@@ -317,14 +317,21 @@ function LiftRows({ sel, onOpen, focusNext, cardio, cardioDone }: { sel: DayKey;
           const offset = drag ? (bi === drag.b ? drag.dy : bi > drag.b && bi <= drag.b + shift ? -drag.h : bi < drag.b && bi >= drag.b + shift ? drag.h : 0) : 0;
           return (
             <li key={names.join("|") + bi} className={cx("lrow", allDone && "done", skipped && "skipped", drag?.b === bi && "dragging")} style={offset ? { transform: `translateY(${offset}px)` } : undefined}>
-              {/* The photo: everything about the lift, pulled up from the bottom (ExerciseSheet). The rest of the row
-                  opens the workout there. */}
+              {/* The photo: everything about the lift, pulled up from the bottom (ExerciseSheet), and about each of a
+                  superset's. The rest of the row opens the workout there. */}
               <button
                 type="button"
                 className="lrow-pic"
                 data-about={bi}
-                aria-label={`About ${names[0]}: photos, muscles and how to do it`}
-                onClick={() => setAbout({ name: names[0], line: liftLine(store, sel, it), mediaId: store.mediaIdOf(names[0], r?.swap ? null : it.x), ex: store.exerciseOf(names[0], r?.swap ? null : it.x) })}
+                aria-label={`About ${names.join(" and ")}: photos, muscles and how to do it`}
+                onClick={() =>
+                  setAbout(
+                    b.map((x, k) => {
+                      const own = e.exercises[x.name]?.swap ? null : x.x;
+                      return { name: names[k], line: liftLine(store, sel, x), mediaId: store.mediaIdOf(names[k], own), ex: store.exerciseOf(names[k], own) };
+                    }),
+                  )
+                }
               >
                 {allDone ? (
                   <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
@@ -380,7 +387,7 @@ function LiftRows({ sel, onOpen, focusNext, cardio, cardioDone }: { sel: DayKey;
           </li>
         ) : null}
       </ul>
-      <ExerciseSheet lift={about} onClose={() => setAbout(null)} />
+      <ExerciseSheet lifts={about} onClose={() => setAbout(null)} />
     </>
   );
 }

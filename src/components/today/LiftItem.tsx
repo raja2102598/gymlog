@@ -103,6 +103,8 @@ export interface LiftModel {
   /** Whether the lift's working sets are still the ones this was made from: a question asked from it (− Set) may
    *  have waited while voice logged another. */
   sameSets: () => boolean;
+  /** Whether the lift is still all as `r` has it, warm-ups and swap too: removing it acts only if so. */
+  sameLift: () => boolean;
   logWarmups: (steps: { reps: number; kg: number }[]) => void;
   removeWarmups: () => void;
   skipToday: () => void;
@@ -207,6 +209,7 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
       }, true);
     },
     sameSets: () => JSON.stringify(setsOf((store.entry(sel).exercises[name] || {}) as LiftLog).filter(isWorkingSet)) === JSON.stringify(sets),
+    sameLift: () => JSON.stringify(store.entry(sel).exercises[name] || {}) === JSON.stringify(r),
     logWarmups(steps) {
       edit((r) => {
         const work = setsOf(r).filter(isWorkingSet);
@@ -495,10 +498,11 @@ export function LiftHead({
             className="btn btn-sm btn-danger"
             data-freerm={i}
             onClick={async () => {
-              const n = m.sets.filter((s) => s.reps != null || s.kg != null).length;
+              // Every set it has goes with it, warm-ups too.
+              const n = [...m.warmSets, ...m.sets].filter((s) => s.reps != null || s.kg != null).length;
               if (n && !(await ask(`Remove ${did} and its ${n === 1 ? "set" : `${n} sets`} from this workout?`, "Remove", { danger: true }))) return;
-              // Only with the sets asked about: not one logged by voice, or synced from another phone, meanwhile.
-              if (!m.sameSets()) return;
+              // Only the lift asked about: not with a set logged by voice, or anything synced from another phone, meanwhile.
+              if (!m.sameLift()) return;
               setMenu(null);
               onRemove();
             }}
