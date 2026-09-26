@@ -147,6 +147,8 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
 export async function syncToday(store: GymStore): Promise<void> {
   if (busy || quickRun || !store.user || store.demo || store.healthLink.state !== "ok") return;
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  // Offline, what it read couldn't be saved (saveHealth writes to Supabase first): it waits to be back online.
+  if (!navigator.onLine) return;
   const granted = lsGet<Record<string, string[]>>(GRANTED_KEY, {})[store.user.id];
   if (!granted?.length) return;
   quickRun = (async () => {

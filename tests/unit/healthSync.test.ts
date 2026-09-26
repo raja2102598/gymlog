@@ -208,7 +208,7 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     expect(rows.some((r) => r.data.steps === 5100) && rows.every((r) => r.data.steps !== 4200)).toBe(true);
   });
 
-  it("doesn't read while the app isn't on screen", async () => {
+  it("doesn't read while the app isn't on screen, or while the phone is offline", async () => {
     const { s } = signedIn();
     phoneHas();
     await syncHealth(s, true);
@@ -216,6 +216,15 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     vi.stubGlobal("document", { visibilityState: "hidden" });
     await syncToday(s);
     expect(health.queryAggregated).not.toHaveBeenCalled();
+    // On screen but offline: what it read couldn't be saved, so it doesn't read every 30 seconds for nothing.
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    vi.stubGlobal("navigator", { onLine: false });
+    await syncToday(s);
+    expect(health.queryAggregated).not.toHaveBeenCalled();
+    // Back online, it reads again.
+    vi.stubGlobal("navigator", { onLine: true });
+    await syncToday(s);
+    expect(health.queryAggregated).toHaveBeenCalled();
   });
 });
 
