@@ -154,6 +154,13 @@
 .howto-photos figcaption{font:var(--type-label);color:var(--ink-muted)}
 .howto-loop{display:none}
 .howto-video{align-self:flex-start}
+/* A lift's video, playing in its how-to: 16:9, the title and channel under it, then Another video and More on YouTube. */
+.howto-vid{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
+.howto-player{aspect-ratio:16/9;border-radius:var(--radius-md);overflow:hidden;background:var(--surface-sunken)}
+.howto-player iframe{display:block;width:100%;height:100%;border:0}
+.howto-vid-t{margin:0;font:var(--type-body-strong);overflow-wrap:anywhere}
+.howto-vid-t span{font-weight:400;color:var(--ink-muted)}
+.howto-vid-acts{display:flex;flex-wrap:wrap;gap:var(--space-2)}
 /* The lift moving: the finish photo fades in over the start and out again, on a loop. Still, side by side, with
    Reduce motion on. */
 @media (prefers-reduced-motion:no-preference){

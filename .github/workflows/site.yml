@@ -25,6 +25,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://example-project.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_example
       NEXT_PUBLIC_SITE_URL: https://gym-log.example
+      # Any key will do too: the browser tests stand in for YouTube's search and player (tests/e2e/harness.mjs).
+      NEXT_PUBLIC_YOUTUBE_API_KEY: youtube-key-example
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

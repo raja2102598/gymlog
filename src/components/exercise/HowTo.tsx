@@ -1,10 +1,7 @@
 "use client";
-import { CirclePlay } from "lucide-react";
 import { useEffect, useState } from "react";
 import { loadHowTo, photoUrls, type HowTo as HowToData } from "@/lib/exerciseMedia";
-
-/** Videos of a lift: YouTube's results for it, opened outside the app. No open dataset has videos to ship with it. */
-export const videoSearch = (name: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(`how to do ${name} exercise`)}`;
+import { LiftVideo } from "./LiftVideo";
 
 const MECHANIC: Record<string, string> = { compound: "Works several joints", isolation: "Works one joint" };
 const FORCE: Record<string, string> = { push: "Push", pull: "Pull", static: "Hold" };
@@ -49,10 +46,8 @@ export function HowTo({ id, name, headingId }: { id: string; name: string; headi
       ) : h.photos >= 2 ? (
         <p className="sub">The photos need a connection.</p>
       ) : null}
-      <a className="btn btn-sm howto-video" href={videoSearch(name)} target="_blank" rel="noreferrer">
-        <CirclePlay size={18} aria-hidden="true" />
-        Watch videos of it
-      </a>
+      {/* Videos: free-exercise-db has none, so they're YouTube's, played here (LiftVideo). A new lift starts over. */}
+      <LiftVideo key={name} name={name} />
       {tags.length ? (
         <p className="howto-tags">
           {tags.map((t) => (

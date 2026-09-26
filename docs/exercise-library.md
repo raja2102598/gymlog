@@ -38,6 +38,9 @@ Run it again after updating the library:
 node scripts/build-exercise-media.mjs
 ```
 
+free-exercise-db has no videos. A lift's **Watch a video** plays YouTube's, found with a YouTube Data API key; see
+[Videos in the app](videos.md).
+
 ## What each lift holds
 
 `src/data/exercises.json` names its `source`, `commit` and `licence`, then lists `exercises`, one lift a line,

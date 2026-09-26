@@ -6,6 +6,8 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 /** A stand-in for an exercise photo from the web (see the route in openPage). */
 const PHOTO = fs.readFileSync(new URL("../../public/icons/icon-192.png", import.meta.url));
+/** One of YouTube's search results, as its Data API gives it. */
+export const VIDEO = (id, title, channel) => ({ id: { videoId: id }, snippet: { title, channelTitle: channel } });
 
 // The Supabase project the built site talks to: NEXT_PUBLIC_SUPABASE_URL, read from the environment or from
 // .env.local / .env as Next.js reads it for the build (src/lib/config.ts). The tests intercept that address, so it
@@ -213,6 +215,15 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
     const res = await fetch(route.request().url());
     return route.fulfill({ status: res.status, contentType: "image/jpeg", body: Buffer.from(await res.arrayBuffer()) });
   });
+  // A lift's videos (src/lib/videos.ts): YouTube's search answers from db.youtube ({ items } or { status }; two
+  // made-up videos unless a test says otherwise), each search kept in db.videoSearches; its player is a stand-in page.
+  db.videoSearches ??= [];
+  await ctx.route(/^https:\/\/www\.googleapis\.com\/youtube\/v3\/search\?/, (route) => {
+    db.videoSearches.push(route.request().url());
+    const a = db.youtube ?? { items: [VIDEO("vidOne", "How to do it &amp; why", "Coach One"), VIDEO("vidTwo", "Second video", "Coach Two")] };
+    return route.fulfill({ status: a.status ?? 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ items: a.items ?? [] }) });
+  });
+  await ctx.route(/^https:\/\/www\.youtube-nocookie\.com\/embed\//, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Player</title>" }));
   // The app asks its yes-or-no questions in its own sheet (src/components/ds/Ask.tsx), not the system dialog the
   // tests used to accept (page.on("dialog") below): each is answered OK as soon as it opens, likewise, unless a test
   // says otherwise with answerAsk. What was asked is kept for lastAsked. A sheet with choices of its own (the

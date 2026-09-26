@@ -1,6 +1,7 @@
-// Where this build of Gym Log points: the Supabase project, the site's address and the Google sign-in client.
+// Where this build of Gym Log points: the Supabase project, the site's address, the Google sign-in client and the key for
+// videos.
 //
-// All four come from NEXT_PUBLIC_* variables, which Next.js inlines when it builds (see .env.example): from
+// All of them come from NEXT_PUBLIC_* variables, which Next.js inlines when it builds (see .env.example): from
 // .env.local for `npm run dev` and `npm run build`, from the Vercel project's environment variables, and from
 // repository variables for the Android workflow. Nothing about a deployment is written in the source, and a
 // build made without them shows the setup screen instead of signing in.
@@ -24,3 +25,8 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(
  *  a sign-in page; its secret lives only in Supabase). Empty keeps the app's Google button hidden. README.md,
  *  Continue with Google, has the steps. */
 export const GOOGLE_WEB_CLIENT_ID = (process.env.NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID || "").trim();
+
+/** Videos played in the app (lib/videos.ts): a YouTube Data API key from Google Cloud, limited to that API and to the
+ *  site's and the app's addresses (README.md, Videos in the app). Public like the rest: it only searches YouTube, and
+ *  its daily quota is the most anyone can spend. Empty keeps each lift's link to YouTube's results instead. */
+export const YOUTUBE_API_KEY = (process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "").trim();

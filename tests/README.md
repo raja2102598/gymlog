@@ -25,8 +25,8 @@ Strength, Muscles, a lift's page), `healthView` (the Health tab's numbers), `gym
 `backup`, `auth` (signing in and out), `healthSync` (Health Connect from the Android app), `android` (the app
 starting, the widget), `update`, `rest` (the rest timer), `workout` (its clock), `freeform`, `supersets`, `settypes`,
 `progression` (the rules and the next weight), `templates` (and the first run), `demo`, `voice` and `speech`. And for
-the library code underneath: `stats`, `format`, `health` (Health Connect's readings into days), `heart`, `tokens`,
-`config`.
+the library code underneath: `stats`, `format`, `health` (Health Connect's readings into days), `heart`, `videos`
+(finding a lift's YouTube videos), `tokens`, `config`.
 
 **Browser suites, by page:** `navigation`, `layout` (a small phone), `signin`, `firstrun`, `today` (Home, Train and the
 workout in a day's training), `workout`, `library`, `gym`, `plan` (the plan editor), `health`, `progress`.
@@ -61,7 +61,9 @@ A test is only worth having if it fails when the behaviour it names breaks. So:
 - `tests/unit/fakeSupabase.ts`: one account's tables in memory, answering as PostgREST does.
 - `tests/unit/nativeMocks.ts` and `phone.ts`: the Android app's plugins, and a phone with Health Connect data.
 - `tests/e2e/harness.mjs`: opening the app signed in with a `db`, the in-app question sheet (`answerAsk`, `lastAsked`),
-  `onDefaultPlan()` for an account on the default plan, and the rest.
+  `onDefaultPlan()` for an account on the default plan, stand-ins for YouTube's search (`db.youtube`, what it's asked
+  in `db.videoSearches`) and player, and the rest. The browser tests' build needs `NEXT_PUBLIC_YOUTUBE_API_KEY` set
+  to anything (CI's is `youtube-key-example`), so its lifts offer **Watch a video**.
 
 Reach for these before writing a helper of your own; add to them when a second file needs the same thing.
 
