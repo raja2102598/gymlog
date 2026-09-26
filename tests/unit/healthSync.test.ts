@@ -20,6 +20,7 @@ beforeEach(() => {
   vi.stubGlobal("navigator", { onLine: true });
   for (const f of Object.values(health)) f.mockReset();
   gymSync.runs.mockReset(); // back to no background runs, with nothing queued from a test before
+  gymSync.stepsRecords.mockReset();
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -46,8 +47,10 @@ describe("syncHealth", () => {
     const { s, upserts } = signedIn();
     phoneHas();
     await syncHealth(s, true);
-    // Today is 23 Sept; the account started 26 Aug, and at least 30 days are read: from 24 Aug.
-    expect(health.queryAggregated).toHaveBeenCalledWith({ dataType: "steps", startDate: mid(8, 24), endDate: new Date(2026, 8, 23, 12).toISOString(), bucket: "day", aggregation: "sum" });
+    // Today is 23 Sept; the account started 26 Aug, and at least 30 days are read: from 24 Aug. To the end of today,
+    // not now (noon), so a record running to midnight counts whole; by the hour, to the end of this hour.
+    expect(health.queryAggregated).toHaveBeenCalledWith({ dataType: "steps", startDate: mid(8, 24), endDate: mid(9, 24), bucket: "day", aggregation: "sum" });
+    expect(health.queryAggregated).toHaveBeenCalledWith({ dataType: "steps", startDate: mid(8, 24), endDate: new Date(2026, 8, 23, 13).toISOString(), bucket: "hour", aggregation: "sum" });
     expect(health.readSamples).toHaveBeenCalledWith(expect.objectContaining({ dataType: "sleep", startDate: mid(8, 23) }));
     expect(upserts).toEqual([
       [
@@ -58,11 +61,11 @@ describe("syncHealth", () => {
     expect(s.stepsOf("2026-09-22")).toBe(8421);
     expect(s.weightOf("2026-09-23")).toBe(81.2);
     expect(s.healthLink).toEqual({ state: "ok", msg: "2 days updated." });
-    // And how far today's steps go, from today's records: Samsung Health's, most of them, to 9:40. Kept on the phone
-    // for when the app opens again.
-    expect(health.readSamples).toHaveBeenCalledWith(expect.objectContaining({ dataType: "steps", startDate: mid(9, 23) }));
+    // And when today's steps were last shared, from today's records: Samsung Health's, most of them, at 9:40. Kept on
+    // the phone for when the app opens again.
+    expect(gymSync.stepsRecords).toHaveBeenCalledWith({ from: mid(9, 23), to: mid(9, 24) });
     expect(s.stepsShared).toEqual({ at: new Date(2026, 8, 23, 9, 40).toISOString(), from: SAMSUNG });
-    expect(JSON.parse(localStorage.getItem(HEALTH_KEY)!).stepsShared).toEqual(s.stepsShared);
+    expect(JSON.parse(localStorage.getItem(HEALTH_KEY)!).lastShared).toEqual(s.stepsShared);
   });
 
   it("reads the longer stretch again when more kinds of data are allowed", async () => {
@@ -105,9 +108,10 @@ describe("syncHealth", () => {
     const { s, upserts } = signedIn();
     phoneHas();
     health.readSamples.mockImplementation(async ({ dataType }: { dataType: string }) => {
-      if (dataType === "sleep" || dataType === "steps") throw new Error("SecurityException");
+      if (dataType === "sleep") throw new Error("SecurityException");
       return { samples: [] };
     });
+    gymSync.stepsRecords.mockRejectedValue(new Error("SecurityException"));
     await syncHealth(s, true);
     expect(upserts).toHaveLength(1);
     // Today's steps records, only for how far they go, fail quietly.
@@ -120,12 +124,13 @@ describe("syncHealth", () => {
     phoneHas();
     health.checkAuthorization.mockResolvedValue({ readAuthorized: ["steps"] });
     await syncHealth(s, true);
-    // Steps by the day, and by the hour, and today's records for how far they go.
+    // Steps by the day, and by the hour, and today's records for when they were last shared.
     expect(health.queryAggregated.mock.calls.map((c) => [c[0].dataType, c[0].bucket])).toEqual([
       ["steps", "day"],
       ["steps", "hour"],
     ]);
-    expect(health.readSamples.mock.calls.map((c) => c[0].dataType)).toEqual(["steps"]);
+    expect(gymSync.stepsRecords).toHaveBeenCalledTimes(1);
+    expect(health.readSamples).not.toHaveBeenCalled();
     expect(health.queryWorkouts).not.toHaveBeenCalled();
   });
 
@@ -160,8 +165,7 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     health.queryAggregated.mockClear();
     health.isAvailable.mockClear();
     walked(4200);
-    const had = health.readSamples.getMockImplementation()!;
-    health.readSamples.mockImplementation(async (o: { dataType: string }) => (o.dataType === "steps" ? { samples: [stepsRecord(9, 0, 10, 3000, SAMSUNG), stepsRecord(11, 50, 8, 1200, SAMSUNG)] } : had(o)));
+    gymSync.stepsRecords.mockResolvedValue({ records: [stepsRecord(3000, SAMSUNG, 9, 10), stepsRecord(1200, SAMSUNG, 11, 58)] });
     await syncToday(s);
     expect(health.queryAggregated).toHaveBeenCalledWith(expect.objectContaining({ dataType: "steps", startDate: mid(9, 23), bucket: "day" }));
     expect(health.queryAggregated.mock.calls.every((c) => c[0].startDate === mid(9, 23))).toBe(true);
@@ -178,19 +182,16 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     await syncToday(s);
     expect(upserts).toHaveLength(saves + 1);
     expect(redraws).toBe(0);
-    // Only how far the steps go moved (a record rewritten, the day's total the same): nothing written, but the line
-    // redrawn and kept on the phone.
-    health.readSamples.mockImplementation(async (o: { dataType: string }) => (o.dataType === "steps" ? { samples: [stepsRecord(9, 0, 10, 3000, SAMSUNG), stepsRecord(11, 50, 9, 1200, SAMSUNG)] } : had(o)));
+    // Only when steps were last shared moved (a record shared again, the day's total the same): nothing written, but
+    // the line redrawn and kept on the phone.
+    gymSync.stepsRecords.mockResolvedValue({ records: [stepsRecord(3000, SAMSUNG, 9, 10), stepsRecord(1200, SAMSUNG, 11, 59)] });
     await syncToday(s);
     expect(upserts).toHaveLength(saves + 1);
     expect(redraws).toBe(1);
     expect(s.stepsShared?.at).toBe(new Date(2026, 8, 23, 11, 59).toISOString());
-    expect(JSON.parse(localStorage.getItem(HEALTH_KEY)!).stepsShared).toEqual(s.stepsShared);
+    expect(JSON.parse(localStorage.getItem(HEALTH_KEY)!).lastShared).toEqual(s.stepsShared);
     // Those records failing to read: the last read's line stays.
-    health.readSamples.mockImplementation(async (o: { dataType: string }) => {
-      if (o.dataType === "steps") throw new Error("RemoteException");
-      return had(o);
-    });
+    gymSync.stepsRecords.mockRejectedValue(new Error("RemoteException"));
     await syncToday(s);
     expect(s.stepsShared?.at).toBe(new Date(2026, 8, 23, 11, 59).toISOString());
   });

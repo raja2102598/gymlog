@@ -221,7 +221,8 @@ export class GymStore {
   health: Record<DayKey, HealthDay> = {};
   /** When the Android app last saved Health Connect data (ISO), or null. */
   healthSyncedAt: string | null = null;
-  /** How far this phone's steps in Health Connect went at its last read, and the app they came from. This phone only. */
+  /** When today's steps were last shared with Health Connect, as of this phone's last read, and by which app. This
+   *  phone only. */
   stepsShared: StepsShared | null = null;
   healthLink: HealthLink = { state: "web", msg: "" };
   /** The rest timer. Null when none is running, paused or waiting to be dismissed. */
@@ -456,13 +457,14 @@ export class GymStore {
     const cache = lsGet<{ user?: string; logs?: Record<DayKey, DayLog>; bases?: Record<DayKey, string> } | null>(CACHE_KEY, null);
     const pend = lsGet<{ user?: string; pending?: Record<DayKey, DayLog> } | null>(PENDING_KEY, null);
     const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean; base?: string | null } | null>(PLAN_KEY, null);
-    const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null; stepsShared?: StepsShared | null } | null>(HEALTH_KEY, null);
+    const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null; lastShared?: StepsShared | null } | null>(HEALTH_KEY, null);
     const rc = lsGet<{ user?: string; rest?: RestTimer | null } | null>(REST_KEY, null);
     this.logs = cache && cache.user === u.id ? cache.logs || {} : {};
     this.bases = cache && cache.user === u.id ? cache.bases || {} : {};
     this.health = hc && hc.user === u.id ? hc.health || {} : {};
     this.healthSyncedAt = hc && hc.user === u.id ? hc.at ?? null : null;
-    this.stepsShared = hc && hc.user === u.id ? hc.stepsShared ?? null : null;
+    // (lastShared: 1.0.118 kept a record's end as stepsShared, which isn't when it was shared.)
+    this.stepsShared = hc && hc.user === u.id ? hc.lastShared ?? null : null;
     // A reload or a tab switch keeps the rest timer (this phone only: it never came from Supabase or another device).
     this.rest = rc && rc.user === u.id ? liveRest(rc.rest) : null;
     this.armRest();
@@ -1330,7 +1332,7 @@ export class GymStore {
     this.saveLocal(PENDING_KEY, { user: this.user?.id, pending: this.pending });
   }
   private persistHealth() {
-    this.saveLocal(HEALTH_KEY, { user: this.user?.id, health: this.health, at: this.healthSyncedAt, stepsShared: this.stepsShared });
+    this.saveLocal(HEALTH_KEY, { user: this.user?.id, health: this.health, at: this.healthSyncedAt, lastShared: this.stepsShared });
   }
   private persistPlan() {
     this.saveLocal(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty, base: this.planBase });
@@ -1705,7 +1707,7 @@ export class GymStore {
     this.changed();
   }
   /** Saves days read from Health Connect on this phone; only days that changed are written. Returns how many. With
-   *  them, how far the read's steps went (`shared`, kept on this phone only; undefined when it couldn't tell). */
+   *  them, when today's steps were last shared (`shared`, kept on this phone only; undefined when it couldn't tell). */
   async saveHealth(days: Record<DayKey, HealthDay>, { quiet = false, shared }: { quiet?: boolean; shared?: StepsShared | null } = {}): Promise<number> {
     if (!this.user || !this.sb) return 0;
     // Compared key-order blind: rows read back from Supabase have jsonb's key order, not ours.

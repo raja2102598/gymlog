@@ -41,6 +41,7 @@ export const gymSync = {
   disable: vi.fn(async () => {}),
   runNow: vi.fn(async () => {}),
   runs: vi.fn(async () => ({ started: 0, running: false })),
+  stepsRecords: vi.fn(async () => ({ records: [] as unknown[] })),
 };
 /** GoogleSignIn: Android's account sheet, answering with Google's ID token. */
 export const googleSignIn = { signIn: vi.fn() };

@@ -244,15 +244,15 @@ export function sleepTimes(nights: DayNumbers[]): { bed: number; wake: number } 
 }
 
 /**
- * How far today's steps go, under the Health tab's rings: "Samsung Health shared steps up to 8:40 pm". The watch or
- * phone app shares them with Health Connect in batches, so the count can trail the app's own for a while. For today
- * only, from this phone's last read (null on another day, before a read today, or on the website).
+ * When today's steps were last shared, under the Health tab's rings: "Samsung Health last shared steps at 8:40 pm".
+ * The watch or phone app passes them to Health Connect every so often, so the count here is its count as of then.
+ * For today only, from this phone's last read (null on another day, before a read today, or on the website).
  */
 export function stepsSharedText(s: StepsShared | null, k: DayKey, today = todayKey()): string | null {
   if (!s || k !== today || keyOf(new Date(s.at)) !== today) return null;
   const at = new Date(s.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase();
   const app = appName(s.from);
-  return app ? `${app} shared steps up to ${at}` : `Health Connect has steps up to ${at}`;
+  return app ? `${app} last shared steps at ${at}` : `Steps last shared with Health Connect at ${at}`;
 }
 
 /** "10:45 pm" for minutes after midnight (wrapping past 24 h). */

@@ -3,6 +3,10 @@ package io.github.raja2102598.gymlog
 import androidx.activity.result.ActivityResult
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.time.TimeRangeFilter
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -14,10 +18,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.time.Instant
 
 /**
  * Background sync from JavaScript (src/native/sync.ts): whether this phone can do it, the Health Connect permission
- * it needs, and turning it on and off. The work itself is HealthSyncWorker.
+ * it needs, and turning it on and off. The work itself is HealthSyncWorker. Also each steps record's times, which the
+ * Health plugin doesn't give.
  */
 @CapacitorPlugin(name = "GymSync")
 class GymSyncPlugin : Plugin() {
@@ -110,6 +116,36 @@ class GymSyncPlugin : Plugin() {
     fun disable(call: PluginCall) {
         HealthSync.disable(context)
         call.resolve()
+    }
+
+    /**
+     * The steps records from `from` to `to` (ISO instants) as { records: [{ value, sourceId, modified }] }: the steps
+     * in each, the app that shared it, and when Health Connect last got it (ISO), for the Health tab's "Samsung Health
+     * last shared steps at …". A record's own end says nothing of that: Samsung Health's runs to midnight.
+     */
+    @PluginMethod
+    fun stepsRecords(call: PluginCall) = safely(call) {
+        val from = Instant.parse(call.getString("from") ?: throw IllegalArgumentException("from is needed"))
+        val to = Instant.parse(call.getString("to") ?: throw IllegalArgumentException("to is needed"))
+        val c = client() ?: throw IllegalStateException("Health Connect isn’t available")
+        val out = JSArray()
+        var token: String? = null
+        for (page in 0 until 20) {
+            val res = c.readRecords(
+                ReadRecordsRequest(StepsRecord::class, timeRangeFilter = TimeRangeFilter.between(from, to), pageSize = 1000, pageToken = token),
+            )
+            for (r in res.records) {
+                out.put(
+                    JSObject()
+                        .put("value", r.count)
+                        .put("sourceId", r.metadata.dataOrigin.packageName)
+                        .put("modified", r.metadata.lastModifiedTime.toString()),
+                )
+            }
+            // An exhausted page token can come back empty rather than null (the standalone Health Connect app).
+            token = res.pageToken?.takeIf { it.isNotEmpty() } ?: break
+        }
+        call.resolve(JSObject().put("records", out))
     }
 
     @PluginMethod

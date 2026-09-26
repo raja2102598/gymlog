@@ -49,9 +49,9 @@ async function healthConnect({ browser, base, check }) {
   const { logs, health } = data();
   const db = { logs, plan: null, health };
   const { ctx, page } = await open(browser, base, { auth, db, url: null });
-  // How far today's steps went at the Android app's last read of Health Connect, as it keeps it on the phone.
+  // When today's steps were last shared, as of the Android app's last read of Health Connect, as it keeps it on the phone.
   const shared = { at: new Date(2026, 8, 23, 11, 40).toISOString(), from: "com.sec.android.app.shealth" };
-  await ctx.addInitScript(([k, v]) => localStorage.getItem(k) || localStorage.setItem(k, v), ["gymlog.health.v1", JSON.stringify({ user: uid, health: {}, at: null, stepsShared: shared })]);
+  await ctx.addInitScript(([k, v]) => localStorage.getItem(k) || localStorage.setItem(k, v), ["gymlog.health.v1", JSON.stringify({ user: uid, health: {}, at: null, lastShared: shared })]);
   await page.goto(base);
   await ready(page);
 
@@ -114,7 +114,7 @@ async function healthConnect({ browser, base, check }) {
   const ringsDraw = await page.$eval("#activity svg.rings", (e) => ({ filters: e.querySelectorAll("filter, [filter]").length, tips: e.querySelectorAll(".ring-tip").length, anim: getComputedStyle(e.querySelector(".ring-arc")).animationName }));
   check("the rings draw on screen, and Exercise’s second lap has a shadow shape, not a shadow filter", ringsDraw.filters === 0 && ringsDraw.tips === 1 && ringsDraw.anim === "ringIn", JSON.stringify(ringsDraw));
   const sharedLine = (await page.locator("#stepsShared").count()) ? await flat(page.locator("#stepsShared")) : "no line";
-  check("under the rings, how far today's steps go and the app that shared them", /^Samsung Health shared steps up to 11:40\s?am$/.test(sharedLine), sharedLine);
+  check("under the rings, when today's steps were last shared and by which app", /^Samsung Health last shared steps at 11:40\s?am$/.test(sharedLine), sharedLine);
   check("the Exercise ring's legend opens the exercise page", (await page.getAttribute("#ringExercise", "href")) === "#health/exercise" && /52/.test(await flat(page.locator("#ringExercise"))));
   // Text as laid out, so the lines of a tile read as separate words.
   const text = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
@@ -136,7 +136,7 @@ async function healthConnect({ browser, base, check }) {
   await until(() => !db.logs["2026-09-23"].water);
   check("− takes it off again", !db.logs["2026-09-23"].water && /^0/.test(await flat(page.locator("#waterValue"))), JSON.stringify(db.logs["2026-09-23"].water));
   await page.click("#hPrev");
-  check("the day switch moves to yesterday, with its date, and no word on how far today's steps go", (await flat(page.locator("#activity .dayswitch .label"))) === "Yesterday 22 Sept" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000") && !(await page.locator("#stepsShared").count()));
+  check("the day switch moves to yesterday, with its date, and no word on when today's steps were shared", (await flat(page.locator("#activity .dayswitch .label"))) === "Yesterday 22 Sept" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000") && !(await page.locator("#stepsShared").count()));
   await page.click("#hNext");
   check("and back to today, no further", (await flat(page.locator("#activity .dayswitch .label"))) === "Today 23 Sept" && (await page.locator("#hNext").isDisabled()));
 

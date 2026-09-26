@@ -13,13 +13,14 @@ import java.time.Instant
 /**
  * Reads what readDays() in src/native/health.ts reads, the same way and through the same Health plugin code, as
  * readings for [HealthDays]. Kinds of data that weren't allowed are skipped; one that fails doesn't stop the rest.
+ * `to` is the end of today, not now, and `hoursTo` the end of this hour, for the reason readDays gives.
  */
 object HealthRead {
     class Result(val readings: JSONObject, val failed: List<String>)
 
     private val WORKOUTS = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
 
-    suspend fun read(client: HealthConnectClient, from: Instant, sleepFrom: Instant, to: Instant, granted: Set<String>): Result {
+    suspend fun read(client: HealthConnectClient, from: Instant, sleepFrom: Instant, to: Instant, hoursTo: Instant, granted: Set<String>): Result {
         val m = HealthManager()
         val r = JSONObject()
         val failed = mutableListOf<String>()
@@ -34,14 +35,14 @@ object HealthRead {
                 failed += label
             }
         }
-        suspend fun total(type: HealthDataType, key: String, label: String, aggregations: List<String>, bucket: String = "day") =
-            get(type.readPermission, key, label) { m.queryAggregated(client, type, from, to, bucket, aggregations).getJSONArray("samples") }
+        suspend fun total(type: HealthDataType, key: String, label: String, aggregations: List<String>, bucket: String = "day", end: Instant = to) =
+            get(type.readPermission, key, label) { m.queryAggregated(client, type, from, end, bucket, aggregations).getJSONArray("samples") }
         // Newest first, in pages of 500, as the app reads them.
         suspend fun samples(type: HealthDataType, key: String, label: String, start: Instant = from) =
             get(type.readPermission, key, label) { m.readSamples(client, type, start, to, 5000, false) }
 
         total(HealthDataType.STEPS, "steps", "steps", listOf("sum"))
-        total(HealthDataType.STEPS, "stepsHourly", "steps by hour", listOf("sum"), "hour")
+        total(HealthDataType.STEPS, "stepsHourly", "steps by hour", listOf("sum"), "hour", hoursTo)
         total(HealthDataType.DISTANCE, "distance", "distance", listOf("sum"))
         samples(HealthDataType.FLIGHTS_CLIMBED, "floors", "floors")
         total(HealthDataType.CALORIES, "activeKcal", "active calories", listOf("sum"))
