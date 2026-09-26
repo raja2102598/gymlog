@@ -69,7 +69,7 @@ export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
   return write({ day, startedAt: now });
 }
 
-/** Starts the day's clock again from 0:00: the top bar's clock, tapped. */
+/** Starts the day's clock again from 0:00: ↺ beside the top bar's clock, while it's paused. */
 export const restartRun = (day: DayKey, now = Date.now()): WorkoutRun => write({ day, startedAt: now });
 
 /** Stops the day's clock where it is (the top bar's clock, tapped), until resumeRun. Nothing for a
@@ -107,7 +107,7 @@ export function clearRun(day?: DayKey) {
 }
 
 /** How long a run has lasted, ms, to its end or to now, less the time it was paused (still paused: up to then). */
-function runMs(r: WorkoutRun, now: number): number {
+export function runMs(r: WorkoutRun, now: number): number {
   const end = r.endedAt ?? now, paused = (r.pausedMs ?? 0) + (r.pausedAt != null ? Math.max(0, end - r.pausedAt) : 0);
   return Math.max(0, end - r.startedAt - paused);
 }

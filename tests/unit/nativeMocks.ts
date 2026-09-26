@@ -48,8 +48,8 @@ export const googleSignIn = { signIn: vi.fn() };
 export const speech = { available: vi.fn(async () => ({ available: true })) };
 /** GymWidget, the home-screen widget. */
 export const widget = { update: vi.fn(async () => {}), clear: vi.fn(async () => {}) };
-/** RestTimer: the rest timer's alarm and notification while the app is in the background. */
-export const restTimer = { schedule: vi.fn(async () => {}), cancel: vi.fn(async () => {}) };
+/** RestTimer: the lock screen while the app is in the background: a rest timer's countdown and alarm, or the workout. */
+export const restTimer = { schedule: vi.fn(async () => {}), workout: vi.fn(async () => {}), cancel: vi.fn(async () => {}) };
 
 type Progress = { received: number; total: number };
 const progressListeners = new Set<(p: Progress) => void>();

@@ -47,7 +47,19 @@ The rest timer started by logging a set keeps counting with the app in the backg
 
 - **Notifications:** Android 13 and later ask first. Tap **Allow** under **Settings → Rest timer & effort → Rest timer notifications**. If Android has stopped asking, turn notifications on for Gym Log in the phone's own settings. Older versions allow them when the app is installed.
 - **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 13 and later leave off by default). Without it, Android may deliver it a little late while the phone is idle. The countdown in the app is exact either way.
-- **Two notification channels** in the phone's settings let you silence either: *Rest timer running* for the countdown (never makes a sound) and *Rest over* for the alert.
+- **Notification channels** in the phone's settings let you silence each: *Rest timer running* for the countdown and *Workout under way* for the workout's clock (neither makes a sound), and *Rest over* for the alert.
+
+## Lock screen and Samsung's Now Bar
+
+With the app in the background or the phone locked, a workout under way stays in view. It shows the session, how many exercises are done, and its clock counting up. While a rest timer runs, it shows the countdown in the same place. Pausing the clock or finishing the workout takes it down. So does coming back to the app, which shows all of it itself. If a workout is left running, Android takes it down once it has run for three hours, the point at which the app counts it as left behind.
+
+Both are Android 16 *Live Updates*:
+
+- **Samsung's One UI 8 and later:** they show in the **Now Bar** on the lock screen.
+- **Other phones on Android 16:** they show as a chip in the status bar and at the top of the lock screen.
+- **Earlier versions:** they're ordinary notifications.
+
+They need the same notification permission as the rest timer. The phone's own settings can turn Live Updates off for Gym Log, which leaves them ordinary notifications.
 
 ## Updates and the signing key
 

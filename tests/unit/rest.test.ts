@@ -150,15 +150,16 @@ describe("in the background, in the Android app", () => {
   beforeEach(() => {
     app.forget();
     restTimer.schedule.mockClear();
+    restTimer.workout.mockClear();
     restTimer.cancel.mockClear();
     widget.update.mockClear();
   });
   const appIs = (isActive: boolean) => app.fire("appStateChange", { isActive });
 
   it("arms the alarm for a running timer as the app goes to the background, and takes it down on coming back", async () => {
-    const { syncRestNotifications } = await import("@/native/rest");
+    const { syncOngoingNotifications } = await import("@/native/rest");
     const s = store();
-    syncRestNotifications(s);
+    syncOngoingNotifications(s);
     expect(restTimer.cancel).toHaveBeenCalledTimes(1); // opening the app takes down whatever an earlier run left
     s.startRest("2026-09-23", "Leg Press", 90);
     const endAt = new Date(2026, 8, 23, 12, 1, 30).getTime();
@@ -183,9 +184,9 @@ describe("in the background, in the Android app", () => {
   });
 
   it("leaves ‘Rest over’ to the alarm when the app is in the background, and takes it down on coming back", async () => {
-    const { syncRestNotifications } = await import("@/native/rest");
+    const { syncOngoingNotifications } = await import("@/native/rest");
     const s = store();
-    syncRestNotifications(s);
+    syncOngoingNotifications(s);
     s.startRest("2026-09-23", "Leg Press", 30);
     appIs(false);
     vi.advanceTimersByTime(31_000);
@@ -196,9 +197,9 @@ describe("in the background, in the Android app", () => {
   });
 
   it("never arms the alarm with the app in front, which says ‘Rest over’ itself", async () => {
-    const { syncRestNotifications } = await import("@/native/rest");
+    const { syncOngoingNotifications } = await import("@/native/rest");
     const s = store();
-    syncRestNotifications(s);
+    syncOngoingNotifications(s);
     appIs(true);
     s.startRest("2026-09-23", "Leg Press", 30);
     vi.advanceTimersByTime(31_000);
@@ -206,6 +207,32 @@ describe("in the background, in the Android app", () => {
     expect(restTimer.schedule).not.toHaveBeenCalled();
     appIs(false); // and going to the background after it's over has nothing to add
     expect(restTimer.schedule).not.toHaveBeenCalled();
+  });
+
+  it("shows the workout under way instead when no rest timer runs, and takes it down on coming back or when paused", async () => {
+    const { syncOngoingNotifications } = await import("@/native/rest");
+    const { pauseRun, runsFor, startRun } = await import("@/lib/workout");
+    const s = store();
+    runsFor("u");
+    const started = new Date(2026, 8, 23, 11, 50).getTime();
+    startRun(todayKey(), started);
+    syncOngoingNotifications(s);
+    appIs(false);
+    expect(restTimer.workout).toHaveBeenLastCalledWith({ title: "Legs", text: "0 of 5 exercises done", since: started, forMs: 3 * 60 * 60_000 - 10 * 60_000 });
+    appIs(true);
+    s.startRest(todayKey(), "Leg Press", 90);
+    appIs(false); // resting: the countdown, not the clock
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: new Date(2026, 8, 23, 12, 1, 30).getTime() });
+    appIs(true);
+    s.skipRest();
+    appIs(false); // no rest: the clock again
+    expect(restTimer.workout).toHaveBeenCalledTimes(2);
+    appIs(true);
+    const cancels = restTimer.cancel.mock.calls.length;
+    pauseRun(todayKey());
+    appIs(false); // a paused clock isn't under way
+    expect(restTimer.workout).toHaveBeenCalledTimes(2);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(cancels);
   });
 
   it("puts a running timer's end on the widget, and takes it off when paused", async () => {

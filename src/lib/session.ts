@@ -4,6 +4,7 @@ import { addDays, DOW, mondayOf, wdIndex } from "./dates";
 import { e1rm, isStraightSet, isWorkingSet, repRange, type RecordKind } from "./stats";
 import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem } from "./store";
 import type { DayKey, PlanExercise } from "./types";
+import { runMs, runOf, STALE_RUN_MS } from "./workout";
 
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
 export const dash = (s: string) => s.replace(/\s*-\s*/g, "–");
@@ -127,3 +128,33 @@ export const missedWords = (store: GymStore, k: DayKey) => store.missedThisWeek(
 export const topOfRange = (reps: string) => repRange(reps)?.[1] ?? null;
 
 export const yesterday = (k: DayKey) => addDays(k, -1);
+
+/** A workout under way, as the phone shows it while Gym Log is out of sight (native/rest.ts): an Android 16 Live
+ *  Update, in Samsung's Now Bar, on the lock screen and in the status bar's chip. */
+export interface LiveWorkout {
+  /** The session's name, as the workout's top bar has it. */
+  title: string;
+  /** How far it's got, by the workout's own steps: a superset is one, and a skipped lift counts as done. */
+  text: string;
+  /** When its clock would have started with no pauses, ms: the phone counts up from here on its own. */
+  since: number;
+  /** How long until it would count as left behind (STALE_RUN_MS), when the phone takes it down. */
+  forMs: number;
+}
+
+/** The day's workout for the lock screen: none unless its clock is running, and not left behind. A paused clock
+ *  isn't under way, and a finished one is over. */
+export function liveWorkout(store: GymStore, day: DayKey, now = Date.now()): LiveWorkout | null {
+  const r = runOf(day);
+  if (!r || r.endedAt || r.pausedAt != null) return null;
+  const ms = runMs(r, now);
+  if (ms >= STALE_RUN_MS) return null;
+  const e = store.entry(day), blocks = store.liftBlocks(day);
+  const done = blocks.filter((b) => b.every((it) => e.exercises[it.name]?.done || e.exercises[it.name]?.skipped)).length;
+  return {
+    title: e.free ? e.free.name.trim() || "Free workout" : store.planFor(day).name,
+    text: blocks.length ? `${done} of ${blocks.length} exercise${blocks.length === 1 ? "" : "s"} done` : "No exercises yet",
+    since: now - ms,
+    forMs: STALE_RUN_MS - ms,
+  };
+}

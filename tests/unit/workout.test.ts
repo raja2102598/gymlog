@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { wdIndex } from "@/lib/dates";
+import { liveWorkout } from "@/lib/session";
+import type { LiftLog } from "@/lib/types";
 import { clearRun, dropStaleRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runOf, runSeconds, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
+import { day, lift, storeWith, WED } from "./helpers";
 
 const mem = new Map<string, string>();
 globalThis.localStorage = {
@@ -100,5 +104,52 @@ describe("workout runs", () => {
     runsFor(null); // signed out, then the sample data again
     runsFor("demo");
     expect(runOf("2026-09-23")).toBeNull();
+  });
+});
+
+// What the phone shows of a workout under way while Gym Log is out of sight: an Android 16 Live Update, in Samsung's
+// Now Bar, on the lock screen and in the status bar (src/native/rest.ts sends it; tests/unit/rest.test.ts, when).
+describe("the workout on the lock screen", () => {
+  beforeEach(() => {
+    mem.clear();
+    keepRunsInMemory(false);
+    runsFor("u");
+  });
+  const NOON = new Date(`${WED}T12:00:00`).getTime(), MIN = 60_000;
+  const skipped = { done: false, kg: null, skipped: true } as unknown as LiftLog;
+
+  it("names the session and how far it's got, and counts up from when it started, less its pauses", () => {
+    const s = storeWith({ [WED]: day({ exercises: { "Hack Squat": lift([[8, 100]]), "Leg Press": skipped } }) });
+    startRun(WED, NOON - 30 * MIN);
+    pauseRun(WED, NOON - 20 * MIN);
+    resumeRun(WED, NOON - 15 * MIN);
+    expect(liveWorkout(s, WED, NOON)).toEqual({ title: "Legs", text: "2 of 5 exercises done", since: NOON - 25 * MIN, forMs: STALE_RUN_MS - 25 * MIN });
+  });
+
+  it("counts a superset as one exercise, done when all of it is, and names a free workout by its own name", () => {
+    const s = storeWith({ [WED]: day({ exercises: { "Leg Extension": lift([[12, 40]]) } }) });
+    s.plan.days[wdIndex(WED)].exercises[3].superset = true; // Hamstring Curl joins Leg Extension
+    startRun(WED, NOON - MIN);
+    expect(liveWorkout(s, WED, NOON)?.text).toBe("0 of 4 exercises done");
+    s.logs[WED].exercises["Hamstring Curl"] = lift([[10, 30]]);
+    expect(liveWorkout(s, WED, NOON)?.text).toBe("1 of 4 exercises done");
+    s.logs[WED] = day({ free: { name: "Hotel gym", lifts: ["Goblet Squat"] } });
+    expect(liveWorkout(s, WED, NOON)).toMatchObject({ title: "Hotel gym", text: "0 of 1 exercise done" });
+    s.logs[WED] = day({ free: { name: " ", lifts: [] } });
+    expect(liveWorkout(s, WED, NOON)).toMatchObject({ title: "Free workout", text: "No exercises yet" });
+  });
+
+  it("shows nothing for a clock not started, paused, finished or left behind", () => {
+    const s = storeWith();
+    expect(liveWorkout(s, WED, NOON)).toBeNull();
+    startRun(WED, NOON - STALE_RUN_MS);
+    expect(liveWorkout(s, WED, NOON)).toBeNull(); // left running for three hours
+    restartRun(WED, NOON - MIN);
+    pauseRun(WED, NOON);
+    expect(liveWorkout(s, WED, NOON)).toBeNull();
+    resumeRun(WED, NOON);
+    expect(liveWorkout(s, WED, NOON)).not.toBeNull();
+    endRun(WED, NOON);
+    expect(liveWorkout(s, WED, NOON)).toBeNull();
   });
 });

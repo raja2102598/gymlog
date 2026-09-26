@@ -39,7 +39,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 
 **Home, Train and the workout, set by set**
 - Home shows today at a glance: the week, today's workout with **Start workout**, activity rings, water and weight in one tap. Train has the selected day's lifts, reordered by dragging, and the day's log.
-- The workout goes one exercise at a time: the target (3 × 8-10), what you did last time, and a row per set with kg and reps already suggested, so **Complete set** logs it; then a rest timer, and a summary with your personal bests when you finish.
+- The workout goes one exercise at a time: the target (3 × 8-10), what you did last time, and a row per set with kg and reps already suggested, so **Complete set** logs it; then a rest timer, and a summary with your personal bests when you finish. In the Android app, with the phone locked, the workout's clock and the rest countdown stay on the lock screen, in the Now Bar on Samsung phones (Android 16 Live Updates).
 - Log a set by voice: tap the microphone and say *10 at 45*, or *again*, *undo*, *done* or *skip*. Once switched on in Settings: in the browser, or in the Android app with the phone's own speech recognition.
 - Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
 - Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.

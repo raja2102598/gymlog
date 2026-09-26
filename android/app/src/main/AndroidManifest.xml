@@ -98,6 +98,10 @@
          calendar app, which it isn't, so this is the declaration for the ordinary, sometimes-not-granted kind. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Android 16's Live Updates: the rest countdown and the workout under way (RestAlarm.kt) ask to be promoted, to
+         show in Samsung's Now Bar, on the lock screen and as the status bar's chip. Granted on install; the phone's
+         own settings can turn Live Updates off for Gym Log, which leaves them ordinary notifications. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <!-- The page's own buzz at zero (navigator.vibrate) while the app is open: the WebView needs this to do it. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
