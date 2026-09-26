@@ -6,7 +6,7 @@ import { healthDays, stepsShared, type HealthReadings, type StepsShared, type Wo
 import { lsGet, lsSet } from "@/lib/storage";
 import type { GymStore } from "@/lib/store";
 import type { DayKey, HealthDay } from "@/lib/types";
-import { backgroundRuns } from "./sync";
+import { backgroundRuns, stepsRecords } from "./sync";
 
 // What Gym Log reads, all read-only. Distance is also what lets Health Connect total a workout's calories.
 export const READ: HealthDataType[] = [
@@ -173,9 +173,16 @@ export async function syncToday(store: GymStore): Promise<void> {
   }
 }
 
-/** Day totals, samples and workouts from `from` (local midnight) to now, as days, and how far today's steps go. */
+/** Day totals, samples and workouts from `from` (local midnight) through today, as days, and when today's steps were
+ *  last shared. */
 async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record<DayKey, HealthDay>; failed: string[]; shared: StepsShared | null | undefined }> {
-  const start = parseKey(from).toISOString(), end = new Date().toISOString(), failed: string[] = [];
+  // To the end of today, not now. Samsung Health shares today's steps in a record that runs to midnight, and Health
+  // Connect, totalling part of a record, counts that part only: read up to now, 11,110 steps at 11:27 pm came out as
+  // 10,858, the share of the day gone by. Hour by hour, to the end of this hour, so no steps land in hours still to
+  // come. (Background sync reads the same way: HealthSync.kt.)
+  const failed: string[] = [], today = todayKey(), hourEnd = new Date();
+  hourEnd.setMinutes(60, 0, 0);
+  const start = parseKey(from).toISOString(), end = parseKey(addDays(today, 1)).toISOString();
   // One kind of data failing (none recorded, or access removed) shouldn't stop the others.
   const read = async <T,>(type: HealthDataType, label: string, get: () => Promise<T>): Promise<T | undefined> => {
     if (!granted.includes(type)) return undefined;
@@ -188,7 +195,7 @@ async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record
   };
   type Aggregation = "sum" | "average" | ("average" | "min" | "max")[];
   const total = (dataType: HealthDataType, label: string, aggregation: Aggregation, bucket: "day" | "hour" = "day") =>
-    read(dataType, label, async () => (await Health.queryAggregated({ dataType, startDate: start, endDate: end, bucket, aggregation })).samples);
+    read(dataType, label, async () => (await Health.queryAggregated({ dataType, startDate: start, endDate: bucket === "hour" ? hourEnd.toISOString() : end, bucket, aggregation })).samples);
   // Newest first, in pages of 500: some watches record blood oxygen or HRV every minute of the night.
   const samples = (dataType: HealthDataType, label: string, startDate = start) =>
     read(dataType, label, async () => (await Health.readSamples({ dataType, startDate, endDate: end, limit: 5000, ascending: false })).samples);
@@ -228,12 +235,12 @@ async function readDays(from: DayKey, granted: string[]): Promise<{ days: Record
   };
   const days = healthDays(r);
   for (const k of Object.keys(days)) if (k < from) delete days[k];
-  // Today's steps records, for how far they go and which app shared them (the Health tab says so). Quietly unknown
+  // Today's steps records, for when they were last shared and by which app (the Health tab says so). Quietly unknown
   // (undefined: the last read's stays) when they can't be read: the day's steps above are what count.
   let shared: StepsShared | null | undefined = null;
   if (granted.includes("steps")) {
     try {
-      shared = stepsShared((await Health.readSamples({ dataType: "steps", startDate: parseKey(todayKey()).toISOString(), endDate: end, limit: 5000, ascending: false })).samples);
+      shared = stepsShared(await stepsRecords(parseKey(today).toISOString(), end));
     } catch {
       shared = undefined;
     }

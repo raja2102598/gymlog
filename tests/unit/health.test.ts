@@ -111,14 +111,14 @@ describe("healthDays", () => {
 });
 
 describe("how far the steps go", () => {
-  it("takes the app with the most steps, up to the end of its newest record", () => {
-    const rec = (h: number, m: number, value: number, sourceId?: string) => ({ startDate: at(23, h, m), endDate: at(23, h, m + 10), value, sourceId });
+  it("takes the app with the most steps, and when Health Connect last got one of its records", () => {
+    const rec = (h: number, m: number, value: number, sourceId?: string) => ({ value, sourceId, modified: at(23, h, m) });
     const samsung = "com.sec.android.app.shealth", fit = "com.google.android.apps.fitness";
-    // Google Fit's record is the newest, but Samsung Health has most of the steps: Samsung Health's newest, out of order.
-    expect(stepsShared([rec(20, 30, 900, samsung), rec(9, 0, 4000, samsung), rec(21, 0, 300, fit), rec(22, 0, 0, samsung)])).toEqual({ at: at(23, 20, 40), from: samsung });
-    expect(stepsShared([rec(9, 0, 50)])).toEqual({ at: at(23, 9, 10), from: "" });
+    // Google Fit shared last, but Samsung Health has most of the steps: when Samsung Health last shared, out of order.
+    expect(stepsShared([rec(20, 40, 900, samsung), rec(9, 10, 4000, samsung), rec(21, 10, 300, fit), rec(22, 10, 0, samsung)])).toEqual({ at: at(23, 20, 40), from: samsung });
+    expect(stepsShared([rec(9, 10, 50)])).toEqual({ at: at(23, 9, 10), from: "" });
     // No steps: nothing to say.
-    expect(stepsShared([rec(9, 0, 0, samsung)])).toBeNull();
+    expect(stepsShared([rec(9, 10, 0, samsung)])).toBeNull();
     expect(stepsShared(undefined)).toBeNull();
     expect([appName(samsung), appName(fit), appName("com.example.pedometer")]).toEqual(["Samsung Health", "Google Fit", null]);
   });

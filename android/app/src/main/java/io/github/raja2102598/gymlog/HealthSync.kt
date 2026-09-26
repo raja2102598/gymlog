@@ -22,6 +22,8 @@ import java.net.URL
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -147,12 +149,15 @@ class HealthSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker
             return Result.success()
         }
         val zone = ZoneId.systemDefault()
-        val first = LocalDate.now(zone).minusDays(2)
+        val today = LocalDate.now(zone)
+        val first = today.minusDays(2)
+        // To the end of today and of this hour, as the app reads (readDays in src/native/health.ts).
         val read = HealthRead.read(
             client,
             from = first.atStartOfDay(zone).toInstant(),
             sleepFrom = first.minusDays(1).atStartOfDay(zone).toInstant(),
-            to = Instant.now(),
+            to = today.plusDays(1).atStartOfDay(zone).toInstant(),
+            hoursTo = ZonedDateTime.now(zone).truncatedTo(ChronoUnit.HOURS).plusHours(1).toInstant(),
             granted = granted,
         )
         if (read.readings.length() == 0 && read.failed.isNotEmpty()) {

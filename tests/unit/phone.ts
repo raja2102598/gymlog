@@ -2,7 +2,7 @@
  * that mock the plugins with nativeMocks.ts. */
 import { GymStore } from "@/lib/store";
 import { READ } from "@/native/health";
-import { health } from "./nativeMocks";
+import { gymSync, health } from "./nativeMocks";
 
 /** Midnight at the start of a day of 2026, in the phone's time zone, as Health Connect gives it. */
 export const mid = (m: number, d: number) => new Date(2026, m - 1, d).toISOString();
@@ -23,17 +23,14 @@ export function signedIn() {
   return { s, upserts };
 }
 
-/** A steps record of the 23rd, from `h:m` for `min` minutes, shared by the app `from` (a package name). */
-export const stepsRecord = (h: number, m: number, min: number, value: number, from: string) => ({
-  startDate: new Date(2026, 8, 23, h, m).toISOString(),
-  endDate: new Date(2026, 8, 23, h, m + min).toISOString(),
-  value,
-  sourceId: from,
-});
+/** A steps record of the 23rd as the GymSync plugin gives it: its steps, the app `from` that shared it (a package
+ *  name), and when Health Connect last got it, at `h:m`. */
+export const stepsRecord = (value: number, from: string, h: number, m: number) => ({ value, sourceId: from, modified: new Date(2026, 8, 23, h, m).toISOString() });
 export const SAMSUNG = "com.sec.android.app.shealth";
 
-/** Health Connect with everything allowed: steps on 22 and 23 September (23's by the hour too, and its records, most
- *  from Samsung Health up to 9:40 and a few from Google Fit after), a resting heart rate and a weigh-in on the 23rd. */
+/** Health Connect with everything allowed: steps on 22 and 23 September (23's by the hour too, and its records: most
+ *  from Samsung Health, last shared at 9:40, and a few from Google Fit after), a resting heart rate and a weigh-in on
+ *  the 23rd. */
 export function phoneHas() {
   health.isAvailable.mockResolvedValue({ available: true, platform: "android" });
   health.checkAuthorization.mockResolvedValue({ readAuthorized: READ, readDenied: [], writeAuthorized: [], writeDenied: [] });
@@ -48,12 +45,8 @@ export function phoneHas() {
             : [],
   }));
   health.readSamples.mockImplementation(async ({ dataType }: { dataType: string }) => ({
-    samples:
-      dataType === "weight"
-        ? [{ startDate: new Date(2026, 8, 23, 7).toISOString(), endDate: new Date(2026, 8, 23, 7).toISOString(), value: 81.2 }]
-        : dataType === "steps"
-          ? [stepsRecord(9, 0, 10, 1800, SAMSUNG), stepsRecord(9, 30, 10, 1212, SAMSUNG), stepsRecord(9, 45, 5, 40, "com.google.android.apps.fitness")]
-          : [],
+    samples: dataType === "weight" ? [{ startDate: new Date(2026, 8, 23, 7).toISOString(), endDate: new Date(2026, 8, 23, 7).toISOString(), value: 81.2 }] : [],
   }));
+  gymSync.stepsRecords.mockResolvedValue({ records: [stepsRecord(1800, SAMSUNG, 9, 15), stepsRecord(1212, SAMSUNG, 9, 40), stepsRecord(40, "com.google.android.apps.fitness", 9, 50)] });
   health.queryWorkouts.mockResolvedValue({ workouts: [] });
 }

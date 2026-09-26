@@ -18,8 +18,6 @@ export interface Sample {
   /** Blood pressure readings carry both numbers, mmHg. */
   systolic?: number;
   diastolic?: number;
-  /** The app that shared it with Health Connect, by package name. */
-  sourceId?: string;
 }
 export interface Workout {
   workoutType: string;
@@ -61,24 +59,33 @@ export interface HealthReadings {
   workouts?: Workout[];
 }
 
-/** How far the phone's steps go: the end of the newest steps record from the app most of them come from, and that app
- *  (a package name). Kept on this phone only (store.stepsShared), for the Health tab to say it. */
+/** When the app most of today's steps come from last shared steps with Health Connect, and that app (a package
+ *  name). Kept on this phone only (store.stepsShared), for the Health tab to say it. */
 export interface StepsShared {
   at: string;
   from: string;
 }
 
+/** A steps record as the app's GymSync plugin gives it (native/sync.ts): its steps, the app that shared it, and when
+ *  Health Connect last got it. */
+export interface StepsRecordTimes {
+  value: number;
+  sourceId?: string;
+  modified: string;
+}
+
 /**
- * How far steps records go (Health Connect's own, as readSamples gives them): the app with the most steps among them,
- * and the end of its newest record. That app's, not simply the newest record's: with two apps sharing steps, Health
- * Connect counts the one first in its list, and that's nearly always the one with more.
+ * When steps were last shared, from today's steps records: the app with the most steps among them, and the latest
+ * time Health Connect got one of its records (new, or updated with more steps). Not a record's end: Samsung Health's
+ * runs to midnight. That app's, not simply the latest record's: with two apps sharing steps, Health Connect counts
+ * the one first in its list, and that's nearly always the one with more.
  */
-export function stepsShared(records: Sample[] | undefined): StepsShared | null {
+export function stepsShared(records: StepsRecordTimes[] | undefined): StepsShared | null {
   const by = new Map<string, { steps: number; at: number }>();
   for (const r of records ?? []) {
     if (!(r.value > 0)) continue;
     const k = r.sourceId ?? "", b = by.get(k) ?? { steps: 0, at: 0 };
-    by.set(k, { steps: b.steps + r.value, at: Math.max(b.at, Date.parse(r.endDate)) });
+    by.set(k, { steps: b.steps + r.value, at: Math.max(b.at, Date.parse(r.modified)) });
   }
   const top = [...by].sort((a, b) => b[1].steps - a[1].steps)[0];
   return top ? { at: new Date(top[1].at).toISOString(), from: top[0] } : null;

@@ -66,10 +66,10 @@ describe("a day's numbers", () => {
     expect(dayNumbers(store({ "2026-09-01": { bmr: 1680 } }), "2026-09-10").totalKcal).toBeNull();
   });
 
-  it("says how far today's steps go, and which app shared them", () => {
+  it("says when today's steps were last shared, and by which app", () => {
     const at = (d: number, h: number, m: number) => new Date(2026, 8, d, h, m).toISOString();
-    expect(stepsSharedText({ at: at(23, 20, 40), from: "com.sec.android.app.shealth" }, WED)).toMatch(/^Samsung Health shared steps up to 8:40\s?pm$/);
-    expect(stepsSharedText({ at: at(23, 9, 5), from: "com.example.pedometer" }, WED)).toMatch(/^Health Connect has steps up to 9:05\s?am$/);
+    expect(stepsSharedText({ at: at(23, 20, 40), from: "com.sec.android.app.shealth" }, WED)).toMatch(/^Samsung Health last shared steps at 8:40\s?pm$/);
+    expect(stepsSharedText({ at: at(23, 9, 5), from: "com.example.pedometer" }, WED)).toMatch(/^Steps last shared with Health Connect at 9:05\s?am$/);
     // Not for another day, nor from yesterday's read, nor before a read on this phone.
     expect(stepsSharedText({ at: at(23, 20, 40), from: "com.sec.android.app.shealth" }, "2026-09-22")).toBeNull();
     expect(stepsSharedText({ at: at(22, 23, 50), from: "com.sec.android.app.shealth" }, WED)).toBeNull();

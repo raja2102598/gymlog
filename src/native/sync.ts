@@ -4,6 +4,7 @@
 import { registerPlugin } from "@capacitor/core";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 import { lsGet, lsSet } from "@/lib/storage";
+import type { StepsRecordTimes } from "@/lib/health";
 import type { GymStore } from "@/lib/store";
 
 /** How many background runs have started since the app started, and whether one is reading or sending now. */
@@ -27,6 +28,7 @@ export interface SyncStatus {
 
 interface GymSyncPlugin {
   status(): Promise<SyncStatus>;
+  stepsRecords(o: { from: string; to: string }): Promise<{ records: StepsRecordTimes[] }>;
   requestBackground(): Promise<{ available: boolean; allowed: boolean }>;
   enable(o: { key: string; url: string; anonKey: string }): Promise<void>;
   disable(): Promise<void>;
@@ -48,6 +50,10 @@ export function deviceName(): string {
 }
 
 export const backgroundStatus = (): Promise<SyncStatus> => GymSync.status();
+
+/** The steps records from `from` to `to` (ISO), with when Health Connect last got each: the Health plugin's samples
+ *  don't say. */
+export const stepsRecords = async (from: string, to: string): Promise<StepsRecordTimes[]> => (await GymSync.stepsRecords({ from, to })).records;
 
 // The account background sync saves to, so another account signing in on this phone doesn't inherit it.
 const OWNER_KEY = "gymlog.bgsync.user.v1";
