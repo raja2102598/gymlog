@@ -168,7 +168,7 @@ object RestAlarm {
 class RestTimerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         RestAlarm.show(context, intent.getStringExtra(RestAlarm.EXTRA_LIFT) ?: "", ended = true)
-        // The home-screen widget says "rest until …" while a timer runs: redrawn now, it drops that line.
+        // The home-screen widget counts the rest down while it runs: redrawn now, its clock moves on to the workout.
         GymWidgetProvider.refresh(context)
     }
 }

@@ -1,5 +1,6 @@
 package io.github.raja2102598.gymlog
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -8,6 +9,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.View
 import android.widget.RemoteViews
 import java.time.LocalDate
 
@@ -30,9 +33,11 @@ object GymWidgetStore {
 
 /**
  * The home-screen widget: today's session and lift progress (WidgetPlugin writes them, through GymWidgetStore), or
- * a neutral "Open Gym Log" once the day they were written for has passed. A classic AppWidgetProvider with
- * RemoteViews, not Glance: two text views and, space allowing, two small buttons are well within what RemoteViews
- * can do, and Glance would bring Jetpack Compose's compiler and runtime into a project that has neither.
+ * a neutral "Open Gym Log" once the day they were written for has passed, and beside the progress a clock that ticks
+ * on its own: a rest counting down, or else the workout under way counting up (GymWidgetLogic.clock). A classic
+ * AppWidgetProvider with RemoteViews, not Glance: two text views, a Chronometer and, space allowing, two small buttons
+ * are well within what RemoteViews can do, and Glance would bring Jetpack Compose's compiler and runtime into a
+ * project that has neither.
  *
  * Taps open the app the same way the sign-in link does (see AndroidManifest.xml's "go" intent-filter and
  * src/native/app.ts): io.github.raja2102598.gymlog://go/today, .../go/weight or .../go/steps.
@@ -40,6 +45,12 @@ object GymWidgetStore {
 class GymWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
         for (id in ids) updateOne(context, mgr, id)
+        scheduleNext(context, ids.isNotEmpty())
+    }
+
+    // The alarm scheduleNext sets: the clock's rest is over, or its workout would count as left behind.
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_REDRAW) refresh(context) else super.onReceive(context, intent)
     }
 
     // A resize can cross the size the buttons need, in either direction, so it picks the layout again.
@@ -48,6 +59,9 @@ class GymWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
+        private const val ACTION_REDRAW = "io.github.raja2102598.gymlog.WIDGET_REDRAW"
+        private const val REDRAW_REQUEST = 4301
+
         /** Called after WidgetPlugin saves new data, so every placed widget updates straight away instead of
          *  waiting for the next periodic tick (gym_widget_info.xml's updatePeriodMillis, a fallback for staleness
          *  that catches a day rolling over while nothing else does). */
@@ -55,12 +69,25 @@ class GymWidgetProvider : AppWidgetProvider() {
             val mgr = AppWidgetManager.getInstance(context)
             val ids = mgr.getAppWidgetIds(ComponentName(context, GymWidgetProvider::class.java))
             for (id in ids) updateOne(context, mgr, id)
+            scheduleNext(context, ids.isNotEmpty())
+        }
+
+        /** A Chronometer never stops by itself, so the widget is drawn again when its clock should change
+         *  (GymWidgetLogic.nextChangeMs): the rest over, or the workout left behind. RTC, not a wakeup: only a
+         *  screen that's on shows the widget, and the alarm is delivered as soon as it is. None once no widget is
+         *  placed or the clock shows nothing. */
+        private fun scheduleNext(context: Context, placed: Boolean) {
+            val at = if (placed) GymWidgetLogic.nextChangeMs(GymWidgetLogic.parse(GymWidgetStore.read(context)), LocalDate.now().toString(), System.currentTimeMillis()) else null
+            val intent = Intent(context, GymWidgetProvider::class.java).setAction(ACTION_REDRAW)
+            val pi = PendingIntent.getBroadcast(context, REDRAW_REQUEST, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            if (at == null) am.cancel(pi) else am.setAndAllowWhileIdle(AlarmManager.RTC, at, pi)
         }
 
         private fun updateOne(context: Context, mgr: AppWidgetManager, id: Int) {
             val snapshot = GymWidgetLogic.parse(GymWidgetStore.read(context))
-            val clock = android.text.format.DateFormat.getTimeFormat(context)
-            val text = GymWidgetLogic.display(snapshot, LocalDate.now().toString(), System.currentTimeMillis()) { clock.format(java.util.Date(it)) }
+            val today = LocalDate.now().toString()
+            val text = GymWidgetLogic.display(snapshot, today)
             // Its size in portrait, as a phone's home screen is: the launcher's narrowest width and tallest height
             // (in landscape it's the other way round).
             val size = mgr.getAppWidgetOptions(id)
@@ -68,6 +95,17 @@ class GymWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, if (full) R.layout.widget_gymlog else R.layout.widget_gymlog_small)
             views.setTextViewText(R.id.widgetTitle, text.title)
             views.setTextViewText(R.id.widgetSubtitle, text.subtitle)
+            // The clock: its base is on the phone's uptime clock, which Chronometer counts from (up for the workout,
+            // down for a rest), so it ticks with nothing waking the app.
+            val now = System.currentTimeMillis()
+            val clock = GymWidgetLogic.clock(snapshot, today, now)
+            if (clock == null) {
+                views.setViewVisibility(R.id.widgetClock, View.GONE)
+            } else {
+                views.setChronometer(R.id.widgetClock, SystemClock.elapsedRealtime() + (clock.atMs - now), if (clock.rest) context.getString(R.string.widget_rest_clock) else null, true)
+                views.setChronometerCountDown(R.id.widgetClock, clock.rest)
+                views.setViewVisibility(R.id.widgetClock, View.VISIBLE)
+            }
             views.setOnClickPendingIntent(R.id.widgetRoot, goIntent(context, "today", 0))
             if (full) {
                 views.setOnClickPendingIntent(R.id.widgetWeight, goIntent(context, "weight", 1))

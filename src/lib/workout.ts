@@ -39,6 +39,13 @@ const read = () => {
   const r = memoryOnly ? inMemory : lsGet<WorkoutRun | null>(WORKOUT_KEY, null);
   return r && (r.user ?? null) === owner ? r : null;
 };
+/** Told of every change to the clock (started, paused, resumed, restarted, finished, dropped), which happens
+ *  outside the store: the home-screen widget follows it (native/widget.ts). */
+const listeners = new Set<() => void>();
+export function onRunChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => void listeners.delete(fn);
+}
 function write(r: WorkoutRun): WorkoutRun;
 function write(r: null): null;
 function write(r: WorkoutRun | null): WorkoutRun | null {
@@ -46,6 +53,7 @@ function write(r: WorkoutRun | null): WorkoutRun | null {
   if (memoryOnly) inMemory = w;
   else if (w) lsSet(WORKOUT_KEY, w);
   else lsDel(WORKOUT_KEY);
+  for (const fn of listeners) fn();
   return w;
 }
 
