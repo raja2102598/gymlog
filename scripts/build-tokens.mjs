@@ -32,6 +32,7 @@ ${styles}
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --press: 120ms;
   --sheet: 200ms;
+  --page: 280ms;
   --ring-draw: 0.9s;
   --bar-grow: 0.6s;
 }

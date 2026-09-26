@@ -169,10 +169,14 @@ export function mockSupabase(db) {
  * A phone-sized browser context, signed in as `auth` (a session, or null for signed out), with Supabase
  * answered from `db`. Returns the context and a page that records errors in `page.errors`. The clock reads NOW
  * throughout, or, with `clock: "running"`, starts at NOW and runs, so a test can move it on with
- * page.clock.fastForward.
+ * page.clock.fastForward. With `transitions`, screens change with the browser's view transitions, as on a phone.
  */
-export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base, clock = "fixed", photos = "stub" } = {}) {
+export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base, clock = "fixed", photos = "stub", transitions = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, serviceWorkers: sw, colorScheme: scheme });
+  // Screens change by sliding (lib/pageTransition.ts), which puts the new one on the page a frame after the tap. The
+  // tests see them change straight away instead, as a browser without view transitions does, unless `transitions`
+  // (motion.e2e.mjs checks the slides themselves).
+  if (!transitions) await ctx.addInitScript(() => void delete Document.prototype.startViewTransition);
   if (clock === "running") await ctx.clock.install({ time: NOW });
   else await ctx.clock.setFixedTime(NOW);
   if (auth) {

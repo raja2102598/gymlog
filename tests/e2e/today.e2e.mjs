@@ -230,7 +230,8 @@ export default async function today({ browser, base, check }) {
   await page.locator("#pe_x6_cue").fill("Slight bend in the elbows.");
   await page.locator('button[data-pmove="6:-1"]').click();
   check("move up reorders", (await page.locator("#pe_x5_name").inputValue()) === "Cable Fly");
-  await page.locator('button[data-pdel="0"]').click(); // remove Incline Machine Press (it has Monday data)
+  await page.locator('button[data-pdel="0"]').click(); // remove Incline Machine Press (it has Monday data); the harness says yes
+  await until(async () => (await page.locator("#pe_x0_name").inputValue()) === "Chest Press Machine");
   check("remove deletes the lift", (await page.locator("#pe_x0_name").inputValue()) === "Chest Press Machine");
   await page.locator("#pe_warm").fill("Treadmill walk 5 min\nWrist circles\n\nArm circles");
   await page.locator("#pe_goal").fill("12000");

@@ -75,4 +75,20 @@
 @media (prefers-reduced-motion:no-preference){
   @keyframes rise{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
   .view:not([hidden]){animation:rise var(--sheet) var(--ease)}
+  /* Moving between screens (lib/pageTransition.ts, which sets data-nav): a page opened deeper slides in from the
+     right over the one it came from, which drifts a little left and dims, as on Android; Back runs it in reverse;
+     tabs crossfade. Snapshots of the two screens move, on the GPU. Where the browser can do this (data-vt), a screen's
+     own fade-in (rise) is left out, so nothing animates twice. */
+  html[data-vt] .view:not([hidden]){animation:none}
+  html[data-nav="forward"]::view-transition-old(root),html[data-nav="forward"]::view-transition-new(root),
+  html[data-nav="back"]::view-transition-old(root),html[data-nav="back"]::view-transition-new(root){mix-blend-mode:normal;animation-duration:var(--page);animation-timing-function:var(--ease);animation-fill-mode:both}
+  html[data-nav="forward"]::view-transition-old(root){animation-name:pageAway}
+  html[data-nav="forward"]::view-transition-new(root){animation-name:pageIn}
+  html[data-nav="back"]::view-transition-old(root){animation-name:pageOut;z-index:1}
+  html[data-nav="back"]::view-transition-new(root){animation-name:pageBack}
+  html[data-nav="across"]::view-transition-old(root),html[data-nav="across"]::view-transition-new(root){animation-duration:var(--sheet)}
+  @keyframes pageIn{from{transform:translateX(100%)}}
+  @keyframes pageAway{to{transform:translateX(-25%);opacity:.5}}
+  @keyframes pageOut{to{transform:translateX(100%)}}
+  @keyframes pageBack{from{transform:translateX(-25%);opacity:.5}}
 }

@@ -59,6 +59,9 @@ Reported from using the Android app after the redesign.
   - **Things that open in place** fade and rise in (opacity and `transform`, 200 ms): a lift's how-to (the workout's
     **?**, the library) and a Settings row unfolding. A logged set fills in rather than snapping, and its tick gives
     under the thumb.
+  - **Moving between screens** uses the browser's view transitions, which move snapshots of the two screens on the
+    GPU: a page opened deeper slides in from the right and Back slides it out again, and tabs crossfade. Each
+    screen's own fade-in, which ran while React was still building it, no longer runs where they're supported.
   - Nothing moves with Reduce motion on, as before.
 
   In headless Chromium, with the CPU slowed four times, Home and Health dropped no frames before or after these
@@ -68,8 +71,6 @@ Reported from using the Android app after the redesign.
   - Measure on the phone with Chrome's remote DevTools (`chrome://inspect`) on the app's WebView and its Performance
     panel: switching tabs; opening Health, then a metric's page; opening the workout, then Complete set and the rest
     ring.
-  - **Every screen fades and rises in** (`rise`, 200 ms) from the frame it's built in, so if that frame is slow, the
-    start of the fade is lost. If the traces show it, start the fade once the screen has painted.
   - **A lift moved in Train** still jumps to its new place.
 
   Done when:
