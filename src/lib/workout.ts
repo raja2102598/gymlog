@@ -72,7 +72,7 @@ export function startRun(day: DayKey, now = Date.now()): WorkoutRun {
 /** Starts the day's clock again from 0:00: the top bar's clock, tapped. */
 export const restartRun = (day: DayKey, now = Date.now()): WorkoutRun => write({ day, startedAt: now });
 
-/** Stops the day's clock where it is (the top bar's clock, tapped, then Pause), until resumeRun. Nothing for a
+/** Stops the day's clock where it is (the top bar's clock, tapped), until resumeRun. Nothing for a
  *  finished or already paused one. */
 export function pauseRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);

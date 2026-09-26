@@ -1,6 +1,6 @@
-// The workout, one lift at a time: its clock (pause, resume, restart, one left running for hours or finished
-// elsewhere, and a finished day opened to review it), − Set asking before it takes a set with numbers, and skipping a
-// lift with a mouse putting the cursor in the reason box. Logging sets, skip and swap in the day's flow are in
+// The workout, one lift at a time: its clock (a tap pauses and resumes it, ↺ restarts it; one left running for hours
+// or finished elsewhere, and a finished day opened to review it), − Set asking before it takes a set with numbers, and
+// skipping a lift with a mouse putting the cursor in the reason box. Logging sets, skip and swap in the day's flow are in
 // today.e2e.mjs; the rest timer, set types, supersets and voice have suites of their own.
 import { K, answerAsk, flat, lastAsked, open, openTab, openWorkout, ready, session, until } from "./harness.mjs";
 
@@ -10,7 +10,7 @@ const day = (exercises = {}) => ({ exercises, warmup: [], cardio: false, steps: 
 export default async function workout({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-00000000e0e0", "2026-09-01T00:00:00Z", "raja@example.com");
 
-  // The workout clock: tapping it starts it again from 0:00; one left running for hours starts again by itself.
+  // The workout clock: a tap pauses and resumes it, ↺ restarts it; one left running for hours starts again by itself.
   {
     const uid = "00000000-0000-4000-8000-00000000e0e0", now = Date.parse("2026-09-23T12:00:00");
     const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: {} } });
@@ -20,26 +20,30 @@ export default async function workout({ browser, base, check }) {
     await seed(now - 60 * 60_000);
     await openWorkout(page);
     check("an hour into the workout, the clock says so", /^1:00:\d\d$/.test(await shown()), await shown());
-    // Tapped, the clock opens its own sheet: stop it for a while, or start it again from 0:00.
+    // One pill: a tap pauses it where it is, and another resumes it. Paused, ↺ beside it starts it again from 0:00.
+    const clockState = async () => `${await page.getAttribute("#wclock", "aria-label")} / ${await page.getAttribute("#wclock", "class")} / ${await page.locator("#wclockRestart").count()}`;
+    check("it says a tap pauses it", (await page.getAttribute("#wclock", "aria-label")) === "Pause the clock, 60 minutes in", await clockState());
     await page.click("#wclock");
-    await page.waitForSelector("#askDialog[open]");
-    const sheet = { title: await flat(page.locator("#askTitle")), choices: await page.locator("#askDialog [data-choice]").allInnerTexts() };
-    check("tapping the clock opens its sheet: Pause, and Restart from 0:00", sheet.title === "Workout clock" && sheet.choices.join("|") === "Pause the clock|Restart from 0:00" && (await page.locator("#askCancel").count()) === 1, JSON.stringify(sheet));
-    await page.click('#askDialog [data-choice="pause"]');
     await until(async () => (await page.getAttribute("#wclock", "class")).includes("paused"));
     const paused = JSON.parse(await page.evaluate(() => localStorage.getItem("gymlog.workout.v1")));
-    check("Pause stops the clock where it is, and says so", paused.pausedAt === now && /^Clock paused at 60 minutes\. Resume or restart it$/.test(await page.getAttribute("#wclock", "aria-label")) && /^1:00:\d\d$/.test(await shown()), JSON.stringify(paused));
+    check(
+      "a tap pauses it where it is, straight away, and ↺ appears beside it",
+      paused.pausedAt === now && /^1:00:\d\d$/.test(await shown()) && (await page.getAttribute("#wclock", "aria-label")) === "Resume the clock, paused at 60 minutes" && (await page.getAttribute("#wclockRestart", "aria-label")) === "Restart the clock from 0:00" && (await page.locator("#askDialog[open]").count()) === 0,
+      `${JSON.stringify(paused)} / ${await clockState()}`,
+    );
     await page.click("#wclock");
-    await page.waitForSelector('#askDialog [data-choice="resume"]');
-    await page.click('#askDialog [data-choice="resume"]');
     await until(async () => !(await page.getAttribute("#wclock", "class")).includes("paused"));
     const resumed = JSON.parse(await page.evaluate(() => localStorage.getItem("gymlog.workout.v1")));
-    check("Resume starts it again, the paused time not counted", resumed.pausedAt === undefined && resumed.pausedMs === 0 && resumed.startedAt === paused.startedAt, JSON.stringify(resumed));
+    check("another tap resumes it, the paused time not counted, and ↺ goes", resumed.pausedAt === undefined && resumed.pausedMs === 0 && resumed.startedAt === paused.startedAt && (await page.locator("#wclockRestart").count()) === 0, `${JSON.stringify(resumed)} / ${await clockState()}`);
     await page.click("#wclock");
-    await page.waitForSelector('#askDialog [data-choice="restart"]');
-    await page.click('#askDialog [data-choice="restart"]');
+    await page.waitForSelector("#wclockRestart");
+    await page.click("#wclockRestart");
     await until(async () => /^0:0\d$/.test(await shown()));
-    check("Restart from 0:00 starts it again from 0:00", /^0:0\d$/.test(await shown()), await shown());
+    check(
+      "↺ asks, then starts it again from 0:00, running",
+      /^Restart the clock from 0:00\? It's at 1:00:\d\d, paused\./.test(await lastAsked(page)) && /^0:0\d$/.test(await shown()) && !(await page.getAttribute("#wclock", "class")).includes("paused"),
+      `${await lastAsked(page)} / ${await clockState()}`,
+    );
     await page.click("#closeWorkout");
     await page.waitForSelector("#trainView");
     await seed(now - 5 * 60 * 60_000);
@@ -51,17 +55,13 @@ export default async function workout({ browser, base, check }) {
     await page.waitForSelector("#workoutView #wclock", { timeout: 15000 });
     await until(async () => /^0:0\d$/.test(await shown()));
     check("and when the app reloads on the workout", /^0:0\d$/.test(await shown()), await shown());
-    check("the clock names what a tap does", /Pause or restart the clock$/.test(await page.getAttribute("#wclock", "aria-label")));
-    // In the middle of the screen, however wide × and Finish are: the title, and the time itself, its mark beside it.
+    // In the middle of the screen, however wide × and Finish are: the session's name, and the clock under it.
     const middle = page.viewportSize().width / 2;
-    const title = await page.locator("#screenTitle").boundingBox();
-    const time = await page.evaluate(() => {
-      const r = document.createRange();
-      r.selectNodeContents(document.querySelector("#wclock").firstChild);
-      const b = r.getBoundingClientRect();
+    const centre = async (sel) => {
+      const b = await page.locator(sel).boundingBox();
       return b.x + b.width / 2;
-    });
-    check("the title and the time sit in the middle of the screen", Math.abs(title.x + title.width / 2 - middle) < 1 && Math.abs(time - middle) < 1, `${title.x + title.width / 2} / ${time} / ${middle}`);
+    };
+    check("the name and the clock sit in the middle of the screen", Math.abs((await centre("#screenTitle")) - middle) < 1 && Math.abs((await centre("#wclock")) - middle) < 1, `${await centre("#screenTitle")} / ${await centre("#wclock")} / ${middle}`);
     await ctx.close();
   }
 

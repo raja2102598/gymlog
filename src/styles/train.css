@@ -47,14 +47,16 @@
 .wtop>:last-child{justify-self:end}
 .wtop-t{display:flex;flex-direction:column;align-items:center;min-width:0;text-align:center}
 .wtop h1{font:800 15px/20px var(--font-sans);overflow-wrap:anywhere}
-/* The workout's clock: tap for its sheet (pause, resume, restart). A 44px target around the small label. The time
-   is what's centred, in figures of one width so it holds still; the pause or play mark hangs to its right. */
-.wclock{position:relative;display:inline-flex;align-items:center;padding:0 6px;border:0;border-radius:var(--radius-pill);background:transparent;color:var(--brand-text);font:900 15px/20px var(--font-sans);font-variant-numeric:tabular-nums;cursor:pointer}
-.wclock svg{position:absolute;left:100%;top:50%;translate:0 -50%}
-.wclock::before{content:"";position:absolute;inset:-12px -26px}
-.wclock:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}
-/* Paused: the time in plain ink, not counting, with a play mark to say a tap starts it again. */
-.wclock.paused{color:var(--ink-muted)}
+/* The workout's clock, under the session's name: one pill, its mark then the time (in figures of one width, so it
+   holds still), that pauses and resumes at a tap. 32px drawn, 44px to tap. Paused, it turns grey with a play mark, and
+   ↺ beside it starts it again from 0:00; finished, it's the time it took, with nothing to tap. */
+.wclock-row{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px}
+.wclock{position:relative;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 14px 0 12px;border:0;border-radius:var(--radius-pill);background:var(--brand-tint);color:var(--brand-tint-ink);font:800 15px/20px var(--font-sans);font-variant-numeric:tabular-nums;cursor:pointer}
+.wclock::before,.wclock-restart::before{content:"";position:absolute;inset:-6px 0}
+.wclock:focus-visible,.wclock-restart:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}
+.wclock.paused{background:var(--surface-sunken);color:var(--ink-muted);box-shadow:inset 0 0 0 1.5px var(--outline)}
+.wclock.done{margin-top:6px;cursor:default;background:transparent;color:var(--ink-muted);padding:0}
+.wclock-restart{position:relative;display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;background:var(--surface-sunken);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--outline);cursor:pointer}
 .wtop .btn-raised:not(.btn-icon){padding:0 20px;font-size:16px}
 .wprog{position:relative;z-index:1;list-style:none;margin:0;padding:16px var(--gut-r) 0 var(--gut-l);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px}
 .wprog li{display:flex}
