@@ -298,6 +298,31 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     expect(s.health["2026-09-23"].weight).toBe(81.2);
   });
 
+  it("never lands after a full read that started while it ran: the full read waits for it, and it saves nothing", async () => {
+    const { s, upserts } = signedIn();
+    phoneHas();
+    await syncHealth(s, true);
+    const saves = upserts.length;
+    // A slow quick read: its first query waits, and gets the 4,200 steps Health Connect had then.
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    health.queryAggregated.mockImplementationOnce(async () => {
+      await gate;
+      return { samples: [{ startDate: mid(9, 23), value: 4200 }] };
+    });
+    const quick = syncToday(s);
+    walked(5100); // by the time the full read (Sync now, say) reads, 5,100
+    health.isAvailable.mockClear();
+    const full = syncHealth(s, true);
+    await flush();
+    expect(health.isAvailable).not.toHaveBeenCalled(); // the full read waits for the quick one
+    release();
+    await Promise.all([quick, full]);
+    expect(s.health["2026-09-23"].steps).toBe(5100);
+    const rows = upserts.slice(saves).flat() as { data: { steps?: number } }[];
+    expect(rows.some((r) => r.data.steps === 5100) && rows.every((r) => r.data.steps !== 4200)).toBe(true);
+  });
+
   it("doesn't read while the app isn't on screen", async () => {
     const { s } = signedIn();
     phoneHas();

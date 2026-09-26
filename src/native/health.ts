@@ -59,8 +59,8 @@ const GRANTED_KEY = "gymlog.health.granted.v1";
 
 let busy = false;
 let lastRun = 0;
-/** syncToday's read is under way. */
-let quick = false;
+/** syncToday's read and save, while under way: a full read waits for it (below), so the two never overlap. */
+let quickRun: Promise<void> | null = null;
 /** What the last full read couldn't read (by label): syncToday saves despite those, as the full read did. */
 let lastFailed: string[] = [];
 
@@ -104,6 +104,9 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
   if (busy || !store.user || store.demo || (!now && Date.now() - lastRun < 5 * 60_000)) return;
   busy = true;
   try {
+    // A quick read of today under way finishes first. Seeing this one started, it saves nothing, so its older copy of
+    // today never lands on top of this one's.
+    await quickRun;
     const avail = await Health.isAvailable();
     if (!avail.available) {
       store.setHealthLink({ state: "unavailable", msg: unavailable(avail.reason) });
@@ -142,19 +145,23 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
  * where something failed that the full read could read, so a passing hiccup never blanks part of today.
  */
 export async function syncToday(store: GymStore): Promise<void> {
-  if (busy || quick || !store.user || store.demo || store.healthLink.state !== "ok") return;
+  if (busy || quickRun || !store.user || store.demo || store.healthLink.state !== "ok") return;
   if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
   const granted = lsGet<Record<string, string[]>>(GRANTED_KEY, {})[store.user.id];
   if (!granted?.length) return;
-  quick = true;
+  quickRun = (async () => {
+    try {
+      const { days, failed } = await readDays(todayKey(), granted);
+      // A full read that started meanwhile (waiting for this) saves its own, newer, copy.
+      if (!busy && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true });
+    } catch {
+      // Quiet: the next full read says what's wrong.
+    }
+  })();
   try {
-    const { days, failed } = await readDays(todayKey(), granted);
-    // A full read that started meanwhile saves its own, newer, copy.
-    if (!busy && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true });
-  } catch {
-    // Quiet: the next full read says what's wrong.
+    await quickRun;
   } finally {
-    quick = false;
+    quickRun = null;
   }
 }
 
