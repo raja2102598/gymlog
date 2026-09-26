@@ -24,8 +24,8 @@ export const HEALTH_AT = "2026-09-23T04:12:00+00:00";
  * the rows, a write gives back the columns it selects of the rows it wrote, an update writes none when the version
  * filter doesn't match, adding rows fails with 23505 when one of them is there already (and then adds none), and an
  * upsert that ignores duplicates leaves the rows there alone. With `failHealth`, writes to health_days fail, as they do
- * when the connection drops; `failWrites` does that to writes of the days it names, and `failLoads` to loads of
- * every day.
+ * when the connection drops; `failWrites` does that to writes of the days it names, `failLoads` to loads of every
+ * day, and `failAll` to every request.
  *
  * `writes` records each write the store sent, `sent` each request, in words, and `peak` the most requests under way at
  * once. `elsewhere` and `planElsewhere` are another device's saves. `holdNext` holds back the answer to the next load
@@ -33,7 +33,7 @@ export const HEALTH_AT = "2026-09-23T04:12:00+00:00";
  */
 export function fakeSupabase(health: Record<string, HealthDay> = {}, { failHealth = false } = {}) {
   const logs = new Map<string, Row>(), sent: string[] = [], writes: Write[] = [], failing = new Set<string>();
-  let plan: Row | null = null, clock = 0, underWay = 0, peak = 0, loadsFail = false;
+  let plan: Row | null = null, clock = 0, underWay = 0, peak = 0, loadsFail = false, allFail = false;
   let held: { kind: "load" | "insert"; answer: Promise<void>; read: () => void } | null = null;
   const stamp = () => `2026-09-23T06:00:00.${String(++clock).padStart(6, "0")}+00:00`;
   const duplicate = { code: "23505", message: "duplicate key value violates unique constraint" };
@@ -77,6 +77,7 @@ export function fakeSupabase(health: Record<string, HealthDay> = {}, { failHealt
     const run = () => {
       const what = op === "insert" && table === "logs" ? (Array.isArray(body) ? `×${body.length}` : (body.day as string)) : eq.day;
       sent.push([op, table, what, eq.updated_at && `@${eq.updated_at}`].filter(Boolean).join(" "));
+      if (allFail) return { data: null, error: { message: "TypeError: Failed to fetch" } };
       const kind = op === "select" && table === "logs" && eq.day == null ? "load" : op === "insert" && table === "logs" ? "insert" : null;
       const h = held && held.kind === kind ? held : null, a = answer();
       if (!h) return a;
@@ -113,6 +114,7 @@ export function fakeSupabase(health: Record<string, HealthDay> = {}, { failHealt
     planElsewhere: (p: Plan) => void (plan = { data: copy(p), updated_at: stamp() }),
     failWrites: (...days: string[]) => (days.length ? days.forEach((d) => failing.add(d)) : failing.clear()),
     failLoads: (on = true) => void (loadsFail = on),
+    failAll: (on = true) => void (allFail = on),
     holdNext: (kind: "load" | "insert") => {
       let release = () => {}, readIt = () => {};
       const read = new Promise<void>((r) => (readIt = r));

@@ -3,7 +3,12 @@ import { TEMPLATES } from "@/data/templates";
 import { DOW } from "@/lib/dates";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import { GymStore } from "@/lib/store";
-import type { DayLog, Plan } from "@/lib/types";
+import type { Plan } from "@/lib/types";
+import { fakeSupabase } from "./fakeSupabase";
+import { atWednesdayNoon, day } from "./helpers";
+
+// The plans the app comes with (src/data/templates), and choosing one on a new account's first run.
+atWednesdayNoon();
 
 const tpl = (id: string) => TEMPLATES.find((t) => t.id === id)!;
 const gymDays = (p: Plan) => p.days.filter((d) => d.exercises.length).map((d) => d.weekday);
@@ -68,62 +73,20 @@ describe("plan templates", () => {
 });
 
 describe("first run", () => {
-  const day = (d: Partial<DayLog> = {}): DayLog => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...d });
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-09-23T12:00:00")); // a Wednesday, as in the end-to-end tests
-    vi.stubGlobal("navigator", { onLine: true });
-  });
+  beforeEach(() => vi.stubGlobal("navigator", { onLine: true }));
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  type Db = { logs: Record<string, DayLog>; plan: Plan | null; down?: boolean };
-  /** Supabase for one account, answering from `db`: its logged days, and its row in `plans` (null: none), which gets a
-   *  new updated_at on every save, as the table's trigger does. Adding a row that's there already fails, and an update
-   *  over another version writes nothing, as in PostgREST. With `down`, every request fails, as with no connection. */
-  function supabase(db: Db) {
-    let clock = 0;
-    const stamp = () => `2026-09-23T06:00:00.${String(++clock).padStart(6, "0")}+00:00`;
-    let planAt = db.plan ? stamp() : null;
-    const from = (table: string) => {
-      let op: "select" | "insert" | "update" = "select", body: Record<string, unknown> = {};
-      const eq: Record<string, string> = {};
-      const run = () => {
-        if (db.down) return { data: null, error: new Error("Failed to fetch") };
-        if (table === "logs") return { data: Object.entries(db.logs).map(([day, data]) => ({ day, data, updated_at: "2026-09-23T04:12:00+00:00" })), error: null };
-        if (op === "select") return { data: db.plan ? { plan: db.plan, updated_at: planAt } : null, error: null };
-        if (op === "insert" && db.plan) return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } };
-        if (op === "update" && (!db.plan || eq.updated_at !== planAt)) return { data: [], error: null };
-        db.plan = body.plan as Plan;
-        planAt = stamp();
-        return { data: [{ updated_at: planAt }], error: null };
-      };
-      const q = {
-        select: () => q,
-        insert: (v: Record<string, unknown>) => ((op = "insert"), (body = v), q),
-        update: (v: Record<string, unknown>) => ((op = "update"), (body = v), q),
-        eq: (col: string, v: string) => ((eq[col] = v), q),
-        order: () => q,
-        limit: () => q,
-        maybeSingle: () => q,
-        then: (ok: (r: unknown) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve().then(run).then(ok, bad),
-      };
-      return q;
-    };
-    return { from } as unknown as GymStore["sb"];
-  }
-  /** A store just signed in to the account in `db`. As sign-in leaves it: this phone has nothing for the account, and
+  /** A store just signed in to the account in `f`. As sign-in leaves it: this phone has nothing for the account, and
    *  the first load is on its way. */
-  function signedIn(db: Db) {
+  function signedIn(f: ReturnType<typeof fakeSupabase>) {
     const s = new GymStore();
     s.user = { id: "u1", created_at: "2026-09-23T05:00:00Z" } as GymStore["user"];
     s.auth = "signedIn";
     s.firstLoad = true;
-    s.sb = supabase(db);
+    s.sb = f.sb;
     return s;
   }
   /** The first load after signing in: the logged days and the plan, then the load is done. */
@@ -133,8 +96,8 @@ describe("first run", () => {
   }
 
   it("a new account (no plan saved, nothing logged) chooses a plan, which is saved as its own", async () => {
-    const db = { logs: {}, plan: null };
-    const s = signedIn(db);
+    const f = fakeSupabase();
+    const s = signedIn(f);
     expect(s.planStep()).toBe("wait"); // new or not isn't known yet: no Today with a plan that isn't theirs
     await load(s);
     expect(s.planSource).toBe("default");
@@ -145,18 +108,20 @@ describe("first run", () => {
     expect(s.plan).toEqual(tpl("full-body-3").plan);
     expect(s.planFor("2026-09-23").name).toBe("Full body B");
     await s.flushPlan(); // the plan editor's save
-    expect(db.plan).toEqual(tpl("full-body-3").plan);
+    expect(f.plan()?.data).toEqual(tpl("full-body-3").plan);
     expect(s.planSource).toBe("server");
 
     // Signed in again (another phone): the saved plan, and no picker.
-    const again = signedIn(db);
+    const again = signedIn(f);
     await load(again);
     expect([again.planSource, again.planStep()]).toEqual(["server", null]);
     expect(again.plan).toEqual(tpl("full-body-3").plan);
   });
 
   it("an account with logs and no saved plan keeps the default plan, with no picker", async () => {
-    const s = signedIn({ logs: { "2026-09-21": day({ steps: 8000 }) }, plan: null });
+    const f = fakeSupabase();
+    f.elsewhere("2026-09-21", day({ steps: 8000 }));
+    const s = signedIn(f);
     await load(s);
     expect(s.planSource).toBe("default");
     expect(s.planStep()).toBeNull();
@@ -164,13 +129,15 @@ describe("first run", () => {
   });
 
   it("an account whose days are already on this phone goes straight to Today, without waiting for the load", () => {
-    const s = signedIn({ logs: {}, plan: null });
+    const s = signedIn(fakeSupabase());
     s.logs = { "2026-09-21": day({ steps: 8000 }) };
     expect(s.planStep()).toBeNull();
   });
 
   it("an account with a saved plan uses it, with no picker", async () => {
-    const s = signedIn({ logs: {}, plan: tpl("upper-lower-4").plan });
+    const f = fakeSupabase();
+    f.planElsewhere(tpl("upper-lower-4").plan);
+    const s = signedIn(f);
     await load(s);
     expect(s.planSource).toBe("server");
     expect(s.planStep()).toBeNull();
@@ -179,7 +146,9 @@ describe("first run", () => {
 
   it("an account that can't be loaded gets Today with the default plan, as before, not the picker", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const s = signedIn({ logs: {}, plan: null, down: true });
+    const f = fakeSupabase();
+    f.failAll();
+    const s = signedIn(f);
     await load(s);
     expect(s.planSource).toBe("unknown");
     expect(s.planStep()).toBeNull();
@@ -193,7 +162,7 @@ describe("first run", () => {
      *  waits on Supabase. The picker's restore never asks: there's nothing of the account's own to replace. */
     const onPicker = async () => {
       vi.stubGlobal("navigator", { onLine: true });
-      const s = signedIn({ logs: {}, plan: null });
+      const s = signedIn(fakeSupabase());
       await load(s);
       vi.stubGlobal("navigator", { onLine: false });
       expect(s.planStep()).toBe("choose");

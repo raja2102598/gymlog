@@ -1,29 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CSV_COLUMNS, csvField, toCsv } from "@/lib/backup";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
-import { GymStore } from "@/lib/store";
-import type { DayLog, HealthDay, LiftLog } from "@/lib/types";
+import type { HealthDay } from "@/lib/types";
 import { fakeSupabase, type Write } from "./fakeSupabase";
+import { atWednesdayNoon, day, lift, storeWith } from "./helpers";
 
-// Wednesday 23 September 2026, as in the end-to-end tests.
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-09-23T12:00:00"));
-});
+// Export and import (lib/backup.ts, store.exportBackup and importFile), and the workout CSV.
+atWednesdayNoon();
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-const day = (d: Partial<DayLog> = {}): DayLog => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...d });
-const lift = (sets: [number, number][]): LiftLog => ({ done: true, kg: Math.max(...sets.map((s) => s[1])), sets: sets.map(([reps, kg]) => ({ reps, kg })) });
-function storeWith(logs: Record<string, DayLog>) {
-  const s = new GymStore();
-  s.logs = logs;
-  s.user = { id: "u", created_at: "2026-08-26T05:00:00Z" } as GymStore["user"];
-  return s;
-}
 /** A file as the file picker gives it. */
 const file = (v: unknown) => new File([typeof v === "string" ? v : JSON.stringify(v)], "gym-log.json", { type: "application/json" });
 /** Supabase, online, with `health` as its health_days table, by day. Records each write in `writes`. With `fail`,

@@ -4,6 +4,7 @@ import { DEFAULT_PLAN } from "@/lib/plan";
 import { sampleDays } from "@/lib/sampleData";
 import { GymStore } from "@/lib/store";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { memoryStorage } from "./helpers";
 
 describe("sampleDays", () => {
   const today = "2026-09-23"; // a Wednesday: Legs, in the default plan
@@ -72,10 +73,6 @@ describe("sampleDays", () => {
 });
 
 describe("demo mode", () => {
-  function memoryStorage() {
-    const kept = new Map<string, string>();
-    return { kept, getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
-  }
   let phone: ReturnType<typeof memoryStorage>;
 
   beforeEach(() => {

@@ -1,22 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import data from "@/data/exercises.json";
 import { TEMPLATES } from "@/data/templates";
 import { CATALOGUE, closeMatches, EQUIPMENT, exerciseFor, libraryLift, libraryNamed, MUSCLES, muscleText, searchLibrary, words } from "@/lib/library";
-import { DEFAULT_PLAN, normalizeCustom, normalizePlan } from "@/lib/plan";
+import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import { GymStore } from "@/lib/store";
+import { atWednesdayNoon, storeWith } from "./helpers";
 
-// The exercise library (RAJ-55). Wednesday 23 September 2026, as in the end-to-end tests.
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-09-23T12:00:00"));
-});
-afterEach(() => vi.useRealTimers());
+// The exercise library (RAJ-55): the catalogue, search, matching the plan's names to it, and your own lifts. Swaps by
+// muscle are in gym.test.ts, a rename's link in rename.test.ts, and how the plan keeps your own lifts in plan.test.ts.
+atWednesdayNoon();
 
-function storeWith() {
-  const s = new GymStore();
-  s.user = { id: "u", created_at: "2026-08-26T05:00:00Z" } as GymStore["user"];
-  return s;
-}
 /** A plan as an account saved it before the library: no lift points at it. */
 function unlinked(s: GymStore) {
   for (const d of s.plan.days) for (const x of d.exercises) delete x.lib;
@@ -117,24 +110,20 @@ describe("a lift's exercise", () => {
     expect(exerciseFor("Zumba", own)).toBeNull();
     expect(muscleText(lift("Barbell Bench Press - Medium Grip"))).toBe("Chest, with shoulders and triceps");
   });
+
+  it("finds the photos and steps for a lift a plan saved before the library never linked, and none for your own", () => {
+    const s = storeWith();
+    s.plan = normalizePlan({ days: [{ name: "Upper", exercises: [{ name: "Lateral Raises" }, { name: "Leg Extension", lib: "Leg_Extensions" }, { name: "My Odd Lift" }] }] }, DEFAULT_PLAN);
+    expect(s.mediaIdOf("Lateral Raises")).toBe("Side_Lateral_Raise"); // unlinked: the lift picked for that name by hand
+    expect(s.exerciseOf("Lateral Raises")).toBeNull(); // its equipment and weight steps are left as they were
+    expect(s.mediaIdOf("Leg Extension")).toBe("Leg_Extensions");
+    expect(s.mediaIdOf("My Odd Lift")).toBeNull();
+    s.plan.custom = [{ name: "Lateral Raises", equip: [], primary: [], secondary: [] }];
+    expect(s.mediaIdOf("Lateral Raises")).toBeNull(); // kept as your own lift: not the library's
+  });
 });
 
 describe("your own lifts", () => {
-  it("are sanitized with the plan: named once, known equipment and muscles only", () => {
-    expect(
-      normalizeCustom([
-        { name: " Sled Push ", equip: ["other", "laser"], primary: ["quadriceps", "quadriceps"], secondary: ["glutes", "quadriceps", 7] },
-        { name: "sled push", equip: [], primary: [], secondary: [] },
-        { name: "", equip: [] },
-        "x",
-      ]),
-    ).toEqual([{ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: ["glutes"] }]);
-    // Left out of a plan that has none, so older plans round-trip unchanged.
-    expect("custom" in normalizePlan({}, DEFAULT_PLAN)).toBe(false);
-    const p = normalizePlan({ custom: [{ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] }] }, DEFAULT_PLAN);
-    expect(normalizePlan(JSON.parse(JSON.stringify(p)), DEFAULT_PLAN)).toEqual(p);
-  });
-
   it("are saved by name, never over the library's or another of yours", () => {
     const s = storeWith();
     expect(s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] })).toBe("");
@@ -144,13 +133,6 @@ describe("your own lifts", () => {
     expect(s.library()[0]).toMatchObject({ name: "Sled Push", custom: true });
     expect(s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["glutes"], secondary: [] }, true)).toBe(""); // changing it
     expect(s.plan.custom).toEqual([{ name: "Sled Push", equip: ["other"], primary: ["glutes"], secondary: [] }]);
-  });
-
-  it("stay when the plan's reset", () => {
-    const s = storeWith();
-    s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] });
-    s.resetPlan();
-    expect(s.plan.custom?.map((c) => c.name)).toEqual(["Sled Push"]);
   });
 });
 
@@ -201,18 +183,6 @@ describe("the plan and the library", () => {
     expect(s.exerciseOf("Chest-Supported Row")).toMatchObject({ custom: true, equip: ["machine"], primary: ["middle back"], secondary: ["lats"] });
   });
 
-  it("drops a lift's link when it's renamed to a lift the name alone says", async () => {
-    const s = storeWith();
-    const r = await s.renameLift("Hamstring Curl", "Seated Leg Curl");
-    expect(r.ok).toBe(true);
-    const renamed = s.plan.days.flatMap((d) => d.exercises).filter((x) => x.name === "Seated Leg Curl");
-    expect(renamed.length).toBe(2);
-    expect(renamed.every((x) => !("lib" in x))).toBe(true);
-    expect(s.exerciseOf("Seated Leg Curl")?.id).toBe("Seated_Leg_Curl");
-    await s.renameLift("Leg Extension", "Quad Extension"); // a name of its own: still the same lift
-    expect(s.exerciseOf("Quad Extension")?.id).toBe("Leg_Extensions");
-  });
-
   it("adds library lifts to a day, pointing at the library, each once", () => {
     const s = storeWith();
     // Leg Press is on Legs by name, and Leg Extensions as Leg Extension, pointing at it.
@@ -224,15 +194,5 @@ describe("the plan and the library", () => {
     ]);
     expect(legs.filter((x) => x.name === "Leg Press")).toHaveLength(1);
     expect(legs.filter((x) => x.lib === lift("Leg Extensions").id).map((x) => x.name)).toEqual(["Leg Extension"]);
-  });
-
-  it("offers swaps from the library for the same main muscle", () => {
-    const s = storeWith();
-    const opts = s.swapSuggestions("Leg Press");
-    expect(opts).toContain("Hack Squat"); // from the plan
-    expect(opts).toContain("Barbell Squat"); // quads, from the library
-    expect(opts).not.toContain("Barbell Curl"); // biceps
-    expect(opts).not.toContain("Leg Press");
-    expect(s.liftSuggestions()).toContain("Barbell Curl"); // a free-form workout is offered them all
   });
 });

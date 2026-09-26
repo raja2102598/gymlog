@@ -1,25 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { planModel } from "@/lib/dashboard";
 import { FREE_NAME, GymStore } from "@/lib/store";
-import type { DayLog, LiftLog } from "@/lib/types";
+import type { DayLog } from "@/lib/types";
+import { atWednesdayNoon, day, lift, storeWith, WED } from "./helpers";
 
-// A free-form workout on any day (RAJ-36). Wednesday 23 September 2026, as in the end-to-end tests: Legs on
-// Wednesdays, a rest day on Thursdays.
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-09-23T12:00:00"));
-});
-afterEach(() => vi.useRealTimers());
+// A free-form workout on any day (RAJ-36). Legs on Wednesdays, a rest day on Thursdays. A rename moving a lift in it
+// is in rename.test.ts.
+atWednesdayNoon();
 
-const MON = "2026-09-21", TUE = "2026-09-22", WED = "2026-09-23", THU = "2026-09-24";
-const day = (d: Partial<DayLog> = {}): DayLog => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...d });
-const lift = (sets: [number, number][]): LiftLog => ({ done: true, kg: Math.max(...sets.map((s) => s[1])), sets: sets.map(([reps, kg]) => ({ reps, kg })) });
-function storeWith(logs: Record<string, DayLog>) {
-  const s = new GymStore();
-  s.logs = logs;
-  s.user = { id: "u", created_at: "2026-08-26T05:00:00Z" } as GymStore["user"];
-  return s;
-}
+const MON = "2026-09-21", TUE = "2026-09-22", THU = "2026-09-24";
 
 describe("a free-form workout", () => {
   it("is the day's workout, its lifts in the order added, with the plan's settings for a lift the plan has", () => {
@@ -103,12 +92,6 @@ describe("a free-form workout", () => {
     }
   });
 
-  it("follows a lift's rename", async () => {
-    const s = storeWith({ [TUE]: day({ free: { name: "", lifts: ["Leg Press", "Lunge"] } }) });
-    const r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r.days).toBe(0); // added but never logged: no history moved
-    expect(s.entry(TUE).free?.lifts).toEqual(["Leg Press Machine", "Lunge"]);
-  });
 
   it("suggests the plan's lifts, anything swapped in and every lift logged, less those already added", () => {
     const s = storeWith({

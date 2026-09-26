@@ -1,26 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The rest timer (RAJ-35): its length, its countdown, pausing, more time, skipping, reaching zero, what a reload brings
+// back, and, in the Android app, its alarm while the app is in the background and its end on the widget. The top bar
+// and the plan editor's field are in tests/e2e/rest.e2e.mjs.
+vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitorCore);
+vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).app }));
+
+import { todayKey } from "@/lib/dates";
 import { mmss } from "@/lib/format";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import { GymStore, liveRest, restSecFor, type RestTimer } from "@/lib/store";
+import { atWednesdayNoon, memoryStorage } from "./helpers";
+import { app, restTimer, widget } from "./nativeMocks";
 
-// The rest timer (RAJ-35): its length, its countdown, pausing, more time, skipping, reaching zero, and what a
-// reload brings back. The top bar and the plan editor's field are in tests/e2e/rest.e2e.mjs.
-
+atWednesdayNoon();
 beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-09-23T12:00:00"));
-  const kept = new Map<string, string>();
-  vi.stubGlobal("localStorage", { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) });
+  vi.stubGlobal("localStorage", memoryStorage());
   vi.stubGlobal("navigator", { onLine: true, vibrate: vi.fn(() => true) });
 });
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+afterEach(() => vi.unstubAllGlobals());
 
+/** A signed-in store. */
 function store() {
   const s = new GymStore();
   s.user = { id: "u" } as GymStore["user"];
+  s.auth = "signedIn";
   return s;
 }
 const saved = () => JSON.parse(localStorage.getItem("gymlog.rest.v1")!) as { user: string; rest: RestTimer | null };
@@ -139,5 +143,78 @@ describe("a saved rest timer, after a reload", () => {
     expect(liveRest(timer({ endAt: at("2026-09-23T11:45:00"), ended: true }))).toBeNull();
     expect(liveRest(timer({ endAt: at("2026-09-22T19:00:00"), pausedAt: at("2026-09-22T18:59:00") }))).toBeNull();
     expect(liveRest(null)).toBeNull();
+  });
+});
+
+describe("in the background, in the Android app", () => {
+  beforeEach(() => {
+    app.forget();
+    restTimer.schedule.mockClear();
+    restTimer.cancel.mockClear();
+    widget.update.mockClear();
+  });
+  const appIs = (isActive: boolean) => app.fire("appStateChange", { isActive });
+
+  it("arms the alarm for a running timer as the app goes to the background, and takes it down on coming back", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const s = store();
+    syncRestNotifications(s);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1); // opening the app takes down whatever an earlier run left
+    s.startRest("2026-09-23", "Leg Press", 90);
+    const endAt = new Date(2026, 8, 23, 12, 1, 30).getTime();
+    expect(restTimer.schedule).not.toHaveBeenCalled(); // in front, the page says "Rest over" itself
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt });
+    s.setHealthLink({ state: "ok", msg: "" }); // an unrelated change: nothing sent again
+    expect(restTimer.schedule).toHaveBeenCalledTimes(1);
+    appIs(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(2);
+    s.addRestTime(30);
+    expect(restTimer.schedule).toHaveBeenCalledTimes(1);
+    // Scheduled afresh each time it goes to the background, so notifications allowed in between still get this
+    // timer's alert.
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 30_000 });
+    appIs(true);
+    s.pauseRest();
+    appIs(false);
+    expect(restTimer.schedule).toHaveBeenCalledTimes(2); // a paused timer has nothing to alert about
+    expect(restTimer.cancel).toHaveBeenCalledTimes(3);
+  });
+
+  it("leaves ‘Rest over’ to the alarm when the app is in the background, and takes it down on coming back", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const s = store();
+    syncRestNotifications(s);
+    s.startRest("2026-09-23", "Leg Press", 30);
+    appIs(false);
+    vi.advanceTimersByTime(31_000);
+    expect(s.rest?.ended).toBe(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(1); // only opening the app's
+    appIs(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it("never arms the alarm with the app in front, which says ‘Rest over’ itself", async () => {
+    const { syncRestNotifications } = await import("@/native/rest");
+    const s = store();
+    syncRestNotifications(s);
+    appIs(true);
+    s.startRest("2026-09-23", "Leg Press", 30);
+    vi.advanceTimersByTime(31_000);
+    expect(s.rest?.ended).toBe(true);
+    expect(restTimer.schedule).not.toHaveBeenCalled();
+    appIs(false); // and going to the background after it's over has nothing to add
+    expect(restTimer.schedule).not.toHaveBeenCalled();
+  });
+
+  it("puts a running timer's end on the widget, and takes it off when paused", async () => {
+    const { startWidget } = await import("@/native/widget");
+    const s = store();
+    startWidget(s);
+    s.startRest(todayKey(), "Leg Press", 90);
+    expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: new Date(2026, 8, 23, 12, 1, 30).toISOString() }));
+    s.pauseRest();
+    expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: null }));
   });
 });
