@@ -22,7 +22,7 @@ const TIP_FADE = 4;
 export const ringPct = (value: number, goal: number) => (goal > 0 ? Math.max(0, Math.min(200, (value / goal) * 100)) : 0);
 
 /**
- * Steps (outer), active time and active calories (inner) as hearts one inside the other (lib/heart.ts), each a
+ * Steps (outer), exercise (recorded workouts' minutes) and active calories (inner) as hearts one inside the other (lib/heart.ts), each a
  * gradient line filling clockwise from the dip at the top, over a 16% track of its own colour. Past 100% a ring goes round again in its end colour, with a soft shadow under
  * the tip so the overlap reads as a second lap. They draw once they're on screen. The accessible name gives each
  * percentage; the numbers themselves sit beside the rings in a legend, so the rings never carry a value alone.

@@ -6,12 +6,13 @@ vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitor
 vi.mock("@capgo/capacitor-health", async () => ({ Health: (await import("./nativeMocks")).health }));
 
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
+import { HEALTH_KEY } from "@/lib/storage";
 import { GymStore } from "@/lib/store";
 import { connectHealth, healthAccess, READ, syncHealth, syncToday } from "@/native/health";
 import { checkBackgroundOwner, turnOffBackground, turnOnBackground, deviceName } from "@/native/sync";
 import { atWednesdayNoon, flush, memoryStorage } from "./helpers";
 import { gymSync, health } from "./nativeMocks";
-import { mid, phoneHas, signedIn } from "./phone";
+import { mid, phoneHas, SAMSUNG, signedIn, stepsRecord } from "./phone";
 
 atWednesdayNoon({ onlyDate: true });
 beforeEach(() => {
@@ -57,6 +58,11 @@ describe("syncHealth", () => {
     expect(s.stepsOf("2026-09-22")).toBe(8421);
     expect(s.weightOf("2026-09-23")).toBe(81.2);
     expect(s.healthLink).toEqual({ state: "ok", msg: "2 days updated." });
+    // And how far today's steps go, from today's records: Samsung Health's, most of them, to 9:40. Kept on the phone
+    // for when the app opens again.
+    expect(health.readSamples).toHaveBeenCalledWith(expect.objectContaining({ dataType: "steps", startDate: mid(9, 23) }));
+    expect(s.stepsShared).toEqual({ at: new Date(2026, 8, 23, 9, 40).toISOString(), from: SAMSUNG });
+    expect(JSON.parse(localStorage.getItem(HEALTH_KEY)!).stepsShared).toEqual(s.stepsShared);
   });
 
   it("reads the longer stretch again when more kinds of data are allowed", async () => {
@@ -99,12 +105,14 @@ describe("syncHealth", () => {
     const { s, upserts } = signedIn();
     phoneHas();
     health.readSamples.mockImplementation(async ({ dataType }: { dataType: string }) => {
-      if (dataType === "sleep") throw new Error("SecurityException");
+      if (dataType === "sleep" || dataType === "steps") throw new Error("SecurityException");
       return { samples: [] };
     });
     await syncHealth(s, true);
     expect(upserts).toHaveLength(1);
+    // Today's steps records, only for how far they go, fail quietly.
     expect(s.healthLink.msg).toBe("2 days updated; couldn’t read sleep.");
+    expect(s.stepsShared).toBeNull();
   });
 
   it("reads only what was allowed", async () => {
@@ -112,12 +120,12 @@ describe("syncHealth", () => {
     phoneHas();
     health.checkAuthorization.mockResolvedValue({ readAuthorized: ["steps"] });
     await syncHealth(s, true);
-    // Steps by the day, and by the hour.
+    // Steps by the day, and by the hour, and today's records for how far they go.
     expect(health.queryAggregated.mock.calls.map((c) => [c[0].dataType, c[0].bucket])).toEqual([
       ["steps", "day"],
       ["steps", "hour"],
     ]);
-    expect(health.readSamples).not.toHaveBeenCalled();
+    expect(health.readSamples.mock.calls.map((c) => c[0].dataType)).toEqual(["steps"]);
     expect(health.queryWorkouts).not.toHaveBeenCalled();
   });
 
@@ -152,6 +160,8 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     health.queryAggregated.mockClear();
     health.isAvailable.mockClear();
     walked(4200);
+    const had = health.readSamples.getMockImplementation()!;
+    health.readSamples.mockImplementation(async (o: { dataType: string }) => (o.dataType === "steps" ? { samples: [stepsRecord(9, 0, 10, 3000, SAMSUNG), stepsRecord(11, 50, 8, 1200, SAMSUNG)] } : had(o)));
     await syncToday(s);
     expect(health.queryAggregated).toHaveBeenCalledWith(expect.objectContaining({ dataType: "steps", startDate: mid(9, 23), bucket: "day" }));
     expect(health.queryAggregated.mock.calls.every((c) => c[0].startDate === mid(9, 23))).toBe(true);
@@ -161,6 +171,7 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     expect(upserts).toHaveLength(saves + 1);
     expect(upserts.at(-1)).toEqual([expect.objectContaining({ day: "2026-09-23", data: expect.objectContaining({ steps: 4200 }) })]);
     expect(s.health["2026-09-23"].steps).toBe(4200);
+    expect(s.stepsShared).toEqual({ at: new Date(2026, 8, 23, 11, 58).toISOString(), from: SAMSUNG });
     // Nothing new: nothing written, nothing redrawn.
     let redraws = 0;
     s.subscribe(() => redraws++);

@@ -288,7 +288,7 @@ function RangePage({ metric, days, onDay }: { metric: Metric; days: DayKey[]; on
       const all = nums.flatMap((x) => x.workouts);
       return (
         <>
-          <MainChart metric="exercise" s={s} unit={(v) => hoursMin(v)} goal={goal} caption={`Active time · ${span}`} value={hoursMin(sum.total)} valueUnit="in all" onDay={onDay} />
+          <MainChart metric="exercise" s={s} unit={(v) => hoursMin(v)} goal={goal} caption={`Exercise · ${span}`} value={hoursMin(sum.total)} valueUnit="in all" onDay={onDay} />
           <Stats>
             <Stat v={`${all.length}`} l={all.length === 1 ? "workout" : "workouts"} />
             <Stat v={`${sum.goalDays}`} u={within} l="goal days" id="hGoalDays" />
@@ -486,7 +486,7 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
           </Hero>
           <Stats>
             <Stat v={n.activeKcal != null ? fmt(n.activeKcal) : "–"} u="kcal" l={`moving, of ${fmt(p.activeGoalKcal)}`} />
-            <Stat v={resting != null ? fmt(resting) : "–"} u="kcal" l="at rest" />
+            <Stat v={resting != null ? fmt(resting) : "–"} u="kcal" l={n.restingEstimated ? "at rest, estimated from your weight" : "at rest"} />
             {balance != null ? <Stat v={`${balance > 0 ? "+" : balance < 0 ? "−" : ""}${fmt(Math.abs(balance))}`} u="kcal" l={balance <= 0 ? "under what you burned" : "over what you burned"} id="hBalance" /> : <Stat v={n.eatenKcal != null ? fmt(n.eatenKcal) : "–"} u="kcal" l="eaten" />}
           </Stats>
         </>

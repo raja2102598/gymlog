@@ -9,7 +9,7 @@ import { useGym } from "@/hooks/useGym";
 import { addDays, todayKey } from "@/lib/dates";
 import { fmt, syncedWhen } from "@/lib/format";
 import { hoursMin } from "@/lib/health";
-import { dayNumbers, daysTo, fromHealthConnect } from "@/lib/healthView";
+import { dayNumbers, daysTo, fromHealthConnect, stepsSharedText } from "@/lib/healthView";
 import { isNative } from "@/lib/native";
 import { hashOf, type Metric } from "@/lib/route";
 import type { DayKey } from "@/lib/types";
@@ -35,7 +35,7 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
   const link = (m: Metric) => ({ href: hashOf({ view: "health", metric: m }), onOpen: () => onOpen(m) });
   const rows = [
     { tone: "steps" as const, name: "Steps", v: n.steps ?? 0, goal: p.stepGoal, unit: "", m: "steps" as Metric, id: "ringSteps" },
-    { tone: "active" as const, name: "Active time", v: n.exerciseMin, goal: p.exerciseGoalMin, unit: " min", m: "exercise" as Metric, id: "ringExercise" },
+    { tone: "active" as const, name: "Exercise", v: n.exerciseMin, goal: p.exerciseGoalMin, unit: " min", m: "exercise" as Metric, id: "ringExercise" },
     { tone: "energy" as const, name: "Active calories", v: n.activeKcal ?? 0, goal: p.activeGoalKcal, unit: " kcal", m: "energy" as Metric, id: "ringActive" },
   ];
   // Body: the change over the week to this day, toward the goal weight counting as good.
@@ -43,6 +43,7 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
   const change = weights.length > 1 ? Math.round((weights[weights.length - 1] - weights[0]) * 100) / 100 : null;
   const goodWay = change != null && (p.goalWeight == null ? change <= 0 : Math.abs((n.weight ?? weights[weights.length - 1]) - p.goalWeight) < Math.abs(weights[0] - p.goalWeight));
   const burned = n.totalKcal ?? n.activeKcal;
+  const shared = stepsSharedText(store.stepsShared, day, t);
   // With no weight for the day, the measurements logged in Train: the first, and how many more.
   const measured = [
     n.bodyFat ? ([n.bodyFat, "%", "body fat"] as const) : null,
@@ -96,6 +97,11 @@ export function HealthView({ day, onDay, onOpen, onOpenSettings }: Props) {
             />
             <RingLegend rows={rows.map((r) => ({ tone: r.tone, name: r.name, value: fmt(r.v), goal: `${fmt(r.goal)}${r.unit}`, id: r.id, ...link(r.m) }))} />
           </div>
+          {shared ? (
+            <p className="sub" id="stepsShared">
+              {shared}
+            </p>
+          ) : null}
         </section>
 
         <div className="grid2 tiles">

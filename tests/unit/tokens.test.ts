@@ -59,6 +59,7 @@ describe("design tokens", () => {
     ["success", "surface"],
     ["danger", "surface"],
     ["steps-text", "surface"],
+    ["active-text", "surface"],
     ["sleep", "surface"],
     ["heart", "surface"],
     ["energy-text", "surface"],
@@ -69,7 +70,7 @@ describe("design tokens", () => {
     for (const [fg, bg] of TEXT) expect(contrast(hex(fg, th), hex(bg, th)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
   });
   it.each(["dark", "light"] as const)("keeps icons and field edges at 3:1 or better in the %s theme", (th) => {
-    for (const [fg, bg] of [["ink-subtle", "surface"], ["water", "water-tint"], ["body", "body-tint"], ["steps", "surface"]] as const)
+    for (const [fg, bg] of [["ink-subtle", "surface"], ["water", "water-tint"], ["body", "body-tint"], ["steps", "surface"], ["active", "surface"], ["energy", "surface"]] as const)
       expect(contrast(hex(fg, th), hex(bg, th)), `${fg} on ${bg}`).toBeGreaterThanOrEqual(3);
   });
 

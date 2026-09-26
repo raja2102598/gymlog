@@ -22,7 +22,7 @@ export function CompleteView({ day, onDone }: { day: DayKey; onDone: () => void 
   const n = dayNumbers(store, day), plan = store.plan;
   const rings = [
     { tone: "steps" as const, name: "Steps", v: n.steps ?? 0, goal: plan.stepGoal },
-    { tone: "active" as const, name: "Active time", v: n.exerciseMin, goal: plan.exerciseGoalMin },
+    { tone: "active" as const, name: "Exercise", v: n.exerciseMin, goal: plan.exerciseGoalMin },
     { tone: "energy" as const, name: "Active calories", v: n.activeKcal ?? 0, goal: plan.activeGoalKcal },
   ];
   const met = rings.filter((r) => r.v >= r.goal).map((r) => r.name.toLowerCase());

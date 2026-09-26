@@ -11,7 +11,7 @@ export const METRIC_INK = {
   energy: "var(--energy-text)",
   body: "var(--body)",
   water: "var(--water)",
-  exercise: "var(--active)",
+  exercise: "var(--active-text)",
 } as const;
 
 /** A health metric tile (MetricTile spec): the icon and name in the metric's colour, a big value, one supporting line

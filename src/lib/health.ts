@@ -18,6 +18,8 @@ export interface Sample {
   /** Blood pressure readings carry both numbers, mmHg. */
   systolic?: number;
   diastolic?: number;
+  /** The app that shared it with Health Connect, by package name. */
+  sourceId?: string;
 }
 export interface Workout {
   workoutType: string;
@@ -58,6 +60,42 @@ export interface HealthReadings {
   sleep?: Sample[];
   workouts?: Workout[];
 }
+
+/** How far the phone's steps go: the end of the newest steps record from the app most of them come from, and that app
+ *  (a package name). Kept on this phone only (store.stepsShared), for the Health tab to say it. */
+export interface StepsShared {
+  at: string;
+  from: string;
+}
+
+/**
+ * How far steps records go (Health Connect's own, as readSamples gives them): the app with the most steps among them,
+ * and the end of its newest record. That app's, not simply the newest record's: with two apps sharing steps, Health
+ * Connect counts the one first in its list, and that's nearly always the one with more.
+ */
+export function stepsShared(records: Sample[] | undefined): StepsShared | null {
+  const by = new Map<string, { steps: number; at: number }>();
+  for (const r of records ?? []) {
+    if (!(r.value > 0)) continue;
+    const k = r.sourceId ?? "", b = by.get(k) ?? { steps: 0, at: 0 };
+    by.set(k, { steps: b.steps + r.value, at: Math.max(b.at, Date.parse(r.endDate)) });
+  }
+  const top = [...by].sort((a, b) => b[1].steps - a[1].steps)[0];
+  return top ? { at: new Date(top[1].at).toISOString(), from: top[0] } : null;
+}
+
+/** The apps that share steps with Health Connect, by package name. */
+const APPS: Record<string, string> = {
+  "com.sec.android.app.shealth": "Samsung Health",
+  "com.google.android.apps.fitness": "Google Fit",
+  "com.fitbit.FitbitMobile": "Fitbit",
+  "com.garmin.android.apps.connectmobile": "Garmin Connect",
+  "com.huawei.health": "Huawei Health",
+  "com.ouraring.oura": "Oura",
+  "com.withings.wiscale2": "Withings",
+};
+/** An app's name from its package name, or null for one not known here. */
+export const appName = (pkg: string): string | null => APPS[pkg] ?? null;
 
 const dayOf = (iso: string): DayKey => keyOf(new Date(iso));
 const round = (v: number, dp = 0) => Math.round(v * 10 ** dp) / 10 ** dp;

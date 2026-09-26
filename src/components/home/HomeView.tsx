@@ -203,7 +203,7 @@ function Activity({ t, onOpen }: { t: DayKey; onOpen: () => void }) {
   const p = store.plan, n = dayNumbers(store, t);
   const rows = [
     { tone: "steps" as const, name: "Steps", v: n.steps ?? 0, goal: p.stepGoal, unit: "" },
-    { tone: "active" as const, name: "Active time", v: n.exerciseMin, goal: p.exerciseGoalMin, unit: " min" },
+    { tone: "active" as const, name: "Exercise", v: n.exerciseMin, goal: p.exerciseGoalMin, unit: " min" },
     { tone: "energy" as const, name: "Active calories", v: n.activeKcal ?? 0, goal: p.activeGoalKcal, unit: " kcal" },
   ];
   return (

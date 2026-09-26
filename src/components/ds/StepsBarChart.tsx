@@ -3,7 +3,7 @@ import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "
 import { useOnScreen } from "@/hooks/useOnScreen";
 import { cx } from "@/lib/cx";
 
-/** A metric's colour set for bars: steps, active time and calories have gradient pairs; the rest use their solid
+/** A metric's colour set for bars: steps, exercise and calories have gradient pairs; the rest use their solid
  *  colour for a met goal and a faded one below it. */
 export type BarTone = "steps" | "active" | "energy" | "sleep" | "water" | "heart" | "body" | "brand";
 

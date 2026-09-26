@@ -1,6 +1,7 @@
 /* What the Health tab shows, worked out from the store: one day's numbers for the tiles, and a metric's values
  * across days for its charts. Steps, weight and body fat you typed win over Health Connect's, as everywhere else. */
-import { addDays } from "./dates";
+import { addDays, keyOf, parseKey, todayKey } from "./dates";
+import { appName, type StepsShared } from "./health";
 import type { Metric } from "./route";
 import type { DayKey, HealthDay, HealthWorkout, MeasureField, Plan } from "./types";
 
@@ -38,7 +39,10 @@ export interface DayNumbers {
   exerciseMin: number;
   workouts: HealthWorkout[];
   activeKcal: number | null;
+  /** Calories burned in all: resting and active together (dayNumbers says how). */
   totalKcal: number | null;
+  /** Whether the resting part of totalKcal is estimated from body weight, with no resting rate measured. */
+  restingEstimated: boolean;
   eatenKcal: number | null;
   bmr: number | null;
   sleepMin: number | null;
@@ -71,10 +75,37 @@ export function heightBy(src: HealthSource, k: DayKey): number | null {
   return best ? src.health[best].height! : null;
 }
 
-export function dayNumbers(src: HealthSource, k: DayKey): DayNumbers {
+/** Resting calories a day on `k`: the latest resting rate Health Connect has on or before it (from a watch's body
+ *  composition, say), or else an estimate from the latest weight, 22 kcal a kilo, close to what the usual formulas
+ *  give an adult. Null with neither. */
+export function restingPerDay(src: HealthSource, k: DayKey): { kcal: number; estimated: boolean } | null {
+  let rate: DayKey | null = null, weighed: DayKey | null = null;
+  for (const [d, h] of Object.entries(src.health)) {
+    if (d > k) continue;
+    if (h.bmr && (!rate || d > rate)) rate = d;
+    if (h.weight && (!weighed || d > weighed)) weighed = d;
+  }
+  if (rate) return { kcal: src.health[rate].bmr!, estimated: false };
+  const w = src.weightOf(k) ?? (weighed ? src.health[weighed].weight! : null);
+  return w ? { kcal: Math.round(w * 22), estimated: true } : null;
+}
+
+/** How much of day `k` has gone by at `now`: all of a day before, none of one after. */
+function dayGone(k: DayKey, now: number): number {
+  const start = parseKey(k).getTime(), end = parseKey(addDays(k, 1)).getTime();
+  return Math.min(1, Math.max(0, (now - start) / (end - start)));
+}
+
+export function dayNumbers(src: HealthSource, k: DayKey, now = Date.now()): DayNumbers {
   const h = src.healthOf(k) ?? {};
   const workouts = h.workouts ?? [];
   const weight = src.weightOf(k), height = heightBy(src, k);
+  // Calories burned: resting and active together, as Samsung Health counts them, today's resting only up to now. A
+  // source's own total records count only when they're the whole day, at least that much: Samsung Health writes some
+  // (for workouts) that add up to less than the day's active calories alone.
+  const active = h.activeKcal ?? null, rest = active != null ? restingPerDay(src, k) : null;
+  const both = rest ? Math.round(rest.kcal * dayGone(k, now)) + active! : null;
+  const total = h.totalKcal != null && h.totalKcal >= (both ?? active ?? 0) ? h.totalKcal : both;
   return {
     steps: src.stepsOf(k),
     stepsByHour: h.stepsByHour ?? null,
@@ -82,8 +113,9 @@ export function dayNumbers(src: HealthSource, k: DayKey): DayNumbers {
     floors: h.floors ?? null,
     exerciseMin: workouts.reduce((m, w) => m + w.min, 0),
     workouts,
-    activeKcal: h.activeKcal ?? null,
-    totalKcal: h.totalKcal ?? null,
+    activeKcal: active,
+    totalKcal: total,
+    restingEstimated: !!rest?.estimated && total === both,
     eatenKcal: h.eatenKcal ?? null,
     bmr: h.bmr ?? null,
     sleepMin: h.sleepMin ?? null,
@@ -202,6 +234,18 @@ export function sleepTimes(nights: DayNumbers[]): { bed: number; wake: number } 
   const bed = both.reduce((m, n) => m + (clockMin(n.bed!) < 12 * 60 ? clockMin(n.bed!) + 24 * 60 : clockMin(n.bed!)), 0) / both.length;
   const wake = both.reduce((m, n) => m + clockMin(n.wake!), 0) / both.length;
   return { bed: Math.round(bed), wake: Math.round(wake) };
+}
+
+/**
+ * How far today's steps go, under the Health tab's rings: "Samsung Health shared steps up to 8:40 pm". The watch or
+ * phone app shares them with Health Connect in batches, so the count can trail the app's own for a while. For today
+ * only, from this phone's last read (null on another day, before a read today, or on the website).
+ */
+export function stepsSharedText(s: StepsShared | null, k: DayKey, today = todayKey()): string | null {
+  if (!s || k !== today || keyOf(new Date(s.at)) !== today) return null;
+  const at = new Date(s.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  const app = appName(s.from);
+  return app ? `${app} shared steps up to ${at}` : `Health Connect has steps up to ${at}`;
 }
 
 /** "10:45 pm" for minutes after midnight (wrapping past 24 h). */

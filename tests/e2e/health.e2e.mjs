@@ -45,10 +45,14 @@ export default async function health(t) {
 // steps and weight fill in Train until you type your own, the day's sleep and workouts on Home's timeline, the Health
 // tab (rings, tiles, water) and its metric pages (Day / Week / Month / Year), and the flags in Progress.
 async function healthConnect({ browser, base, check }) {
-  const auth = session("00000000-0000-4000-8000-000000000051", "2026-08-26T05:00:00Z", "t@example.com");
+  const uid = "00000000-0000-4000-8000-000000000051", auth = session(uid, "2026-08-26T05:00:00Z", "t@example.com");
   const { logs, health } = data();
   const db = { logs, plan: null, health };
-  const { ctx, page } = await open(browser, base, { auth, db });
+  const { ctx, page } = await open(browser, base, { auth, db, url: null });
+  // How far today's steps went at the Android app's last read of Health Connect, as it keeps it on the phone.
+  const shared = { at: new Date(2026, 8, 23, 11, 40).toISOString(), from: "com.sec.android.app.shealth" };
+  await ctx.addInitScript(([k, v]) => localStorage.getItem(k) || localStorage.setItem(k, v), ["gymlog.health.v1", JSON.stringify({ user: uid, health: {}, at: null, stepsShared: shared })]);
+  await page.goto(base);
   await ready(page);
 
   // Home: last night's sleep and the morning's workout on the day's timeline
@@ -104,12 +108,14 @@ async function healthConnect({ browser, base, check }) {
   // The Health tab: the day's rings and a tile for each kind of data
   await openTab(page, "health");
   const rings = (await page.getAttribute("#activity svg.rings", "aria-label")).replace(/\s+/g, " ");
-  check("rings: steps (the 9,000 you typed), active time and active calories against their goals", rings === "Steps 9,000 of 10,000, 90%; Active time 52 of 30 min, 173%; Active calories 412 of 500 kcal, 82%", JSON.stringify(rings));
+  check("rings: steps (the 9,000 you typed), exercise and active calories against their goals", rings === "Steps 9,000 of 10,000, 90%; Exercise 52 of 30 min, 173%; Active calories 412 of 500 kcal, 82%", JSON.stringify(rings));
   // The rings draw once they're on screen, with a plain disc under a second lap's tip rather than a shadow filter.
   await until(() => page.$eval("#activity svg.rings", (e) => e.classList.contains("in")));
   const ringsDraw = await page.$eval("#activity svg.rings", (e) => ({ filters: e.querySelectorAll("filter, [filter]").length, tips: e.querySelectorAll(".ring-tip").length, anim: getComputedStyle(e.querySelector(".ring-arc")).animationName }));
-  check("the rings draw on screen, and Active time’s second lap has a shadow shape, not a shadow filter", ringsDraw.filters === 0 && ringsDraw.tips === 1 && ringsDraw.anim === "ringIn", JSON.stringify(ringsDraw));
-  check("the Active time ring's legend opens the exercise page", (await page.getAttribute("#ringExercise", "href")) === "#health/exercise" && /52/.test(await flat(page.locator("#ringExercise"))));
+  check("the rings draw on screen, and Exercise’s second lap has a shadow shape, not a shadow filter", ringsDraw.filters === 0 && ringsDraw.tips === 1 && ringsDraw.anim === "ringIn", JSON.stringify(ringsDraw));
+  const sharedLine = (await page.locator("#stepsShared").count()) ? await flat(page.locator("#stepsShared")) : "no line";
+  check("under the rings, how far today's steps go and the app that shared them", /^Samsung Health shared steps up to 11:40\s?am$/.test(sharedLine), sharedLine);
+  check("the Exercise ring's legend opens the exercise page", (await page.getAttribute("#ringExercise", "href")) === "#health/exercise" && /52/.test(await flat(page.locator("#ringExercise"))));
   // Text as laid out, so the lines of a tile read as separate words.
   const text = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
   const tile = text;
@@ -117,7 +123,8 @@ async function healthConnect({ browser, base, check }) {
   const svgText = async (sel) => ((await page.locator(sel).first().textContent()) || "").replace(/\s+/g, " ").trim();
   check("sleep tile: hours asleep the night before", /^Sleep 7 h 12 min the night before$/.test(await tile("#tileSleep")), await tile("#tileSleep"));
   check("heart tile: the resting rate", /^Heart 61 bpm resting$/.test(await tile("#tileHeart")), await tile("#tileHeart"));
-  check("calories tile: what was burned moving", /^Calories 412 kcal burned moving$/.test(await tile("#tileEnergy")), await tile("#tileEnergy"));
+  // Resting (no rate measured: 22 kcal a kg of the 81.2 kg weigh-in, 1,786 a day, half of it by noon) and active, 412.
+  check("calories tile: burned in all, at rest and moving", /^Calories 1,305 kcal burned$/.test(await tile("#tileEnergy")), await tile("#tileEnergy"));
   check("body tile: Health Connect's weigh-in, and the week's change", /^Body 81\.2 kg body weight ↓ 0\.6 kg this week$/.test(await tile("#tileBody")), await tile("#tileBody"));
   check("where it comes from, and when", /^Health Connect · synced at \d{1,2}:\d\d (am|pm)$/i.test(await flat(page.locator("#healthNote"))), await flat(page.locator("#healthNote")));
   // Water: Health Connect has none today, and it's loggable here, saved on the day.
@@ -129,7 +136,7 @@ async function healthConnect({ browser, base, check }) {
   await until(() => !db.logs["2026-09-23"].water);
   check("− takes it off again", !db.logs["2026-09-23"].water && /^0/.test(await flat(page.locator("#waterValue"))), JSON.stringify(db.logs["2026-09-23"].water));
   await page.click("#hPrev");
-  check("the day switch moves to yesterday, with its date", (await flat(page.locator("#activity .dayswitch .label"))) === "Yesterday 22 Sept" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000"));
+  check("the day switch moves to yesterday, with its date, and no word on how far today's steps go", (await flat(page.locator("#activity .dayswitch .label"))) === "Yesterday 22 Sept" && (await page.getAttribute("#activity svg.rings", "aria-label")).startsWith("Steps 9,500 of 10,000") && !(await page.locator("#stepsShared").count()));
   await page.click("#hNext");
   check("and back to today, no further", (await flat(page.locator("#activity .dayswitch .label"))) === "Today 23 Sept" && (await page.locator("#hNext").isDisabled()));
 
@@ -177,7 +184,7 @@ async function healthConnect({ browser, base, check }) {
   await page.click("#backBtn");
   await page.waitForSelector("#activity");
 
-  // Exercise's page, from the Active time ring: the workout, with its time, length, calories and app
+  // Exercise's page, from the Exercise ring: the workout, with its time, length, calories and app
   await page.click("#ringExercise");
   await page.waitForSelector("#hChart");
   const sessions = await flat(page.locator("#hSessions"));

@@ -124,7 +124,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 /* callouts: insight (lightbulb, info) and caution (triangle, warn) */
 .callout{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:var(--radius-lg);background:var(--info-bg);color:var(--info-ink);font:700 14px/1.35 var(--font-sans)}
-.callout>svg{color:var(--steps-text)}
+.callout>svg{color:var(--info-ink)}
 .callout.warn,.callout.caution{padding:10px 12px;border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-ink)}
 .callout.warn>svg,.callout.caution>svg{color:var(--warn-ink)}
 .callout.good{background:var(--success-bg);color:var(--success)}
