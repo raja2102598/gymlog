@@ -6,7 +6,7 @@ import { healthDays, type HealthReadings, type Workout } from "@/lib/health";
 import { lsGet, lsSet } from "@/lib/storage";
 import type { GymStore } from "@/lib/store";
 import type { DayKey, HealthDay } from "@/lib/types";
-import { backgroundRunning } from "./sync";
+import { backgroundRuns } from "./sync";
 
 // What Gym Log reads, all read-only. Distance is also what lets Health Connect total a workout's calories.
 export const READ: HealthDataType[] = [
@@ -154,10 +154,12 @@ export async function syncToday(store: GymStore): Promise<void> {
   if (!granted?.length) return;
   quickRun = (async () => {
     try {
-      // Background sync (HealthSync.kt) reading too: its copy of today, read before this one's, would land after it,
-      // and this phone would think the newer one saved. The next tick reads instead.
-      if (await backgroundRunning()) return;
+      // Background sync (HealthSync.kt) reading too, now or once this read has begun: its copy of today, read partly
+      // before this one's, could land after it, and this phone would think the newer one saved. The next tick reads.
+      const bg = await backgroundRuns();
+      if (bg.running) return;
       const { days, failed } = await readDays(todayKey(), granted);
+      if ((await backgroundRuns()).started !== bg.started) return;
       // A full read that started meanwhile (waiting for this) saves its own, newer, copy.
       if (!busy && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true });
     } catch {

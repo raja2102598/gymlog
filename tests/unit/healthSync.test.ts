@@ -18,6 +18,7 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", memoryStorage());
   vi.stubGlobal("navigator", { onLine: true });
   for (const f of Object.values(health)) f.mockReset();
+  gymSync.runs.mockReset(); // back to no background runs, with nothing queued from a test before
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -183,6 +184,24 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     expect(s.health["2026-09-23"].weight).toBe(81.2);
   });
 
+  it("saves nothing from a read that background sync started during, and the next tick saves", async () => {
+    const { s, upserts } = signedIn();
+    phoneHas();
+    await syncHealth(s, true);
+    const saves = upserts.length;
+    health.queryAggregated.mockClear();
+    walked(4200);
+    // Background sync starts once this read has begun: its copy, read partly first, could land after this one's.
+    gymSync.runs.mockResolvedValueOnce({ started: 3, running: false }).mockResolvedValueOnce({ started: 4, running: true });
+    await syncToday(s);
+    expect(health.queryAggregated).toHaveBeenCalled();
+    expect(upserts).toHaveLength(saves);
+    expect(s.health["2026-09-23"].steps).toBe(3012);
+    await syncToday(s);
+    expect(upserts).toHaveLength(saves + 1);
+    expect(s.health["2026-09-23"].steps).toBe(4200);
+  });
+
   it("never lands after a full read that started while it ran: the full read waits for it, and it saves nothing", async () => {
     const { s, upserts } = signedIn();
     phoneHas();
@@ -223,7 +242,7 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     expect(health.queryAggregated).not.toHaveBeenCalled();
     // Online, while background sync reads and sends: its copy, read first, would land after this one's.
     vi.stubGlobal("navigator", { onLine: true });
-    gymSync.running.mockResolvedValueOnce({ running: true });
+    gymSync.runs.mockResolvedValueOnce({ started: 1, running: true });
     await syncToday(s);
     expect(health.queryAggregated).not.toHaveBeenCalled();
     // Once it's done, the next tick reads.
