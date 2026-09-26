@@ -123,6 +123,31 @@ describe("backup", () => {
     expect(again).not.toHaveBeenCalled();
   });
 
+  it("asks again, about what's there now, when a sync brings another phone's days while it asks", async () => {
+    const s = storeWith({ "2026-09-22": day({ steps: 8000 }) }), db = supabase();
+    s.sb = db.sb;
+    const f = file(backupOf({ logs: [{ day: "2026-09-22", data: day({ steps: 1234 }) }, { day: "2026-09-21", data: day({ steps: 4321 }) }] }));
+    // While the first question is up, coming back from the file picker syncs Monday from another phone, which the
+    // file would replace too: asked again, about both, and No there changes nothing.
+    const asked: { days: number; plan: boolean }[] = [];
+    const answer = async (what: { days: number; plan: boolean }) => {
+      asked.push(what);
+      if (asked.length === 1) s.logs["2026-09-21"] = day({ steps: 9999 });
+      return asked.length === 1;
+    };
+    expect(await s.importFile(f, answer)).toBe("Import cancelled. Nothing changed.");
+    expect(asked).toEqual([
+      { days: 1, plan: false },
+      { days: 2, plan: false },
+    ]);
+    expect([s.logs["2026-09-21"].steps, s.logs["2026-09-22"].steps, db.writes]).toEqual([9999, 8000, []]);
+    // Nothing the file would replace changes while it asks: one question.
+    const once = vi.fn(async () => true);
+    expect(await s.importFile(f, once)).toBe("Imported 2 days.");
+    expect(once).toHaveBeenCalledTimes(1);
+    expect([s.logs["2026-09-21"].steps, s.logs["2026-09-22"].steps]).toEqual([4321, 1234]);
+  });
+
   it("says why a file can't be imported, and what to do instead", async () => {
     const s = storeWith({});
     const why = (v: unknown) => s.importFile(file(v), () => true);

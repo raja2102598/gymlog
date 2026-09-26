@@ -1771,11 +1771,26 @@ export class GymStore {
       const e = err instanceof ImportError ? err : new ImportError((err as Error).message);
       return `That file couldn’t be imported: ${e.message.replace(/\.$/, "")}. ${e.hint}`;
     }
-    const days = b.logs.filter((r) => this.logs[r.day] && JSON.stringify(this.logs[r.day]) !== JSON.stringify(r.data)).length;
     // A backup made on the default plan brings the default back; an older list of days leaves the plan alone.
     const plan = b.plan === "default" ? copy(DEFAULT_PLAN) : b.plan ? normalizePlan(b.plan, DEFAULT_PLAN) : null;
-    const newPlan = plan !== null && JSON.stringify(plan) !== JSON.stringify(normalizePlan(this.plan, DEFAULT_PLAN));
-    if ((days || newPlan) && !(await replace({ days, plan: newPlan }))) return "Import cancelled. Nothing changed.";
+    /** What the file would replace, as this phone has it now: the days it logged differently, and the plan. `seen` is
+     *  those days and the plan as they are, to tell whether a sync changed them while the question waited. */
+    const replacing = () => {
+      const days = b.logs.filter((r) => this.logs[r.day] && JSON.stringify(this.logs[r.day]) !== JSON.stringify(r.data));
+      const newPlan = plan !== null && JSON.stringify(plan) !== JSON.stringify(normalizePlan(this.plan, DEFAULT_PLAN));
+      return { days: days.length, plan: newPlan, seen: JSON.stringify([days.map((r) => [r.day, this.logs[r.day]]), newPlan ? this.plan : null]) };
+    };
+    // Asked before anything logged, or the plan, is replaced. A sync can bring another phone's days or plan while the
+    // question is up (the file picker put the app in the background, and coming back syncs): then it asks again, about
+    // what's there now, rather than replacing what was never asked about.
+    let what = replacing();
+    while (what.days || what.plan) {
+      if (!(await replace({ days: what.days, plan: what.plan }))) return "Import cancelled. Nothing changed.";
+      const now = replacing();
+      if (now.seen === what.seen) break;
+      what = now;
+    }
+    const newPlan = what.plan;
     for (const r of b.logs) {
       this.logs[r.day] = r.data;
       this.pending[r.day] = r.data;
@@ -1783,7 +1798,7 @@ export class GymStore {
     this.logsChanged();
     this.persistLocal();
     // Saved the way the plan editor's Reset saves one, so it syncs.
-    if (newPlan) {
+    if (newPlan && plan) {
       this.plan = plan;
       this.planChanged(true);
     }
