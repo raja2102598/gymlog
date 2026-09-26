@@ -100,6 +100,9 @@ export interface LiftModel {
   addSet: (upTo?: number) => void;
   /** Removes the last working set, without asking. */
   dropSet: () => void;
+  /** Whether the lift's working sets are still the ones this was made from: a question asked from it (− Set) may
+   *  have waited while voice logged another. */
+  sameSets: () => boolean;
   logWarmups: (steps: { reps: number; kg: number }[]) => void;
   removeWarmups: () => void;
   skipToday: () => void;
@@ -203,6 +206,7 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
         tickFollows(r, work, min);
       }, true);
     },
+    sameSets: () => JSON.stringify(setsOf((store.entry(sel).exercises[name] || {}) as LiftLog).filter(isWorkingSet)) === JSON.stringify(sets),
     logWarmups(steps) {
       edit((r) => {
         const work = setsOf(r).filter(isWorkingSet);
@@ -728,7 +732,8 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
             onClick={async () => {
               const said = setsSummary([sets[sets.length - 1]]);
               if (said && !(await ask(`Remove set ${sets.length} (${said})?`, "Remove", { danger: true }))) return;
-              m.dropSet();
+              // Only the set asked about: not one voice logged after it while the question was up.
+              if (m.sameSets()) m.dropSet();
             }}
           >
             − Set

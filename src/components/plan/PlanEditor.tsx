@@ -72,8 +72,13 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       else if (blocks[b + dir]) [blocks[b], blocks[b + dir]] = [blocks[b + dir], blocks[b]];
       xs.splice(0, xs.length, ...blocks.flatMap((bl) => bl.map((x, n) => joined(x, n > 0))));
     }, true);
-  const remove = async (j: number) => {
-    if (!(await ask(`Remove ${d.exercises[j].name.trim() || "this lift"} from ${wd}?`, "Remove", { body: "Days you’ve already logged keep it.", danger: true }))) return;
+  const remove = async (i: number) => {
+    const x = d.exercises[i], was = JSON.stringify(x);
+    if (!(await ask(`Remove ${x.name.trim() || "this lift"} from ${wd}?`, "Remove", { body: "Days you’ve already logged keep it.", danger: true }))) return;
+    // The plan may have changed while it asked (synced from another phone, say): the lift asked about, wherever it
+    // is now; changed or gone, nothing.
+    const now = store.plan.days[editDay].exercises, j = now.includes(x) ? now.indexOf(x) : now.findIndex((y) => JSON.stringify(y) === was);
+    if (j < 0) return;
     edit((p) => {
       const xs = p.days[editDay].exercises;
       // The first lift of a superset leaves the next one first, rather than joining the lift before.

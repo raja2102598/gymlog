@@ -1,7 +1,7 @@
 // Voice logging: the Log sets by voice switch in Settings → Voice, and a microphone on each lift's card in the workout
 // that logs what's said the way typing it would. Chromium's own speech recognition is swapped for a fake that answers
 // from a queue.
-import { flat, open, openSetting, openTab, openWorkout, ready, session, settled, until, TAB_VIEWS } from "./harness.mjs";
+import { answerAsk, flat, lastAsked, open, openSetting, openTab, openWorkout, ready, session, settled, until, TAB_VIEWS } from "./harness.mjs";
 
 const TODAY = "2026-09-23"; // Wednesday: Legs
 const NB = "\u00a0";
@@ -346,6 +346,28 @@ export default async function voice({ browser, base, check }) {
   check("with every row filled, a 4th row is added for the set", (await hs.locator(".srow.set").count()) === 4 && h4.reps === "12" && h4.kg === "22.5" && (await hs.locator("[data-rmset]").count()) === 1, JSON.stringify([await heard(hs.locator(".said")), h4]));
   await until(() => db.logs[TODAY]?.exercises["Hack Squat"]?.sets?.length === 4);
   check("…and all four are saved", JSON.stringify(db.logs[TODAY]?.exercises["Hack Squat"]?.sets) === JSON.stringify([{ reps: 10, kg: 20 }, { reps: 10, kg: 20 }, { reps: 10, kg: 20 }, { reps: 12, kg: 22.5 }]), JSON.stringify(db.logs[TODAY]?.exercises["Hack Squat"]));
+
+  // --- − Set asks about set 4; voice logs a 5th while the question is up: Remove then takes neither
+  await page.evaluate(() => ((window.__wait = 600), window.__said.push(["8 at 25"])));
+  await hs.locator("[data-voice]").click();
+  await answerAsk(page, "leave");
+  await hs.locator("[data-rmset]").click();
+  await page.waitForSelector("#askDialog[open]");
+  const askedSet = await lastAsked(page);
+  await until(() => db.logs[TODAY]?.exercises["Hack Squat"]?.sets?.length === 5);
+  await page.click("#askDialog [data-choice]");
+  await page.waitForTimeout(300);
+  const hsSets = () => JSON.stringify(db.logs[TODAY]?.exercises["Hack Squat"]?.sets.slice(3));
+  check(
+    "− Set, with a set logged by voice while it asked, removes nothing",
+    askedSet === `Remove set 4 (12${NB}×${NB}22.5${NB}kg)?` && (await hs.locator(".srow.set").count()) === 5 && hsSets() === JSON.stringify([{ reps: 12, kg: 22.5 }, { reps: 8, kg: 25 }]),
+    `${askedSet} / ${hsSets()}`,
+  );
+  // − Set again, asked about the 5th: that one goes.
+  await page.evaluate(() => ((window.__wait = 60), (window.__said = [])));
+  await hs.locator("[data-rmset]").click();
+  await until(() => db.logs[TODAY]?.exercises["Hack Squat"]?.sets?.length === 4);
+  check("and asked again, it removes the set it asks about", hsSets() === JSON.stringify([{ reps: 12, kg: 22.5 }]) && (await lastAsked(page)) === `Remove set 5 (8${NB}×${NB}25${NB}kg)?`, `${await lastAsked(page)} / ${hsSets()}`);
 
   // --- silence, and a blocked microphone
   const cr = cardOf(page), crLine = cr.locator(".said");

@@ -193,6 +193,26 @@ export default async function plan({ browser, base, check }) {
   await until(() => db.plan?.days?.[2]?.exercises?.[2]?.name === "Leg Extension V2");
   check("a lift with no history renames without any prompt or message", !(await dialogFired()) && (await flat(page.locator("#peRename"))) === "");
 
+  // --- the plan changing on another phone while "Remove …?" is up: Remove takes the lift it asked about, wherever
+  // it is now, not whichever lift has moved into its place
+  await until(async () => (await flat(page.locator("#planMsg"))) === "Saved");
+  const liftNames = () => page.locator('#planView input[id$="_name"]:not(#pe_name)').evaluateAll((els) => els.map((e) => e.value));
+  await answerAsk(page, "leave");
+  await page.locator('button[data-pdel="0"]').click();
+  await page.waitForSelector("#askDialog[open]");
+  const removing = await lastAsked(page);
+  db.plan = { ...db.plan, days: db.plan.days.map((d, n) => (n === 2 ? { ...d, exercises: [{ name: "Walking Lunge", sets: 3, reps: "10-12" }, ...d.exercises] } : d)) };
+  db.planAt = "2026-09-23T12:30:00.000Z";
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await until(async () => (await liftNames())[0] === "Walking Lunge");
+  await page.click("#askDialog [data-choice]");
+  await until(() => !db.plan.days[2].exercises.some((x) => x.name === "Hack Squat V2"));
+  check(
+    "Remove, after the plan changed while it asked, takes the lift it asked about",
+    removing === "Remove Hack Squat V2 from Wed? Days you’ve already logged keep it." && (await liftNames()).join(",") === "Walking Lunge,Leg Press Machine,Leg Extension V2,Hamstring Curl,Calf Raise" && db.plan.days[2].exercises[0].name === "Walking Lunge",
+    `${removing} / ${(await liftNames()).join(",")}`,
+  );
+
   check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("no console errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();

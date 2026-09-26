@@ -100,7 +100,8 @@ export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, 
   const dropRound = async () => {
     const said = extra.map((m) => [tags[ms.indexOf(m)], setsSummary([m.sets[rounds - 1]])]).filter(([, s]) => s);
     if (said.length && !(await ask(`Remove round ${rounds} (${said.map(([t, s]) => `${t} ${s}`).join(", ")})?`, "Remove", { danger: true }))) return;
-    for (const m of extra) m.dropSet();
+    // Only the round asked about: not one voice added to while the question was up.
+    if (extra.every((m) => m.sameSets())) for (const m of extra) m.dropSet();
   };
 
   return (
