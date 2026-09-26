@@ -235,48 +235,6 @@ describe("syncHealth", () => {
     expect(health.queryWorkouts).not.toHaveBeenCalled();
   });
 
-  it("saves nothing for an account signed out of, or left for another, while it read; the one signed in now gets its own read", async () => {
-    for (const next of [null, { id: "u2", created_at: "2026-09-01T05:00:00Z" }]) {
-      const { s, upserts } = signedIn();
-      phoneHas();
-      let release = () => {};
-      const gate = new Promise<void>((r) => (release = r));
-      health.queryAggregated.mockImplementationOnce(async () => {
-        await gate;
-        return { samples: [{ startDate: mid(9, 23), value: 4200 }] };
-      });
-      const read = syncHealth(s, true);
-      await flush();
-      s.user = next as GymStore["user"];
-      release();
-      await read;
-      if (!next) {
-        await flush();
-        expect(upserts).toEqual([]);
-        expect(s.health).toEqual({});
-      } else {
-        await vi.waitFor(() => expect(s.healthLink.state).toBe("ok"));
-        expect(upserts.flat().map((r) => (r as { user_id: string }).user_id)).toEqual(["u2", "u2"]);
-      }
-    }
-  });
-
-  it("keeps a day saved for an account out of the next one's, when the account changes while it saves", async () => {
-    const { s } = signedIn(), rows: unknown[] = [];
-    s.sb = {
-      from: () => ({
-        upsert: async (r: unknown[]) => {
-          rows.push(...r);
-          s.user = { id: "u2", created_at: "2026-09-01T05:00:00Z" } as GymStore["user"];
-          return { error: null };
-        },
-      }),
-    } as unknown as GymStore["sb"];
-    expect(await s.saveHealth({ "2026-09-23": { steps: 4200 } })).toBe(0);
-    expect(rows).toEqual([{ user_id: "u1", day: "2026-09-23", data: { steps: 4200 } }]);
-    expect(s.health).toEqual({});
-  });
-
   it("reports a failed save and tries again next time", async () => {
     const { s } = signedIn();
     phoneHas();
@@ -363,26 +321,6 @@ describe("syncToday (every 30 seconds while the app is open)", () => {
     expect(s.health["2026-09-23"].steps).toBe(5100);
     const rows = upserts.slice(saves).flat() as { data: { steps?: number } }[];
     expect(rows.some((r) => r.data.steps === 5100) && rows.every((r) => r.data.steps !== 4200)).toBe(true);
-  });
-
-  it("saves nothing when the account changed while it read", async () => {
-    const { s, upserts } = signedIn();
-    phoneHas();
-    await syncHealth(s, true);
-    const saves = upserts.length;
-    let release = () => {};
-    const gate = new Promise<void>((r) => (release = r));
-    health.queryAggregated.mockImplementationOnce(async () => {
-      await gate;
-      return { samples: [{ startDate: mid(9, 23), value: 4200 }] };
-    });
-    const quick = syncToday(s);
-    await flush();
-    s.user = { id: "u2", created_at: "2026-09-01T05:00:00Z" } as GymStore["user"];
-    release();
-    await quick;
-    expect(upserts).toHaveLength(saves);
-    expect(s.health["2026-09-23"].steps).toBe(3012);
   });
 
   it("doesn't read while the app isn't on screen", async () => {

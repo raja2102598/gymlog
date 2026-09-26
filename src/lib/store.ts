@@ -1712,14 +1712,11 @@ export class GymStore {
       return 0;
     }
     if (changed.length) {
-      const uid = this.user.id;
       const { error } = await this.sb.from("health_days").upsert(
-        changed.map(([day, data]) => ({ user_id: uid, day, data })),
+        changed.map(([day, data]) => ({ user_id: this.user!.id, day, data })),
         { onConflict: "user_id,day" },
       );
       if (error) throw error;
-      // Signed out, or into another account, while it saved: they were that account's days, not this one's.
-      if (this.user?.id !== uid) return 0;
       for (const [k, d] of changed) this.health[k] = d;
     }
     this.healthSyncedAt = new Date().toISOString();
@@ -1767,8 +1764,6 @@ export class GymStore {
   /** Reads an export back in: its logged days and, from a backup, the plan and the Health Connect days. `replace` is
    *  asked first when the file would change days already logged or the plan. */
   async importFile(file: File, replace: (what: Replacing) => boolean | Promise<boolean>): Promise<string> {
-    // The account it imports into: signed out, or into another, before you say Replace, and it doesn't.
-    const who = this.user?.id;
     let b: BackupContents;
     try {
       b = readBackup(await file.text());
@@ -1781,7 +1776,6 @@ export class GymStore {
     const plan = b.plan === "default" ? copy(DEFAULT_PLAN) : b.plan ? normalizePlan(b.plan, DEFAULT_PLAN) : null;
     const newPlan = plan !== null && JSON.stringify(plan) !== JSON.stringify(normalizePlan(this.plan, DEFAULT_PLAN));
     if ((days || newPlan) && !(await replace({ days, plan: newPlan }))) return "Import cancelled. Nothing changed.";
-    if (this.user?.id !== who) return "Import cancelled: the account changed while it waited. Nothing changed.";
     for (const r of b.logs) {
       this.logs[r.day] = r.data;
       this.pending[r.day] = r.data;
