@@ -1,6 +1,16 @@
 // Layout and readability on a small phone (360 x 800): the fixes from the UI audit, in the redesign's Home, Train,
-// the workout, Settings and Progress.
+// the workout, Settings and Progress; and very long names, a plan with no warm-ups and no tempo.
+import fs from "node:fs";
 import { flat, K, open, openSetting, openTab, openWorkout, ready, session, settled, until, TAB_VIEWS } from "./harness.mjs";
+
+const PLAN = JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
+
+function logs() {
+  const l = {};
+  for (let n = 0; n <= 28; n++) l[K(n)] = { exercises: {}, warmup: [], cardio: false, steps: 8000, weight: Math.round((84 - 0.1 * n) * 10) / 10, note: "" };
+  l[K(21)].exercises["Leg Press"] = { done: true, kg: 45, sets: [{ reps: 10, kg: 45 }, { reps: 10, kg: 45 }, { reps: 8, kg: 45 }] };
+  return l;
+}
 
 const today = () => ({
   "2026-09-23": {
@@ -198,6 +208,39 @@ export default async function layout({ browser, base, check }) {
     check("consistency: some-lifts days are a lighter brand, not the full workout colour", part === "rgb(255, 210, 184)", part);
     const monCell = await page.$eval("#dashPlan .cons .cell:nth-child(12)", (e) => e.className);
     check("consistency: Monday's cell is part done", /\bpart\b/.test(monCell), monCell);
+    await ctx.close();
+  }
+
+  // ---------- Long names, no warm-ups, no tempo ----------
+  {
+    const plan = JSON.parse(JSON.stringify(PLAN));
+    plan.days[2].name = "Legsandglutesandcalvesdayextralongname";
+    plan.days[2].exercises[0].name = "Supercalifragilisticexpialidocious-machine-squat";
+    plan.warmups = [];
+    plan.tempo = "";
+    const l = logs();
+    l["2026-09-23"].exercises["Leg Press"] = { swap: "Smithmachinesquatwithheelsraisedonplatesandalongname", done: false, sets: [] };
+    l["2026-09-23"].exercises["Leg Extension"] = { skipped: true, reason: "machinewasbusyforthewholehoursoIskippeditentirely", done: false };
+    const db = { logs: l, plan };
+    const { ctx, page } = await open(browser, base, { auth, db, width: 360, height: 800 });
+    await ready(page);
+    const wide = () =>
+      page.evaluate(() => ({
+        sw: document.documentElement.scrollWidth,
+        cw: document.documentElement.clientWidth,
+        over: [...document.querySelectorAll("body *")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().right > document.documentElement.clientWidth + 0.5).map((e) => e.id || e.closest("[id]")?.id).slice(0, 2),
+      }));
+    const home = await wide();
+    check("very long names wrap on Home: no sideways scroll at 360px", home.sw <= home.cw && (await page.textContent("#todayName")) === "Legsandglutesandcalvesdayextralongname", JSON.stringify(home));
+    await openTab(page, "train");
+    const train = await wide();
+    check("…and in Train, with the swap and the skip reason", train.sw <= train.cw && /Smithmachinesquat/.test(await flat(page.locator("#liftRows"))) && /machinewasbusy/.test(await flat(page.locator("#liftRows"))), JSON.stringify(train));
+    check("a plan with no warm-ups shows no warm-up card", (await page.locator(".wu").count()) === 0);
+    check("no tempo, no empty tempo note", await page.locator("#tempoNote").isHidden());
+    await openWorkout(page, 0);
+    const workout = await wide();
+    // (The next exercise, under Complete set, is the swapped lift's long name.)
+    check("…and in the workout", workout.sw <= workout.cw && /Supercalifragilistic/.test(await flat(page.locator(".ex-name"))), JSON.stringify(workout));
     await ctx.close();
   }
 }

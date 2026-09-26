@@ -31,3 +31,9 @@ These do happen on the phone, and are worth guarding:
 
 When a review raises one of the first kind: reply once on the thread that it can't happen in the Android app and why,
 resolve it, and change no code.
+
+## Tests
+
+Before writing or changing a test, read tests/README.md: one file per page or scenario, one place per behaviour (extend
+the test that's there before adding another), every case of a rule in the unit tests and one on the screen, and no
+blind tests: see each new test fail with the code it checks broken, then pass with it put back.

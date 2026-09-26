@@ -31,6 +31,9 @@ export const K = (n) => new Date(Date.UTC(2026, 7, 26 + n)).toISOString().slice(
 /** The default plan (src/data/plan.json), as `db.plan` for an account that has saved its plan. With nothing logged and
  *  no plan saved, an account is new and chooses a plan before Today (firstrun.e2e.mjs). */
 export const savedPlan = () => JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
+/** `db` for an account on the default plan (Legs on Wednesdays) with no first-run step: one day logged, four weeks ago,
+ *  and no plan saved, which leaves it on the default. */
+export const onDefaultPlan = () => ({ logs: { [K(0)]: { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" } }, plan: null });
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 /** A signed-in Supabase session for a made-up user, signed in with an emailed link ("otp") or a password. */
@@ -175,7 +178,7 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, serviceWorkers: sw, colorScheme: scheme });
   // Screens change by sliding (lib/pageTransition.ts), which puts the new one on the page a frame after the tap. The
   // tests see them change straight away instead, as a browser without view transitions does, unless `transitions`
-  // (motion.e2e.mjs checks the slides themselves).
+  // (navigation.e2e.mjs checks the slides themselves).
   if (!transitions) await ctx.addInitScript(() => void delete Document.prototype.startViewTransition);
   if (clock === "running") await ctx.clock.install({ time: NOW });
   else await ctx.clock.setFixedTime(NOW);

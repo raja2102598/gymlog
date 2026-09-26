@@ -3,12 +3,11 @@
 // sets, as it does when a set is cleared or taken off, and the CSV says both. Sets are logged in the workout, one
 // lift at a time; the tick is the "Done" box in the lift's ··· menu.
 import fs from "node:fs";
-import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS, onDefaultPlan } from "./harness.mjs";
 
 export default async function settypes({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000053", "2026-08-26T05:00:00Z", "t@example.com");
-  // A day logged four weeks ago, so the account keeps the default plan (Legs on Wednesdays) with no first-run step.
-  const db = { logs: { [K(0)]: { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" } }, plan: null };
+  const db = onDefaultPlan();
   const { ctx, page } = await open(browser, base, { auth, db });
   await ready(page);
   const today = () => db.logs[K(28)]?.exercises?.["Leg Press"];

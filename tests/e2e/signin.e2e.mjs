@@ -1,6 +1,7 @@
 // Signing in: an emailed link that carries its own flow id, a wait before another, Supabase's hourly email
 // limit, a password instead, setting or changing a password in Settings, and Continue with Google. The email form is
-// folded behind "Continue with email" (#emailBtn) until it's tapped.
+// folded behind "Continue with email" (#emailBtn) until it's tapped. And the sign-in page itself: its fields' names,
+// its words, and its colours in dark mode.
 import { flat, open, openSetting, openTab, ready, savedPlan, session, until } from "./harness.mjs";
 
 export const covers = ["public/app-login.html"];
@@ -189,6 +190,22 @@ export default async function signinSuite({ browser, base, check }) {
     );
     const box = await page.$eval("#open", (a) => a.getBoundingClientRect().height);
     check("app-login: the button is a full-size target", box >= 48, String(box));
+    await ctx.close();
+  }
+
+  // ---------- Sign-in and the page's colours ----------
+  {
+    const { ctx, page } = await open(browser, base, { auth: null, scheme: "dark" });
+    await page.waitForSelector("#loginView:not([hidden])");
+    await page.click("#emailBtn");
+    await page.waitForSelector("#loginForm");
+    const email = await page.$eval("#email", (e) => ({ name: e.name, spell: e.getAttribute("spellcheck"), auto: e.autocomplete }));
+    check("sign-in: the email box has a name, no spellcheck, email autofill", email.name === "email" && email.spell === "false" && email.auto === "email", JSON.stringify(email));
+    const signin = await flat(page.locator("#loginView"));
+    check("sign-in: the button says what it does, in the second person", (await flat(page.locator("#loginBtn"))) === "Send sign-in link" && !/\bwe\b/i.test(signin), signin.match(/[^.]*\bwe\b[^.]*\./i)?.[0] ?? "");
+    const colours = await page.evaluate(() => ({ meta: document.querySelector('meta[name="theme-color"][media*="dark"]').content, bg: getComputedStyle(document.body).backgroundColor }));
+    check("dark mode: the browser bar matches the page", colours.meta.toUpperCase() === "#0E0F11" && colours.bg === "rgb(14, 15, 17)", JSON.stringify(colours));
+    check("the app's name isn't machine-translated", (await page.getAttribute("h1", "translate")) === "no");
     await ctx.close();
   }
 }

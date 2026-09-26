@@ -2,12 +2,11 @@
 // named, lifts added by name with suggestions, logged in the workout as usual; Progress counts it as an extra
 // session, and going back to the plan keeps what was logged.
 import fs from "node:fs";
-import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, ready, session, until, TAB_VIEWS, onDefaultPlan } from "./harness.mjs";
 
 export default async function freeform({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000036", "2026-08-26T05:00:00Z", "t@example.com");
-  // A day logged four weeks ago, so the account keeps the default plan (Legs on Wednesdays) with no first-run step.
-  const db = { logs: { [K(0)]: { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" } }, plan: null };
+  const db = onDefaultPlan();
   const { ctx, page } = await open(browser, base, { auth, db });
   await ready(page);
   const today = () => db.logs[K(28)];

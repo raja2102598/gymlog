@@ -1,11 +1,25 @@
+// The exercise library (RAJ-55) and each lift's how-to: the plan editor adds lifts from the library, searched by name and
+// filtered by muscle and equipment, makes lifts of your own, and points a plan lift at another library lift; a plan
+// saved before the library is asked once about each lift it may know; the workout swaps a lift for one from it, and a
+// free-form workout adds lifts from it. And the photos and steps (free-exercise-db): a photo for every lift in Train,
+// opening its sheet, the steps and photos in the library, behind a workout card's ?, and on a lift's page.
+import { K, flat, open, openTab, openWorkout, planDone, ready, savedPlan, session, shot, until, onDefaultPlan } from "./harness.mjs";
+
+export const covers = ["src/components/exercise/ExerciseThumb.tsx", "src/components/exercise/HowTo.tsx", "src/lib/exerciseMedia.ts", "scripts/build-exercise-media.mjs"];
+
+const LEGS = ["Hack Squat", "Leg Press", "Leg Extension", "Hamstring Curl", "Calf Raise"];
+
+export default async function library(t) {
+  await addingLifts(t);
+  await photosAndHowTo(t);
+}
+
 // The exercise library (RAJ-55): the plan editor adds lifts from it, searched by name and filtered by muscle and
 // equipment, makes lifts of your own, and points a plan lift at another library lift; a plan saved before the
 // library is asked once about each lift the library may know; the workout swaps a lift for one from it, and a
 // free-form workout in Train adds lifts from it (Add exercise). Muscles are chips (data-muscle), and each row has a
 // + button (button.lib-add[data-lib]) that toggles it (aria-pressed) when adding several, or picks it.
-import { K, flat, open, openTab, openWorkout, planDone, ready, savedPlan, session, shot, until } from "./harness.mjs";
-
-export default async function library({ browser, base, check }) {
+async function addingLifts({ browser, base, check }) {
   const day = { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" };
   const isOpen = (page) => page.evaluate(() => document.querySelector("#libDialog")?.open === true);
   // A row's name, without its tags ("Yours", "Not in my gym").
@@ -20,8 +34,7 @@ export default async function library({ browser, base, check }) {
   // ---------- a plan the app comes with: every lift known; lifts added from the library, and of your own
   {
     const auth = session("00000000-0000-4000-8000-000000000055", "2026-08-26T05:00:00Z", "t@example.com");
-    // A day logged four weeks ago, so the account keeps the default plan (Legs on Wednesdays) with no first-run step.
-    const db = { logs: { [K(0)]: day }, plan: null };
+    const db = onDefaultPlan();
     const { ctx, page } = await open(browser, base, { auth, db });
     await ready(page);
     const legs = () => db.plan?.days?.[2]?.exercises ?? [];
@@ -222,4 +235,90 @@ export default async function library({ browser, base, check }) {
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
+}
+
+// Exercise pictures and how-to (free-exercise-db): photos in place of one icon for every lift in Train and the
+// library, the steps and photos behind a workout card's ? and on a lift's page. Also: the avatar in the same place
+// on every tab, and a finished workout opened to review it starting no clock.
+async function photosAndHowTo({ browser, base, check }) {
+  const auth = session("00000000-0000-4000-8000-00000000e0e0", "2026-09-01T00:00:00Z", "raja@example.com");
+
+  {
+    const { ctx, page, db } = await open(browser, base, { auth, db: { logs: {}, plan: {} } });
+    await ready(page);
+
+    // Train: a photo for each library lift, loaded from the app's own files.
+    await openTab(page, "train");
+    const thumbs = await page.$$eval("#liftRows .lrow-pic img.ex-thumb", (els) => els.map((e) => ({ src: e.getAttribute("src"), ok: e.complete && e.naturalWidth > 0, alt: e.getAttribute("alt") })));
+    await until(async () => (await page.$$eval("#liftRows img.ex-thumb", (els) => els.every((e) => e.complete && e.naturalWidth > 0))) === true);
+    check("Train: each lift the library knows shows its photo, not the one dumbbell icon", thumbs.length === LEGS.length && thumbs.every((t) => /^\/exercises\/thumbs\/[A-Za-z0-9_-]+\.webp$/.test(t.src)), JSON.stringify(thumbs));
+    check("the photos load, and are decorative (the name is beside them)", (await page.$$eval("#liftRows img.ex-thumb", (els) => els.every((e) => e.naturalWidth > 0 && e.getAttribute("alt") === ""))) === true);
+    // A photo pulls up everything about its lift from the bottom; the rest of the row still opens the workout.
+    check("each photo is a button saying what it opens", (await page.getAttribute('#liftRows [data-about="0"]', "aria-label")) === `About ${LEGS[0]}: photos, muscles and how to do it`);
+    await page.click('#liftRows [data-about="0"]');
+    await page.waitForSelector("#exSheet[open] .howto-steps li");
+    const facts = (await page.locator("#exSheet .xsheet-facts").innerText()).replace(/\s+/g, " ").trim();
+    check(
+      "it opens the lift's sheet: its name, today's sets, what it works and needs, then its photos, steps and videos",
+      (await flat(page.locator("#exSheetT"))) === LEGS[0] && /^Today \d.+ Works .+ Needs .+$/.test(facts) && (await page.locator("#exSheet .howto-photos img").count()) === 2 && (await page.locator("#exSheet .howto-video").count()) === 1,
+      facts,
+    );
+    await page.click("#exSheetClose");
+    await until(async () => (await page.locator("#exSheet[open]").count()) === 0);
+    check("× closes it, still on Train", (await page.locator("#trainView").count()) === 1 && (await page.locator("#workoutView").count()) === 0);
+
+    // The library: a lift's photo and name open how to do it, before adding it.
+    await page.click("#addExercise");
+    await page.waitForSelector("#libList");
+    const info = page.locator('[data-info="Barbell_Squat"]');
+    check("the library says its photos open how to do a lift", (await info.getAttribute("aria-expanded")) === "false" && /See how to do it/.test(await flat(info)));
+    await info.click();
+    await page.waitForSelector("#libHow_Barbell_Squat .howto-steps li");
+    check("tapping one shows its photos and steps under it", (await info.getAttribute("aria-expanded")) === "true" && (await page.locator("#libHow_Barbell_Squat .howto-photos img").count()) === 2 && (await page.locator("#libHow_Barbell_Squat .howto-steps li").count()) >= 3);
+    check("and a way to videos of it", /^https:\/\/www\.youtube\.com\/results\?search_query=how%20to%20do%20Barbell%20Squat%20exercise$/.test(await page.getAttribute("#libHow_Barbell_Squat .howto-video", "href")), await page.getAttribute("#libHow_Barbell_Squat .howto-video", "href"));
+    const moving = await page.$eval("#libHow_Barbell_Squat .howto-photos figure + figure", (e) => getComputedStyle(e).animationName);
+    check("the two photos take turns, so the lift is seen moving", moving === "howtoMove", moving);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#libList", { state: "hidden" });
+
+    // The workout: ? shows the plan's note, the photos and the steps.
+    await openWorkout(page, "Leg Extension");
+    const how = page.locator("#workoutView .ex-card .howto").first();
+    check("the workout card's ? says what it's for", (await how.getAttribute("aria-label")) === "How to do Leg Extension");
+    await how.click();
+    await page.waitForSelector("#workoutView .howto-steps li");
+    const steps = await page.locator("#workoutView .howto-steps li").count();
+    const photos = await page.$$eval("#workoutView .howto-photos img", (els) => els.map((e) => e.getAttribute("alt")));
+    check("? shows the start and finish photos, named for screen readers", photos.join("|") === "Leg Extension, start position|Leg Extension, finish position", photos.join("|"));
+    check("and the steps, numbered", steps >= 3 && /leg extension machine/i.test(await flat(page.locator("#workoutView .howto-steps li").first())), String(steps));
+    check("with no credit line under the steps (public domain, so none is owed; the README credits it)", !/free-exercise-db|public domain/i.test(await flat(page.locator("#workoutView .cue-panel"))), await flat(page.locator("#workoutView .cue-panel")));
+    // The photos load lazily: bring them on screen and wait for both before looking at what was asked for.
+    await page.locator("#workoutView .howto-photos img").first().scrollIntoViewIfNeeded();
+    await until(() => db.photos.filter((u) => u.includes("/Leg_Extensions/")).length === 2);
+    check("the photos come from free-exercise-db, pinned to the library's commit", db.photos.filter((u) => u.includes("/Leg_Extensions/")).length === 2 && db.photos.every((u) => /free-exercise-db@[0-9a-f]{40}\/exercises\/[A-Za-z_]+\/[01]\.jpg$/.test(u)), db.photos.join(", "));
+
+    // A lift's page: how to do it, under its progress.
+    await page.goto(base + "#progress/lift/Calf%20Raise");
+    await page.waitForSelector("#liftHowTo .howto-steps li");
+    check("a lift's page ends with how to do it", (await flat(page.locator("#liftHowTo h2"))) === "How to do it" && (await page.locator("#liftHowTo .howto-steps li").count()) >= 2);
+    check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
+    check("no console errors", page.errors.length === 0, page.errors.join(" | "));
+    await ctx.close();
+  }
+
+  // A plan saved before the library (its lifts unlinked, as on an older phone) still shows each lift's photo.
+  {
+    const days = Array.from({ length: 7 }, (_, i) => ({ name: i === 2 ? "Shoulders + Legs" : "Rest", exercises: i === 2 ? ["DB Shoulder Press", "Lateral Raises", "Hamstring Curl", "My Odd Lift"].map((name) => ({ name, sets: "3", reps: "10-12" })) : [] }));
+    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: { days } } });
+    await ready(page);
+    await openTab(page, "train");
+    const srcs = await page.$$eval("#liftRows .lrow-pic", (rows) => rows.map((r) => r.querySelector("img.ex-thumb")?.getAttribute("src") ?? "icon"));
+    check(
+      "unlinked lifts from an older plan get the photo of the lift picked for their name; a name nobody picked keeps the icon",
+      srcs.join("|") === "/exercises/thumbs/Dumbbell_Shoulder_Press.webp|/exercises/thumbs/Side_Lateral_Raise.webp|/exercises/thumbs/Lying_Leg_Curls.webp|icon",
+      srcs.join("|"),
+    );
+    await ctx.close();
+  }
+
 }
