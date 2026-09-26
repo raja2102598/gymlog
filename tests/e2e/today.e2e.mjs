@@ -1,7 +1,7 @@
 // Today's training, across Home, Train and the workout: sets, skip and swap, the plan editor, switching a day's
-// workout, and history for a new account. Home shows today; Train lists the selected day's lifts, a row each; the
+// workout, skipping the whole day, and history for a new account. Home shows today; Train lists the selected day's lifts, a row each; the
 // workout shows one lift at a time, with its set table and its ··· menu (Done, skip, swap, its chart).
-import { flat, open, openTab, openWorkout, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
+import { K, clearAsked, flat, lastAsked, open, openTab, openWorkout, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
 export const covers = [
   "src/components/dashboard/LiftDetail.tsx",
@@ -64,7 +64,6 @@ export default async function today({ browser, base, check }) {
   /** A day's lifts done or skipped, by the workout's steps along the top. */
   const stepsDone = () => page.locator("ol.wprog li.done").count();
 
-  check("signed-in app shows Home, with the tab bar", (await page.locator("#homeView").isVisible()) && (await page.locator('nav.tabbar[aria-label="Main"]').isVisible()));
   check("Home: today is Legs", (await flat(page.locator("#todayName"))) === "Legs");
   await openTab(page, "train");
   check("Train: today is Wed · Legs", (await sessName()) === "Legs" && /^Wed 23, Legs\b.*today$/.test(await chip(2).getAttribute("aria-label")) && (await chip(2).getAttribute("aria-pressed")) === "true", await chip(2).getAttribute("aria-label"));
@@ -150,8 +149,9 @@ export default async function today({ browser, base, check }) {
   check("the steps along the top update live", (await stepsDone()) === 1);
   await card.locator("button[data-addset]").click();
   check("+ Add set adds a 4th row", (await card.locator(".srow.set").count()) === 4);
+  await clearAsked(page);
   await card.locator("button[data-rmset]").click();
-  check("− Set removes it again", (await card.locator(".srow.set").count()) === 3);
+  check("− Set takes an empty set away again, without asking", (await card.locator(".srow.set").count()) === 3 && (await lastAsked(page)) === "");
   await until(() => db.logs["2026-09-21"]?.exercises["Incline Machine Press"]?.sets?.length === 3);
   const im = db.logs["2026-09-21"].exercises["Incline Machine Press"];
   check("Monday sets saved", JSON.stringify(im.sets) === JSON.stringify([{ reps: 8, kg: 40 }, { reps: 8, kg: 40 }, { reps: 7, kg: 40 }]) && im.done && im.kg === 40, JSON.stringify(im));
@@ -230,7 +230,8 @@ export default async function today({ browser, base, check }) {
   await page.locator("#pe_x6_cue").fill("Slight bend in the elbows.");
   await page.locator('button[data-pmove="6:-1"]').click();
   check("move up reorders", (await page.locator("#pe_x5_name").inputValue()) === "Cable Fly");
-  await page.locator('button[data-pdel="0"]').click(); // remove Incline Machine Press (it has Monday data)
+  await page.locator('button[data-pdel="0"]').click(); // remove Incline Machine Press (it has Monday data); the harness says yes
+  await until(async () => (await page.locator("#pe_x0_name").inputValue()) === "Chest Press Machine");
   check("remove deletes the lift", (await page.locator("#pe_x0_name").inputValue()) === "Chest Press Machine");
   await page.locator("#pe_warm").fill("Treadmill walk 5 min\nWrist circles\n\nArm circles");
   await page.locator("#pe_goal").fill("12000");
@@ -354,4 +355,38 @@ export default async function today({ browser, base, check }) {
   check("history starts at the earliest log", (await p2.locator("#hist tbody tr").count()) === 3 && (await p2.locator("#histTitle").textContent()) === "Last 3 days");
   check("new account: no console errors", p2.errors.length === 0, p2.errors.join(" | "));
   await ctx2.close();
+
+  // Skipping a day's workout, with why, and taking it back.
+  {
+    const auth = session("00000000-0000-4000-8000-00000000e0e0", "2026-09-01T00:00:00Z", "raja@example.com");
+    const { ctx, page, db } = await open(browser, base, { auth, db: { logs: {}, plan: {} } });
+    await ready(page);
+    await openTab(page, "train");
+    await page.click("#skipDay");
+    await until(() => db.logs[K(28)]?.skip === "");
+    check("Train: Skip day marks the day's workout skipped", (await flat(page.locator("#liftPill"))) === "Skipped" && (await page.locator("#unskipBtn").count()) === 1 && (await page.locator("#startBtn").count()) === 0, await flat(page.locator("#liftPill")));
+    // Opening one of its lifts means doing it after all: the skip goes.
+    await page.locator(".lrow-main").first().click();
+    await page.waitForSelector("#workoutView .ex-card");
+    await until(() => db.logs[K(28)] && db.logs[K(28)].skip === undefined);
+    check("opening a skipped day's lift takes the skip back", db.logs[K(28)].skip === undefined);
+    await page.click("#closeWorkout");
+    await page.waitForSelector("#trainView");
+    await page.click("#skipDay");
+    await until(() => db.logs[K(28)]?.skip === "");
+    await page.fill("#skipReason", "travelling");
+    await until(() => db.logs[K(28)]?.skip === "travelling");
+    check("with why, kept on the day", (await flat(page.locator("#liftPill"))) === "Skipped · travelling");
+    await openTab(page, "home");
+    check("Home says today was skipped, with Undo", /^Skipped today · travelling$/.test(await flat(page.locator("#todaySub"))) && (await page.locator("#unskipHome").count()) === 1, await flat(page.locator("#todaySub")));
+    check("with no knee question before a session that isn't happening", (await page.locator('[data-knee^="kneeBefore:"]').count()) === 0);
+    const tl = await flat(page.locator("#timeline"));
+    check("and so does the day's timeline, with no workout up next or cardio after it", /Skipped ?Legs workout · travelling/.test(tl) && !/Up next|After lifting/.test(tl), tl);
+    await page.click("#unskipHome");
+    await until(() => db.logs[K(28)] && db.logs[K(28)].skip === undefined);
+    check("Undo puts the workout back", (await page.locator("#startWorkout").count()) === 1 && (await page.locator("#skipHome").count()) === 1);
+    const back = await flat(page.locator("#timeline"));
+    check("on the timeline too, and the knee question is back", /Up next ?Legs workout · 5 lifts/.test(back) && /After lifting ?Cycling/.test(back) && (await page.locator('[data-knee^="kneeBefore:"]').count()) === 11, back);
+    await ctx.close();
+  }
 }

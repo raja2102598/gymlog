@@ -31,6 +31,9 @@ export const K = (n) => new Date(Date.UTC(2026, 7, 26 + n)).toISOString().slice(
 /** The default plan (src/data/plan.json), as `db.plan` for an account that has saved its plan. With nothing logged and
  *  no plan saved, an account is new and chooses a plan before Today (firstrun.e2e.mjs). */
 export const savedPlan = () => JSON.parse(fs.readFileSync(new URL("../../src/data/plan.json", import.meta.url), "utf8"));
+/** `db` for an account on the default plan (Legs on Wednesdays) with no first-run step: one day logged, four weeks ago,
+ *  and no plan saved, which leaves it on the default. */
+export const onDefaultPlan = () => ({ logs: { [K(0)]: { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" } }, plan: null });
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 /** A signed-in Supabase session for a made-up user, signed in with an emailed link ("otp") or a password. */
@@ -63,6 +66,13 @@ const FIRST_SAVE = "2026-09-23T04:12:00+00:00";
  * there already (409, code 23505), adding none.
  * Several pages can share one `db`, like phones on one account.
  */
+/** Another phone on the account saves `day` as `data`, with a newer updated_at: what this phone's next load brings. */
+export function savedElsewhere(db, day, data) {
+  db.clock = (db.clock ?? 0) + 1;
+  db.logs[day] = data;
+  db.logsAt[day] = new Date(Date.UTC(2026, 8, 23, 6, 0, 0, db.clock)).toISOString().replace("Z", "+00:00");
+}
+
 export function mockSupabase(db) {
   db.writes ??= { logs: 0, plans: 0, health: 0 };
   db.unexpected ??= [];
@@ -169,10 +179,14 @@ export function mockSupabase(db) {
  * A phone-sized browser context, signed in as `auth` (a session, or null for signed out), with Supabase
  * answered from `db`. Returns the context and a page that records errors in `page.errors`. The clock reads NOW
  * throughout, or, with `clock: "running"`, starts at NOW and runs, so a test can move it on with
- * page.clock.fastForward.
+ * page.clock.fastForward. With `transitions`, screens change with the browser's view transitions, as on a phone.
  */
-export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base, clock = "fixed", photos = "stub" } = {}) {
+export async function open(browser, base, { auth, db = { logs: {}, plan: null }, width = 390, height = 844, scheme = "light", sw = "block", mobile = true, url = base, clock = "fixed", photos = "stub", transitions = false } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, serviceWorkers: sw, colorScheme: scheme });
+  // Screens change by sliding (lib/pageTransition.ts), which puts the new one on the page a frame after the tap. The
+  // tests see them change straight away instead, as a browser without view transitions does, unless `transitions`
+  // (navigation.e2e.mjs checks the slides themselves).
+  if (!transitions) await ctx.addInitScript(() => void delete Document.prototype.startViewTransition);
   if (clock === "running") await ctx.clock.install({ time: NOW });
   else await ctx.clock.setFixedTime(NOW);
   if (auth) {
@@ -199,6 +213,22 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
     const res = await fetch(route.request().url());
     return route.fulfill({ status: res.status, contentType: "image/jpeg", body: Buffer.from(await res.arrayBuffer()) });
   });
+  // The app asks its yes-or-no questions in its own sheet (src/components/ds/Ask.tsx), not the system dialog the
+  // tests used to accept (page.on("dialog") below): each is answered OK as soon as it opens, likewise, unless a test
+  // says otherwise with answerAsk. What was asked is kept for lastAsked. A sheet with choices of its own (the
+  // workout clock's) is left for the test to answer.
+  await ctx.addInitScript(() => {
+    const state = (window.__ask = { next: [], asked: [] });
+    const answer = () => {
+      const d = document.querySelector("#askDialog[open][data-confirm]"), ok = d?.querySelector("[data-choice]");
+      if (!ok || ok.dataset.seen) return;
+      ok.dataset.seen = "1";
+      state.asked.push([d.querySelector("#askTitle")?.textContent, d.querySelector("#askBody")?.textContent].filter(Boolean).join(" "));
+      const how = state.next.shift() ?? "ok";
+      if (how !== "leave") setTimeout(() => (how === "ok" ? ok : d.querySelector("#askCancel")).click(), 0);
+    };
+    new MutationObserver(answer).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "data-confirm"] });
+  });
   const page = await ctx.newPage();
   page.errors = [];
   // The harness blocks service workers in most tests, and Chromium says so in the console.
@@ -210,6 +240,14 @@ export async function open(browser, base, { auth, db = { logs: {}, plan: null },
   if (url) await page.goto(url);
   return { ctx, page, db };
 }
+
+/** How the app's next yes-or-no questions (Ask.tsx) are answered, in order: "ok", "cancel", or "leave" (open, for
+ *  the test to look at and answer itself). Any beyond these are answered OK. */
+export const answerAsk = (page, ...how) => page.evaluate((h) => window.__ask.next.push(...h), how);
+/** The last yes-or-no question the app asked, its title and any line under it, or "" when none since clearAsked. */
+export const lastAsked = (page) => page.evaluate(() => window.__ask.asked.at(-1) ?? "");
+/** Forgets the questions asked so far, so lastAsked says whether another comes. */
+export const clearAsked = (page) => page.evaluate(() => (window.__ask.asked.length = 0));
 
 /** In the page: waits for timed animations to end. (The top bar's edge follows the scroll, and the how-to photos loop: neither ends.) */
 export const settled = () => Promise.all(document.getAnimations().filter((a) => a.timeline === document.timeline && a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {})));

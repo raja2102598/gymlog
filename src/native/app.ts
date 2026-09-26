@@ -8,7 +8,7 @@ import { handleBack } from "@/lib/back";
 import { GO_EVENT, NATIVE_GO, NATIVE_SIGN_IN } from "@/lib/native";
 import { checkPhoneSpeech } from "@/lib/speech";
 import type { GymStore } from "@/lib/store";
-import { syncHealth } from "./health";
+import { syncHealth, syncToday } from "./health";
 import { syncRestNotifications } from "./rest";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
 import { startWidget } from "./widget";
@@ -71,6 +71,8 @@ export async function startNative(store: GymStore): Promise<void> {
   startWidget(store);
   // While open, too: a watch's numbers keep arriving through the day. syncHealth skips runs under 5 minutes apart.
   setInterval(() => void syncHealth(store), 15 * 60_000);
+  // And today's numbers every 30 seconds while the app is on screen, so steps and calories move as you do.
+  setInterval(() => void syncToday(store), 30_000);
   // The first read, as soon as the account is known. Not for the demo: it isn't a real account, and Health
   // Connect and background sync both need one (GymLog's Settings says so and hides the controls).
   const first = () => {

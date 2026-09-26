@@ -1,12 +1,11 @@
 // The rest timer (RAJ-35): it starts when a set gets its reps, counts down in the workout's rest card with pause,
 // +15 s and skip, buzzes and says "Rest over" at zero, takes the plan's default from Settings and a lift's own length
 // from the plan editor, and survives a reload. The clock runs here, and the test moves it on.
-import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS } from "./harness.mjs";
+import { flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS, onDefaultPlan } from "./harness.mjs";
 
 export default async function rest({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000035", "2026-08-26T05:00:00Z", "t@example.com");
-  // A day logged four weeks ago, so the account keeps the default plan (Legs on Wednesdays) with no first-run step.
-  const db = { logs: { [K(0)]: { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" } }, plan: null };
+  const db = onDefaultPlan();
   const { ctx, page } = await open(browser, base, { auth, db, clock: "running", url: null });
   // The buzz at zero, recorded rather than felt.
   await ctx.addInitScript(() => {

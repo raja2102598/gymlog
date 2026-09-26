@@ -13,6 +13,8 @@ interface WidgetSnapshot {
   done: number;
   planned: number;
   restEndsAt: string | null;
+  /** Today's workout skipped (Skip day), which the widget says instead of "0/5 lifts". */
+  skipped: boolean;
 }
 
 interface WidgetPlugin {
@@ -32,7 +34,7 @@ function snapshotOf(store: GymStore): WidgetSnapshot {
   const done = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
   // A running rest timer's end, which the widget shows as "rest until 10:32", since it can't tick every second.
   const r = store.rest, resting = r && r.pausedAt == null && !r.ended;
-  return { date, session: p.name, done, planned: p.exercises.length, restEndsAt: resting ? new Date(r.endAt).toISOString() : null };
+  return { date, session: p.name, done, planned: p.exercises.length, restEndsAt: resting ? new Date(r.endAt).toISOString() : null, skipped: e.skip != null };
 }
 
 /** Writes today's session and progress, if they've changed since the last write. Signed out, however that came

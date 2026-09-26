@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Timer } from "lucide-react";
+import { AskHost } from "@/components/ds/Ask";
 import { PushHead } from "@/components/ds/parts";
 import { TabBar } from "@/components/ds/TabBar";
 import { useBarsHeight } from "@/hooks/useBarsHeight";
@@ -14,6 +15,7 @@ import { METRIC_TITLE } from "@/lib/healthView";
 import { GO_EVENT, isNative } from "@/lib/native";
 import { depthOf, hashOf, isPushed, parentOf, routeOf, sameRoute, tabOf, type Route } from "@/lib/route";
 import { onBack } from "@/lib/back";
+import { canMoveScreens, directionOf, moveScreens } from "@/lib/pageTransition";
 import { sessionDone } from "@/lib/session";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
@@ -112,6 +114,9 @@ export default function GymLog() {
   // A new service worker took over this open tab (website only; the Android app has none): only a reload runs it.
   const [swUpdated, setSwUpdated] = useState(false);
   const shown = useRef(route);
+  /** One of the app's own screens is showing (not the loading, sign-in or plan picker one): moves between them animate. */
+  const inAppShown = useRef(false);
+  useEffect(() => void canMoveScreens(), []);
   const backing = useRef(false); // a Back this app started that hasn't landed yet
   useLayoutEffect(() => {
     shown.current = route;
@@ -219,8 +224,10 @@ export default function GymLog() {
       const to = routeOf(location.hash);
       if (sameRoute(to, shown.current)) return;
       leave(shown.current, to);
-      setRoute(to);
-      window.scrollTo(0, 0);
+      moveScreens(inAppShown.current ? directionOf(shown.current, to) : null, () => {
+        setRoute(to);
+        window.scrollTo(0, 0);
+      });
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -241,7 +248,7 @@ export default function GymLog() {
    *  opened: going deeper adds an entry, going across replaces it, going Home steps back to it. So Back retraces
    *  the way, and never returns to a screen that was closed. */
   const navigate = useCallback(
-    (to: Route) => {
+    (to: Route, { still = false }: { still?: boolean } = {}) => {
       if (backing.current || sameRoute(to, route)) return false;
       const depth = stackDepth();
       if (to.view === "home") {
@@ -250,8 +257,12 @@ export default function GymLog() {
       } else if (depthOf(to) > depthOf(route)) history.pushState({ gymDepth: depth + 1, from: hashOf(route) }, "", address(to));
       else history.replaceState({ gymDepth: depth, from: (history.state as Entry)?.from }, "", address(to));
       leave(route, to);
-      setRoute(to);
-      window.scrollTo(0, 0);
+      // Deeper pages slide in from the right, Back slides them out, tabs crossfade (lib/pageTransition.ts); only
+      // from one of the app's own screens, not from the plan picker, say, whose Home would show on the way.
+      moveScreens(!still && inAppShown.current ? directionOf(route, to) : null, () => {
+        setRoute(to);
+        window.scrollTo(0, 0);
+      });
       return true;
     },
     [route, leave, stepBack],
@@ -385,6 +396,9 @@ export default function GymLog() {
             ? "choose"
             : "app";
   const inApp = screen === "app";
+  useLayoutEffect(() => {
+    inAppShown.current = inApp;
+  }, [inApp]);
   useEffect(() => {
     if (!restored || !inApp || route.view !== "settings") return;
     document.getElementById("setData")?.scrollIntoView({ block: "start" });
@@ -422,6 +436,9 @@ export default function GymLog() {
       <p className="sr-only" id="status" aria-live="polite">
         {store.status}
       </p>
+      {/* The app's own question sheet (Ask.tsx). First in the page, so Back closes it before a dialog under it
+          (lib/back.ts closes the first open one). */}
+      <AskHost />
       {inApp && pushed && v !== "workout" ? <PushHead title={title} backHref={hashOf(backTo(route)) || "./"} onBack={goBack} backLabel={backLabel} /> : null}
 
       <main id="main" tabIndex={-1}>
@@ -444,7 +461,7 @@ export default function GymLog() {
           onRestoring={setRestoring}
           onRestored={(msg) => {
             setRestored(msg);
-            navigate({ view: "settings" });
+            navigate({ view: "settings" }, { still: true });
           }}
         />
 

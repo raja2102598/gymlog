@@ -103,7 +103,7 @@ Sign-in links only come back to addresses listed in Supabase under Authenticatio
 | `npm run build` | The static site in `out/`, plus its service worker |
 | `npm run preview` | Serves `out/` at 127.0.0.1:3000 |
 | `npm run lint`, `npm run typecheck`, `npm test` | ESLint, TypeScript, and the unit tests (Vitest) |
-| `npm run test:e2e` | 300+ browser checks against `out/` in Chromium, with Supabase mocked. Needs Chromium once: `npx playwright-core install chromium` |
+| `npm run test:e2e` | About 880 browser checks in 20 suites against `out/` in Chromium, with Supabase mocked. Needs Chromium once: `npx playwright-core install chromium` |
 | `npm run android` | Builds the site and copies it into `android/`, for Android Studio or Gradle ([building the app](docs/android.md#building-it-yourself)) |
 | `npm run screenshots` | Regenerates `docs/screenshots/` from `out/` |
 
@@ -138,7 +138,8 @@ src/
   styles/          Design tokens, then one file per screen
 android/           The Capacitor project, with Kotlin for Health Connect, background sync and Google sign-in
 supabase/          schema.sql: tables, row-level security and functions
-tests/             unit/ (Vitest) and e2e/ (Playwright, Supabase mocked); fixtures shared with the Kotlin tests
+tests/             unit/ (Vitest) and e2e/ (Playwright, Supabase mocked), one file per page or scenario; tests/README.md
+                   says where a test goes and how to keep it honest; fixtures shared with the Kotlin tests
 scripts/           The service-worker generator, a static server, the screenshot script, the exercise library's builder
 .github/           CI: site.yml (lint, types, tests, build, browser tests) and android.yml (APK build and release)
 ```

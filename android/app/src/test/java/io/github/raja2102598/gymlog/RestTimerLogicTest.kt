@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The rest timer's background alert, checked without Android or a network (see store.ts and tests/unit/store.test.ts
+/** The rest timer's background alert, checked without Android or a network (see store.ts and tests/unit/rest.test.ts
  *  for the JavaScript side: starting, pausing, and the sensible-default plan and lift fields). */
 class RestTimerLogicTest {
     @Test

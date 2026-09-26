@@ -10,7 +10,10 @@
 .lrows{list-style:none;margin:0;padding:0}
 .lrow{display:flex;align-items:center;border-top:1px solid var(--line-strong);background:var(--surface);position:relative}
 .lrow.dragging{z-index:2;box-shadow:0 0 0 2px var(--brand);border-radius:var(--radius-md)}
-.lrow-main{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:12px;min-height:62px;padding:8px 4px;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer;border-radius:var(--radius-md)}
+.lrow-main{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:12px;min-height:62px;padding:8px 4px 8px 12px;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer;border-radius:var(--radius-md)}
+/* A lift's photo, its own button: what it is and how to do it (ExerciseSheet). */
+.lrow-pic{flex:none;display:grid;place-items:center;min-width:var(--touch-min);min-height:62px;padding:8px 0 8px 4px;border:0;background:transparent;cursor:pointer;border-radius:var(--radius-md)}
+.lrow-pic:focus-visible{outline:2px solid var(--brand-text);outline-offset:-2px}
 .lrow .row-d{font-size:14px}
 .lrow.done .ico-tile{background:var(--brand);color:var(--on-brand)}
 .lrow.skipped .row-tt{color:var(--ink-muted);text-decoration:line-through}
@@ -45,6 +48,8 @@
 .wclock{position:relative;display:inline-flex;align-items:center;gap:5px;padding:0 6px;border:0;border-radius:var(--radius-pill);background:transparent;color:var(--brand-text);font:900 15px/20px var(--font-sans);cursor:pointer}
 .wclock::before{content:"";position:absolute;inset:-12px -8px}
 .wclock:focus-visible{outline:2px solid var(--brand-text);outline-offset:2px}
+/* Paused: the time in plain ink, not counting, with a play mark to say a tap starts it again. */
+.wclock.paused{color:var(--ink-muted)}
 .wtop .btn-raised:not(.btn-icon){padding:0 20px;font-size:16px}
 .wprog{position:relative;z-index:1;list-style:none;margin:0;padding:16px var(--gut-r) 0 var(--gut-l);display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px}
 .wprog li{display:flex}

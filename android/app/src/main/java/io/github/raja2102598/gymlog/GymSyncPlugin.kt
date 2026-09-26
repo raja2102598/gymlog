@@ -60,6 +60,13 @@ class GymSyncPlugin : Plugin() {
         )
     }
 
+    /** { started, running }: how many background runs have started in this process, and whether one is under way. */
+    @PluginMethod
+    fun runs(call: PluginCall) {
+        val started = HealthSync.started
+        call.resolve(JSObject().put("started", started).put("running", HealthSync.running))
+    }
+
     /** Asks Health Connect for background reading, where it exists. Resolves { available, allowed }. */
     @PluginMethod
     fun requestBackground(call: PluginCall) = safely(call) {

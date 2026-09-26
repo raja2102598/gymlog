@@ -3,6 +3,7 @@ import type { PermissionState } from "@capacitor/core";
 import { ChevronRight, Download, ExternalLink, LogOut, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { SegmentedControl } from "@/components/ds/parts";
+import { ask } from "@/components/ds/Ask";
 import { firstName } from "@/components/ds/ProfileButton";
 import { downloadFailed, retryWith, useAndroidUpdate, withProgress } from "@/components/shell/useAndroidUpdate";
 import { Group, NumField, Text } from "@/components/settings/parts";
@@ -574,9 +575,9 @@ function Data({ first, demo }: { first: string; demo: boolean }) {
     setMsg(`Exported ${plural(rows.length, "set")} as CSV.`);
   };
   // Days already logged, and the plan, are only replaced once you say so.
-  const ask = ({ days, plan }: Replacing) => {
+  const replace = ({ days, plan }: Replacing) => {
     const what = [days ? `different entries for ${plural(days, "day")} you’ve already logged` : "", plan ? "a different plan" : ""].filter(Boolean).join(", and ");
-    return confirm(`The file has ${what}. Replace ${days ? "them" : "yours"} with the file’s version?`);
+    return ask(`Replace ${days ? "them" : "yours"} with the file’s version?`, "Replace", { body: `The file has ${what}.`, danger: true });
   };
   // Only the latest import's result shows: an earlier one still saving mustn't overwrite it.
   const imports = useRef(0);
@@ -585,7 +586,7 @@ function Data({ first, demo }: { first: string; demo: boolean }) {
     ev.currentTarget.value = "";
     if (!f) return;
     const n = ++imports.current;
-    const m = await store.importFile(f, ask);
+    const m = await store.importFile(f, replace);
     if (n === imports.current) setMsg(m);
   };
   return (

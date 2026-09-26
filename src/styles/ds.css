@@ -4,7 +4,6 @@
 /* ---------- ActivityRings ---------- */
 .rings{flex:none;display:block}
 .ring-track{stroke-opacity:.16}
-.ring-arrow{stroke:var(--bg)}
 .ring-leg{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 auto}
 .ring-it{display:flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none;min-height:44px}
 .ring-it .dot{width:10px;height:10px;border-radius:5px;flex:none}
@@ -167,11 +166,43 @@
 .howto-tags{display:flex;flex-wrap:wrap;gap:6px;margin:0}
 .howto-steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:var(--space-2);font:var(--type-body);color:var(--ink)}
 .howto-steps li::marker{font-weight:800;color:var(--brand-text)}
-.howto-credit{margin:0;font:var(--type-label);color:var(--ink-muted)}
-.howto-credit a{color:var(--brand-text)}
 
 /* Things that open in place come in with a short fade and rise, rather than jumping: a lift's how-to (the workout's
    ?, the library), and a Settings row unfolding. Opacity and transform only, which the phone animates on its own. */
 @media (prefers-reduced-motion:no-preference){
   .cue-panel,.lib-how,.pref-card:not([hidden]){animation:rise var(--sheet) var(--ease)}
+}
+
+/* ---------- Ask: the app's own question sheet (Ask.tsx), in place of the phone's plain system dialog ---------- */
+.ask{padding:0;border:0;margin:auto auto 0;width:100%;max-width:560px;max-height:min(80dvh,720px);background:var(--surface);color:var(--ink);border-radius:var(--radius-sheet) var(--radius-sheet) 0 0}
+.ask::backdrop{background:color-mix(in srgb,var(--bg) 70%,transparent)}
+@media (min-width:601px){.ask{margin:auto;border-radius:var(--radius-sheet)}}
+.ask-in{display:flex;flex-direction:column;gap:var(--space-3);padding:28px 20px max(20px,calc(var(--sab) + 16px))}
+.ask-t{margin:0;font:var(--type-title-md);overflow-wrap:anywhere}
+.ask-b{margin:0;font:var(--type-body);color:var(--ink-muted);overflow-wrap:anywhere}
+.ask-btns{display:grid;gap:10px;margin-top:var(--space-2)}
+@media (prefers-reduced-motion:no-preference){
+  .ask[open]{animation:askUp var(--sheet) var(--ease)}
+  .ask[open]::backdrop{animation:askFade var(--sheet) var(--ease)}
+  @keyframes askUp{from{transform:translateY(24px);opacity:0}}
+  @keyframes askFade{from{opacity:0}}
+}
+
+/* ---------- ExerciseSheet: a lift in full, pulled up from the bottom when its photo is tapped ---------- */
+.xsheet{padding:0;border:0;margin:auto auto 0;width:100%;max-width:560px;max-height:92dvh;background:var(--surface);color:var(--ink);border-radius:var(--radius-sheet) var(--radius-sheet) 0 0;overflow:auto;overscroll-behavior:contain}
+.xsheet::backdrop{background:color-mix(in srgb,var(--bg) 70%,transparent)}
+@media (min-width:601px){.xsheet{margin:auto;border-radius:var(--radius-sheet)}}
+.xsheet-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:20px 12px 8px 20px;background:var(--surface)}
+/* the grab bar a sheet has at its top */
+.xsheet-head::before{content:"";position:absolute;top:8px;left:50%;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--outline)}
+.xsheet-head h2{flex:1;min-width:0;margin:0;font:var(--type-title-md);overflow-wrap:anywhere}
+.xsheet-body{display:flex;flex-direction:column;gap:var(--space-4);padding:0 20px max(24px,calc(var(--sab) + 16px))}
+.xsheet-pick{display:flex;flex-wrap:wrap;gap:8px}
+.xsheet-facts{display:grid;gap:10px;margin:0}
+.xsheet-facts div{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px}
+.xsheet-facts dt{font:var(--type-label);color:var(--ink-muted);padding-top:2px}
+.xsheet-facts dd{margin:0;font:var(--type-body-strong);overflow-wrap:anywhere}
+@media (prefers-reduced-motion:no-preference){
+  .xsheet[open]{animation:askUp var(--sheet) var(--ease)}
+  .xsheet[open]::backdrop{animation:askFade var(--sheet) var(--ease)}
 }

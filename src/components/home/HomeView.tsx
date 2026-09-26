@@ -109,7 +109,8 @@ function WorkoutCard({ t, onStart, onOpenDay, focusNext }: { t: DayKey; onStart:
           onPick={(v) => score("kneeWake", v)}
         />
       ) : null}
-      {knee && !rest ? (
+      {/* Not on a skipped day: there's no session for it to be before. */}
+      {knee && !rest && !skipped ? (
         e.kneeBefore != null && !kneeOpen ? (
           <InsightCallout
             kind="caution"
@@ -310,15 +311,18 @@ function QuickAdds({ t, focusNext }: { t: DayKey; focusNext: FocusNext }) {
 function Timeline({ t }: { t: DayKey }) {
   const store = useGym();
   const n = dayNumbers(store, t), p = store.planFor(t), e = store.entry(t), free = e.free ?? null;
-  const items: { at: string; what: string; kind: "past" | "next" | "later"; key: string }[] = [];
+  const items: { at: string; what: string; kind: "past" | "next" | "later" | "skipped"; key: string }[] = [];
   if (n.sleepMin) items.push({ key: "sleep", at: n.wake ? clock(n.wake) : "Last night", what: `${n.wake ? "Woke up · " : ""}${hoursMin(n.sleepMin)} sleep`, kind: "past" });
   for (const w of n.workouts) items.push({ key: w.start, at: clock(w.start), what: `${workoutName(w.type)} · ${hoursMin(w.min)}`, kind: "past" });
   const lifts = store.liftsFor(t).filter((it) => !it.extra);
   if (lifts.length || free) {
     const done = lifts.length > 0 && lifts.every((it) => e.exercises[it.name]?.done || e.exercises[it.name]?.skipped);
+    // Skipped today (Home's card, Train's Skip day): said so, with why, and no cardio "after lifting" to come.
+    const skipped = !done && e.skip != null;
     const name = free ? free.name.trim() || "Free workout" : `${p.name} workout`;
-    items.push({ key: "lift", at: done ? "Done" : "Up next", what: `${name}${lifts.length ? ` · ${lifts.length} lift${lifts.length === 1 ? "" : "s"}` : ""}`, kind: done ? "past" : "next" });
-    if (p.cardio.name && !free) items.push({ key: "cardio", at: e.cardio ? "Done" : "After lifting", what: [p.cardio.name, p.cardio.detail].filter(Boolean).join(" · "), kind: e.cardio ? "past" : "later" });
+    if (skipped) items.push({ key: "lift", at: "Skipped", what: [name, e.skip?.trim()].filter(Boolean).join(" · "), kind: "skipped" });
+    else items.push({ key: "lift", at: done ? "Done" : "Up next", what: `${name}${lifts.length ? ` · ${lifts.length} lift${lifts.length === 1 ? "" : "s"}` : ""}`, kind: done ? "past" : "next" });
+    if (p.cardio.name && !free && (!skipped || e.cardio)) items.push({ key: "cardio", at: e.cardio ? "Done" : "After lifting", what: [p.cardio.name, p.cardio.detail].filter(Boolean).join(" · "), kind: e.cardio ? "past" : "later" });
   }
   if (!items.length) return null;
   return (

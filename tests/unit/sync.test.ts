@@ -5,18 +5,17 @@ import { copy } from "@/lib/storage";
 import { GymStore, mergeDays } from "@/lib/store";
 import type { DayLog, LiftLog, Plan } from "@/lib/types";
 import { fakeSupabase } from "./fakeSupabase";
+import { atWednesdayNoon, day, memoryStorage, storeWith } from "./helpers";
 
+// Keeping phones in step through Supabase (store.flush, pull, flushPlan): each day and the plan are saved over the
+// version this phone last had, so nothing another phone saved is overwritten unseen; and this phone's own copy of
+// what it hasn't saved yet. Renaming a lift's history, which goes through the same saves, is in rename.test.ts.
 const D = "2026-09-23";
-const day = (d: Partial<DayLog> = {}): DayLog => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...d });
+/** One set, not yet ticked off. */
 const lift = (reps: number, kg: number): LiftLog => ({ done: false, kg, sets: [{ reps, kg }] });
 /** A copy with its keys in another order, as Supabase's jsonb may give them back. */
 const reordered = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).reverse()) as T;
 const planWith = (p: Partial<Plan>): Plan => ({ ...copy(DEFAULT_PLAN), ...p });
-
-function memoryStorage() {
-  const m = new Map<string, string>();
-  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
-}
 
 type Fake = ReturnType<typeof fakeSupabase>;
 
@@ -33,16 +32,12 @@ async function phone(f: Fake) {
 }
 
 // Saves are called directly: the timers that would run them are faked and never fire.
+atWednesdayNoon();
 beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-09-23T12:00:00"));
   vi.stubGlobal("localStorage", memoryStorage());
   vi.stubGlobal("navigator", { onLine: true });
 });
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+afterEach(() => vi.unstubAllGlobals());
 
 describe("saving a day over the version it started from", () => {
   it("writes cleanly when nothing changed elsewhere, and adds a day new here", async () => {
@@ -400,96 +395,43 @@ describe("saving the plan over the version it started from", () => {
   });
 });
 
-describe("renaming a lift's history", () => {
-  it("carries history to every day with it, including one not loaded here yet, pulling first", async () => {
-    const f = fakeSupabase();
-    f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45) } }));
-    const s = await phone(f);
-    // Logged on another device after this phone loaded: not in s.logs yet.
-    f.elsewhere("2026-09-16", day({ exercises: { "Leg Press": lift(10, 50) } }));
-    expect(s.logs["2026-09-16"]).toBeUndefined();
-    const r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r).toMatchObject({ ok: true, days: 2 });
-    expect(f.sent[0]).toBe("select logs"); // pulled first, so the day above was caught too
-    expect(f.row("2026-09-09")!.data.exercises).toHaveProperty("Leg Press Machine");
-    expect(f.row("2026-09-16")!.data.exercises).toHaveProperty("Leg Press Machine");
-    expect(s.entry("2026-09-09").exercises["Leg Press"]).toBeUndefined();
-    expect(s.entry("2026-09-16").exercises["Leg Press"]).toBeUndefined();
-    expect([s.pending, s.conflicts, s.status]).toEqual([{}, {}, "Saved"]);
-  });
+describe("the phone's own copy", () => {
+  /** The phone's storage, which throws on every save while `full` is set, as a browser does when it's full or blocked. */
+  function phoneStorage() {
+    const kept = new Map<string, string>(), phone = { kept, full: false };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => kept.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        if (phone.full) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        kept.set(k, v);
+      },
+      removeItem: (k: string) => void kept.delete(k),
+    });
+    return phone;
+  }
+  afterEach(() => vi.unstubAllGlobals());
 
-  it("pulls first, but writes nothing when the new name already has history elsewhere", async () => {
-    const f = fakeSupabase();
-    f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45) } }));
-    f.elsewhere("2026-09-16", day({ exercises: { "Leg Press Machine": lift(10, 50) } }));
-    const s = await phone(f);
-    const r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r).toMatchObject({ ok: false, days: 0 });
-    expect(f.sent).toEqual(["select logs"]); // only the pull-first check: nothing written
-    expect(f.row("2026-09-09")!.data.exercises).toHaveProperty("Leg Press");
-    expect(s.plan.days[2].exercises.find((x) => x.name === "Leg Press")).toBeDefined();
-  });
-
-  it("moves nothing offline, or when the days won't load, so none logged on another device is left behind", async () => {
-    const f = fakeSupabase();
-    f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45) } }));
-    const s = await phone(f);
-    // Logged on another device after this phone loaded: carried over from this phone's days alone, it would stay
-    // "Leg Press" once it arrived.
-    f.elsewhere("2026-09-16", day({ exercises: { "Leg Press": lift(10, 50) } }));
-    vi.stubGlobal("navigator", { onLine: false });
-    let r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r).toMatchObject({ ok: false, days: 0 });
-    expect(r.msg).toBe("You’re offline, so Leg Press’s history stays with Leg Press: a day logged on another device could be left behind. Type Leg Press back, then rename it again once you’re online.");
-    expect([f.sent, s.pending]).toEqual([[], {}]);
-    expect(s.entry("2026-09-09").exercises).toHaveProperty("Leg Press");
-    vi.stubGlobal("navigator", { onLine: true });
-    f.failLoads();
-    r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r).toMatchObject({ ok: false, days: 0, msg: "Couldn’t load every logged day just now, so Leg Press’s history stays with Leg Press. Type Leg Press back, then rename it again in a moment." });
-    expect([f.sent, s.pending]).toEqual([["select logs"], {}]);
-    // Once they load, both days come across.
-    f.failLoads(false);
-    r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r).toMatchObject({ ok: true, days: 2 });
-    expect(f.row("2026-09-09")!.data.exercises).toHaveProperty("Leg Press Machine");
-    expect(f.row("2026-09-16")!.data.exercises).toHaveProperty("Leg Press Machine");
-  });
-
-  it("keeps an unrelated addition another device made to the same day, since it pulls first", async () => {
-    const f = fakeSupabase();
-    f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45) } }));
-    const s = await phone(f);
-    // Another device adds a different lift to the same day after this phone loaded.
-    f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45), "Leg Extension": lift(12, 27) } }));
-    const r = await s.renameLift("Leg Press", "Leg Press Machine");
-    expect(r).toMatchObject({ ok: true, days: 1 });
-    expect(Object.keys(f.row("2026-09-09")!.data.exercises).sort()).toEqual(["Leg Extension", "Leg Press Machine"]);
-    expect(Object.keys(s.entry("2026-09-09").exercises).sort()).toEqual(["Leg Extension", "Leg Press Machine"]);
-    expect(s.conflicts).toEqual({});
-  });
-
-  it("routes a rename through the same conflict check as any other edit", async () => {
-    const f = fakeSupabase();
-    f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45), "Leg Extension": lift(12, 27) } }));
-    const s = await phone(f), load = f.holdNext("load");
-    const renaming = s.renameLift("Leg Press", "Leg Press Machine");
-    await load.read; // the rename's own pull reads the day as it was…
-    f.elsewhere("2026-09-09", day({ exercises: { "Leg Press": lift(10, 45), "Leg Extension": lift(12, 30) } })); // …then another device changes the other lift…
-    const found = f.row("2026-09-09")!.updated_at;
-    load.release(); // …before the pull's answer arrives.
-    const r = await renaming;
-    expect(r).toMatchObject({ ok: true, days: 1 });
-    // The rename itself doesn't clash (a different key), but the other device's own change to Leg Extension does,
-    // and is kept for you to choose exactly as any other conflicting edit would be.
-    expect(s.conflicts["2026-09-09"]).toMatchObject({ at: found });
-    expect(s.conflicts["2026-09-09"].data.exercises["Leg Extension"]).toMatchObject({ kg: 30 });
-    expect(s.entry("2026-09-09").exercises["Leg Press Machine"]).toBeDefined();
-    expect(s.entry("2026-09-09").exercises["Leg Press"]).toBeUndefined();
-    expect(s.status).toBe("Not synced yet");
-    // Keeping this phone's version saves the rename over the other device's copy, as any conflict can be resolved.
-    await s.keepDay("2026-09-09", "mine");
-    expect(f.row("2026-09-09")!.data.exercises).toEqual({ "Leg Press Machine": lift(10, 45), "Leg Extension": lift(12, 27) });
-    expect(s.conflicts).toEqual({});
+  it("says when the phone won't keep an edit, until each copy saves again", async () => {
+    const phone = phoneStorage(), s = storeWith({});
+    s.editDay("2026-09-23", (n) => void (n.steps = 9100), false);
+    expect(s.localSaveFailed).toBe(false);
+    phone.full = true;
+    s.editDay("2026-09-23", (n) => void (n.steps = 9200), false);
+    expect(s.localSaveFailed).toBe(true);
+    expect(JSON.parse(phone.kept.get("gymlog.pending.v1")!).pending["2026-09-23"].steps).toBe(9100);
+    phone.full = false;
+    // The plan saves, but the day's copy on the phone is still the old one.
+    s.editPlan((p) => void (p.stepGoal = 12000));
+    expect(s.localSaveFailed).toBe(true);
+    s.editDay("2026-09-23", (n) => void (n.steps = 9300), false);
+    expect(s.localSaveFailed).toBe(false);
+    // Health Connect's copy counts too.
+    s.sb = { from: () => ({ upsert: async () => ({ error: null }) }) } as unknown as GymStore["sb"];
+    phone.full = true;
+    await s.saveHealth({ "2026-09-23": { steps: 8421 } });
+    expect(s.localSaveFailed).toBe(true);
+    phone.full = false;
+    await s.saveHealth({ "2026-09-23": { steps: 8500 } });
+    expect(s.localSaveFailed).toBe(false);
   });
 });

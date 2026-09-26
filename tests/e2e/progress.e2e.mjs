@@ -1,13 +1,9 @@
-// Knee scores (Home and Train), next-weight hints and records (the workout), cardio and waist, home-screen shortcuts,
-// and Progress (Overview, Body, Strength, a lift's page), on four weeks of history.
-import { flat, K, open, openTab, openWorkout, ready, session, shot, until } from "./harness.mjs";
+// Progress, and what four weeks of history shows across the app: the knee scores on Home and Train, next-weight
+// hints and records in the workout, cardio and waist, and Progress itself (Overview and its pace flag, Body,
+// Strength, Muscles, and a lift's own page).
+import { K, flat, open, openTab, openWorkout, ready, session, shot, until } from "./harness.mjs";
 
-export const covers = [
-  "src/components/dashboard/LiftDetail.tsx",
-  "src/components/health/Bars.tsx",
-  "src/components/health/Trend.tsx",
-  "src/lib/scale.ts",
-];
+export const covers = ["src/components/dashboard/LiftDetail.tsx", "src/components/health/Bars.tsx", "src/components/health/Trend.tsx", "src/lib/scale.ts"];
 
 function history() {
   const logs = {};
@@ -50,7 +46,22 @@ async function atLift(page, name) {
   return page.locator(".ex-card.lift", { has: page.locator(".ex-name", { hasText: name }) }).first();
 }
 
-export default async function dashboard({ browser, base, check }) {
+// Daily weigh-ins from 26 Aug to today, changing by `perDay` kg.
+const series = (perDay) => {
+  const logs = {};
+  for (let n = 0; n <= 28; n++) logs[K(n)] = { exercises: {}, warmup: [], cardio: false, steps: null, weight: Math.round((84 + perDay * n) * 10) / 10, note: "" };
+  return logs;
+};
+
+export default async function progress(t) {
+  await fourWeeks(t);
+  await pace(t);
+  await muscles(t);
+}
+
+// Knee scores (Home and Train), next-weight hints and records (the workout), cardio and waist, home-screen shortcuts,
+// and Progress (Overview, Body, Strength, a lift's page), on four weeks of history.
+async function fourWeeks({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000002", "2026-08-26T05:00:00Z", "t@example.com");
   const db = { logs: history(), plan: null };
 
@@ -58,8 +69,6 @@ export default async function dashboard({ browser, base, check }) {
     const { ctx, page } = await open(browser, base, { auth, db });
     await ready(page);
     // --- the knee before the session, asked on Home's workout card
-    const kb = await page.locator('#todayCard button[data-knee="kneeBefore:0"]').boundingBox(), kb1 = await page.locator('#todayCard button[data-knee="kneeBefore:1"]').boundingBox();
-    check("knee buttons are big enough to tap: 44px tall, 24px apart or more", kb.height >= 44 && kb1.x - kb.x >= 24, `${Math.round(kb.width)}x${Math.round(kb.height)}, ${Math.round(kb1.x - kb.x)}px apart`);
     await page.locator('#todayCard button[data-knee="kneeBefore:3"]').click();
     await until(() => db.logs["2026-09-23"].kneeBefore === 3);
     await page.waitForSelector("#kneeNote");
@@ -252,16 +261,10 @@ export default async function dashboard({ browser, base, check }) {
     await ctx.close();
   }
 
-  // --- a shortcut opens Train straight at the weight field; the dashboard in dark mode
+  // --- Progress in dark mode
   {
-    const { ctx, page } = await open(browser, base, { auth, db, scheme: "dark", url: base + "?go=weight" });
-    await page.waitForSelector("#trainView", { timeout: 15000 });
-    await until(async () => page.evaluate(() => document.activeElement?.id === "weight"));
-    check("Log weight shortcut opens Train and focuses weight", await page.evaluate(() => document.activeElement?.id === "weight"));
-    check("shortcut parameter removed from the address, which is Train's", !page.url().includes("go=") && page.url().endsWith("/#train"), page.url());
-    await page.goBack();
-    await page.waitForSelector("#homeView");
-    check("with Home behind it: Back goes Home", !page.url().includes("#"), page.url());
+    const { ctx, page } = await open(browser, base, { auth, db, scheme: "dark" });
+    await ready(page);
     await openTab(page, "progress");
     const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     check("dark mode colours", bg === "rgb(14, 15, 17)", bg);
@@ -269,31 +272,87 @@ export default async function dashboard({ browser, base, check }) {
     check("no console errors (dark)", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
+}
 
-  // --- the Android widget's taps (native/app.ts turns one into this window event): one that starts the app comes
-  // before sign-in is known, and one can come while another tab is open
-  {
-    const { ctx, page } = await open(browser, base, { auth, db, url: "" });
-    await page.addInitScript(() => {
-      // A cold start: the tap is sent the moment the app listens for it, before sign-in has come back.
-      const add = window.addEventListener;
-      window.addEventListener = function (type, ...rest) {
-        add.call(this, type, ...rest);
-        if (type !== "gymlog:go" || window.__goSent) return;
-        window.__goSent = true;
-        window.dispatchEvent(new CustomEvent("gymlog:go", { detail: "weight" }));
-      };
-    });
-    await page.goto(base);
-    await page.waitForSelector("#trainView", { timeout: 15000 });
-    const focused = () => page.evaluate(() => document.activeElement?.id);
-    await until(async () => (await focused()) === "weight");
-    check("widget's Log weight, starting the app, opens Train at weight", (await focused()) === "weight", await focused());
+// Progress pace flags (Overview): the weekly loss against the target set in the plan editor.
+async function pace({ browser, base, check }) {
+  const auth = session("00000000-0000-4000-8000-000000000003", "2026-08-26T05:00:00Z", "t@example.com");
+  const flags = async (logs, plan) => {
+    const { ctx, page } = await open(browser, base, { auth, db: { logs, plan }, mobile: false });
+    await ready(page);
     await openTab(page, "progress");
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent("gymlog:go", { detail: "steps" })));
-    await until(async () => (await focused()) === "steps");
-    check("widget's Log steps, from Progress, opens Train at steps", (await page.locator("#trainView").isVisible()) && (await focused()) === "steps", await focused());
-    check("no console errors (widget taps)", page.errors.length === 0, page.errors.join(" | "));
+    const text = (await page.locator("#dashFlags").textContent()).replace(/\s+/g, " ").trim(), errors = page.errors;
     await ctx.close();
-  }
+    return { text, errors };
+  };
+  // Each way the pace can read is in tests/unit/progress.test.ts; here, that Overview shows it.
+  const r = await flags(series(-0.1), { weeklyRatePct: 0.4 });
+  check("a pace off the plan's weekly target is flagged on Overview", /Losing 0\.\d\d% a week, faster than your 0\.4% target\./.test(r.text) && !r.errors.length, r.text || "(no flags)");
+}
+
+// Weekly sets per muscle on Progress → Muscles (RAJ-56): four weeks of working sets per muscle from the library's
+// muscles, warm-ups and drop sets left out, a note on last week, untagged lifts listed apart, and a set logged in the
+// workout adding to this week's total.
+async function muscles({ browser, base, check }) {
+  const auth = session("00000000-0000-4000-8000-000000000056", "2026-08-26T05:00:00Z", "t@example.com");
+  const sets = (n, more = []) => [...Array.from({ length: n }, () => ({ reps: 10, kg: 40 })), ...more];
+  const lift = (n, more = [], x = {}) => ({ done: true, kg: 40, sets: sets(n, more), ...x });
+  const day = (exercises) => ({ exercises, warmup: [], cardio: false, steps: 6000, weight: null, note: "" });
+  const db = {
+    logs: {
+      // Two weeks ago, Leg Extension swapped for Hack Squat: quads, with calves, glutes and hamstrings.
+      [K(14)]: day({ "Leg Extension": lift(2, [], { swap: "Hack Squat" }) }),
+      // Last week: a warm-up and a drop set that don't count, and a lift the library doesn't know.
+      [K(21)]: day({
+        "Leg Extension": lift(3, [{ reps: 8, kg: 20, type: "warmup" }, { reps: 12, kg: 30, type: "drop" }]),
+        "Leg Press": lift(3),
+        "Hamstring Curl": lift(4),
+        "Mystery Press": lift(2),
+      }),
+      [K(28)]: day({ "Leg Extension": { done: false, kg: 40, sets: sets(2) } }),
+    },
+    plan: null,
+  };
+  const { ctx, page } = await open(browser, base, { auth, db });
+  await ready(page);
+  const row = (m) => page.locator(`#dashMuscles tr[data-muscle="${m}"]`);
+  const cells = async (m) => (await row(m).locator("td").allInnerTexts()).map((t) => t.trim());
+
+  await openTab(page, "progress");
+  await page.click('#progTabs [data-seg="muscles"]');
+  await page.waitForSelector("#dashMuscles");
+  const heads = (await page.locator("#dashMuscles thead th").allInnerTexts()).map((t) => t.trim());
+  check("four weeks, this one last", heads.length === 5 && heads[0] === "Muscle" && heads[4] === "This week", heads.join(" | "));
+  check("quads: a swap counts as the lift done, and last week leaves out the warm-up and the drop set", JSON.stringify(await cells("quadriceps")) === '["-","2","6","2"]', JSON.stringify(await cells("quadriceps")));
+  check("hamstrings: a set each from a main lift, a half from others", JSON.stringify(await cells("hamstrings")) === '["-","1","5.5","-"]', JSON.stringify(await cells("hamstrings")));
+  check("most sets first", (await page.locator("#dashMuscles tbody tr").first().getAttribute("data-muscle")) === "quadriceps");
+  check("under 10 last week is noted", (await flat(row("quadriceps").locator(".musc-n"))) === "Under 10 last week");
+  check("but not for a muscle only worked on the side", (await row("glutes").locator(".musc-n").count()) === 0);
+  const untagged = await flat(page.locator("#muscUntagged"));
+  check("a lift with no muscles is listed apart, not guessed", untagged.startsWith("Untagged, so not counted: Mystery Press (2 sets)."), untagged);
+  await page.locator("#dashMuscles").scrollIntoViewIfNeeded();
+  await shot(page, "muscles");
+  // It fits a small phone, with no sideways scroll.
+  await page.setViewportSize({ width: 320, height: 700 });
+  const fit = await page.evaluate(() => {
+    const card = document.querySelector("#dashMuscles");
+    return { page: document.documentElement.scrollWidth, card: card.scrollWidth, room: card.clientWidth };
+  });
+  check("the table fits a 320px screen", fit.page <= 320 && fit.card <= fit.room, JSON.stringify(fit));
+  await shot(page, "muscles-320");
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // A set logged in the workout adds to this week's total (Progress remembers its Muscles section).
+  await openWorkout(page, "Leg Extension");
+  await page.locator('#workoutView input[data-set$=":2:reps"]').fill("10");
+  await until(() => db.logs[K(28)]?.exercises?.["Leg Extension"]?.sets?.[2]?.reps === 10);
+  await page.click("#closeWorkout");
+  await page.waitForSelector("#trainView");
+  await openTab(page, "progress");
+  await page.waitForSelector("#dashMuscles");
+  check("a set logged today counts this week", (await cells("quadriceps"))[3] === "3", JSON.stringify(await cells("quadriceps")));
+
+  check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
+  check("no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
 }

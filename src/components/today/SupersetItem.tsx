@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ask } from "@/components/ds/Ask";
 import { useGym } from "@/hooks/useGym";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useVoice, useVoiceOn } from "@/hooks/useVoice";
@@ -96,10 +97,11 @@ export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, 
   const nxt = nextInRounds(ms);
   // − Round takes the last round's sets that are more than their lift's planned number.
   const extra = ms.filter((m) => !m.r.skipped && m.sets.length === rounds && rounds > m.min);
-  const dropRound = () => {
+  const dropRound = async () => {
     const said = extra.map((m) => [tags[ms.indexOf(m)], setsSummary([m.sets[rounds - 1]])]).filter(([, s]) => s);
-    if (said.length && !confirm(`Remove round ${rounds} (${said.map(([t, s]) => `${t} ${s}`).join(", ")})?`)) return;
-    for (const m of extra) m.dropSet();
+    if (said.length && !(await ask(`Remove round ${rounds} (${said.map(([t, s]) => `${t} ${s}`).join(", ")})?`, "Remove", { danger: true }))) return;
+    // Only the round asked about: not one voice added to while the question was up.
+    if (extra.every((m) => m.sameSets())) for (const m of extra) m.dropSet();
   };
 
   return (

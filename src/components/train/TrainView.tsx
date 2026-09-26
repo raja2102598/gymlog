@@ -8,6 +8,7 @@ import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
+import { ExerciseSheet, type SheetLift } from "@/components/exercise/ExerciseSheet";
 import { ExerciseThumb } from "@/components/exercise/ExerciseThumb";
 import { cx } from "@/lib/cx";
 import { addDays, DOW, todayKey, wdIndex } from "@/lib/dates";
@@ -280,6 +281,7 @@ function LiftRows({ sel, onOpen, focusNext, cardio, cardioDone }: { sel: DayKey;
   const store = useGym();
   const e = store.entry(sel), blocks = store.liftBlocks(sel);
   const [drag, setDrag] = useState<{ b: number; dy: number; h: number } | null>(null);
+  const [about, setAbout] = useState<SheetLift[] | null>(null);
   const start = useRef(0);
   const shift = drag ? Math.max(-drag.b, Math.min(blocks.length - 1 - drag.b, Math.round(drag.dy / drag.h))) : 0;
   const moveTo = (b: number, by: number) => {
@@ -306,67 +308,87 @@ function LiftRows({ sel, onOpen, focusNext, cardio, cardioDone }: { sel: DayKey;
     focusNext(`[data-drag="${b + dir}"]`);
   };
   return (
-    <ul className="lrows" id="liftRows">
-      {blocks.map((b, bi) => {
-        const it = b[0], r = e.exercises[it.name];
-        const names = b.map((x) => performed(x.name, e.exercises[x.name]));
-        const allDone = b.every((x) => e.exercises[x.name]?.done), skipped = b.every((x) => e.exercises[x.name]?.skipped);
-        const offset = drag ? (bi === drag.b ? drag.dy : bi > drag.b && bi <= drag.b + shift ? -drag.h : bi < drag.b && bi >= drag.b + shift ? drag.h : 0) : 0;
-        return (
-          <li key={names.join("|") + bi} className={cx("lrow", allDone && "done", skipped && "skipped", drag?.b === bi && "dragging")} style={offset ? { transform: `translateY(${offset}px)` } : undefined}>
-            <button type="button" className="lrow-main" data-lift={bi} onClick={() => onOpen(bi)}>
-              {allDone ? (
-                <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
-                  <Check size={20} strokeWidth={3} />
-                </span>
-              ) : (
-                <ExerciseThumb
-                  id={store.mediaIdOf(names[0], r?.swap ? null : it.x)}
-                  fallback={
-                    <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
-                      <Dumbbell size={20} />
-                    </span>
-                  }
-                />
-              )}
-              <span className="row-t">
-                <span className="row-tt lift-t">{b.length > 1 ? names.join(" + ") : names[0]}</span>
-                <span className="row-d">{b.length > 1 ? `Superset · ${b.map((x) => liftLine(store, sel, x).split(" · ")[0]).join(", ")}` : liftLine(store, sel, it)}</span>
-              </span>
-              <span className="sr-only">{allDone ? ", done" : skipped ? ", skipped" : r && store.worked(sel) ? "" : ""}</span>
-            </button>
-            {blocks.length > 1 ? (
+    <>
+      <ul className="lrows" id="liftRows">
+        {blocks.map((b, bi) => {
+          const it = b[0], r = e.exercises[it.name];
+          const names = b.map((x) => performed(x.name, e.exercises[x.name]));
+          const allDone = b.every((x) => e.exercises[x.name]?.done), skipped = b.every((x) => e.exercises[x.name]?.skipped);
+          const offset = drag ? (bi === drag.b ? drag.dy : bi > drag.b && bi <= drag.b + shift ? -drag.h : bi < drag.b && bi >= drag.b + shift ? drag.h : 0) : 0;
+          return (
+            <li key={names.join("|") + bi} className={cx("lrow", allDone && "done", skipped && "skipped", drag?.b === bi && "dragging")} style={offset ? { transform: `translateY(${offset}px)` } : undefined}>
+              {/* The photo: everything about the lift, pulled up from the bottom (ExerciseSheet), and about each of a
+                  superset's. The rest of the row opens the workout there. */}
               <button
                 type="button"
-                className="drag"
-                data-drag={bi}
-                aria-label={`Move ${names.join(" and ")}: drag, or use the arrow keys`}
-                onPointerDown={(ev) => down(ev, bi)}
-                onPointerMove={move}
-                onPointerUp={up}
-                onPointerCancel={() => setDrag(null)}
-                onKeyDown={(ev) => key(ev, bi)}
+                className="lrow-pic"
+                data-about={bi}
+                aria-label={`About ${names.join(" and ")}: photos, muscles and how to do it`}
+                onClick={() =>
+                  setAbout(
+                    b.map((x, k) => {
+                      const own = e.exercises[x.name]?.swap ? null : x.x;
+                      return { name: names[k], line: liftLine(store, sel, x), mediaId: store.mediaIdOf(names[k], own), ex: store.exerciseOf(names[k], own) };
+                    }),
+                  )
+                }
               >
-                <GripVertical size={18} aria-hidden="true" />
+                {allDone ? (
+                  <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
+                    <Check size={20} strokeWidth={3} />
+                  </span>
+                ) : (
+                  <ExerciseThumb
+                    id={store.mediaIdOf(names[0], r?.swap ? null : it.x)}
+                    fallback={
+                      <span className={cx("ico-tile", tintOf(store, it.name, it.x))} aria-hidden="true">
+                        <Dumbbell size={20} />
+                      </span>
+                    }
+                  />
+                )}
               </button>
-            ) : null}
+              <button type="button" className="lrow-main" data-lift={bi} onClick={() => onOpen(bi)}>
+                <span className="row-t">
+                  <span className="row-tt lift-t">{b.length > 1 ? names.join(" + ") : names[0]}</span>
+                  <span className="row-d">{b.length > 1 ? `Superset · ${b.map((x) => liftLine(store, sel, x).split(" · ")[0]).join(", ")}` : liftLine(store, sel, it)}</span>
+                </span>
+                <span className="sr-only">{allDone ? ", done" : skipped ? ", skipped" : r && store.worked(sel) ? "" : ""}</span>
+              </button>
+              {blocks.length > 1 ? (
+                <button
+                  type="button"
+                  className="drag"
+                  data-drag={bi}
+                  aria-label={`Move ${names.join(" and ")}: drag, or use the arrow keys`}
+                  onPointerDown={(ev) => down(ev, bi)}
+                  onPointerMove={move}
+                  onPointerUp={up}
+                  onPointerCancel={() => setDrag(null)}
+                  onKeyDown={(ev) => key(ev, bi)}
+                >
+                  <GripVertical size={18} aria-hidden="true" />
+                </button>
+              ) : null}
+            </li>
+          );
+        })}
+        {cardio ? (
+          <li className={cx("lrow", cardioDone && "done")}>
+            <button type="button" className="lrow-main" data-lift={blocks.length} id="cardioRow" onClick={() => onOpen(blocks.length)}>
+              <span className="ico-tile t-steps" aria-hidden="true">
+                {cardioDone ? <Check size={20} strokeWidth={3} /> : <Bike size={20} />}
+              </span>
+              <span className="row-t">
+                <span className="row-tt">{cardio.name}</span>
+                <span className="row-d">{["Cardio", cardio.detail].filter(Boolean).join(" · ")}</span>
+              </span>
+            </button>
           </li>
-        );
-      })}
-      {cardio ? (
-        <li className={cx("lrow", cardioDone && "done")}>
-          <button type="button" className="lrow-main" data-lift={blocks.length} id="cardioRow" onClick={() => onOpen(blocks.length)}>
-            <span className="ico-tile t-steps" aria-hidden="true">
-              {cardioDone ? <Check size={20} strokeWidth={3} /> : <Bike size={20} />}
-            </span>
-            <span className="row-t">
-              <span className="row-tt">{cardio.name}</span>
-              <span className="row-d">{["Cardio", cardio.detail].filter(Boolean).join(" · ")}</span>
-            </span>
-          </button>
-        </li>
-      ) : null}
-    </ul>
+        ) : null}
+      </ul>
+      <ExerciseSheet lifts={about} onClose={() => setAbout(null)} />
+    </>
   );
 }
 

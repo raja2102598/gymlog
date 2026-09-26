@@ -1,29 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { strengthModel } from "@/lib/dashboard";
-import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
+import { describe, expect, it } from "vitest";
 import { deloadStep, fellShort, linearStep, percentOf, readyToAdd } from "@/lib/stats";
 import { GymStore, progWords } from "@/lib/store";
-import type { DayLog, LiftLog, PlanExercise, SetLog } from "@/lib/types";
+import type { PlanExercise } from "@/lib/types";
+import { atWednesdayNoon, day, LAST, lift, sets, storeWith, WED } from "./helpers";
 
-// Progression options per lift (RAJ-41). Wednesday 23 September 2026, as in the end-to-end tests: Legs on
-// Wednesdays, with Hamstring Curl at 3 × 10-12 and Leg Press, knee-sensitive, at 3 × 10-12.
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-09-23T12:00:00"));
-});
-afterEach(() => vi.useRealTimers());
+// Progression per lift (RAJ-41): the rules, and the next weight each gives. Legs on Wednesdays, with Hamstring Curl at
+// 3 × 10-12 and Leg Press, knee-sensitive, at 3 × 10-12. Strength on Progress is in progress.test.ts.
+atWednesdayNoon();
 
-const BEFORE = "2026-09-09", LAST = "2026-09-16", WED = "2026-09-23";
-const day = (d: Partial<DayLog> = {}): DayLog => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...d });
-const sets = (xs: [number, number][]): SetLog[] => xs.map(([reps, kg]) => ({ reps, kg }));
-const lift = (xs: [number, number][], more: Partial<LiftLog> = {}): LiftLog => ({ done: true, kg: Math.max(...xs.map((s) => s[1])), sets: sets(xs), ...more });
+const BEFORE = "2026-09-09";
+/** Working sets short of 10-12 at 50 kg. */
 const SHORT: [number, number][] = [[10, 50], [8, 50], [7, 50]];
-function storeWith(logs: Record<string, DayLog>) {
-  const s = new GymStore();
-  s.logs = logs;
-  s.user = { id: "u", created_at: "2026-08-26T05:00:00Z" } as GymStore["user"];
-  return s;
-}
 /** Legs' Hamstring Curl, with these settings. */
 const curl = (s: GymStore, x: Partial<PlanExercise> = {}) => Object.assign(s.plan.days[2].exercises[3], x);
 
@@ -37,9 +24,14 @@ describe("the rules", () => {
     expect(linearStep([{ reps: 5, kg: 60, type: "warmup" }, ...sets([[5, 100], [5, 100], [5, 100]])], "5", 3, 2.5)?.from).toBe(100);
   });
 
-  it("double progression still waits for the top of the range", () => {
-    expect(readyToAdd(sets([[10, 40], [8, 40], [8, 40]]), "8-10", 3, 2.5)).toBeNull();
+  it("double progression waits for every set at the top of the range, at one weight, as many as were asked", () => {
     expect(readyToAdd(sets([[10, 40], [10, 40], [10, 40]]), "8-10", 3, 2.5)).toEqual({ rule: "double", from: 40, to: 42.5, top: 10 });
+    expect(readyToAdd(sets([[10, 40], [8, 40], [8, 40]]), "8-10", 3, 2.5)).toBeNull(); // the bottom isn't enough
+    expect(readyToAdd(sets([[10, 50], [9, 50], [10, 50]]), "8-10", 3, 2.5)).toBeNull(); // one set short
+    expect(readyToAdd(sets([[10, 50], [10, 45], [10, 50]]), "8-10", 3, 2.5)).toBeNull(); // mixed weights
+    expect(readyToAdd(sets([[10, 50], [10, 50]]), "8-10", 3, 2.5)).toBeNull(); // fewer sets than asked
+    expect(readyToAdd(sets([[10, 0], [10, 0], [10, 0]]), "8-10", 3, 2.5)?.to).toBe(2.5); // an empty sled
+    expect(readyToAdd([{ reps: null, kg: 50 }], "8-10", 1, 2.5)).toBeNull(); // weight only (older entries)
   });
 
   it("a percentage of a 1RM goes to the nearest step, 2.5 kg without one", () => {
@@ -77,6 +69,8 @@ describe("the next weight, by the lift's rule", () => {
     const n = s.nextWeight(curl(s), "Hamstring Curl", WED)!;
     expect(n).toMatchObject({ rule: "double", from: 30, to: 32.5, top: 12, held: false, day: LAST });
     expect(progWords(n)).toEqual({ lead: "Go up to ", kg: "32.5", why: ": every set hit 12 reps last time." });
+    // The next set's boxes suggest the bottom of the range at the new weight.
+    expect(s.placeholders(curl(s), s.lastDone("Hamstring Curl", WED), 0, n)).toEqual(["10", "32.5"]);
   });
 
   it("linear goes up once every set reaches the bottom of the range, by the lift's step", () => {
@@ -141,69 +135,5 @@ describe("the next weight, by the lift's rule", () => {
     const t = storeWith({ [LAST]: day({ exercises: { "Leg Press": lift(SHORT) }, ...sore }) });
     const y = Object.assign(t.plan.days[2].exercises[1], { deloadAfter: "1" });
     expect(t.nextWeight(y, y.name, WED)).toMatchObject({ rule: "deload", to: 45, held: false });
-  });
-});
-
-describe("Strength on Progress", () => {
-  it("lists lifts due a deload, and a percentage as ready only when it's more than last time", () => {
-    const s = storeWith({ [LAST]: day({ exercises: { "Hamstring Curl": lift(SHORT), "Calf Raise": lift([[12, 40], [12, 40], [12, 40]]) } }) });
-    curl(s, { deloadAfter: "1" });
-    const calf = Object.assign(s.plan.days[2].exercises[4], { prog: "percent", oneRm: "80", pct: "50" }); // 40 kg, as last time
-    const m = strengthModel(s, WED);
-    expect(m.deload.map((x) => [x.name, x.day, x.from, x.to])).toEqual([["Hamstring Curl", "Legs", 50, 45]]);
-    expect(m.ready).toEqual([]);
-    expect(m.flags.map((f) => f.text)).toEqual(["1 lift is due a deload. See Strength."]);
-    calf.pct = "60"; // 48, to 47.5 kg
-    expect(strengthModel(s, WED).ready.map((x) => [x.name, x.from, x.to])).toEqual([["Calf Raise", 40, 47.5]]);
-  });
-
-  it("follows each day a lift is on, once for the same answer", () => {
-    // Seated Row on Pull and Upper: last week's fell short, which only Upper's settings deload.
-    const s = storeWith({ [LAST]: day({ exercises: { "Seated Row": lift(SHORT) } }) });
-    const [pull, upper] = [s.plan.days[1].exercises[2], s.plan.days[4].exercises[3]];
-    expect([pull.name, upper.name]).toEqual(["Seated Row", "Seated Row"]);
-    upper.deloadAfter = "1";
-    let m = strengthModel(s, WED);
-    expect(m.deload.map((x) => [x.name, x.day, x.from, x.to])).toEqual([["Seated Row", "Upper", 50, 45]]);
-    expect(m.flags.map((f) => f.text)).toEqual(["1 lift is due a deload. See Strength."]);
-    // With the same settings on both, it's one row, under the first day.
-    pull.deloadAfter = "1";
-    m = strengthModel(s, WED);
-    expect(m.deload.map((x) => [x.name, x.day])).toEqual([["Seated Row", "Pull"]]);
-  });
-
-  it("leaves out a percentage with no history to go up from", () => {
-    const s = storeWith({});
-    curl(s, { prog: "percent", oneRm: "60", pct: "75" });
-    const m = strengthModel(s, WED);
-    expect([m.ready, m.held, m.deload]).toEqual([[], [], []]);
-  });
-});
-
-describe("the plan", () => {
-  it("keeps each lift's rule and numbers, and drops a rule it doesn't know", () => {
-    const p = normalizePlan(
-      {
-        days: [
-          {
-            name: "A",
-            exercises: [
-              { name: "Squat", prog: "linear", deloadAfter: 3, deloadPct: "15" },
-              { name: "Bench", prog: "percent", oneRm: "100", pct: 75 },
-              { name: "Row", prog: "wave" },
-              { name: "Curl" },
-            ],
-          },
-        ],
-      },
-      DEFAULT_PLAN,
-    );
-    const [squat, bench, row, curl] = p.days[0].exercises;
-    expect(squat).toMatchObject({ prog: "linear", deloadAfter: "3", deloadPct: "15" });
-    expect(bench).toMatchObject({ prog: "percent", oneRm: "100", pct: "75" });
-    expect("prog" in row).toBe(false);
-    // A lift with none of them round-trips unchanged.
-    for (const k of ["prog", "oneRm", "pct", "deloadAfter", "deloadPct"]) expect(k in curl).toBe(false);
-    expect(normalizePlan(JSON.parse(JSON.stringify(p)), DEFAULT_PLAN)).toEqual(p);
   });
 });

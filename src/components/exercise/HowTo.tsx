@@ -67,13 +67,6 @@ export function HowTo({ id, name, headingId }: { id: string; name: string; headi
           <li key={i}>{s}</li>
         ))}
       </ol>
-      <p className="howto-credit">
-        Steps and photos from{" "}
-        <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noreferrer">
-          free-exercise-db
-        </a>
-        , public domain.
-      </p>
     </div>
   );
 }

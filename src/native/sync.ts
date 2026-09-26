@@ -6,6 +6,12 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 import { lsGet, lsSet } from "@/lib/storage";
 import type { GymStore } from "@/lib/store";
 
+/** How many background runs have started since the app started, and whether one is reading or sending now. */
+export interface BackgroundRuns {
+  started: number;
+  running: boolean;
+}
+
 export interface SyncStatus {
   /** Background sync is on on this phone. */
   on: boolean;
@@ -25,6 +31,7 @@ interface GymSyncPlugin {
   enable(o: { key: string; url: string; anonKey: string }): Promise<void>;
   disable(): Promise<void>;
   runNow(): Promise<void>;
+  runs(): Promise<BackgroundRuns>;
 }
 
 const GymSync = registerPlugin<GymSyncPlugin>("GymSync");
@@ -70,6 +77,9 @@ export async function turnOffBackground(store: GymStore): Promise<string> {
 }
 
 export const runBackgroundNow = (): Promise<void> => GymSync.runNow();
+
+/** Background runs so far, and whether one is under way; none when that can't be told. */
+export const backgroundRuns = (): Promise<BackgroundRuns> => GymSync.runs().catch(() => ({ started: 0, running: false }));
 
 /** On sign-in: background sync left on by another account stops here. (Its key stays unused in that account.) */
 export async function checkBackgroundOwner(store: GymStore): Promise<void> {

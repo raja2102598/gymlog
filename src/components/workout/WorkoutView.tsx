@@ -1,6 +1,7 @@
 "use client";
-import { Check, ChevronRight, Play, RotateCcw, X } from "lucide-react";
+import { Check, ChevronRight, Pause, Play, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { choose } from "@/components/ds/Ask";
 import { Button } from "@/components/ds/parts";
 import { CardioFinisher } from "@/components/today/CardioFinisher";
 import { LiftItem, logSet, nextSet, type Moves } from "@/components/today/LiftItem";
@@ -13,7 +14,7 @@ import { wdIndex } from "@/lib/dates";
 import { mmss, num } from "@/lib/format";
 import { performed, restSecFor } from "@/lib/store";
 import type { DayKey, NumField } from "@/lib/types";
-import { clock, restartRun, runOf, runSeconds } from "@/lib/workout";
+import { clock, pauseRun, restartRun, resumeRun, runOf, runSeconds } from "@/lib/workout";
 
 interface Props {
   day: DayKey;
@@ -215,7 +216,7 @@ function TopBar({ name, day, onClose, onFinish }: { name: string; day: DayKey; o
     const id = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, []);
-  const run = runOf(day);
+  const run = runOf(day), paused = run?.pausedAt != null;
   return (
     <header className="wtop">
       <a
@@ -238,19 +239,30 @@ function TopBar({ name, day, onClose, onFinish }: { name: string; day: DayKey; o
             {clock(runSeconds(run))}
           </span>
         ) : run ? (
+          // Tapped: the clock's own sheet, to stop it for a while (Pause, then Resume) or start it again from 0:00.
           <button
             type="button"
-            className="wclock"
+            className={cx("wclock", paused && "paused")}
             id="wclock"
-            aria-label={`${Math.floor(runSeconds(run) / 60)} minutes in. Restart the clock`}
-            onClick={() => {
-              if (!confirm("Restart the workout clock from 0:00?")) return;
-              restartRun(day);
+            aria-label={paused ? `Clock paused at ${Math.floor(runSeconds(run) / 60)} minutes. Resume or restart it` : `${Math.floor(runSeconds(run) / 60)} minutes in. Pause or restart the clock`}
+            onClick={async () => {
+              const t = clock(runSeconds(run));
+              const pick = await choose(
+                "Workout clock",
+                [
+                  paused ? { id: "resume", label: "Resume the clock" } : { id: "pause", label: "Pause the clock" },
+                  { id: "restart", label: "Restart from 0:00", tone: "plain" },
+                ],
+                paused ? `Paused at ${t}. Time paused doesn’t count toward the workout.` : `${t} so far. Pause it while you’re away; the time paused doesn’t count.`,
+              );
+              if (pick === "pause") pauseRun(day);
+              else if (pick === "resume") resumeRun(day);
+              else if (pick === "restart") restartRun(day);
               tick((n) => n + 1);
             }}
           >
             {clock(runSeconds(run))}
-            <RotateCcw size={14} strokeWidth={2.5} aria-hidden="true" />
+            {paused ? <Play size={14} strokeWidth={2.5} aria-hidden="true" /> : <Pause size={14} strokeWidth={2.5} aria-hidden="true" />}
           </button>
         ) : null}
       </div>

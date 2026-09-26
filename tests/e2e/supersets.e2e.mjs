@@ -2,12 +2,11 @@
 // keep a superset whole; the workout shows the superset as one step with its sets in rounds, starts the rest timer
 // once a round is complete, and moves a lift or a whole superset up or down the day, kept with that day.
 import fs from "node:fs";
-import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until } from "./harness.mjs";
+import { K, flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, onDefaultPlan } from "./harness.mjs";
 
 export default async function supersets({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000054", "2026-08-26T05:00:00Z", "t@example.com");
-  // A day logged four weeks ago, so the account keeps the default plan (Legs on Wednesdays) with no first-run step.
-  const db = { logs: { [K(0)]: { exercises: {}, warmup: [], cardio: false, steps: 6000, weight: null, note: "" } }, plan: null };
+  const db = onDefaultPlan();
   const { ctx, page } = await open(browser, base, { auth, db });
   await ready(page);
   const legs = () => db.plan?.days?.[2]?.exercises ?? [];
@@ -50,6 +49,29 @@ export default async function supersets({ browser, base, check }) {
 
   // --- Train: the superset is one row; the workout, one step with its sets in rounds
   check("Train shows the superset as one row", (await rows()) === "Hack Squat|Hamstring Curl + Leg Extension|Leg Press|Calf Raise", await rows());
+  // Its photo pulls up each of its lifts: the first to begin with, the other picked by name.
+  const ssPic = page.locator('#liftRows [data-about="1"]');
+  check("its photo is about both lifts", (await ssPic.getAttribute("aria-label")) === "About Hamstring Curl and Leg Extension: photos, muscles and how to do it", await ssPic.getAttribute("aria-label"));
+  const sheet = async () => `${await flat(page.locator("#exSheetT"))} / ${(await page.locator("#exSheet .xsheet-pick button").allInnerTexts()).join("|")} / ${(await page.locator('#exSheet .xsheet-pick [aria-pressed="true"]').allInnerTexts()).join("|")}`;
+  await ssPic.click();
+  await page.waitForSelector("#exSheet[open]");
+  check("the sheet opens on the first, with both to pick from", (await sheet()) === "Hamstring Curl / Hamstring Curl|Leg Extension / Hamstring Curl", await sheet());
+  await page.click('#exSheet [data-pick="1"]');
+  await until(async () => (await flat(page.locator("#exSheetT"))) === "Leg Extension");
+  const facts = (await page.locator("#exSheet .xsheet-facts").innerText()).replace(/\s+/g, " ").trim();
+  const photo = await page.locator("#exSheet .howto-photos img").first().getAttribute("alt");
+  check(
+    "picking the other shows it: what today asks of it, what it works, and its photos",
+    (await sheet()) === "Leg Extension / Hamstring Curl|Leg Extension / Leg Extension" && /^Today 3 × 12–15 Works Quads\b/.test(facts) && photo === "Leg Extension, start position",
+    `${await sheet()} / ${facts} / ${photo}`,
+  );
+  await page.click("#exSheetClose");
+  await until(async () => (await page.locator("#exSheet[open]").count()) === 0);
+  await ssPic.click();
+  await page.waitForSelector("#exSheet[open]");
+  check("opened again, it starts from the first", (await sheet()) === "Hamstring Curl / Hamstring Curl|Leg Extension / Hamstring Curl", await sheet());
+  await page.click("#exSheetClose");
+  await until(async () => (await page.locator("#exSheet[open]").count()) === 0);
   await openWorkout(page, "Hamstring Curl + Leg Extension");
   const card = page.locator("#workoutView section[data-superset]");
   check("the superset is one card", (await card.count()) === 1 && (await card.getAttribute("data-superset")) === "A" && (await flat(card.locator(".ss-h"))) === "Superset A · 2 lifts in rounds");

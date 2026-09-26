@@ -1,6 +1,7 @@
 "use client";
 import { Check, CircleHelp, Ellipsis, Mic, Trophy } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { ask } from "@/components/ds/Ask";
 import { useLibrary } from "@/components/library/LibraryContext";
 import { SyncedInput } from "@/components/ui/SyncedField";
 import { ViewLink } from "@/components/ui/ViewLink";
@@ -99,6 +100,11 @@ export interface LiftModel {
   addSet: (upTo?: number) => void;
   /** Removes the last working set, without asking. */
   dropSet: () => void;
+  /** Whether the lift's working sets are still the ones this was made from: a question asked from it (− Set) may
+   *  have waited while voice logged another. */
+  sameSets: () => boolean;
+  /** Whether the lift is still all as `r` has it, warm-ups and swap too: removing it acts only if so. */
+  sameLift: () => boolean;
   logWarmups: (steps: { reps: number; kg: number }[]) => void;
   removeWarmups: () => void;
   skipToday: () => void;
@@ -202,6 +208,8 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
         tickFollows(r, work, min);
       }, true);
     },
+    sameSets: () => JSON.stringify(setsOf((store.entry(sel).exercises[name] || {}) as LiftLog).filter(isWorkingSet)) === JSON.stringify(sets),
+    sameLift: () => JSON.stringify(store.entry(sel).exercises[name] || {}) === JSON.stringify(r),
     logWarmups(steps) {
       edit((r) => {
         const work = setsOf(r).filter(isWorkingSet);
@@ -489,9 +497,12 @@ export function LiftHead({
           <button
             className="btn btn-sm btn-danger"
             data-freerm={i}
-            onClick={() => {
-              const n = m.sets.filter((s) => s.reps != null || s.kg != null).length;
-              if (n && !confirm(`Remove ${did} and its ${n === 1 ? "set" : `${n} sets`} from this workout?`)) return;
+            onClick={async () => {
+              // Every set it has goes with it, warm-ups too.
+              const n = [...m.warmSets, ...m.sets].filter((s) => s.reps != null || s.kg != null).length;
+              if (n && !(await ask(`Remove ${did} and its ${n === 1 ? "set" : `${n} sets`} from this workout?`, "Remove", { danger: true }))) return;
+              // Only the lift asked about: not with a set logged by voice, or anything synced from another phone, meanwhile.
+              if (!m.sameLift()) return;
               setMenu(null);
               onRemove();
             }}
@@ -724,10 +735,11 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
           <button
             className="btn btn-sm"
             data-rmset={i}
-            onClick={() => {
+            onClick={async () => {
               const said = setsSummary([sets[sets.length - 1]]);
-              if (said && !confirm(`Remove set ${sets.length} (${said})?`)) return;
-              m.dropSet();
+              if (said && !(await ask(`Remove set ${sets.length} (${said})?`, "Remove", { danger: true }))) return;
+              // Only the set asked about: not one voice logged after it while the question was up.
+              if (m.sameSets()) m.dropSet();
             }}
           >
             − Set

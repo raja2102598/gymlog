@@ -1,9 +1,10 @@
 // First run: a new account (nothing logged, no plan saved) chooses a plan before Home, blank or a 3, 4 or 5-day
 // template, and never sees Home or Train on a plan that isn't its own first. An account with logs and no saved plan
-// goes to Home on the default plan, as before. And the plan editor can start over from a template.
+// goes to Home on the default plan, as before. And the plan editor can start over from a template. Restoring a backup
+// from the plan picker is in backup.e2e.mjs.
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
-import { HOST, flat, open, openSetting, openTab, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
+import { HOST, answerAsk, flat, lastAsked, open, openTab, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
 const template = (id) => JSON.parse(fs.readFileSync(new URL(`../../src/data/templates/${id}.json`, import.meta.url), "utf8"));
 const NAMES = "Blank plan|Full body, 3 days|Upper and lower, 4 days|Five-day split";
@@ -122,87 +123,6 @@ export default async function firstRun({ browser, base, check }) {
     await ctx.close();
   }
 
-  // ---------- Moving from another copy of Gym Log: Restore a backup, on the picker ----------
-  const jsonFile = (v) => ({ name: "gym-log.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(v)) });
-  {
-    const db = { logs: {}, plan: null };
-    const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000075", "2026-09-23T06:00:00Z", "moving@example.com"), db });
-    await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
-    const row = page.locator("#chooseView .tpl-list ~ .choose-row").first();
-    const offer = `${await flat(row.locator(".sub"))} | ${await flat(row.locator("button"))}`;
-    check("under the templates: Moving from another copy of Gym Log? Restore a backup", offer === "Moving from another copy of Gym Log? | Restore a backup" && (await row.locator("#chooseRestore").count()) === 1, offer);
-    page.removeAllListeners("dialog");
-    let asked = "";
-    page.on("dialog", (d) => ((asked = d.message()), d.accept()));
-    const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 3000 }).catch(() => null), page.click("#chooseRestore")]);
-    check("it opens the file picker for .json files, as Settings' Import does", !!chooser && (await chooser.element().getAttribute("accept")) === "application/json,.json");
-    await chooser?.setFiles(jsonFile({ hello: "world" }));
-    // "Restoring…" shows while the file is read; wait for what the picker says once it's done with it.
-    await until(async () => !["", "Restoring…"].includes(await flat(page.locator("#chooseMsg"))));
-    check(
-      "a file that isn't a backup: the picker says why, in its own status line, and stays up",
-      (await flat(page.locator("#chooseMsg"))) === "That file couldn’t be imported: it isn’t a Gym Log export. Choose a .json file exported from Gym Log." &&
-        (await page.getAttribute("#chooseMsg", "role")) === "status" &&
-        (await page.locator("#chooseView").isVisible()) &&
-        !(await inApp(page)),
-      await flat(page.locator("#chooseMsg")),
-    );
-    check("nothing is saved to plans before a choice, and no days", db.writes.plans === 0 && db.plan === null && db.writes.logs === 0);
-
-    // The first exports, a list of days and no plan: the days come in, and the plan stays the default, unsaved
-    await page.setInputFiles("#restoreFile", jsonFile([{ day: "2026-09-21", data: day(9000) }]));
-    await page.waitForSelector("#settingsView", { timeout: 15000 });
-    await until(() => db.logs["2026-09-21"] != null);
-    check("an older export: its days restored, and Settings says so", (await page.textContent("#dataMsg")) === "Imported 1 day." && db.logs["2026-09-21"].steps === 9000, await page.textContent("#dataMsg"));
-    check("the picker's restore never asks, and a file without a plan saves none", asked === "" && db.writes.plans === 0 && db.plan === null, asked);
-    check("no console errors", page.errors.length === 0, page.errors.join(" | "));
-    await ctx.close();
-  }
-  {
-    const db = { logs: {}, plan: null };
-    const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000076", "2026-09-23T06:00:00Z", "backup@example.com"), db, url: null });
-    await watchScreens(page);
-    await page.goto(base);
-    await page.waitForSelector("#chooseView:not([hidden])", { timeout: 15000 });
-    // Offline: the days and the plan go in and wait to sync, but the Health Connect days need a connection.
-    const backup = {
-      format: "gymlog-backup",
-      version: 1,
-      exportedAt: "2026-09-20T08:00:00.000Z",
-      plan: template("upper-lower-4"),
-      logs: [{ day: "2026-09-21", data: { ...day(8000), exercises: { "Flat DB Press": { done: true, kg: 30, sets: [{ reps: 10, kg: 30 }] } } } }],
-      healthDays: { "2026-09-22": { steps: 7000 } },
-    };
-    await ctx.setOffline(true);
-    await page.setInputFiles("#restoreFile", jsonFile(backup));
-    await page.waitForSelector("#settingsView", { timeout: 15000 });
-    const partial = "Imported 1 day and the plan. The Health Connect days couldn’t be saved: import the file again when you’re online.";
-    await until(async () => (await page.textContent("#dataMsg")) === partial);
-    // Settings is a pushed screen: its header on top, no tab bar below. Export & backup unfolds by itself.
-    const where = await page.evaluate(() => {
-      const d = document.getElementById("setData").getBoundingClientRect(), bar = document.querySelector("header.push").getBoundingClientRect();
-      return { top: Math.round(d.top), bottom: Math.round(d.bottom), barBottom: Math.round(bar.bottom), vh: innerHeight, focused: document.activeElement?.id, open: document.getElementById("setDataH").getAttribute("aria-expanded") };
-    });
-    check(
-      "a backup leaves the picker for Settings, at Export & backup (open), in view and focused on what came in",
-      where.top >= where.barBottom - 1 && where.bottom <= where.vh && where.focused === "dataMsg" && where.open === "true" && (await page.locator("#chooseView").isHidden()),
-      JSON.stringify(where),
-    );
-    check("the partial result says what came in and what to do about the rest", (await page.textContent("#dataMsg")) === partial, await page.textContent("#dataMsg"));
-    check("on the way, Home never showed, and the picker didn't come back", !(await page.evaluate(() => window.__shown.app)) && (await page.locator("#chooseView").isHidden()));
-    await ctx.setOffline(false);
-    await until(() => db.logs["2026-09-21"] != null && db.plan?.days?.[0]?.name === "Upper A", 10000);
-    check("back online, the restored day and plan sync", db.logs["2026-09-21"]?.exercises["Flat DB Press"]?.kg === 30 && db.plan?.days?.[0]?.name === "Upper A", JSON.stringify(db.plan?.days?.map((d) => d.name)));
-    check("and the partial result is still there to read", (await page.textContent("#dataMsg")) === partial && (await page.locator("#dataMsg").isVisible()), await page.textContent("#dataMsg"));
-    // Settings is a pushed screen: its back chevron leaves it, for Home.
-    await page.click("#backBtn");
-    await page.waitForSelector(TAB_VIEWS); // Settings closes onto the tab it was opened from
-    await openTab(page, "settings");
-    await openSetting(page, "setData");
-    check("once read and left, Settings doesn't show it again", (await page.textContent("#dataMsg")) === "", await page.textContent("#dataMsg"));
-    await ctx.close();
-  }
-
   // ---------- An account with logs and no saved plan: Home on the default plan, as before ----------
   {
     const db = { logs: { "2026-09-22": day(6000) }, plan: null };
@@ -234,15 +154,14 @@ export default async function firstRun({ browser, base, check }) {
     check("it lists the same templates as a new account's first screen", names === NAMES && (await page.locator("#peTemplates").isVisible()) && (await page.getAttribute("#pe_tpl", "aria-expanded")) === "true", names);
     await shot(page.locator("#planGeneral"), "firstrun-editor-templates");
 
-    page.removeAllListeners("dialog");
-    let asked = "";
-    page.once("dialog", (d) => ((asked = d.message()), d.dismiss()));
+    await answerAsk(page, "cancel");
     await page.click('#peTemplates [data-template="upper-lower-4"]');
-    await until(() => asked !== "");
+    await until(async () => (await lastAsked(page)) !== "");
+    const asked = await lastAsked(page);
     check("it asks first, saying what's replaced and what's kept", asked === "Replace your sessions, lifts, warm-ups and tempo with “Upper and lower, 4 days”? Your goals and the days you’ve already logged are kept.", asked);
+    await until(async () => (await page.locator("#askDialog[open]").count()) === 0);
     check("No leaves the plan as it was", (await page.locator("#planDays .dchip").first().getAttribute("aria-label")) === "Edit Mon, Push" && db.plan.days[0].name === "Push");
 
-    page.once("dialog", (d) => d.accept());
     await page.click('#peTemplates [data-template="upper-lower-4"]');
     await until(() => db.plan?.days?.[0]?.name === "Upper A");
     const want = template("upper-lower-4");
@@ -258,7 +177,6 @@ export default async function firstRun({ browser, base, check }) {
       chips === "Upper A|Lower A|Rest|Upper B|Lower B|Rest|Rest" && (await page.inputValue("#pe_name")) === "Rest" && (await page.locator("#peTemplates").isHidden()),
       chips,
     );
-    page.on("dialog", (d) => d.accept());
     await planDone(page);
     // Done goes back to Settings, and its back chevron to Home.
     await page.waitForSelector("#settingsView");

@@ -6,6 +6,7 @@ import { healthDays, type HealthReadings, type Workout } from "@/lib/health";
 import { lsGet, lsSet } from "@/lib/storage";
 import type { GymStore } from "@/lib/store";
 import type { DayKey, HealthDay } from "@/lib/types";
+import { backgroundRuns } from "./sync";
 
 // What Gym Log reads, all read-only. Distance is also what lets Health Connect total a workout's calories.
 export const READ: HealthDataType[] = [
@@ -59,6 +60,10 @@ const GRANTED_KEY = "gymlog.health.granted.v1";
 
 let busy = false;
 let lastRun = 0;
+/** syncToday's read and save, while under way: a full read waits for it (below), so the two never overlap. */
+let quickRun: Promise<void> | null = null;
+/** What the last full read couldn't read (by label): syncToday saves despite those, as the full read did. */
+let lastFailed: string[] = [];
 
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\.$/, "");
 const unavailable = (reason?: string) =>
@@ -100,6 +105,9 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
   if (busy || !store.user || store.demo || (!now && Date.now() - lastRun < 5 * 60_000)) return;
   busy = true;
   try {
+    // A quick read of today under way finishes first. Seeing this one started, it saves nothing, so its older copy of
+    // today never lands on top of this one's.
+    await quickRun;
     const avail = await Health.isAvailable();
     if (!avail.available) {
       store.setHealthLink({ state: "unavailable", msg: unavailable(avail.reason) });
@@ -117,6 +125,7 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
     // 90); later ones, 10 days.
     const from = fresh ? [addDays(t, -90), [store.firstDay(), addDays(t, -30)].sort()[0]].sort()[1] : addDays(t, -9);
     const { days, failed } = await readDays(from, granted);
+    lastFailed = failed;
     const n = await store.saveHealth(days);
     lsSet(GRANTED_KEY, { ...seen, [uid]: granted });
     const saved = n ? `${n} day${n === 1 ? "" : "s"} updated` : "Up to date";
@@ -126,6 +135,41 @@ export async function syncHealth(store: GymStore, now = false): Promise<void> {
   } finally {
     busy = false;
     lastRun = Date.now();
+  }
+}
+
+/**
+ * While the app is open and on screen (app.ts, every 30 seconds): today's numbers, so steps, calories and heart rate
+ * keep up with the phone and the watch. Only today, and quietly, without "Reading Health Connect…" each time: the
+ * full read above (on opening, coming back, every 15 minutes, and Sync now) covers the days before and anything
+ * newly allowed, and says what went wrong. It waits for that read to have worked, and saves nothing from a read
+ * where something failed that the full read could read, so a passing hiccup never blanks part of today.
+ */
+export async function syncToday(store: GymStore): Promise<void> {
+  if (busy || quickRun || !store.user || store.demo || store.healthLink.state !== "ok") return;
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  // Offline, what it read couldn't be saved (saveHealth writes to Supabase first): it waits to be back online.
+  if (!navigator.onLine) return;
+  const granted = lsGet<Record<string, string[]>>(GRANTED_KEY, {})[store.user.id];
+  if (!granted?.length) return;
+  quickRun = (async () => {
+    try {
+      // Background sync (HealthSync.kt) reading too, now or once this read has begun: its copy of today, read partly
+      // before this one's, could land after it, and this phone would think the newer one saved. The next tick reads.
+      const bg = await backgroundRuns();
+      if (bg.running) return;
+      const { days, failed } = await readDays(todayKey(), granted);
+      if ((await backgroundRuns()).started !== bg.started) return;
+      // A full read that started meanwhile (waiting for this) saves its own, newer, copy.
+      if (!busy && failed.every((f) => lastFailed.includes(f))) await store.saveHealth(days, { quiet: true });
+    } catch {
+      // Quiet: the next full read says what's wrong.
+    }
+  })();
+  try {
+    await quickRun;
+  } finally {
+    quickRun = null;
   }
 }
 

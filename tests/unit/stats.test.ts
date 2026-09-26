@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as G from "@/lib/stats";
 import type { LiftDay, LiftRecord, RecordKind } from "@/lib/stats";
-import type { SetLog } from "@/lib/types";
 
 const near = (a: number | null, b: number, eps: number) => {
   expect(a).not.toBeNull();
@@ -130,25 +129,6 @@ describe("lifts", () => {
     expect(G.repRange("10-8")).toBeNull();
   });
 
-  it("adds weight when every set reached the top of the range (double progression)", () => {
-    const s = (reps: number | null, kg: number): SetLog => ({ reps, kg });
-    expect(G.readyToAdd([s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 10 });
-    expect(G.readyToAdd([s(10, 50), s(9, 50), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // one set short
-    expect(G.readyToAdd([s(10, 50), s(10, 45), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // mixed weights
-    expect(G.readyToAdd([s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toBeNull(); // fewer sets than planned
-    expect(G.readyToAdd([s(10, 0), s(10, 0), s(10, 0)], "8-10", 3, 2.5)?.to).toBe(2.5); // empty sled
-    expect(G.readyToAdd([s(null, 50)], "8-10", 1, 2.5)).toBeNull(); // weight only (older entries)
-  });
-
-  it("ignores warm-up sets when deciding whether to add weight", () => {
-    const w = (reps: number, kg: number): SetLog => ({ reps, kg, type: "warmup" });
-    const s = (reps: number, kg: number): SetLog => ({ reps, kg });
-    // Two warm-ups ahead of the three planned working sets: they don't count toward minSets, and a heavier
-    // warm-up doesn't stop the real top set from being read as the one weight used.
-    expect(G.readyToAdd([w(5, 60), w(3, 70), s(10, 50), s(10, 50), s(10, 50)], "8-10", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 10 });
-    // All warm-up, no working sets: nothing to progress from.
-    expect(G.readyToAdd([w(8, 20), w(5, 30)], "8-10", 1, 2.5)).toBeNull();
-  });
 });
 
 describe("plates", () => {
@@ -302,13 +282,4 @@ describe("records", () => {
     expect(r.map((x) => [x.day, x.kinds.join("+")])).toEqual([["2026-09-23", "weight"]]);
   });
 
-  it("never gives a warm-up set a record, and never folds one in as a lift's best", () => {
-    const r = G.records([
-      { day: "2026-09-16", lifts: [{ name: "Leg Press", sets: [{ reps: 10, kg: 45 }] }] },
-      // A heavier warm-up than anything worked up to: it must not become the new "best" to beat, or a record itself.
-      { day: "2026-09-23", lifts: [{ name: "Leg Press", sets: [{ reps: 5, kg: 60, type: "warmup" }, { reps: 10, kg: 45 }] }] },
-      { day: "2026-09-30", lifts: [{ name: "Leg Press", sets: [{ reps: 10, kg: 50 }] }] },
-    ]);
-    expect(r.map((x) => [x.day, x.set, x.kg, x.kinds.join("+")])).toEqual([["2026-09-30", 0, 50, "weight+e1rm"]]);
-  });
 });

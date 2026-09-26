@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { effortValue } from "@/components/today/SetMenu";
 import { liftModel } from "@/lib/dashboard";
-import { setsSummary } from "@/lib/format";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import * as G from "@/lib/stats";
-import { GymStore, setsComplete } from "@/lib/store";
+import { GymStore, setsComplete, topKg } from "@/lib/store";
 import type { SetLog } from "@/lib/types";
 
 // Set types (RAJ-53): warm-ups count toward nothing, drop sets are volume only, sets to failure count as working
@@ -13,17 +12,20 @@ import type { SetLog } from "@/lib/types";
 const set = (reps: number, kg: number, type?: SetLog["type"]): SetLog => ({ reps, kg, ...(type ? { type } : {}) });
 
 describe("set types", () => {
-  it("don't let a drop set hold back the go-up rule, or a warm-up count toward it", () => {
-    const sets = [set(8, 20, "warmup"), set(12, 50), set(12, 50), set(12, 50, "failure"), set(15, 30, "drop")];
+  it("don't let a drop set hold back the go-up rule, or a warm-up count toward it, however heavy", () => {
+    // A warm-up heavier than the working weight doesn't break "every set at one weight" either.
+    const sets = [set(8, 60, "warmup"), set(12, 50), set(12, 50), set(12, 50, "failure"), set(15, 30, "drop")];
     expect(G.readyToAdd(sets, "10-12", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 12 });
     // Without the drop set's exclusion, 15 reps at 30 kg would have broken "every set at one weight".
     expect(G.readyToAdd([set(12, 50), set(12, 50), set(15, 30, "drop")], "10-12", 3, 2.5)).toBeNull(); // only 2 count
+    expect(G.readyToAdd([set(8, 20, "warmup"), set(5, 30, "warmup")], "8-10", 1, 2.5)).toBeNull(); // nothing but warm-ups
   });
 
-  it("count sets to failure toward the planned sets, and not drop sets or warm-ups", () => {
+  it("count sets to failure toward the planned sets, and not drop sets or warm-ups; a warm-up is never the lift's weight", () => {
     expect(setsComplete([set(10, 50), set(9, 50, "failure"), set(12, 30, "drop")], 3)).toBe(false);
     expect(setsComplete([set(10, 50), set(9, 50, "failure"), set(8, 50)], 3)).toBe(true);
     expect(setsComplete([set(10, 20, "warmup"), set(10, 50), set(9, 50)], 3)).toBe(false);
+    expect(topKg([set(5, 60, "warmup"), set(10, 50), set(10, 50)])).toBe(50);
   });
 
   it("never make a record of a drop set or a warm-up, but do of a set to failure", () => {
@@ -45,12 +47,6 @@ describe("set types", () => {
     s.logs = { "2026-09-21": { exercises: { "Leg Press": { done: true, kg: 100, sets } }, warmup: [], cardio: false, steps: null, weight: null, note: "" } };
     const [p] = liftModel(s, "2026-09-23", "Leg Press").points;
     expect([p.top, p.topReps, Math.round(p.e1rm! * 10) / 10, p.volume]).toEqual([100, 3, 105.9, 900 + 960]);
-  });
-
-  it("mark sets to failure and drop sets in history, leaving plain working sets as they read before", () => {
-    expect(setsSummary([set(10, 45), set(10, 45), set(8, 45)])).toBe("10, 10, 8 × 45 kg");
-    expect(setsSummary([set(10, 45), set(8, 45, "failure")])).toBe("10, 8F × 45 kg");
-    expect(setsSummary([set(10, 45), set(12, 30, "drop")])).toBe("10 × 45, 12D × 30 kg");
   });
 });
 
