@@ -255,6 +255,17 @@ export function stepsSharedText(s: StepsShared | null, k: DayKey, today = todayK
   return app ? `${app} last shared steps at ${at}` : `Steps last shared with Health Connect at ${at}`;
 }
 
+/**
+ * Whether a day's steps by the hour are one total spread evenly over its hours rather than steps taken hour by hour:
+ * every hour with steps within one of the others. Health Connect, asked for hours, splits a record that covers the day
+ * evenly between them, and Samsung Health shares the day's steps as one such record. No one walks the same steps,
+ * give or take one, two hours running.
+ */
+export function evenSpread(hours: number[]): boolean {
+  const walked = hours.filter((v) => v > 0);
+  return walked.length >= 2 && Math.max(...walked) - Math.min(...walked) <= 1;
+}
+
 /** "10:45 pm" for minutes after midnight (wrapping past 24 h). */
 export function clockText(min: number): string {
   const m = ((Math.round(min) % 1440) + 1440) % 1440;

@@ -2,6 +2,7 @@
 import { useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useOnScreen } from "@/hooks/useOnScreen";
 import { cx } from "@/lib/cx";
+import { axisTicks } from "@/lib/scale";
 
 /** A metric's colour set for bars: steps, exercise and calories have gradient pairs; the rest use their solid
  *  colour for a met goal and a faded one below it. */
@@ -49,7 +50,6 @@ export function StepsBarChart({ bars, tone, width: W, height: H = 210, goal, lab
   const y = (v: number) => base - ((base - top - 8) * v) / max;
   const slot = plotR / bars.length, bw = Math.max(4, Math.min(22, slot * 0.62));
   const cxOf = (i: number) => slot * i + slot / 2;
-  const every = bars.length > 14 ? 7 : bars.length > 8 ? 2 : 1;
   const choose = (i: number | null) => {
     if (i === pick) return;
     setPick(i);
@@ -124,13 +124,15 @@ export function StepsBarChart({ bars, tone, width: W, height: H = 210, goal, lab
             />
           );
         })}
-        {bars.map((b, i) =>
-          b.x && (i % every === 0 || i === bars.length - 1) ? (
-            <text key={i} className={cx("bc-ax", (i === pick || b.today) && "on", b.today && "today")} x={cxOf(i)} y={H - 8} textAnchor="middle">
-              {b.x}
-            </text>
-          ) : null,
-        )}
+        {axisTicks(
+          bars.map((b) => b.x),
+          slot,
+          W,
+        ).map(({ i, x, text }) => (
+          <text key={i} className={cx("bc-ax", (i === pick || bars[i].today) && "on", bars[i].today && "today")} x={x} y={H - 8} textAnchor="middle">
+            {text}
+          </text>
+        ))}
         {p ? (
           <g className="bc-bubble">
             <rect x={bubX} y="0" width={bubW} height="24" rx="12" />

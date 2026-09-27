@@ -19,3 +19,18 @@ export function trendScale(vals: number[], minSpan: number): { lo: number; hi: n
   for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
   return { lo, hi: hi > lo ? hi : lo + step, ticks };
 }
+
+/**
+ * The labels to draw under a bar chart's bars, and where. When the caller left some bars without a label it has
+ * chosen already (every 6th hour, every 7th day), so each one it gave is drawn; when it labelled every bar, every
+ * `every`-th is, and the last. Each sits centred under its bar, but never past the chart's edges: at 12 px, about 7 px
+ * a character, "12 am" under the first of 24 bars would otherwise be cut off.
+ */
+export function axisTicks(labels: string[], slot: number, width: number): { i: number; x: number; text: string }[] {
+  const n = labels.length, chosen = labels.some((l) => !l), every = n > 14 ? 7 : n > 8 ? 2 : 1;
+  return labels.flatMap((text, i) => {
+    if (!text || (!chosen && i % every !== 0 && i !== n - 1)) return [];
+    const half = (text.length * 7) / 2;
+    return [{ i, text, x: Math.min(width - half, Math.max(half, slot * i + slot / 2)) }];
+  });
+}
