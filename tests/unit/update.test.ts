@@ -6,19 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitorCore);
 vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).app }));
 
-import { retryWith, updateSteps, type AndroidUpdate } from "@/components/shell/useAndroidUpdate";
+import { retryWith, updateSteps, watchForUpdate, type AndroidUpdate } from "@/components/shell/useAndroidUpdate";
 import {
   availableMessage,
-  CHECK_INTERVAL_MS,
   dismissedUpdateCode,
   downloadingMessage,
   downloadPercent,
   formatMB,
   lastCheckedAt,
   NOTHING_PUBLISHED,
+  RECHECK_MS,
   setDismissedUpdateCode,
-  setLastCheckedAt,
-  shouldCheckNow,
   shouldShowUpdateNotice,
   updateFinding,
 } from "@/lib/update";
@@ -30,15 +28,53 @@ beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("checking for a new build", () => {
-  it("checks once 12 hours have passed, and at once when it never has, remembering when on this phone", () => {
-    expect(shouldCheckNow(1000, 1000)).toBe(false);
-    expect(shouldCheckNow(1000, 1000 + CHECK_INTERVAL_MS - 1)).toBe(false);
-    expect(shouldCheckNow(1000, 1000 + CHECK_INTERVAL_MS)).toBe(true);
-    expect(shouldCheckNow(1000, 1000 + CHECK_INTERVAL_MS * 3)).toBe(true);
-    expect(shouldCheckNow(0, Date.now())).toBe(true); // never checked
-    expect(lastCheckedAt()).toBe(0);
-    setLastCheckedAt(1758000000000);
-    expect(lastCheckedAt()).toBe(1758000000000);
+  it("checks as the app starts, and as it comes back to the front once 5 minutes have gone by, offering a build newer than the one dismissed", async () => {
+    const latest = { code: 120, name: "1.0.120", commit: "f23f5e0", size: 8 * 1024 * 1024, sha256: "11ff78" };
+    const found = { enabled: true, available: true, current: { code: 118, name: "1.0.118" }, latest };
+    let resume = () => {}, clock = 1_758_000_000_000, state: AndroidUpdate = { kind: "hidden" };
+    const m = {
+      checkUpdate: vi.fn(async () => found),
+      onAppResume: vi.fn((f: () => void) => ((resume = f), () => {})),
+    };
+    const set = (n: AndroidUpdate | ((cur: AndroidUpdate) => AndroidUpdate)) => void (state = typeof n === "function" ? n(state) : n);
+    const back = async (after: number) => {
+      clock += after;
+      resume();
+      await flush();
+    };
+    const stop = watchForUpdate(set, async () => m as never, () => clock);
+    await flush();
+    // Opening the app: checked at once, and the build offered.
+    expect(m.checkUpdate).toHaveBeenCalledTimes(1);
+    expect(state).toEqual({ kind: "available", latest });
+    expect(lastCheckedAt()).toBe(clock);
+    // Back to the front a minute later: not yet; 5 minutes after the check, again.
+    await back(60_000);
+    expect(m.checkUpdate).toHaveBeenCalledTimes(1);
+    await back(RECHECK_MS - 60_000);
+    expect(m.checkUpdate).toHaveBeenCalledTimes(2);
+    // A check never takes over a download under way.
+    state = { kind: "downloading", latest, received: 1, total: 2 };
+    await back(RECHECK_MS);
+    expect(state.kind).toBe("downloading");
+    // The dismissed build isn't offered again; a newer one is.
+    state = { kind: "hidden" };
+    setDismissedUpdateCode(120);
+    await back(RECHECK_MS);
+    expect(state).toEqual({ kind: "hidden" });
+    found.latest = { ...latest, code: 121, name: "1.0.121" };
+    await back(RECHECK_MS);
+    expect(state).toMatchObject({ kind: "available", latest: { code: 121 } });
+    // Can't check (offline): quietly nothing.
+    m.checkUpdate.mockRejectedValueOnce(new Error("offline"));
+    await back(RECHECK_MS);
+    expect(state).toMatchObject({ kind: "available", latest: { code: 121 } });
+    stop();
+    // Started again, however recent the last check: at once.
+    const calls = m.checkUpdate.mock.calls.length;
+    watchForUpdate(set, async () => m as never, () => clock)();
+    await flush();
+    expect(m.checkUpdate).toHaveBeenCalledTimes(calls + 1);
   });
 
   it("offers a newer build, is up to date otherwise, says when nothing's published, and hides in a build with no repo", () => {
