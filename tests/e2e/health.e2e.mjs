@@ -210,10 +210,10 @@ async function healthConnect({ browser, base, check }) {
     }),
   );
   check("steps by the hour: labelled 12 am, 6 am, 12 pm and 6 pm, none cut off at the chart's edges", ticks.map((x) => x.t).join(",") === "12 am,6 am,12 pm,6 pm" && ticks.every((x) => x.inside), JSON.stringify(ticks));
-  // The day before, whose steps came as one total: said so, not 24 equal bars and a made-up busiest hour
+  // The day before, whose steps came as one total: no hour chart at all, not 24 equal bars and a made-up busiest hour
   await page.click("#hPrev");
-  await until(async () => /one total/.test(await text("#hHours")));
-  check("a day of steps shared as one total says there's no hour-by-hour breakdown, with no bars", /as one total, not hour by hour/.test(await text("#hHours")) && !(await page.locator("#hHours .bchart").count()), await text("#hHours"));
+  await until(async () => /^Yesterday, 22 Sept/.test(await text("#hDate")));
+  check("a day of steps shared as one total has no steps-by-the-hour card", !(await page.locator("#hHours").count()) && /9,500/.test(await text("#hHero")), `${await page.locator("#hHours").count()} card | ${await text("#hHero")}`);
   await page.click("#hNext");
   await page.click("#backBtn");
   await page.waitForSelector("#activity");

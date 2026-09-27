@@ -532,17 +532,11 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
 /** How a night compares with the goal, in minutes over (or under, negative). */
 const sleepGoalWords = (over: number) => (over > 0 ? `${hoursMin(over)} over` : over < 0 ? `${hoursMin(-over)} short of` : "Right on");
 
-/** Steps hour by hour, with the busiest hour named; or, when the day's steps came as one total spread over the
- *  hours (evenSpread), a line saying there's no breakdown, not 24 equal bars and a made-up busiest hour. */
+/** Steps hour by hour, with the busiest hour named. Not shown at all when the day's steps came as one total spread
+ *  over the hours (evenSpread): 24 equal bars and a busiest hour would be made up. */
 function HourBars({ hours }: { hours: number[] }) {
   const hr = (h: number) => new Date(2026, 0, 1, h).toLocaleTimeString("en-IN", { hour: "numeric" }).toLowerCase();
-  if (evenSpread(hours))
-    return (
-      <section className="card" id="hHours">
-        <h2 className="title-sm">Steps by the hour</h2>
-        <p className="sub">Health Connect has this day’s steps as one total, not hour by hour, so there’s no breakdown to show. Samsung Health shares steps this way.</p>
-      </section>
-    );
+  if (evenSpread(hours)) return null;
   const peak = hours.reduce((b, v, i) => (v > hours[b] ? i : b), 0);
   const bars: BarDatum[] = hours.map((v, h) => ({ x: h % 6 === 0 ? hr(h) : "", value: v, tip: `${hr(h)}–${hr((h + 1) % 24)} · ${fmt(v)}` }));
   return (
