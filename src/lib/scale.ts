@@ -19,3 +19,27 @@ export function trendScale(vals: number[], minSpan: number): { lo: number; hi: n
   for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
   return { lo, hi: hi > lo ? hi : lo + step, ticks };
 }
+
+/**
+ * The labels to draw under a bar chart's bars, and where. When the caller left some bars without a label it has
+ * chosen already (every 6th hour, every 7th day); when it labelled every bar, every `every`-th is taken, and the last.
+ * Each sits centred under its bar, but never past the chart's edges: at 12 px, about 7 px a character, "12 am" under
+ * the first of 24 bars would otherwise be cut off. Then, from the last (today, usually) back, any that would run into
+ * the one after it is left out: a lift's 90 days, labelled every 7th, are too close together to show them all.
+ */
+export function axisTicks(labels: string[], slot: number, width: number): { i: number; x: number; text: string }[] {
+  const n = labels.length, chosen = labels.some((l) => !l), every = n > 14 ? 7 : n > 8 ? 2 : 1;
+  const half = (text: string) => (text.length * 7) / 2;
+  const ticks = labels.flatMap((text, i) =>
+    !text || (!chosen && i % every !== 0 && i !== n - 1) ? [] : [{ i, text, x: Math.min(width - half(text), Math.max(half(text), slot * i + slot / 2)) }],
+  );
+  const kept: typeof ticks = [];
+  for (let j = ticks.length - 1; j >= 0; j--) {
+    const t = ticks[j], next = kept[0];
+    if (!next || next.x - half(next.text) - (t.x + half(t.text)) >= AXIS_GAP) kept.unshift(t);
+  }
+  return kept;
+}
+
+/** The least space between two labels under a bar chart, px. */
+export const AXIS_GAP = 6;

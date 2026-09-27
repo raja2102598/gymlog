@@ -1,41 +1,25 @@
 "use client";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { availableMessage, dismissedUpdateCode, downloadingMessage, lastCheckedAt, setDismissedUpdateCode, setLastCheckedAt, shouldCheckNow, shouldShowUpdateNotice } from "@/lib/update";
-import { retryWith, useAndroidUpdate } from "./useAndroidUpdate";
-
-// Loaded only in the Android app (see GymLog), so the website doesn't carry the plugin.
-const native = () => import("@/native/app");
+import { availableMessage, downloadingMessage, setDismissedUpdateCode } from "@/lib/update";
+import { retryWith, useAndroidUpdate, watchForUpdate } from "./useAndroidUpdate";
 
 /**
- * A quiet check for a newer build, at most every 12 hours (the website's service worker updates itself instead;
- * see GymLog's controllerchange notice), said with a small banner like SyncBar's. Its Update downloads the build
- * right there and hands it to Android's installer, the same steps as Settings → About (useAndroidUpdate), saying
- * how far the download has got; it used to only open Settings, which did nothing when Settings was already open.
- * Dismissing it remembers the build dismissed, so it stays hidden until a newer one shows up.
+ * A newer build of the Android app, said with a small banner like SyncBar's on every screen, checked for as the app
+ * opens and comes back to the front (watchForUpdate; the website's service worker updates itself instead, see
+ * GymLog's controllerchange notice). Its Update downloads the build right there and hands it to Android's installer,
+ * the same steps as Settings → About (useAndroidUpdate), saying how far the download has got. Dismissing it
+ * remembers the build dismissed, so it stays hidden until a newer one shows up.
  */
 export function UpdateNotice() {
   const { s, setS, download, install, openInstallSettings } = useAndroidUpdate({ kind: "hidden" });
-  const [dismissed, setDismissed] = useState(false);
+  // The build whose banner was dismissed: a newer one found later, with the app still open, shows again.
+  const [dismissed, setDismissed] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!shouldCheckNow(lastCheckedAt(), Date.now())) return;
-    let live = true;
-    void native()
-      .then((m) => m.checkUpdate())
-      .then((r) => {
-        if (live && r.enabled && r.available && r.latest && shouldShowUpdateNotice(r.latest.code, dismissedUpdateCode())) setS({ kind: "available", latest: r.latest });
-      })
-      // Quiet: Settings → About has the error text and a retry, so an open app never nags about it.
-      .catch(() => {})
-      .finally(() => setLastCheckedAt(Date.now()));
-    return () => {
-      live = false;
-    };
-  }, [setS]);
+  useEffect(() => watchForUpdate(setS), [setS]);
 
   const latest = "latest" in s ? s.latest : undefined;
-  const show = !dismissed && !!latest;
+  const show = !!latest && latest.code !== dismissed;
   const msg =
     s.kind === "available"
       ? availableMessage(s.latest.name, s.latest.size)
@@ -75,7 +59,7 @@ export function UpdateNotice() {
           // Dismissed before starting: this build isn't offered again. Once it's downloading, the download carries on
           // and Settings → About follows it.
           if (s.kind === "available") setDismissedUpdateCode(s.latest.code);
-          setDismissed(true);
+          if (latest) setDismissed(latest.code);
         }}
       >
         <X size={16} aria-hidden="true" />

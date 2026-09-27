@@ -13,6 +13,8 @@ function data() {
   for (let n = 14; n <= 28; n++) {
     health[K(n)] = { steps: 6000 + n * 100, weight: Math.round((84 - n * 0.1) * 10) / 10, restingHr: n >= 21 ? 68 : 60, sleepMin: n >= 22 ? 330 : 420, activeKcal: 300 + n };
   }
+  // Tuesday's 8,700 steps came as one total for the day, which Health Connect splits evenly between the hours.
+  health[K(27)].stepsByHour = Array.from({ length: 24 }, (_, h) => (h % 2 ? 362 : 363));
   health[K(28)] = {
     steps: 8421,
     weight: 81.2,
@@ -21,6 +23,7 @@ function data() {
     sleepMin: 432,
     sleepStages: { deep: 80, rem: 95, light: 257, awake: 12 },
     activeKcal: 412,
+    stepsByHour: [0, 0, 0, 0, 0, 0, 640, 1810, 920, 310, 1240, 1560, 780, 420, 340, 400, 0, 0, 0, 0, 0, 0, 0, 0],
     // Its app as Health Connect names it, by package.
     workouts: [{ type: "strengthTraining", start: "2026-09-23T07:10:00", end: "2026-09-23T08:02:00", min: 52, kcal: 310, source: "com.sec.android.app.shealth" }],
   };
@@ -194,6 +197,24 @@ async function healthConnect({ browser, base, check }) {
   await page.waitForSelector("#hSessions");
   const sessions = await flat(page.locator("#hSessions"));
   check("exercise: the day's workout, with its time, length, calories and app by name", page.url().endsWith("/#health/exercise") && /Strength training ?7:10\s?am · 52 min · 310 kcal · Samsung Health$/i.test(sessions), sessions);
+  await page.click("#backBtn");
+  await page.waitForSelector("#activity");
+
+  // Steps' page, today: steps by the hour, labelled every 6 hours, none cut off at the chart's edges
+  await page.click("#tileSteps");
+  await page.waitForSelector("#hHours .bchart");
+  const ticks = await page.$$eval("#hHours .bc-ax", (els) =>
+    els.map((e) => {
+      const r = e.getBoundingClientRect(), s = e.closest("svg").getBoundingClientRect();
+      return { t: e.textContent.replace(/\s/g, " "), inside: r.left >= s.left - 0.5 && r.right <= s.right + 0.5 };
+    }),
+  );
+  check("steps by the hour: labelled 12 am, 6 am, 12 pm and 6 pm, none cut off at the chart's edges", ticks.map((x) => x.t).join(",") === "12 am,6 am,12 pm,6 pm" && ticks.every((x) => x.inside), JSON.stringify(ticks));
+  // The day before, whose steps came as one total: said so, not 24 equal bars and a made-up busiest hour
+  await page.click("#hPrev");
+  await until(async () => /one total/.test(await text("#hHours")));
+  check("a day of steps shared as one total says there's no hour-by-hour breakdown, with no bars", /as one total, not hour by hour/.test(await text("#hHours")) && !(await page.locator("#hHours .bchart").count()), await text("#hHours"));
+  await page.click("#hNext");
   await page.click("#backBtn");
   await page.waitForSelector("#activity");
 

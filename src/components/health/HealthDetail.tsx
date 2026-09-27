@@ -8,7 +8,7 @@ import { useGym } from "@/hooks/useGym";
 import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
 import { fmt, signed } from "@/lib/format";
 import { appName, hoursMin, workoutName } from "@/lib/health";
-import { clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTimes, summarize, type DayNumbers, type Series } from "@/lib/healthView";
+import { clockText, dayNumbers, daysTo, evenSpread, goalOf, metricValue, seriesOf, sleepTimes, summarize, type DayNumbers, type Series } from "@/lib/healthView";
 import type { Metric } from "@/lib/route";
 import { measureChange, type MeasureChange } from "@/lib/stats";
 import type { DayKey, HealthWorkout, MeasureField } from "@/lib/types";
@@ -532,9 +532,17 @@ function DayPage({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (
 /** How a night compares with the goal, in minutes over (or under, negative). */
 const sleepGoalWords = (over: number) => (over > 0 ? `${hoursMin(over)} over` : over < 0 ? `${hoursMin(-over)} short of` : "Right on");
 
-/** Steps hour by hour, with the busiest hour named. */
+/** Steps hour by hour, with the busiest hour named; or, when the day's steps came as one total spread over the
+ *  hours (evenSpread), a line saying there's no breakdown, not 24 equal bars and a made-up busiest hour. */
 function HourBars({ hours }: { hours: number[] }) {
   const hr = (h: number) => new Date(2026, 0, 1, h).toLocaleTimeString("en-IN", { hour: "numeric" }).toLowerCase();
+  if (evenSpread(hours))
+    return (
+      <section className="card" id="hHours">
+        <h2 className="title-sm">Steps by the hour</h2>
+        <p className="sub">Health Connect has this day’s steps as one total, not hour by hour, so there’s no breakdown to show. Samsung Health shares steps this way.</p>
+      </section>
+    );
   const peak = hours.reduce((b, v, i) => (v > hours[b] ? i : b), 0);
   const bars: BarDatum[] = hours.map((v, h) => ({ x: h % 6 === 0 ? hr(h) : "", value: v, tip: `${hr(h)}–${hr((h + 1) % 24)} · ${fmt(v)}` }));
   return (

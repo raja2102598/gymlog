@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { anyHealth, clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTimes, stepsSharedText, summarize } from "@/lib/healthView";
+import { anyHealth, clockText, dayNumbers, daysTo, evenSpread, goalOf, metricValue, seriesOf, sleepTimes, stepsSharedText, summarize } from "@/lib/healthView";
 import { DEFAULT_PLAN } from "@/lib/plan";
-import { niceMax, trendScale } from "@/lib/scale";
+import { AXIS_GAP, axisTicks, niceMax, trendScale } from "@/lib/scale";
 import type { DayLog, HealthDay } from "@/lib/types";
 import { atWednesdayNoon, day, storeWith, WED } from "./helpers";
 
@@ -76,6 +76,19 @@ describe("a day's numbers", () => {
     expect(stepsSharedText(null, WED)).toBeNull();
   });
 
+  it("tells steps spread evenly over the hours (one total for the day) from steps taken hour by hour", () => {
+    // Samsung Health's 1,993 for a day, split by Health Connect: 83 an hour, give or take one. So far today, too.
+    expect(evenSpread(Array.from({ length: 24 }, (_, h) => (h % 3 ? 83 : 84)))).toBe(true);
+    expect(evenSpread([...Array(13).fill(362), ...Array(11).fill(0)])).toBe(true);
+    // Walked hour by hour, even two hours alike, or three: they don't run on from midnight. One hour alone; none.
+    expect(evenSpread([0, 0, 0, 0, 0, 0, 640, 1810, 920, 310, 1240, 1560, 780, 420, 340, 400, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(false);
+    expect(evenSpread([0, 0, 0, 0, 0, 0, 0, 0, 0, 500, 501, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(false);
+    expect(evenSpread([0, 500, 0, 500, 0, 500, ...Array(18).fill(0)])).toBe(false);
+    expect(evenSpread([40, 40, 0, 0, 0, 0, 0, 0, 0, 1200, ...Array(14).fill(0)])).toBe(false);
+    expect(evenSpread([0, 0, 0, 0, 0, 0, 0, 0, 0, 3012, ...Array(14).fill(0)])).toBe(false);
+    expect(evenSpread(Array(24).fill(0))).toBe(false);
+  });
+
   it("reads chest, arms, thighs and hips as typed only, and body fat typed over Health Connect's, like weight", () => {
     const s = store(
       { "2026-09-16": { bodyFat: 23 }, "2026-09-20": { bodyFat: 22 }, [WED]: { bodyFat: 22.4 } },
@@ -128,6 +141,34 @@ describe("a week or a month", () => {
 describe("chart axes", () => {
   it("tops bar charts with a round number whose half is round too", () => {
     expect([niceMax(11550), niceMax(2770), niceMax(8.6), niceMax(0)]).toEqual([12000, 3000, 10, 1]);
+  });
+
+  it("labels the bars the caller chose, or every so many when it labelled them all, and never past the chart's edges", () => {
+    const hours = Array.from({ length: 24 }, (_, h) => (h % 6 === 0 ? ["12 am", "6 am", "12 pm", "6 pm"][h / 6] : ""));
+    // 24 hours on 336 px, 14 px a bar: the four the chart chose, "12 am" pulled in from the left edge (17.5 px half-width).
+    expect(axisTicks(hours, 14, 336)).toEqual([
+      { i: 0, text: "12 am", x: 17.5 },
+      { i: 6, text: "6 am", x: 91 },
+      { i: 12, text: "12 pm", x: 175 },
+      { i: 18, text: "6 pm", x: 259 },
+    ]);
+    // A month labelled every 7th day, ending today: all five, today's pulled in from the right edge.
+    const month = Array.from({ length: 30 }, (_, i) => ((29 - i) % 7 === 0 ? (i === 29 ? "Today" : `${i} Sept`) : ""));
+    expect(axisTicks(month, 11, 330).map((t) => t.text)).toEqual(["1 Sept", "8 Sept", "15 Sept", "22 Sept", "Today"]);
+    expect(axisTicks(month, 11, 330).at(-1)!.x).toBe(330 - 17.5);
+    // Every bar labelled: a week, all seven; a year, every other month and the last.
+    expect(axisTicks(["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Today"], 48, 336)).toHaveLength(7);
+    const year = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"];
+    expect(axisTicks(year, 28, 336).map((t) => t.text)).toEqual(["Oct", "Dec", "Feb", "Apr", "Jun", "Aug", "Sep"]);
+    // A lift's 90 days on 336 px, labelled every 7th day: too close for all 13, so every so many, today's kept, none
+    // running into the next.
+    const days90 = Array.from({ length: 90 }, (_, i) => ((89 - i) % 7 === 0 ? (i === 89 ? "Today" : `${(i % 30) + 1} Sept`) : ""));
+    const ticks = axisTicks(days90, 336 / 90, 336);
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(ticks.length).toBeLessThan(13);
+    expect(ticks.at(-1)!.text).toBe("Today");
+    const w = (t: string) => t.length * 7;
+    for (let j = 1; j < ticks.length; j++) expect(ticks[j].x - w(ticks[j].text) / 2 - (ticks[j - 1].x + w(ticks[j - 1].text) / 2)).toBeGreaterThanOrEqual(AXIS_GAP);
   });
 
   it("puts trend gridlines on round values around the readings", () => {

@@ -5,11 +5,12 @@
  * switch (lib/storage.ts). */
 import { lsGet, lsSet } from "./storage";
 
-/** How often the app checks on its own, quietly, when it opens. Settings' "Check for updates" ignores this. */
-export const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
+/** How long after a check the app, coming back to the front, checks again (the update notice). It always checks as it
+ *  starts, and Settings' "Check for updates" whenever it opens. A check is one small file from GitHub. */
+export const RECHECK_MS = 5 * 60 * 1000;
 
 /** Whether it's been long enough since `lastCheckedAt` (0: never) to check again, as of `now`. */
-export const shouldCheckNow = (lastCheckedAt: number, now: number): boolean => now - lastCheckedAt >= CHECK_INTERVAL_MS;
+export const shouldCheckNow = (lastCheckedAt: number, now: number): boolean => now - lastCheckedAt >= RECHECK_MS;
 
 /** "18.7 MB": a download's size in words, not bytes. */
 export const formatMB = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -42,7 +43,7 @@ export const shouldShowUpdateNotice = (latestCode: number | undefined, dismissed
 const LAST_CHECK_KEY = "gymlog.update.lastcheck.v1";
 const DISMISSED_KEY = "gymlog.update.dismissed.v1";
 
-/** When the app last checked on its own (ms since the epoch, 0 if never). */
+/** When the update notice last checked (ms since the epoch, 0 if never). */
 export const lastCheckedAt = (): number => lsGet<number>(LAST_CHECK_KEY, 0);
 export const setLastCheckedAt = (at: number): void => void lsSet(LAST_CHECK_KEY, at);
 
