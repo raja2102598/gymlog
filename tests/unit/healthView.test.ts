@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { anyHealth, clockText, dayNumbers, daysTo, evenSpread, goalOf, metricValue, seriesOf, sleepTimes, stepsSharedText, summarize } from "@/lib/healthView";
 import { DEFAULT_PLAN } from "@/lib/plan";
-import { axisTicks, niceMax, trendScale } from "@/lib/scale";
+import { AXIS_GAP, axisTicks, niceMax, trendScale } from "@/lib/scale";
 import type { DayLog, HealthDay } from "@/lib/types";
 import { atWednesdayNoon, day, storeWith, WED } from "./helpers";
 
@@ -80,9 +80,11 @@ describe("a day's numbers", () => {
     // Samsung Health's 1,993 for a day, split by Health Connect: 83 an hour, give or take one. So far today, too.
     expect(evenSpread(Array.from({ length: 24 }, (_, h) => (h % 3 ? 83 : 84)))).toBe(true);
     expect(evenSpread([...Array(13).fill(362), ...Array(11).fill(0)])).toBe(true);
-    // Walked hour by hour; one hour alone; none.
+    // Walked hour by hour, even two hours alike, or three: they don't run on from midnight. One hour alone; none.
     expect(evenSpread([0, 0, 0, 0, 0, 0, 640, 1810, 920, 310, 1240, 1560, 780, 420, 340, 400, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(false);
-    expect(evenSpread([0, 0, 0, 0, 0, 0, 0, 0, 0, 500, 502, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(false);
+    expect(evenSpread([0, 0, 0, 0, 0, 0, 0, 0, 0, 500, 501, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBe(false);
+    expect(evenSpread([0, 500, 0, 500, 0, 500, ...Array(18).fill(0)])).toBe(false);
+    expect(evenSpread([40, 40, 0, 0, 0, 0, 0, 0, 0, 1200, ...Array(14).fill(0)])).toBe(false);
     expect(evenSpread([0, 0, 0, 0, 0, 0, 0, 0, 0, 3012, ...Array(14).fill(0)])).toBe(false);
     expect(evenSpread(Array(24).fill(0))).toBe(false);
   });
@@ -158,6 +160,15 @@ describe("chart axes", () => {
     expect(axisTicks(["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Today"], 48, 336)).toHaveLength(7);
     const year = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"];
     expect(axisTicks(year, 28, 336).map((t) => t.text)).toEqual(["Oct", "Dec", "Feb", "Apr", "Jun", "Aug", "Sep"]);
+    // A lift's 90 days on 336 px, labelled every 7th day: too close for all 13, so every so many, today's kept, none
+    // running into the next.
+    const days90 = Array.from({ length: 90 }, (_, i) => ((89 - i) % 7 === 0 ? (i === 89 ? "Today" : `${(i % 30) + 1} Sept`) : ""));
+    const ticks = axisTicks(days90, 336 / 90, 336);
+    expect(ticks.length).toBeGreaterThanOrEqual(3);
+    expect(ticks.length).toBeLessThan(13);
+    expect(ticks.at(-1)!.text).toBe("Today");
+    const w = (t: string) => t.length * 7;
+    for (let j = 1; j < ticks.length; j++) expect(ticks[j].x - w(ticks[j].text) / 2 - (ticks[j - 1].x + w(ticks[j - 1].text) / 2)).toBeGreaterThanOrEqual(AXIS_GAP);
   });
 
   it("puts trend gridlines on round values around the readings", () => {
