@@ -21,7 +21,8 @@ function data() {
     sleepMin: 432,
     sleepStages: { deep: 80, rem: 95, light: 257, awake: 12 },
     activeKcal: 412,
-    workouts: [{ type: "strengthTraining", start: "2026-09-23T07:10:00", end: "2026-09-23T08:02:00", min: 52, kcal: 310, source: "Samsung Health" }],
+    // Its app as Health Connect names it, by package.
+    workouts: [{ type: "strengthTraining", start: "2026-09-23T07:10:00", end: "2026-09-23T08:02:00", min: 52, kcal: 310, source: "com.sec.android.app.shealth" }],
   };
   return { logs, health };
 }
@@ -140,10 +141,13 @@ async function healthConnect({ browser, base, check }) {
   await page.click("#hNext");
   check("and back to today, no further", (await flat(page.locator("#activity .dayswitch .label"))) === "Today 23 Sept" && (await page.locator("#hNext").isDisabled()));
 
-  // Sleep's page: the week as bars against the goal, then one night
+  // Sleep's page: it opens on the day the tab was showing; the week as bars against the goal, then one night
   await page.click("#tileSleep");
+  await page.waitForSelector("#hRange");
+  const opened = `${await flat(page.locator('#hRange [role=tab][aria-selected="true"]'))} | ${(await page.locator("#hDate").count()) ? await text("#hDate") : "no date"}`;
+  check("Sleep opens as a page with its own address, on the day the tab was showing", page.url().endsWith("/#health/sleep") && (await page.textContent("#screenTitle")) === "Sleep" && /^Day \| Today, 23 Sept/.test(opened), opened);
+  await page.click('#hRange [data-seg="week"]');
   await page.waitForSelector("#hChart");
-  check("Sleep opens as a page with its own address, the week picked", page.url().endsWith("/#health/sleep") && (await page.textContent("#screenTitle")) === "Sleep" && (await page.getAttribute('#hRange [data-seg="week"]', "aria-selected")) === "true");
   check("a bar for each night of the week", (await page.locator("#hChart .bchart rect.bar").count()) === 7);
   await until(() => page.$eval("#hChart .bchart", (e) => e.classList.contains("in")));
   check("its bars grow once the chart is on screen", (await page.$eval("#hChart .bchart rect.bar", (e) => getComputedStyle(e).animationName)) === "barIn");
@@ -175,6 +179,7 @@ async function healthConnect({ browser, base, check }) {
 
   // Heart's page: each day's range with the resting rate as a dot
   await page.click("#tileHeart");
+  await page.click('#hRange [data-seg="week"]');
   await page.waitForSelector("#hChart");
   check(
     "heart: a resting dot for each day, and the week's average and lowest",
@@ -184,11 +189,11 @@ async function healthConnect({ browser, base, check }) {
   await page.click("#backBtn");
   await page.waitForSelector("#activity");
 
-  // Exercise's page, from the Exercise ring: the workout, with its time, length, calories and app
+  // Exercise's page, from the Exercise ring: the day's workout, with its time, length, calories and app, by name
   await page.click("#ringExercise");
-  await page.waitForSelector("#hChart");
+  await page.waitForSelector("#hSessions");
   const sessions = await flat(page.locator("#hSessions"));
-  check("exercise: the workout, with its day, time, length, calories and app", page.url().endsWith("/#health/exercise") && /Strength training ?Wed, 23 Sept · 7:10\s?am · 52 min · 310 kcal · Samsung Health/i.test(sessions), sessions);
+  check("exercise: the day's workout, with its time, length, calories and app by name", page.url().endsWith("/#health/exercise") && /Strength training ?7:10\s?am · 52 min · 310 kcal · Samsung Health$/i.test(sessions), sessions);
   await page.click("#backBtn");
   await page.waitForSelector("#activity");
 
@@ -228,6 +233,7 @@ async function healthConnect({ browser, base, check }) {
     const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: savedPlan(), health } });
     await ready(page);
     await page.goto(base + "#health/heart");
+    await page.click('#hRange [data-seg="week"]');
     await page.waitForSelector("#hChart .rg-cap", { state: "attached" });
     const t = async (sel) => (await page.locator(sel).first().innerText()).replace(/\s+/g, " ").trim();
     check("heart week with no resting rate: the average instead of a dash", /^Average · /.test(await t("#hChart .label, #hChart .cc-t .label")) && (await t("#hChart .cc-v")) === "83 bpm", `${await t("#hChart .cc-t")}`);
@@ -300,8 +306,8 @@ async function measurements({ browser, base, check }) {
 
   // --- reading them back in Health → Body: a trend and the four-week change for each
   await page.click("#tileBody");
+  await page.click('#hRange [data-seg="month"]');
   await page.waitForSelector("#hChart");
-  check("Body opens on the month, where these trends show", (await flat(page.locator('#hRange [role=tab][aria-selected="true"]'))) === "Month");
   check("a trend chart for each new measurement", (await page.locator("#hChest, #hArms, #hThighs, #hHips").count()) === 4);
   const changes = [];
   for (const id of ["#hChestChange", "#hArmsChange", "#hThighsChange", "#hHipsChange"]) changes.push(await flat(page.locator(id)));

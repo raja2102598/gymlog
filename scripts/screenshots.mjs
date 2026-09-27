@@ -41,6 +41,7 @@ for (const scheme of ["dark", "light"]) {
     await snap(page, `${tab}-${scheme}`);
   }
   await page.click("#tileSteps");
+  await page.click('#hRange [data-seg="week"]');
   await page.waitForSelector("#hChart");
   await snap(page, `steps-${scheme}`);
   // A day's page: its date, and ‹ › even on a day with nothing.

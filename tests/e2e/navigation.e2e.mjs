@@ -188,7 +188,7 @@ async function fromOutside({ browser, base, check }) {
   {
     const db = { logs: logs(), plan: null, health: { "2026-09-23": { steps: 8421, sleepMin: 432 } } };
     const { ctx, page } = await open(browser, base, { auth, db, url: base + "#health/steps" });
-    await page.waitForSelector("#healthView #hChart", { timeout: 15000 });
+    await page.waitForSelector("#healthView #hRange", { timeout: 15000 });
     check("a link to a Health page opens it after sign-in", (await page.textContent("#screenTitle")) === "Steps");
     await page.goBack();
     await page.waitForSelector(".tabbar");
