@@ -68,8 +68,10 @@ export function updateSteps(set: SetUpdate, load: () => Promise<Native> = native
 /**
  * The update notice's checks for a newer build: as the app starts, and each time it comes back to the front (Android
  * keeps it running in the background, so that's how it's opened most often) once RECHECK_MS has gone by since the
- * last. Only a build newer than the one dismissed is offered, and a check never takes over a download or install
- * under way. Quiet when it can't check: Settings → About says why, with a retry. Returns the stop.
+ * last. Only a build newer than the one dismissed is offered. A check never takes over a download or install under way,
+ * nor an installer that failed on a build already downloaded; a failed download it does, so a newer build found after
+ * that error was dismissed still shows. Quiet when it can't check: Settings → About says why, with a retry. Returns
+ * the stop.
  */
 export function watchForUpdate(set: SetUpdate, load: () => Promise<Checks> = native, now: () => number = Date.now): () => void {
   let live = true;
@@ -82,7 +84,7 @@ export function watchForUpdate(set: SetUpdate, load: () => Promise<Checks> = nat
       .then((r) => {
         const latest = r.latest;
         if (!live || !r.enabled || !r.available || !latest || !shouldShowUpdateNotice(latest.code, dismissedUpdateCode())) return;
-        set((cur) => (cur.kind === "hidden" || cur.kind === "available" ? { kind: "available", latest } : cur));
+        set((cur) => (cur.kind === "hidden" || cur.kind === "available" || (cur.kind === "error" && cur.step !== "install") ? { kind: "available", latest } : cur));
       })
       .catch(() => {});
   };

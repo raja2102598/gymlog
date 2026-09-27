@@ -65,10 +65,20 @@ describe("checking for a new build", () => {
     found.latest = { ...latest, code: 121, name: "1.0.121" };
     await back(RECHECK_MS);
     expect(state).toMatchObject({ kind: "available", latest: { code: 121 } });
+    // After a failed download, a newer build found takes its place; after a failed installer, the downloaded build stays.
+    state = { kind: "error", message: "Couldn’t download the update: timeout.", latest: { ...latest, code: 121, name: "1.0.121" } };
+    found.latest = { ...latest, code: 122, name: "1.0.122" };
+    await back(RECHECK_MS);
+    expect(state).toMatchObject({ kind: "available", latest: { code: 122 } });
+    const failedInstall: AndroidUpdate = { kind: "error", message: "Couldn’t start the installer: no installer.", latest, step: "install" };
+    state = failedInstall;
+    await back(RECHECK_MS);
+    expect(state).toBe(failedInstall);
     // Can't check (offline): quietly nothing.
+    state = { kind: "available", latest: found.latest };
     m.checkUpdate.mockRejectedValueOnce(new Error("offline"));
     await back(RECHECK_MS);
-    expect(state).toMatchObject({ kind: "available", latest: { code: 121 } });
+    expect(state).toMatchObject({ kind: "available", latest: { code: 122 } });
     stop();
     // Started again, however recent the last check: at once.
     const calls = m.checkUpdate.mock.calls.length;
