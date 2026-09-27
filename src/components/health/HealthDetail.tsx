@@ -7,7 +7,7 @@ import { WeightTrendChart, type TrendTone } from "@/components/ds/WeightTrendCha
 import { useGym } from "@/hooks/useGym";
 import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
 import { fmt, signed } from "@/lib/format";
-import { hoursMin, workoutName } from "@/lib/health";
+import { appName, hoursMin, workoutName } from "@/lib/health";
 import { clockText, dayNumbers, daysTo, goalOf, metricValue, seriesOf, sleepTimes, summarize, type DayNumbers, type Series } from "@/lib/healthView";
 import type { Metric } from "@/lib/route";
 import { measureChange, type MeasureChange } from "@/lib/stats";
@@ -31,9 +31,10 @@ const short = (m: Metric, v: number) =>
   m === "steps" ? (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v)) : m === "sleep" ? `${v} h` : m === "water" ? `${Math.round(v / 100) / 10} L` : m === "exercise" ? `${v} min` : fmt(v);
 
 /** A metric's page (Steps detail board, the pattern for every metric): Day / Week / Month / Year, the period's chart
- *  under its big number, three stats and an insight. */
+ *  under its big number, three stats and an insight. It opens on the day the Health tab was showing, as a tap on that
+ *  day's ring or tile expects; Week and the rest are a tap away. */
 export function HealthDetail({ metric, day, onDay }: { metric: Metric; day: DayKey; onDay: (k: DayKey) => void }) {
-  const [range, setRange] = useState<Range>(metric === "body" ? "month" : "week");
+  const [range, setRange] = useState<Range>("day");
   return (
     <div className="screen detail">
       <SegmentedControl
@@ -552,7 +553,7 @@ function Sessions({ title, list, dated = false }: { title: string; list: HealthW
           <li key={w.start} className="row">
             <span className="row-t">
               <span className="row-tt">{workoutName(w.type)}</span>
-              <span className="row-d">{[dated ? longDay(w.start.slice(0, 10)) : "", clock(w.start), hoursMin(w.min), w.kcal ? kcal(w.kcal) : "", w.km ? `${w.km} km` : "", w.source ?? ""].filter(Boolean).join(" · ")}</span>
+              <span className="row-d">{[dated ? longDay(w.start.slice(0, 10)) : "", clock(w.start), hoursMin(w.min), w.kcal ? kcal(w.kcal) : "", w.km ? `${w.km} km` : "", w.source ? (appName(w.source) ?? w.source) : ""].filter(Boolean).join(" · ")}</span>
             </span>
           </li>
         ))}
