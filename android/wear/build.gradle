@@ -1,0 +1,93 @@
+// The Wear OS app (docs/watch.md): Kotlin and Compose for Wear OS. CI builds it next to the phone app, numbers it the
+// same way and signs it with the same key, which the Data Layer needs: it only connects an app to its twin with the
+// same package name and signature.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Compose's compiler ships with Kotlin, so this is always the version of the Kotlin plugin in ../build.gradle.
+        classpath 'org.jetbrains.kotlin:compose-compiler-gradle-plugin:2.4.20'
+    }
+}
+
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+
+// Compose for Wear OS 1.6: its 1.7 needs compileSdk 37 and Android Gradle Plugin 9, which the phone app isn't on yet.
+// It brings Compose 1.9, which builds with compileSdk 36 or 37 alike.
+def wearComposeVersion = '1.6.2'
+
+android {
+    namespace = "io.github.raja2102598.gymlog.wear"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        // The phone app's own id: the Data Layer pairs the two by it.
+        applicationId "io.github.raja2102598.gymlog"
+        // Wear OS 3, the first the Galaxy Watch4 ran.
+        minSdkVersion 30
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Numbered and named as the phone app is (app/build.gradle), so a newer watch APK installs over an older one
+        // and the two from one CI run carry the same number.
+        versionCode = (System.getenv("GYMLOG_VERSION_CODE") ?: "1").toInteger()
+        versionName = System.getenv("GYMLOG_VERSION_NAME") ?: ("1.0." + (System.getenv("GYMLOG_VERSION_CODE") ?: "0"))
+    }
+    // The phone app's key (GYMLOG_KEYSTORE and GYMLOG_KEYSTORE_PASSWORD, from CI's secrets), or else the debug key, as
+    // for the phone. A watch app signed with another key than the phone's never hears from it.
+    signingConfigs {
+        release {
+            if (System.getenv("GYMLOG_KEYSTORE")) {
+                storeFile file(System.getenv("GYMLOG_KEYSTORE"))
+                storePassword System.getenv("GYMLOG_KEYSTORE_PASSWORD")
+                keyAlias "gymlog"
+                keyPassword System.getenv("GYMLOG_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+    buildFeatures {
+        compose = true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_21.toString()
+    }
+    buildTypes {
+        release {
+            // R8 shrinks the APK from about 24 MB to a few, which matters when it's installed over the watch's Wi-Fi,
+            // and it's what makes Compose smooth on a watch. Every library here ships the keep rules it needs, and
+            // Android keeps what the manifest names, so this module needs none of its own.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            signingConfig System.getenv("GYMLOG_KEYSTORE") ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:$androidxCoreVersion"
+    implementation "androidx.activity:activity-compose:$androidxActivityVersion"
+    implementation "androidx.wear.compose:compose-material3:$wearComposeVersion"
+    implementation "androidx.wear.compose:compose-foundation:$wearComposeVersion"
+    implementation "androidx.wear.compose:compose-navigation:$wearComposeVersion"
+    implementation "androidx.lifecycle:lifecycle-runtime-compose:2.9.4"
+    // The workout on the watch face while it runs (WorkoutService).
+    implementation "androidx.wear:wear-ongoing:1.1.0"
+    // Turning off the phone app's notifications on the watch, which would buzz "Rest over" a second time (MainActivity).
+    implementation "androidx.wear:wear-phone-interactions:1.1.0"
+    // The Data Layer: the phone's state in, the watch's commands out (WatchRepo).
+    implementation "com.google.android.gms:play-services-wearable:20.0.1"
+    // Play services brings Fragment 1.0, whose activity results predate the ones MainActivity asks for notifications
+    // with; the phone app's version replaces it.
+    implementation "androidx.fragment:fragment:$androidxFragmentVersion"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0"
+    testImplementation "junit:junit:$junitVersion"
+    // The real org.json for unit tests (Android's is only stubs off a device), as in app/build.gradle.
+    testImplementation "org.json:json:20260814"
+}

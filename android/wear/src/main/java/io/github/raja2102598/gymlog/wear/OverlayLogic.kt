@@ -1,0 +1,189 @@
+package io.github.raja2102598.gymlog.wear
+
+import org.json.JSONObject
+
+/**
+ * One thing done on the watch, sent to the phone as its own /gymlog/cmd/<id> data item (docs/watch.md). Only the
+ * fields its `type` uses are set.
+ */
+data class Command(
+    val id: String,
+    val at: Long,
+    val type: String,
+    val day: String? = null,
+    val lift: String? = null,
+    val set: Int? = null,
+    val reps: Int? = null,
+    val kg: Double? = null,
+    val sec: Int? = null,
+    val done: Boolean? = null,
+)
+
+/**
+ * The watch's commands, and showing them as done before the phone has them. Until a command's id comes back in the
+ * state's `applied`, the watch lays it over the last state it had, doing what the phone will (its store's rules,
+ * mirrored here), so it keeps working away from the phone; once it's back, the state already includes it. Pure, for
+ * OverlayLogicTest.
+ */
+object OverlayLogic {
+    /** How long a command the phone never took is still shown as done: two days, when it's long past mattering. */
+    const val KEEP_MS = 2 * 24 * 60 * 60 * 1000L
+
+    const val SET = "set"
+    const val START_RUN = "startRun"
+    const val PAUSE_RUN = "pauseRun"
+    const val RESUME_RUN = "resumeRun"
+    const val FINISH = "finish"
+    const val REST_SKIP = "restSkip"
+    const val REST_ADD = "restAdd"
+    const val REST_PAUSE = "restPause"
+    const val REST_RESUME = "restResume"
+    const val SKIP_LIFT = "skipLift"
+    const val CARDIO_DONE = "cardioDone"
+
+    /** A new command's id: "c-" and a random UUID, never reused. It's part of the item's path, so only letters, digits
+     *  and `. _ : -`, and at most 128 characters, which the phone checks. */
+    fun newId(): String = "c-" + java.util.UUID.randomUUID()
+
+    /** Whether an id is one the phone will read (see newId). */
+    fun validId(id: String): Boolean = id.length in 1..128 && id.all { it.isLetterOrDigit() && it.code < 128 || it in "._:-" }
+
+    /** A set logged (reps null: cleared, the tick's undo), as Complete set N logs it. */
+    fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?) =
+        Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg)
+
+    /** A command naming only its day: startRun, pauseRun, resumeRun or finish. */
+    fun ofDay(id: String, at: Long, type: String, day: String) = Command(id, at, type, day = day)
+
+    /** A command about the rest: restSkip, restPause or restResume, or restAdd with `sec`. */
+    fun ofRest(id: String, at: Long, type: String, sec: Int? = null) = Command(id, at, type, sec = sec)
+
+    fun skipLift(id: String, at: Long, day: String, lift: String) = Command(id, at, SKIP_LIFT, day = day, lift = lift)
+
+    fun cardioDone(id: String, at: Long, day: String, done: Boolean) = Command(id, at, CARDIO_DONE, day = day, done = done)
+
+    /** The command as the phone reads it. A set's reps and kg are always there, null included, since null reps is
+     *  what clears it. */
+    fun toJson(c: Command): String {
+        val o = JSONObject().put("v", StateLogic.VERSION).put("id", c.id).put("at", c.at).put("type", c.type)
+        c.day?.let { o.put("day", it) }
+        c.lift?.let { o.put("lift", it) }
+        c.set?.let { o.put("set", it) }
+        if (c.type == SET) {
+            o.put("reps", c.reps ?: JSONObject.NULL)
+            o.put("kg", c.kg ?: JSONObject.NULL)
+        }
+        c.sec?.let { o.put("sec", it) }
+        c.done?.let { o.put("done", it) }
+        return o.toString()
+    }
+
+    /** A command as the watch kept it (toJson), or null for anything else. */
+    fun fromJson(json: String): Command? =
+        try {
+            val o = JSONObject(json)
+            fun str(k: String) = if (o.isNull(k)) null else o.optString(k)
+            fun num(k: String) = if (o.isNull(k)) null else o.optDouble(k).takeIf { it.isFinite() }
+            Command(
+                id = o.getString("id"),
+                at = o.getLong("at"),
+                type = o.getString("type"),
+                day = str("day"),
+                lift = str("lift"),
+                set = num("set")?.toInt(),
+                reps = num("reps")?.toInt(),
+                kg = num("kg"),
+                sec = num("sec")?.toInt(),
+                done = if (o.isNull("done")) null else o.optBoolean("done"),
+            )
+        } catch (e: Exception) {
+            null
+        }
+
+    /** The commands still to show: not yet in `applied`, and not so old the phone is never going to take them. */
+    fun prune(pending: List<Command>, applied: Set<String>, now: Long): List<Command> =
+        pending.filter { it.id !in applied && now - it.at < KEEP_MS }
+
+    /** The state with `pending` done on top of it, in the order they were done, as the phone will apply them. */
+    fun apply(state: WatchState, pending: List<Command>): WatchState =
+        pending.sortedBy { it.at }.fold(state) { s, c -> if (c.id in s.applied) s else one(s, c) }
+
+    private fun one(s: WatchState, c: Command): WatchState =
+        when (c.type) {
+            SET -> logSet(s, c)
+            // The phone's startRun: nothing if that day's clock is already going, else it starts from 0:00.
+            START_RUN -> {
+                val day = c.day
+                if (day == null || (s.run?.day == day && TimerLogic.underWay(s.run, c.at))) s else s.copy(run = Run(day, c.at))
+            }
+            PAUSE_RUN -> s.run?.takeIf { it.day == c.day }?.let { s.copy(run = TimerLogic.pauseRun(it, c.at)) } ?: s
+            RESUME_RUN -> s.run?.takeIf { it.day == c.day }?.let { s.copy(run = TimerLogic.resumeRun(it, c.at)) } ?: s
+            // Finish ends the clock, and the rest after the last set with it: there's no next set to rest for.
+            FINISH -> s.copy(
+                run = s.run?.let { if (it.day == c.day) TimerLogic.endRun(it, c.at) else it },
+                rest = s.rest?.takeIf { it.day != c.day },
+            )
+            REST_SKIP -> s.copy(rest = null)
+            REST_ADD -> s.copy(rest = s.rest?.let { TimerLogic.addRest(it, c.sec ?: 15, c.at) })
+            REST_PAUSE -> s.copy(rest = s.rest?.let { TimerLogic.pauseRest(it, c.at) })
+            REST_RESUME -> s.copy(rest = s.rest?.let { TimerLogic.resumeRest(it, c.at) })
+            SKIP_LIFT -> editLift(s, c.day, c.lift) { _, l -> l.copy(skipped = true, done = false) }
+            CARDIO_DONE -> s.copy(days = s.days.map { if (it.date == c.day) it.copy(cardioDone = c.done ?: true) else it })
+            else -> s
+        }
+
+    /** Replaces the lift `key` on `date` with what `f` makes of it (given its block too), leaving the rest alone. */
+    private fun editLift(s: WatchState, date: String?, key: String?, f: (List<Lift>, Lift) -> Lift): WatchState =
+        s.copy(
+            days = s.days.map { d ->
+                if (d.date != date) d else d.copy(blocks = d.blocks.map { b -> b.map { l -> if (l.key == key) f(b, l) else l } })
+            },
+        )
+
+    /**
+     * A set logged or cleared. A set past the lift's rows, or of a skipped lift, is dropped, as the phone drops it.
+     * With no weight given it takes what Complete set N would log (`sugKg`), and the next row's suggestion becomes the
+     * weight it was logged at, as the phone's does. A lift whose rows all have reps ticks itself done, and clearing
+     * one unticks it, as the phone's tick follows the planned sets. The rest starts as the phone starts it: when a
+     * set gets its first reps with no later one logged, for the lift's rest, or in a superset once the round is
+     * complete, for the longest rest of its lifts.
+     */
+    private fun logSet(s: WatchState, c: Command): WatchState {
+        val day = s.days.firstOrNull { it.date == c.day } ?: return s
+        val b = day.blocks.indexOfFirst { block -> block.any { it.key == c.lift } }
+        if (b < 0) return s
+        val lift = day.blocks[b].first { it.key == c.lift }
+        val j = c.set ?: return s
+        if (j !in lift.rows.indices || lift.skipped) return s
+        val hadReps = lift.rows[j].reps != null
+        val kg = if (c.reps != null) c.kg ?: lift.rows[j].sugKg else c.kg
+        val rows = lift.rows.mapIndexed { i, r ->
+            when {
+                i == j -> r.copy(reps = c.reps, kg = kg)
+                i == j + 1 && c.reps != null && kg != null -> r.copy(sugKg = kg)
+                else -> r
+            }
+        }
+        val done = when {
+            lift.skipped -> false
+            rows.all(StepLogic::logged) -> true
+            c.reps == null -> false
+            else -> lift.done
+        }
+        val edited = lift.copy(rows = rows, done = done)
+        val out = editLift(s, day.date, lift.key) { _, _ -> edited }
+        if (c.reps == null || hadReps || rows.drop(j + 1).any { it.reps != null }) return out
+        val block = out.days.first { it.date == day.date }.blocks[b]
+        val sec = restAfter(block, j) ?: return out
+        return if (sec > 0) out.copy(rest = Rest(day.date, edited.name, c.at + sec * 1000L, null, sec)) else out
+    }
+
+    /** The rest set `j` of a block starts, in seconds, or null for none yet: a superset waits for its round, with
+     *  every lift's set j logged and none of them further on. */
+    private fun restAfter(block: List<Lift>, j: Int): Int? {
+        if (block.size == 1) return block[0].restSec
+        val complete = block.all { it.skipped || j >= it.rows.size || it.rows[j].reps != null }
+        val later = block.any { l -> l.rows.drop(j + 1).any { it.reps != null } }
+        return if (complete && !later) block.filter { !it.skipped }.maxOfOrNull { it.restSec } else null
+    }
+}
