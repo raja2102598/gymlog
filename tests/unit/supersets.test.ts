@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { nextInRounds, supersetModels } from "@/components/today/SupersetItem";
 import { DEFAULT_PLAN, normalizePlan, orderBlocks, planBlocks } from "@/lib/plan";
 import { atWednesdayNoon, day, LEGS, lift, storeWith, WED } from "./helpers";
 
@@ -86,5 +87,61 @@ describe("a day's order", () => {
   it("orders the CSV's lifts as they were done", () => {
     const s = storeWith({ [WED]: day({ exercises: { "Hack Squat": lift([[10, 40]]), "Calf Raise": lift([[15, 30]]) }, order: ["Calf Raise", "Hack Squat"] }) });
     expect(s.workoutRows().map((r) => r[2])).toEqual(["Calf Raise", "Hack Squat"]);
+  });
+});
+
+describe("a superset in the workout", () => {
+  /** Wednesday with Hamstring Curl joined to Leg Extension (A1 and A2), and the superset's lifts as its card has them,
+   *  as saved now. */
+  const superset = () => {
+    const s = storeWith({});
+    s.plan.days[2].exercises[3].superset = true;
+    const lifts = s.liftBlocks(WED)[2].map((item, n) => ({ item, i: 2 + n }));
+    return { s, lifts: () => supersetModels(s, WED, lifts, s.entry(WED)) };
+  };
+
+  it("goes round by round, A1 then A2, whichever of a round's sets was logged first", () => {
+    const { lifts } = superset();
+    expect(nextInRounds(lifts())).toEqual([0, 0]);
+    lifts()[1].setField(0, "reps", "10"); // A2's first set before A1's
+    expect(nextInRounds(lifts())).toEqual([0, 0]);
+    lifts()[0].setField(0, "reps", "12");
+    expect(nextInRounds(lifts())).toEqual([0, 1]); // round 2
+    lifts()[0].setField(1, "reps", "12");
+    expect(nextInRounds(lifts())).toEqual([1, 1]);
+  });
+
+  it("leaves a skipped lift out of the rounds, lets a lift with more sets fill the last ones alone, and ends once all are logged", () => {
+    const { lifts } = superset();
+    lifts()[0].skipToday();
+    expect(nextInRounds(lifts())).toEqual([1, 0]); // A2 alone
+    lifts()[0].edit((r) => void delete r.skipped, true);
+    for (let j = 0; j < 3; j++) for (const m of lifts()) m.setField(j, "reps", "10");
+    expect(nextInRounds(lifts())).toBeNull();
+    lifts()[1].addSet(); // a 4th set for A2 only
+    expect(nextInRounds(lifts())).toEqual([1, 3]);
+  });
+
+  it("starts the rest once a round is complete, for the longest rest of its lifts that are left, and not once a later round is under way", () => {
+    const { s, lifts } = superset();
+    s.plan.days[2].exercises[3].rest = "120"; // Hamstring Curl, A2
+    lifts()[0].setField(0, "reps", "12");
+    expect(s.rest).toBeNull(); // A2 still to come
+    lifts()[1].setField(0, "reps", "10");
+    expect(s.rest).toMatchObject({ lift: "Hamstring Curl", sec: 120 });
+    s.skipRest();
+    lifts()[1].setField(1, "reps", "10");
+    lifts()[0].setField(1, "reps", "12"); // A1 completes round 2
+    expect(s.rest).toMatchObject({ lift: "Leg Extension", sec: 120 });
+    s.skipRest();
+    lifts()[1].skipToday(); // A2 skipped: A1's set is the round, and its own 90 s the rest
+    lifts()[0].setField(2, "reps", "12");
+    expect(s.rest).toMatchObject({ lift: "Leg Extension", sec: 90 });
+    s.skipRest();
+    lifts()[1].edit((r) => void delete r.skipped, true); // back in
+    for (const m of lifts()) m.addSet(4); // + Round
+    lifts()[0].setField(3, "reps", "12"); // A1 on into round 4
+    lifts()[1].setField(2, "reps", "10"); // A2 completes round 3, with round 4 under way
+    expect(s.rest).toBeNull();
   });
 });

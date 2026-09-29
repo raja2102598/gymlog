@@ -23,13 +23,14 @@ Strength, Muscles, a lift's page), `healthView` (the Health tab's numbers), `gym
 
 **Unit tests, by scenario:** `rename` (renaming a lift and its history), `sync` (saving over the version a phone had),
 `backup`, `auth` (signing in and out), `healthSync` (Health Connect from the Android app), `android` (the app
-starting, the widget), `update`, `rest` (the rest timer), `workout` (its clock), `freeform`, `supersets`, `settypes`,
-`progression` (the rules and the next weight), `templates` (and the first run), `demo`, `voice` and `speech`. And for
-the library code underneath: `stats`, `format`, `health` (Health Connect's readings into days), `heart`, `videos`
-(finding a lift's YouTube videos), `tokens`, `config`.
+starting, the widget), `update`, `rest` (the rest timer), `workout` (its clock, Complete set N, and what Workout
+complete adds up), `freeform`, `supersets`, `settypes`, `progression` (the rules and the next weight), `templates`
+(and the first run), `demo`, `voice` and `speech`. And for the library code underneath: `stats`, `format`, `health`
+(Health Connect's readings into days), `heart`, `videos` (finding a lift's YouTube videos), `tokens`, `config`.
 
 **Browser suites, by page:** `navigation`, `layout` (a small phone), `signin`, `firstrun`, `today` (Home, Train and the
-workout in a day's training), `workout`, `library`, `gym`, `plan` (the plan editor), `health`, `progress`.
+workout in a day's training), `workout` (a whole one, Start to Workout complete, and its clock), `library`, `gym`,
+`plan` (the plan editor), `health`, `progress`.
 
 **Browser suites, by scenario:** `backup`, `sync` (two phones), `offline`, `demo`, `voice`, `rest`, `settypes`,
 `supersets`, `freeform`.

@@ -1,10 +1,10 @@
 /* What a day's session adds up to, for the screens that summarise it: Home's workout card, Train's session card, the
  * active workout and Workout complete. Reads the store; changes nothing. */
 import { addDays, DOW, mondayOf, wdIndex } from "./dates";
-import { e1rm, isStraightSet, isWorkingSet, repRange, type RecordKind } from "./stats";
-import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem } from "./store";
+import { e1rm, isWorkingSet, repRange, type RecordKind } from "./stats";
+import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem, type RestTimer } from "./store";
 import type { DayKey, PlanExercise } from "./types";
-import { runMs, runOf, STALE_RUN_MS } from "./workout";
+import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
 
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
 export const dash = (s: string) => s.replace(/\s*-\s*/g, "–");
@@ -78,7 +78,8 @@ export function tintOf(store: GymStore, name: string, x?: Pick<PlanExercise, "li
   return "t-brand";
 }
 
-/** A day's lifting in numbers: working sets logged and planned, and kg lifted (weight × reps of straight sets). */
+/** A day's lifting in numbers: working sets logged and planned, and kg lifted (weight × reps of every working set: a
+ *  drop set adds to it, as it does to a lift's volume on Progress, and a warm-up never does). */
 export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: number; kg: number } {
   const e = store.entry(k);
   let sets = 0, planned = 0, kg = 0;
@@ -88,7 +89,7 @@ export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: 
     for (const s of setsOf(r)) {
       if (!isWorkingSet(s) || !(s.reps ?? 0)) continue;
       sets++;
-      if (isStraightSet(s) && s.kg) kg += s.kg * (s.reps ?? 0);
+      if (s.kg) kg += s.kg * (s.reps ?? 0);
     }
   }
   return { sets, planned, kg: Math.round(kg) };
@@ -136,6 +137,9 @@ export interface LiveWorkout {
   title: string;
   /** How far it's got, by the workout's own steps: a superset is one, and a skipped lift counts as done. */
   text: string;
+  /** The same in a few characters, "2/5 done", for Samsung's Now Bar, which shows a short text beside the app's icon
+   *  rather than the clock (RestAlarm.kt). Empty with no exercises yet. */
+  chip: string;
   /** When its clock would have started with no pauses, ms: the phone counts up from here on its own. */
   since: number;
   /** How long until it would count as left behind (STALE_RUN_MS), when the phone takes it down. */
@@ -149,12 +153,60 @@ export function liveWorkout(store: GymStore, day: DayKey, now = Date.now()): Liv
   if (!r || r.endedAt || r.pausedAt != null) return null;
   const ms = runMs(r, now);
   if (ms >= STALE_RUN_MS) return null;
-  const e = store.entry(day), blocks = store.liftBlocks(day);
-  const done = blocks.filter((b) => b.every((it) => e.exercises[it.name]?.done || e.exercises[it.name]?.skipped)).length;
+  const e = store.entry(day), blocks = store.liftBlocks(day), t = store.typing;
+  // A lift ticked off by its last set's reps isn't done while that set is still being typed in (the phone locked with
+  // the cursor in its box): the workout is still on it, as afterRest says.
+  const typed = (it: LiftItem) => !!e.exercises[it.name]?.autoDone && t?.day === day && t.lift === it.name;
+  const done = blocks.filter((b) => b.every((it) => e.exercises[it.name]?.skipped || (e.exercises[it.name]?.done && !typed(it)))).length;
   return {
     title: e.free ? e.free.name.trim() || "Free workout" : store.planFor(day).name,
     text: blocks.length ? `${done} of ${blocks.length} exercise${blocks.length === 1 ? "" : "s"} done` : "No exercises yet",
+    chip: blocks.length ? `${done}/${blocks.length} done` : "",
     since: now - ms,
     forMs: STALE_RUN_MS - ms,
   };
+}
+
+/** The workout under way on this phone, whichever day it's for: the lock screen follows the clock the workout shows,
+ *  so one started at 23:40 stays there past midnight, as does one for a day gone by (liveWorkout has the rules). */
+export function workoutUnderWay(store: GymStore, now = Date.now()): LiveWorkout | null {
+  const r = currentRun();
+  return r ? liveWorkout(store, r.day, now) : null;
+}
+
+/** A running rest timer, as the phone shows it while Gym Log is out of sight (native/rest.ts): its lift, when it's
+ *  over, and what comes after it (afterRest). */
+export interface LiveRest {
+  lift: string;
+  endAt: number;
+  next: string;
+}
+
+/** What comes after a rest, in a few words, for the lock screen's countdown and its "Rest over", as the workout says
+ *  it: the rested lift's next set while it has one to go ("Next: set 3 of 4", or its round in a superset), else the
+ *  step after it, as the workout's Next names it (the next lift or superset, or the day's cardio after the last), else
+ *  nothing (Finish workout). The set is the one Complete set N is on: the one being typed in, or else the first of
+ *  its rows with no reps, its rows being the planned sets or as many working sets as it has, drop sets and one added
+ *  included (LiftItem.tsx, nextSet; SupersetItem.tsx, nextInRounds; WorkoutView.tsx). The rest's lift is the one
+ *  performed, a swap's own name. */
+export function afterRest(store: GymStore, r: Pick<RestTimer, "day" | "lift">): string {
+  const e = store.entry(r.day), blocks = store.liftBlocks(r.day), did = (x: LiftItem) => performed(x.name, e.exercises[x.name]);
+  const block = blocks.find((b) => b.some((x) => did(x) === r.lift));
+  if (block) {
+    const ls = block.map((x) => {
+      const log = e.exercises[x.name], sets = setsOf(log).filter(isWorkingSet);
+      return { sets, rows: log?.skipped ? 0 : Math.max(x.extra ? 1 : minSets(targetOf(log, x.x)), sets.length) };
+    });
+    const rounds = Math.max(0, ...ls.map((l) => l.rows)), t = store.typing;
+    const say = (j: number) => `Next: ${block.length > 1 ? "round" : "set"} ${j + 1} of ${rounds}`;
+    // A set still being typed in, the phone locked with the cursor in its box: the workout is still on it.
+    if (t && t.day === r.day && block.some((x, n) => x.name === t.lift && t.set < ls[n].rows)) return say(t.set);
+    for (let j = 0; j < rounds; j++)
+      if (ls.some((l) => j < l.rows && !((l.sets[j]?.reps ?? 0) > 0))) return say(j);
+  }
+  // Through with it: the workout's own Next, the step after the rested one's, whatever state it's in.
+  const b = block ? blocks.indexOf(block) : -1, cardio = store.planFor(r.day).cardio.name;
+  if (b < 0) return "";
+  if (b + 1 < blocks.length) return `Next: ${blocks[b + 1].map(did).join(" + ")}`;
+  return cardio && !e.free ? `Next: ${cardio}` : "";
 }

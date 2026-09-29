@@ -21,15 +21,17 @@ export const health = {
 type AppEvent = { url?: string; isActive?: boolean };
 const listeners: Record<string, ((e: AppEvent) => void)[]> = {};
 /** Capacitor's App plugin. `fire` tells every listener for an event (appUrlOpen, resume, appStateChange), as Android
- *  does. */
+ *  does. `getState` says the app is in front unless a test says otherwise. */
 export const app = {
   fire: (name: string, e: AppEvent = {}) => (listeners[name] ?? []).forEach((f) => f(e)),
   /** Drops every listener, so a test's app starts afresh. */
   forget: () => Object.keys(listeners).forEach((k) => delete listeners[k]),
   getLaunchUrl: vi.fn(),
+  getState: vi.fn(async () => ({ isActive: true })),
   addListener: vi.fn(async (name: string, fn: (e: AppEvent) => void) => {
     (listeners[name] ??= []).push(fn);
-    return { remove: async () => void (listeners[name] = listeners[name].filter((f) => f !== fn)) };
+    // (Tolerates a remove after `forget`, which already dropped the list.)
+    return { remove: async () => void (listeners[name] = (listeners[name] ?? []).filter((f) => f !== fn)) };
   }),
 };
 
@@ -49,8 +51,14 @@ export const googleSignIn = { signIn: vi.fn() };
 export const speech = { available: vi.fn(async () => ({ available: true })) };
 /** GymWidget, the home-screen widget. */
 export const widget = { update: vi.fn(async () => {}), clear: vi.fn(async () => {}) };
-/** RestTimer: the lock screen while the app is in the background: a rest timer's countdown and alarm, or the workout. */
-export const restTimer = { schedule: vi.fn(async () => {}), workout: vi.fn(async () => {}), cancel: vi.fn(async () => {}) };
+/** RestTimer: the lock screen while the app is in the background: the workout, and a rest timer's countdown and alarm. */
+export const restTimer = {
+  schedule: vi.fn(async () => {}),
+  cancelRest: vi.fn(async () => {}),
+  workout: vi.fn(async () => {}),
+  cancelWorkout: vi.fn(async () => {}),
+  cancel: vi.fn(async () => {}),
+};
 
 type Progress = { received: number; total: number };
 const progressListeners = new Set<(p: Progress) => void>();

@@ -75,10 +75,17 @@
 
 /* the exercise card */
 .ex-card{padding:18px 16px 12px;gap:10px}
-.ex-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.ex-t{min-width:0}
+/* The card's first line ("Exercise 2 of 6", or in a superset the lift's name) shares its row with the buttons (or the
+   cardio's icon); everything under it, the name and what it's asked for, runs the card's whole width rather than
+   wrapping in the narrow space beside the buttons. */
+.ex-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 12px}
+.ex-t{display:contents}
+.ex-t>*{grid-column:1/-1}
+.ex-t>:first-child{grid-area:1/1}
+.ex-head>:not(.ex-t){grid-area:1/2}
 .ex-step{font:800 13px/18px var(--font-sans);color:var(--ink-muted)}
 .ex-name{margin-top:2px;font:900 28px/1.1 var(--font-sans);overflow-wrap:anywhere}
+.ex-step+.ex-name{margin-top:4px}
 .ex-card.superset .ex-name{font-size:20px}
 .sstag{display:inline-block;margin-right:6px;padding:2px 8px;border-radius:8px;background:var(--brand-tint);color:var(--brand-tint-ink);font:900 13px/18px var(--font-sans);vertical-align:3px}
 .ex-was{font:var(--type-label);color:var(--ink-muted)}
@@ -93,7 +100,7 @@
 .ss-h b{color:var(--ink);font-weight:900}
 .ss-lift{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
 .ss-lift.skipped .nm{text-decoration:line-through;color:var(--ink-muted)}
-.round{display:grid;gap:2px}
+.round{display:grid;gap:4px}
 .round-h{padding:6px 4px 0;font:800 12px/16px var(--font-sans);color:var(--ink-muted)}
 .skipnote{font:var(--type-body);color:var(--ink-muted)}
 .lift .said{margin:0;font:600 14px/1.4 var(--font-sans);color:var(--ink-muted)}
@@ -111,24 +118,27 @@
 .tick:checked::after{border-color:var(--on-brand)}
 .tick:disabled{opacity:.5;cursor:default}
 
-/* the set table (SetRow spec): Set · Last · kg · Reps · check */
-.sets{display:grid;gap:2px}
-.srow{position:relative;display:grid;grid-template-columns:30px minmax(0,1fr) 80px 64px 44px;gap:8px;align-items:center;padding:0 4px}
+/* the set table (SetRow spec): Set · Last · kg · Reps · check. The header and every row take their columns from this
+   one list, and every cell centres what it holds, so a heading, the active row's box and a plain number below it share
+   one centre. kg and Reps split what's left evenly, so their boxes are one size, and Last takes a little more, enough
+   for "102.5 × 10" on a 360px phone, rather than all the slack. Every row is the same height, so the checks line up
+   evenly down one column. */
+.sets{--set-cols:28px minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr) 44px;display:grid;gap:4px}
+.srow{position:relative;display:grid;grid-template-columns:var(--set-cols);gap:6px;align-items:center;padding:0 4px;text-align:center}
 .shead{height:28px;font:800 12px/16px var(--font-sans);color:var(--ink-muted)}
-.shead .c{text-align:center}
 .srow.set{height:56px;border-radius:var(--radius-md)}
-.srow.set.active{height:64px}
 .srow.done{background:var(--brand-row)}
-.srow .sn{position:relative;display:grid;place-items:center;width:30px;height:44px;padding:0;border:0;background:none;color:var(--ink);font:900 17px/1 var(--font-sans);cursor:pointer;border-radius:var(--radius-sm)}
+.srow .sn{position:relative;display:grid;place-items:center;width:100%;height:44px;padding:0;border:0;background:none;color:var(--ink);font:900 17px/1 var(--font-sans);cursor:pointer;border-radius:var(--radius-sm)}
 /* 44px wide to tap: the target reaches into the row's edge and the Last column beside it */
-.srow .sn::before{content:"";position:absolute;inset:0 -7px}
+.srow .sn::before{content:"";position:absolute;inset:0 -8px}
 .srow.done .sn{color:var(--brand-text)}
 .srow.up .sn{color:var(--ink-muted)}
 .srow .sn[data-kind="failure"] span,.srow .sn[data-kind="drop"] span{color:var(--warn-ink);background:var(--warn-bg);padding:2px 4px;border-radius:6px;font-size:14px}
 .srow .sn[aria-expanded="true"]{background:var(--surface-sunken)}
-.srow .last{font:700 15px/1 var(--font-sans);color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.srow input{width:100%;min-width:0;height:48px;padding:0 4px;border-radius:var(--radius-md);border:1.5px solid transparent;background:transparent;color:var(--ink);text-align:center;font:var(--type-input-num)}
-.srow.up input{color:var(--ink-muted);font-weight:800}
+.srow .last{min-width:0;font:700 14px/1 var(--font-sans);color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* No side padding: the number is centred, and a 3-digit weight (102.5) needs the whole box on a small phone. */
+.srow input{width:100%;min-width:0;height:44px;padding:0;border-radius:var(--radius-md);border:1.5px solid transparent;background:transparent;color:var(--ink);text-align:center;font:var(--type-input-num)}
+/* A number typed in is in full ink on every row, later ones too: only a suggestion (the placeholder) is grey. */
 .srow.active input{background:var(--surface);border-color:var(--ink-subtle)}
 .srow.active input:first-of-type{border:2px solid var(--brand)}
 .srow input:focus{border:2px solid var(--brand);background:var(--surface);outline:none}
@@ -143,7 +153,9 @@
   .chk{transition:background-color var(--press) var(--ease),transform var(--press) var(--ease)}
   .chk:active{transform:scale(.92)}
 }
-.prb{display:none;position:absolute;top:-6px;left:118px;align-items:center;gap:3px;padding:2px 7px;border-radius:8px;background:var(--brand-tint);color:var(--brand-tint-ink);font:900 11px/14px var(--font-sans)}
+/* A record's badge sits on the top edge of the kg column, centred over it: placed in that column's grid area, it
+   follows the column at any width. */
+.prb{display:none;position:absolute;grid-area:1/3/2/4;top:-6px;left:0;right:0;width:max-content;margin:0 auto;align-items:center;gap:3px;padding:2px 7px;border-radius:8px;background:var(--brand-tint);color:var(--brand-tint-ink);font:900 11px/14px var(--font-sans)}
 .srow.pr .prb{display:inline-flex}
 .setmenu-w{display:grid;gap:10px;padding:12px;margin:2px 0 6px;border-radius:var(--radius-md);background:var(--surface-sunken)}
 .setmenu{display:grid;gap:10px}
@@ -151,10 +163,11 @@
 .setmenu .seg-b.on{background:var(--surface-sunken)}
 .setmenu .field{max-width:220px}
 .plates-info{font:700 14px/1.4 var(--font-sans);color:var(--ink)}
+/* Equal widths while they fit on one line, each on one line of its own words: on a small phone with − Set showing too,
+   Warm-up sets moves under the others rather than breaking in two. */
 .setbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
-.setbtns>.btn{flex:1 1 0;border-radius:var(--radius-md)}
+.setbtns>.btn,.setbtns .wset-t{flex:1 1 0;min-width:max-content;padding:0 12px;white-space:nowrap;border-radius:var(--radius-md)}
 .setbtns .wset{display:contents}
-.setbtns .wset-t{flex:1 1 0;border-radius:var(--radius-md)}
 .setbtns .wset-t .chev{transition:transform var(--press) var(--ease)}
 .setbtns .wset-t[aria-expanded="true"] .chev{transform:rotate(180deg)}
 .wset-panel{flex-basis:100%;display:grid;gap:10px;padding:12px;border-radius:var(--radius-md);background:var(--surface-sunken)}
@@ -198,7 +211,6 @@
 .ring-sum{flex-direction:row;align-items:center;gap:14px;padding:14px 16px}
 .ring-sum p{font:700 15px/1.35 var(--font-sans);color:var(--ink)}
 .ring-sum b{color:var(--success);font-weight:900}
-@media (max-width:360px){.srow{grid-template-columns:26px minmax(0,1fr) 72px 58px 44px;gap:6px}.prb{left:100px}}
 .lrow .row-d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #nextEx{min-width:0;max-width:100%}
 #nextEx .nx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

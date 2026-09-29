@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitorCore);
 vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).app }));
 
-import { todayKey } from "@/lib/dates";
+import { todayKey, wdIndex } from "@/lib/dates";
 import { mmss } from "@/lib/format";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
+import { afterRest } from "@/lib/session";
 import { GymStore, liveRest, restSecFor, type RestTimer } from "@/lib/store";
-import { atWednesdayNoon, memoryStorage } from "./helpers";
+import type { LiftLog, SetLog } from "@/lib/types";
+import { atWednesdayNoon, day, LEGS, lift, memoryStorage, sets, storeWith, WED } from "./helpers";
 import { app, restTimer, widget } from "./nativeMocks";
 
 atWednesdayNoon();
@@ -146,26 +148,83 @@ describe("a saved rest timer, after a reload", () => {
   });
 });
 
+// What the lock screen's countdown and its "Rest over" say comes next (RestAlarm.kt shows it; lib/session.ts).
+describe("what comes after a rest", () => {
+  const legs = (exercises: Record<string, LiftLog>) => storeWith({ [WED]: day({ exercises }) });
+  const after = (s: GymStore, lift: string) => afterRest(s, { day: WED, lift });
+  const open = (xs: SetLog[], more: Partial<LiftLog> = {}): LiftLog => ({ done: false, kg: null, sets: xs, ...more });
+
+  it("is the rested lift's next set while it has one to go: the set Complete set N is on", () => {
+    expect(after(legs({ "Leg Press": open(sets([[12, 100]])) }), "Leg Press")).toBe("Next: set 2 of 3");
+    // A warm-up isn't one of the rows; a drop set is.
+    const warmedUp = open([{ reps: 10, kg: 40, type: "warmup" }, { reps: 12, kg: 100 }, { reps: 8, kg: 70, type: "drop" }]);
+    expect(after(legs({ "Leg Press": warmedUp }), "Leg Press")).toBe("Next: set 3 of 3");
+    // Logged out of order: the first row with no reps, not the count logged plus one.
+    expect(after(legs({ "Leg Press": open([{ reps: null, kg: null }, { reps: null, kg: null }, { reps: 12, kg: 100 }]) }), "Leg Press")).toBe("Next: set 1 of 3");
+    // A set added after the planned ones, which ticked it done: still that lift's.
+    const added = open([...sets([[12, 100], [12, 100], [11, 100]]), { reps: null, kg: null }], { done: true });
+    expect(after(legs({ "Leg Press": added }), "Leg Press")).toBe("Next: set 4 of 4");
+    // The phone locked with the cursor still in a set's box: the workout is on that set, reps or not.
+    const typed = legs({ "Leg Press": open([{ reps: 12, kg: 100 }, { reps: null, kg: null }, { reps: 1, kg: 100 }]) });
+    typed.typeIn({ day: WED, lift: "Leg Press", set: 2 });
+    expect(after(typed, "Leg Press")).toBe("Next: set 3 of 3");
+    // Swapped: the rest names the lift performed.
+    expect(after(legs({ "Leg Press": open(sets([[12, 100]]), { swap: "Belt Squat" }) }), "Belt Squat")).toBe("Next: set 2 of 3");
+  });
+
+  it("is a superset's next round", () => {
+    const s = legs({ "Leg Extension": open(sets([[12, 40]])), "Hamstring Curl": open(sets([[10, 30]])) });
+    s.plan.days[wdIndex(WED)].exercises[3].superset = true; // Hamstring Curl joins Leg Extension
+    expect(after(s, "Hamstring Curl")).toBe("Next: round 2 of 3");
+    s.typeIn({ day: WED, lift: "Hamstring Curl", set: 0 }); // its first round's reps still being typed
+    expect(after(s, "Hamstring Curl")).toBe("Next: round 1 of 3");
+  });
+
+  it("is the workout's Next once the rested lift is through: the step after it, whatever its state, by the name it's done under", () => {
+    const skip = { done: false, kg: null, skipped: true } as unknown as LiftLog;
+    const s = legs({ "Leg Press": open(sets([[12, 100], [12, 100], [11, 100]])), "Leg Extension": skip });
+    // Hack Squat, before it, not started: the workout's Next goes on from where it is, not back to the top.
+    expect(after(s, "Leg Press")).toBe("Next: Leg Extension");
+    s.logs[WED].exercises["Leg Extension"] = open([], { swap: "Sissy Squat" });
+    expect(after(s, "Leg Press")).toBe("Next: Sissy Squat");
+    // A superset next: both its lifts, as the workout's Next has them.
+    s.plan.days[wdIndex(WED)].exercises[3].superset = true; // Hamstring Curl joins Leg Extension
+    expect(after(s, "Leg Press")).toBe("Next: Sissy Squat + Hamstring Curl");
+    // Ticked done after one set: the workout's Complete set 2 is still there, so the lock screen says it too.
+    s.logs[WED].exercises["Leg Press"] = lift([[12, 100]]);
+    expect(after(s, "Leg Press")).toBe("Next: set 2 of 3");
+  });
+
+  it("is the day's cardio after the last lift, and nothing after a free workout's", () => {
+    const s = legs(Object.fromEntries(LEGS.map((n) => [n, lift([[10, 50], [10, 50], [10, 50], [10, 50]])])));
+    expect(after(s, "Calf Raise")).toBe("Next: Cycling - 15-20 min");
+    const free = storeWith({ [WED]: day({ free: { name: "Hotel gym", lifts: ["Leg Press"] }, exercises: { "Leg Press": lift([[12, 100], [12, 100], [12, 100]]) } }) });
+    expect(after(free, "Leg Press")).toBe("");
+  });
+});
+
 describe("in the background, in the Android app", () => {
   beforeEach(() => {
     app.forget();
-    restTimer.schedule.mockClear();
-    restTimer.workout.mockClear();
-    restTimer.cancel.mockClear();
+    for (const f of Object.values(restTimer)) f.mockClear();
     widget.update.mockClear();
   });
   const appIs = (isActive: boolean) => app.fire("appStateChange", { isActive });
+  // Each test's own: stopped after it, since the workout's clock tells every one still listening (workout.ts).
+  let stop: (() => void) | null = null;
+  afterEach(() => stop?.());
+  const sync = async (s: GymStore) => (stop = (await import("@/native/rest")).syncOngoingNotifications(s));
+  const NOON = new Date(2026, 8, 23, 12).getTime(), MIN = 60_000;
 
   it("arms the alarm for a running timer as the app goes to the background, and takes it down on coming back", async () => {
-    const { syncOngoingNotifications } = await import("@/native/rest");
     const s = store();
-    syncOngoingNotifications(s);
+    await sync(s);
     expect(restTimer.cancel).toHaveBeenCalledTimes(1); // opening the app takes down whatever an earlier run left
     s.startRest("2026-09-23", "Leg Press", 90);
-    const endAt = new Date(2026, 8, 23, 12, 1, 30).getTime();
+    const endAt = NOON + 90_000;
     expect(restTimer.schedule).not.toHaveBeenCalled(); // in front, the page says "Rest over" itself
     appIs(false);
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt });
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt, next: "Next: set 1 of 3" });
     s.setHealthLink({ state: "ok", msg: "" }); // an unrelated change: nothing sent again
     expect(restTimer.schedule).toHaveBeenCalledTimes(1);
     appIs(true);
@@ -175,7 +234,7 @@ describe("in the background, in the Android app", () => {
     // Scheduled afresh each time it goes to the background, so notifications allowed in between still get this
     // timer's alert.
     appIs(false);
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: endAt + 30_000 });
+    expect(restTimer.schedule).toHaveBeenLastCalledWith(expect.objectContaining({ lift: "Leg Press", endAt: endAt + 30_000 }));
     appIs(true);
     s.pauseRest();
     appIs(false);
@@ -184,22 +243,22 @@ describe("in the background, in the Android app", () => {
   });
 
   it("leaves ‘Rest over’ to the alarm when the app is in the background, and takes it down on coming back", async () => {
-    const { syncOngoingNotifications } = await import("@/native/rest");
     const s = store();
-    syncOngoingNotifications(s);
+    await sync(s);
     s.startRest("2026-09-23", "Leg Press", 30);
     appIs(false);
     vi.advanceTimersByTime(31_000);
     expect(s.rest?.ended).toBe(true);
+    // Nothing sent: cancelling the rest now would take its alarm down before it rang.
+    expect(restTimer.cancelRest).not.toHaveBeenCalled();
     expect(restTimer.cancel).toHaveBeenCalledTimes(1); // only opening the app's
     appIs(true);
     expect(restTimer.cancel).toHaveBeenCalledTimes(2);
   });
 
   it("never arms the alarm with the app in front, which says ‘Rest over’ itself", async () => {
-    const { syncOngoingNotifications } = await import("@/native/rest");
     const s = store();
-    syncOngoingNotifications(s);
+    await sync(s);
     appIs(true);
     s.startRest("2026-09-23", "Leg Press", 30);
     vi.advanceTimersByTime(31_000);
@@ -209,30 +268,67 @@ describe("in the background, in the Android app", () => {
     expect(restTimer.schedule).not.toHaveBeenCalled();
   });
 
-  it("shows the workout under way instead when no rest timer runs, and takes it down on coming back or when paused", async () => {
-    const { syncOngoingNotifications } = await import("@/native/rest");
+  it("shows the workout under way, with a rest's countdown over it apart, and takes it down on coming back or when paused", async () => {
     const { pauseRun, runsFor, startRun } = await import("@/lib/workout");
     const s = store();
     runsFor("u");
-    const started = new Date(2026, 8, 23, 11, 50).getTime();
-    startRun(todayKey(), started);
-    syncOngoingNotifications(s);
+    startRun(todayKey(), NOON - 10 * MIN);
+    await sync(s);
     appIs(false);
-    expect(restTimer.workout).toHaveBeenLastCalledWith({ title: "Legs", text: "0 of 5 exercises done", since: started, forMs: 3 * 60 * 60_000 - 10 * 60_000 });
+    expect(restTimer.workout).toHaveBeenLastCalledWith({ title: "Legs", text: "0 of 5 exercises done", chip: "0/5 done", since: NOON - 10 * MIN, forMs: 3 * 60 * MIN - 10 * MIN });
     appIs(true);
     s.startRest(todayKey(), "Leg Press", 90);
-    appIs(false); // resting: the countdown, not the clock
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: new Date(2026, 8, 23, 12, 1, 30).getTime() });
+    appIs(false); // resting: the countdown too, sent after the clock, so Android puts the newer first
+    expect(restTimer.workout).toHaveBeenCalledTimes(2);
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: NOON + 90_000, next: "Next: set 1 of 3" });
+    expect(restTimer.workout.mock.invocationCallOrder[1]).toBeLessThan(restTimer.schedule.mock.invocationCallOrder[0]);
+    vi.advanceTimersByTime(91_000); // over out of sight: the clock was never taken down, so nothing to send again
+    expect(restTimer.workout).toHaveBeenCalledTimes(2);
+    expect(restTimer.cancelWorkout).not.toHaveBeenCalled();
     appIs(true);
     s.skipRest();
-    appIs(false); // no rest: the clock again
-    expect(restTimer.workout).toHaveBeenCalledTimes(2);
+    appIs(false); // no rest: the clock alone
+    expect(restTimer.workout).toHaveBeenCalledTimes(3);
+    expect(restTimer.schedule).toHaveBeenCalledTimes(1);
     appIs(true);
     const cancels = restTimer.cancel.mock.calls.length;
     pauseRun(todayKey());
     appIs(false); // a paused clock isn't under way
-    expect(restTimer.workout).toHaveBeenCalledTimes(2);
+    expect(restTimer.workout).toHaveBeenCalledTimes(3);
     expect(restTimer.cancel).toHaveBeenCalledTimes(cancels);
+  });
+
+  it("follows the clock changing out of sight, as reopening a workout left for hours starts it again", async () => {
+    const { runsFor, startRun } = await import("@/lib/workout");
+    const s = store();
+    runsFor("u");
+    await sync(s);
+    appIs(false);
+    expect(restTimer.workout).not.toHaveBeenCalled();
+    startRun(todayKey()); // no change to the store: the clock's own
+    expect(restTimer.workout).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Legs", since: NOON }));
+  });
+
+  it("shows what's under way when already in the background as it starts, which Android said before anything listened", async () => {
+    const { runsFor, startRun } = await import("@/lib/workout");
+    const s = store();
+    runsFor("u");
+    startRun(todayKey(), NOON - 10 * MIN);
+    app.getState.mockResolvedValueOnce({ isActive: false });
+    await sync(s);
+    await vi.waitFor(() => expect(restTimer.workout).toHaveBeenCalledWith(expect.objectContaining({ title: "Legs", since: NOON - 10 * MIN })));
+    appIs(true);
+    expect(restTimer.cancel).toHaveBeenCalledTimes(2);
+    // Its answer overtaken by Android's word that the app came to the front: that's the newer.
+    stop?.();
+    restTimer.workout.mockClear();
+    let answer: (s: { isActive: boolean }) => void = () => {};
+    app.getState.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    await sync(s);
+    appIs(true);
+    answer({ isActive: false });
+    await vi.advanceTimersByTimeAsync(0); // lets that answer arrive
+    expect(restTimer.workout).not.toHaveBeenCalled();
   });
 
   it("puts a running timer's end on the widget, and takes it off when paused", async () => {

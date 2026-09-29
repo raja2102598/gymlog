@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ask } from "@/components/ds/Ask";
 import { Button } from "@/components/ds/parts";
 import { CardioFinisher } from "@/components/today/CardioFinisher";
-import { LiftItem, logSet, nextSet, type Moves } from "@/components/today/LiftItem";
+import { completeSet, keepCursor, LiftItem, nextSet, type Moves } from "@/components/today/LiftItem";
 import { nextInRounds, SupersetItem, supersetModels } from "@/components/today/SupersetItem";
 import type { LiftMenu } from "@/components/today/types";
 import type { FocusNext } from "@/hooks/useFocusNext";
@@ -73,8 +73,8 @@ export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLif
   const marks = store.recordsOn(day);
   const letterOf = (b: number) => String.fromCharCode(65 + blocks.slice(0, b).filter((x) => x.length > 1).length);
 
-  // The big button: the current step's next set, or on to the next step.
-  let primary: { label: string; act: () => void; icon: "check" | "next" };
+  // The big button: the current step's set (the one being typed in, or the next), or on to the next step.
+  let primary: { label: string; act: () => void; icon: "check" | "next"; logsSet?: true };
   const nextName = idx + 1 < blocks.length ? blocks[idx + 1].map((it) => performed(it.name, e.exercises[it.name])).join(" + ") : idx + 1 === blocks.length && cardio ? cardio.name : null;
   const onward = () => (idx + 1 < steps ? go(idx + 1) : onFinish());
   const onwardLabel = idx + 1 < steps ? "Next exercise" : "Finish workout";
@@ -83,12 +83,12 @@ export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLif
     if (b.length > 1) {
       const ms = supersetModels(store, day, b, e), nx = nextInRounds(ms);
       primary = nx
-        ? { label: `Complete ${letterOf(idx)}${nx[0] + 1} · set ${nx[1] + 1}`, icon: "check", act: () => logSet(store, ms[nx[0]], nx[1]) }
+        ? { label: `Complete ${letterOf(idx)}${nx[0] + 1} · set ${nx[1] + 1}`, icon: "check", logsSet: true, act: () => completeSet(store, ms[nx[0]], nx[1]) }
         : { label: onwardLabel, icon: "next", act: onward };
     } else {
       const m = supersetModels(store, day, b, e)[0];
       const j = m.r.skipped ? -1 : nextSet(m);
-      primary = j >= 0 ? { label: `Complete set ${j + 1}`, icon: "check", act: () => logSet(store, m, j) } : { label: onwardLabel, icon: "next", act: onward };
+      primary = j >= 0 ? { label: `Complete set ${j + 1}`, icon: "check", logsSet: true, act: () => completeSet(store, m, j) } : { label: onwardLabel, icon: "next", act: onward };
     }
   } else {
     primary = e.cardio
@@ -193,7 +193,7 @@ export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLif
       </div>
       {steps ? (
         <div className="wfoot">
-          <Button variant="primary" block id="completeSet" onClick={primary.act}>
+          <Button variant="primary" block id="completeSet" onMouseDown={primary.logsSet ? keepCursor : undefined} onClick={primary.act}>
             {primary.icon === "check" ? <Check size={20} strokeWidth={3} aria-hidden="true" /> : null}
             {primary.label}
           </Button>

@@ -91,6 +91,7 @@ export default async function supersets({ browser, base, check }) {
   const bar = page.locator("#restCard");
   await page.fill('input[data-set="1:0:reps"]', "12");
   await page.fill('input[data-set="1:0:kg"]', "30");
+  await page.locator('input[data-set="1:0:kg"]').blur(); // A1's set counts once the cursor leaves it
   await until(() => today()?.exercises?.["Hamstring Curl"]?.sets?.[0]?.kg === 30);
   check("A1's set alone doesn't start a rest: A2 comes first", (await bar.count()) === 0 && (await flat(page.locator("#completeSet"))) === "Complete A2 · set 1");
   await page.fill('input[data-set="2:0:reps"]', "15");

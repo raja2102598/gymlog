@@ -63,6 +63,13 @@ export interface RestTimer {
    *  kept: the card then works it out from the plan. */
   sec?: number;
 }
+/** One working set of a lift on a day: `lift` is the day's name for it (as planned, whatever it was swapped for), and
+ *  `set` its place among the lift's working sets. */
+export interface SetAt {
+  day: DayKey;
+  lift: string;
+  set: number;
+}
 /** What an import would replace: how many logged days the file has differently, and whether its plan differs. */
 export interface Replacing {
   days: number;
@@ -227,6 +234,9 @@ export class GymStore {
   healthLink: HealthLink = { state: "web", msg: "" };
   /** The rest timer. Null when none is running, paused or waiting to be dismissed. */
   rest: RestTimer | null = null;
+  /** The workout's set whose kg or reps box has the cursor: it's being typed in (LiftItem.tsx). Only on this screen,
+   *  never saved. */
+  typing: SetAt | null = null;
   /** Why the last sign-in link didn't work, for the sign-in screen. */
   authMsg = "";
   user: User | null = null;
@@ -1238,6 +1248,21 @@ export class GymStore {
   private freshLift(day: DayKey, name: string): LiftLog {
     const x = this.planFor(day).exercises.find((e) => e.name === name);
     return x && (x.sets || x.reps) ? { done: false, kg: null, target: { sets: x.sets, reps: x.reps } } : { done: false, kg: null };
+  }
+  /** The cursor going into a set's boxes in the workout. */
+  typeIn(at: SetAt) {
+    const t = this.typing;
+    if (t && t.day === at.day && t.lift === at.lift && t.set === at.set) return;
+    this.typing = { ...at };
+    this.changed();
+  }
+  /** The cursor leaving a set's boxes, or its row going: only that set stops being typed in, as a row can go (− Set)
+   *  with the cursor in another. With no set, whichever it is: a set completed closes the keyboard. */
+  typeOut(at?: SetAt) {
+    const t = this.typing;
+    if (!t || (at && (t.day !== at.day || t.lift !== at.lift || t.set !== at.set))) return;
+    this.typing = null;
+    this.changed();
   }
 
   /* ---------- rest timer ---------- */
