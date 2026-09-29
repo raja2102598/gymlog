@@ -224,7 +224,7 @@ describe("in the background, in the Android app", () => {
     const endAt = NOON + 90_000;
     expect(restTimer.schedule).not.toHaveBeenCalled(); // in front, the page says "Rest over" itself
     appIs(false);
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt, next: "Next: set 1 of 3" });
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt, next: "Next: set 1 of 3", samsungCard: false });
     s.setHealthLink({ state: "ok", msg: "" }); // an unrelated change: nothing sent again
     expect(restTimer.schedule).toHaveBeenCalledTimes(1);
     appIs(true);
@@ -275,12 +275,12 @@ describe("in the background, in the Android app", () => {
     startRun(todayKey(), NOON - 10 * MIN);
     await sync(s);
     appIs(false);
-    expect(restTimer.workout).toHaveBeenLastCalledWith({ title: "Legs", text: "0 of 5 exercises done", chip: "0/5 done", since: NOON - 10 * MIN, forMs: 3 * 60 * MIN - 10 * MIN });
+    expect(restTimer.workout).toHaveBeenLastCalledWith({ title: "Legs", text: "0 of 5 exercises done", chip: "0/5 done", since: NOON - 10 * MIN, forMs: 3 * 60 * MIN - 10 * MIN, samsungCard: false });
     appIs(true);
     s.startRest(todayKey(), "Leg Press", 90);
     appIs(false); // resting: the countdown too, sent after the clock, so Android puts the newer first
     expect(restTimer.workout).toHaveBeenCalledTimes(2);
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: NOON + 90_000, next: "Next: set 1 of 3" });
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: NOON + 90_000, next: "Next: set 1 of 3", samsungCard: false });
     expect(restTimer.workout.mock.invocationCallOrder[1]).toBeLessThan(restTimer.schedule.mock.invocationCallOrder[0]);
     vi.advanceTimersByTime(91_000); // over out of sight: the clock was never taken down, so nothing to send again
     expect(restTimer.workout).toHaveBeenCalledTimes(2);
@@ -329,6 +329,40 @@ describe("in the background, in the Android app", () => {
     answer({ isActive: false });
     await vi.advanceTimersByTimeAsync(0); // lets that answer arrive
     expect(restTimer.workout).not.toHaveBeenCalled();
+  });
+
+  it("sends Settings' Samsung timer card with both, off until it's switched on, and kept on this phone", async () => {
+    const { runsFor, startRun } = await import("@/lib/workout");
+    const { isSamsungPhone, samsungCardPref, setSamsungCard, SAMSUNG_CARD_KEY } = await import("@/native/rest");
+    expect(await isSamsungPhone()).toBe(true);
+    restTimer.isSamsung.mockResolvedValueOnce({ samsung: false });
+    expect(await isSamsungPhone()).toBe(false);
+    // Only a stored true is on: never set, off, or anything else kept there.
+    expect(samsungCardPref()).toBe(false);
+    for (const kept of ["false", '"yes"', "1", "not json"]) {
+      localStorage.setItem(SAMSUNG_CARD_KEY, kept);
+      expect(samsungCardPref()).toBe(false);
+    }
+    localStorage.removeItem(SAMSUNG_CARD_KEY);
+    const s = store();
+    runsFor("u");
+    startRun(todayKey(), NOON - 10 * MIN);
+    s.startRest(todayKey(), "Leg Press", 90);
+    await sync(s);
+    appIs(false);
+    expect(restTimer.workout).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Legs", samsungCard: false }));
+    expect(restTimer.schedule).toHaveBeenLastCalledWith(expect.objectContaining({ lift: "Leg Press", samsungCard: false }));
+    appIs(true);
+    setSamsungCard(true); // in Settings, with the app in front
+    expect(localStorage.getItem(SAMSUNG_CARD_KEY)).toBe("true");
+    appIs(false);
+    expect(restTimer.workout).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Legs", samsungCard: true }));
+    expect(restTimer.schedule).toHaveBeenLastCalledWith(expect.objectContaining({ lift: "Leg Press", samsungCard: true }));
+    appIs(true);
+    setSamsungCard(false);
+    appIs(false);
+    expect(restTimer.workout).toHaveBeenLastCalledWith(expect.objectContaining({ samsungCard: false }));
+    expect(restTimer.schedule).toHaveBeenLastCalledWith(expect.objectContaining({ samsungCard: false }));
   });
 
   it("puts a running timer's end on the widget, and takes it off when paused", async () => {

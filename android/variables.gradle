@@ -1,7 +1,9 @@
 ext {
     // Health Connect needs Android 8.0 (API 26) or later.
     minSdkVersion = 26
-    compileSdkVersion = 36
+    // Android 17 (API 37), for Notification.MetricStyle, used only on phones running 17 (RestAlarm.kt). The target
+    // stays 36, so none of Android 17's behaviour changes apply to Gym Log yet.
+    compileSdkVersion = 37
     targetSdkVersion = 36
     androidxActivityVersion = '1.11.0'
     androidxAppCompatVersion = '1.7.1'

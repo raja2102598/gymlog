@@ -58,6 +58,8 @@ export const restTimer = {
   workout: vi.fn(async () => {}),
   cancelWorkout: vi.fn(async () => {}),
   cancel: vi.fn(async () => {}),
+  /** A Samsung phone, where Settings offers the Samsung timer card. */
+  isSamsung: vi.fn(async () => ({ samsung: true })),
 };
 
 type Progress = { received: number; total: number };

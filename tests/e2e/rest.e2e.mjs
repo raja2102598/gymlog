@@ -1,9 +1,15 @@
 // The rest timer (RAJ-35): it starts when a set gets its reps, counts down in the workout's rest card with pause,
 // +15 s and skip, buzzes and says "Rest over" at zero, takes the plan's default from Settings and a lift's own length
-// from the plan editor, and survives a reload. The clock runs here, and the test moves it on.
+// from the plan editor, and survives a reload. The clock runs here, and the test moves it on. Then, in the Android
+// app, Settings' Samsung timer card.
 import { flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS, onDefaultPlan } from "./harness.mjs";
 
-export default async function rest({ browser, base, check }) {
+export default async function rest(t) {
+  await timer(t);
+  await samsungCard(t);
+}
+
+async function timer({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000035", "2026-08-26T05:00:00Z", "t@example.com");
   const db = onDefaultPlan();
   const { ctx, page } = await open(browser, base, { auth, db, clock: "running", url: null });
@@ -137,4 +143,78 @@ export default async function rest({ browser, base, check }) {
   check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("no console errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();
+}
+
+/**
+ * In the page, before it loads: the Android app, as far as the page can tell. Capacitor takes the page for Android's,
+ * and the app's own plugins (RestTimer, GymSync and the rest) answer from `window.__native.answers` ({ plugin: {
+ * method: answer } }; anything else gets `{}`), each call kept in `window.__native.calls` as "Plugin.method".
+ * Capacitor's own plugins (App, Health) answer as they do in a browser. `__away()` and `__back()` leave the app and
+ * come back to it, as for Android's settings: Capacitor's App says "resume" as the page shows again.
+ */
+function androidApp(answers) {
+  window.__native = { answers, calls: [] };
+  window.CapacitorCustomPlatform = { name: "android" };
+  const anyMethod = { find: () => ({ rtype: "promise" }) };
+  window.Capacitor = {
+    isNativePlatform: () => true,
+    PluginHeaders: ["RestTimer", "GymSync", "GymWidget", "Speech", "AppUpdate", "GoogleSignIn"].map((name) => ({ name, methods: anyMethod })),
+    nativePromise: async (plugin, method) => {
+      window.__native.calls.push(`${plugin}.${method}`);
+      return window.__native.answers[plugin]?.[method] ?? {};
+    },
+  };
+  let hidden = false;
+  Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+  const show = (h) => {
+    hidden = h;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  window.__away = () => show(true);
+  window.__back = () => show(false);
+}
+
+// Settings → Rest timer & effort in the Android app: on a Samsung, the Samsung timer card, an experiment that says
+// so, off until switched on and then kept on this phone; on any other phone, not there at all.
+async function samsungCard({ browser, base, check }) {
+  const auth = session("00000000-0000-4000-8000-000000000037", "2026-08-26T05:00:00Z", "t@example.com");
+  const phone = async (samsung) => {
+    const { ctx, page, db } = await open(browser, base, { auth, db: onDefaultPlan(), url: null });
+    await ctx.addInitScript(androidApp, { RestTimer: { checkPermissions: { notifications: "granted" }, isSamsung: { samsung } } });
+    await page.goto(base);
+    await ready(page);
+    await openTab(page, "settings");
+    await openSetting(page, "setTraining");
+    // Asked once Settings opens; the row, if any, shows once the answer's in.
+    await until(() => page.evaluate(() => window.__native.calls.includes("RestTimer.isSamsung")));
+    return { ctx, page, db };
+  };
+  const { ctx, page, db } = await phone(true);
+  const sw = page.locator("#samsungCard");
+  await sw.waitFor();
+  check(
+    "a Samsung: Samsung timer card, an experiment Samsung may ignore, off",
+    (await flat(page.locator("#samsungT"))) === "Samsung timer card (experimental)" &&
+      (await flat(page.locator("#samsungD"))).startsWith("An experiment:") &&
+      (await flat(page.locator("#samsungD"))).includes("Samsung may ignore it") &&
+      (await sw.getAttribute("aria-checked")) === "false",
+    `${await flat(sw)} [${await sw.getAttribute("aria-checked")}]`,
+  );
+  await sw.click();
+  await until(async () => (await sw.getAttribute("aria-checked")) === "true");
+  check("switched on, and kept on this phone", (await page.evaluate(() => localStorage.getItem("gymlog.samsungCard.v1"))) === "true", await page.evaluate(() => localStorage.getItem("gymlog.samsungCard.v1")));
+  // A reload opens where it was, in Settings.
+  await page.reload();
+  await page.waitForSelector("#settingsView", { timeout: 15000 });
+  await openSetting(page, "setTraining");
+  await sw.waitFor();
+  check("still on after a reload", (await sw.getAttribute("aria-checked")) === "true", await sw.getAttribute("aria-checked"));
+  check("a Samsung: no console errors", page.errors.length === 0 && db.unexpected.length === 0, [...page.errors, ...db.unexpected].join(" | "));
+  await ctx.close();
+
+  const other = await phone(false);
+  const training = await flat(other.page.locator("#setTraining"));
+  check("another phone: no Samsung timer card in Rest timer & effort", training.length > 0 && !training.includes("Samsung"), training);
+  await other.ctx.close();
 }

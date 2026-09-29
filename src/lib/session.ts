@@ -137,8 +137,8 @@ export interface LiveWorkout {
   title: string;
   /** How far it's got, by the workout's own steps: a superset is one, and a skipped lift counts as done. */
   text: string;
-  /** The same in a few characters, "2/5 done", for Samsung's Now Bar, which shows a short text beside the app's icon
-   *  rather than the clock (RestAlarm.kt). Empty with no exercises yet. */
+  /** The same in a few characters, "2/5 done": the short text set for Samsung's Now Bar below Android 17, and from 17
+   *  the source of the exercises-done metric (RestAlarm.kt). Empty with no exercises yet. */
   chip: string;
   /** When its clock would have started with no pauses, ms: the phone counts up from here on its own. */
   since: number;
