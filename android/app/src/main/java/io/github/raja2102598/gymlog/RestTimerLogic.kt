@@ -1,5 +1,9 @@
 package io.github.raja2102598.gymlog
 
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 /**
  * The rest timer's background alert (src/native/rest.ts): the small decisions behind it, with no Android types, so
  * they're tested on the plain JVM (RestTimerLogicTest), like AppUpdateLogic and SpeechErrors. RestAlarm and
@@ -19,11 +23,39 @@ object RestTimerLogic {
     /** Milliseconds left until `endAt`, never negative (a call that arrives after the moment it was for). */
     fun remainingMs(endAt: Long, now: Long): Long = maxOf(0L, endAt - now)
 
-    /** The notification's title: the lift a set was just logged on, or a generic one for a call with none. */
-    fun titleFor(lift: String): String = lift.ifBlank { "Rest timer" }
+    /** The countdown's title: what's happening, and after which lift. Its chronometer, counting down on its own
+     *  (setUsesChronometer), is the time left, so no number here needs updating. */
+    fun restTitle(lift: String): String = if (lift.isBlank()) "Resting" else "Resting · ${lift.trim()}"
 
-    /** The notification's line: short and plain either way, since Android's own chrome (the app's name and icon)
-     *  already says whose alert this is, and the running one counts down on its own (setUsesChronometer) rather
-     *  than saying a number that would need updating here. */
-    fun textFor(ended: Boolean): String = if (ended) "Rest over" else "Resting"
+    /** The countdown's line: what comes after it, as the page words it (lib/session.ts, afterRest: "Next: set 3 of
+     *  4"), or else when it's over, `endsAt` being clockTime's. */
+    fun restText(next: String, endsAt: String): String = next.trim().ifEmpty { "Rest over at $endsAt" }
+
+    /** "Rest over", said by the alarm's own notification. */
+    const val OVER_TITLE = "Rest over"
+
+    /** Its line: which lift, and what comes next, whichever of them there is. */
+    fun overText(lift: String, next: String): String =
+        listOf(lift.trim(), next.trim()).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "Time for your next set" }
+
+    /** The countdown's short text beside the app's icon in Samsung's Now Bar (shortFor decides whether it's used):
+     *  when it's over. It never needs changing, which a time left would every second, and it's never out of date,
+     *  since Android takes the countdown down at that moment (RestAlarm.showRest's setTimeoutAfter). */
+    fun restShort(endsAt: String): String = "Till $endsAt"
+
+    /**
+     * The Live Update's short critical text (Notification.Builder.setShortCriticalText), or null for none. Samsung's
+     * Now Bar (One UI 8) puts this beside the app's icon, and without it only the app's name: it doesn't show the
+     * chronometer the notification counts with. Android's own status bar chip does show that chronometer, ticking,
+     * unless a short critical text is set, which it shows instead (SystemUI's NotifChipsViewModel): a fixed text
+     * there would only be worse than the clock, so it's for Samsung's phones only.
+     */
+    fun shortFor(manufacturer: String, text: String): String? =
+        text.trim().takeIf { it.isNotEmpty() && manufacturer.trim().equals("samsung", ignoreCase = true) }
+
+    /** A moment as the phone's clock shows it, without AM/PM ("9:05", or "21:05" on a 24-hour phone): short enough
+     *  for the Now Bar and a notification's line, and a rest is never long enough for the half of the day to be in
+     *  doubt. */
+    fun clockTime(epochMs: Long, zone: ZoneId, is24Hour: Boolean): String =
+        DateTimeFormatter.ofPattern(if (is24Hour) "H:mm" else "h:mm").format(Instant.ofEpochMilli(epochMs).atZone(zone))
 }

@@ -51,7 +51,7 @@ The rest timer started by logging a set keeps counting with the app in the backg
 
 ## Lock screen and Samsung's Now Bar
 
-With the app in the background or the phone locked, a workout under way stays in view. It shows the session, how many exercises are done, and its clock counting up. While a rest timer runs, it shows the countdown in the same place. Pausing the clock or finishing the workout takes it down. So does coming back to the app, which shows all of it itself. If a workout is left running, Android takes it down once it has run for three hours, the point at which the app counts it as left behind.
+With the app in the background or the phone locked, a workout under way stays in view. It shows the session, how many exercises are done, and its clock counting up, even past midnight for a workout started before it. While a rest timer runs, its countdown shows too, first: *Resting · Leg Press*, with what's next (*Next: set 3 of 4*). At zero Android takes the countdown down by itself and the workout's clock is still there, whenever the **Rest over** alert arrives. Pausing the clock or finishing the workout takes it down. So does coming back to the app, which shows all of it itself. If a workout is left running, Android takes it down once it has run for three hours, the point at which the app counts it as left behind.
 
 Both use Android 16's standard *Live Updates* (Google's API, not a Samsung one):
 
@@ -59,7 +59,10 @@ Both use Android 16's standard *Live Updates* (Google's API, not a Samsung one):
 - **Samsung phones:** they're notifications with a running clock on the lock screen. One UI 8 puts other apps' Live
   Updates in the **Now Bar** only for apps Samsung has approved. To see Gym Log there on your own phone, turn on
   **Developer options → Live notifications for all apps** (tap **Build number** seven times, under **Settings → About
-  phone → Software information**, to show Developer options).
+  phone → Software information**, to show Developer options). The Now Bar shows a short text beside Gym Log's icon,
+  not the running clock (without one it shows only *Gym Log*): when the rest ends while resting (*Till 10:14*), and
+  otherwise how many exercises are done (*2/5 done*). The clock itself is in the notification, where One UI draws it
+  right after the title.
 - **Earlier versions:** they're ordinary notifications.
 
 Samsung also has an API of its own for the Now Bar, *Live Notifications*, but it only works for apps on Samsung's
