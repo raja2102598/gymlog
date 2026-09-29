@@ -71,8 +71,18 @@ const editing = () => {
 // Home-screen shortcuts (public/manifest.webmanifest) open /?go=today, weight or steps.
 const shortcut = () => (typeof location === "undefined" ? null : new URL(location.href).searchParams.get("go"));
 
-/** The workout under way, from its address: the day it's for is Train's selected day. */
+/** The workout under way, from its address: the day it's for is Train's selected day, and the lift on screen its step. */
 const WORKOUT_DAY_KEY = "gymlog.workoutDay.v1";
+const WORKOUT_AT_KEY = "gymlog.workoutAt.v1";
+/** What was kept for the workout, when the app reopens on it (a reload, the app coming back); null otherwise. */
+const keptForWorkout = (key: string): string | null => {
+  if (typeof location === "undefined" || routeOf(location.hash).view !== "workout") return null;
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null; // no session storage: today, from its first lift not done
+  }
+};
 
 /** The app, behind sign-in: four tabs (Home, Train, Progress, Health) along the bottom, and screens pushed over them
  *  (Settings, a Health metric, a lift, the plan editor, My gym, the workout) with a back chevron. The data lives in
@@ -90,22 +100,18 @@ export default function GymLog() {
   });
   const [sel, setSel] = useState<DayKey>(() => {
     // Reopened on the workout (a reload, the app coming back): the day it was for.
-    if (typeof location !== "undefined" && routeOf(location.hash).view === "workout") {
-      try {
-        const d = sessionStorage.getItem(WORKOUT_DAY_KEY);
-        if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-      } catch {
-        /* no session storage: today */
-      }
-    }
-    return todayKey();
+    const d = keptForWorkout(WORKOUT_DAY_KEY);
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayKey();
   });
   const [healthDay, setHealthDay] = useState<DayKey>(todayKey);
   const [menu, setMenu] = useState<LiftMenu | null>(null);
   const [warmOpen, setWarmOpen] = useState<DayKey | null>(null);
-  /** The block the workout opens on: a lift tapped in Train, or where it left off. */
   const [editDay, setEditDay] = useState(() => wdIndex(todayKey()));
-  const [workoutAt, setWorkoutAt] = useState<number | null>(null);
+  /** The block the workout opens on: a lift tapped in Train, or where it left off (after a reload too). */
+  const [workoutAt, setWorkoutAt] = useState<number | null>(() => {
+    const at = keptForWorkout(WORKOUT_AT_KEY);
+    return at && /^\d+$/.test(at) ? +at : null;
+  });
   const [, setToday] = useState(todayKey);
   const [go] = useState(shortcut);
   // A backup restored on the first-run screen: under way, and then what it brought in, for Settings → Your data.
@@ -178,15 +184,17 @@ export default function GymLog() {
     return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
   }, []);
 
-  // The workout's day survives a reload of its screen.
+  // The workout's day, and the lift it's on, survive a reload of its screen.
   useEffect(() => {
     if (route.view !== "workout") return;
     try {
       sessionStorage.setItem(WORKOUT_DAY_KEY, sel);
+      if (workoutAt == null) sessionStorage.removeItem(WORKOUT_AT_KEY);
+      else sessionStorage.setItem(WORKOUT_AT_KEY, String(workoutAt));
     } catch {
       /* nothing to keep it in */
     }
-  }, [route.view, sel]);
+  }, [route.view, sel, workoutAt]);
 
   const signedIn = store.auth === "signedIn";
 
@@ -317,6 +325,8 @@ export default function GymLog() {
   const finishWorkout = () => {
     keepRunsInMemory(store.demo);
     endRun(sel);
+    // The rest after its last set goes with the clock: there's no next set to rest for, on Home or in a notification.
+    if (store.rest?.day === sel) store.skipRest();
     navigate({ view: "workout", done: true });
   };
   const doneWorkout = () => {

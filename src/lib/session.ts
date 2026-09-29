@@ -1,7 +1,7 @@
 /* What a day's session adds up to, for the screens that summarise it: Home's workout card, Train's session card, the
  * active workout and Workout complete. Reads the store; changes nothing. */
 import { addDays, DOW, mondayOf, wdIndex } from "./dates";
-import { e1rm, isStraightSet, isWorkingSet, repRange, type RecordKind } from "./stats";
+import { e1rm, isWorkingSet, repRange, type RecordKind } from "./stats";
 import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem } from "./store";
 import type { DayKey, PlanExercise } from "./types";
 import { runMs, runOf, STALE_RUN_MS } from "./workout";
@@ -78,7 +78,8 @@ export function tintOf(store: GymStore, name: string, x?: Pick<PlanExercise, "li
   return "t-brand";
 }
 
-/** A day's lifting in numbers: working sets logged and planned, and kg lifted (weight × reps of straight sets). */
+/** A day's lifting in numbers: working sets logged and planned, and kg lifted (weight × reps of every working set: a
+ *  drop set adds to it, as it does to a lift's volume on Progress, and a warm-up never does). */
 export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: number; kg: number } {
   const e = store.entry(k);
   let sets = 0, planned = 0, kg = 0;
@@ -88,7 +89,7 @@ export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: 
     for (const s of setsOf(r)) {
       if (!isWorkingSet(s) || !(s.reps ?? 0)) continue;
       sets++;
-      if (isStraightSet(s) && s.kg) kg += s.kg * (s.reps ?? 0);
+      if (s.kg) kg += s.kg * (s.reps ?? 0);
     }
   }
   return { sets, planned, kg: Math.round(kg) };
