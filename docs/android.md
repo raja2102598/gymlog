@@ -46,7 +46,8 @@ It updates itself as you log a set, tick a lift or a new day begins, and settles
 The rest timer started by logging a set keeps counting with the app in the background or closed: a quiet notification counts down, and when it reaches zero a second one says **Rest over**, with a sound and a buzz. While the timer runs, the home-screen widget counts it down too (*Rest 1:12*).
 
 - **Notifications:** Android 13 and later ask first. Tap **Allow** under **Settings → Rest timer & effort → Rest timer notifications**. If Android has stopped asking, turn notifications on for Gym Log in the phone's own settings. Older versions allow them when the app is installed.
-- **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 13 and later leave off by default). Without it, Android may deliver it a little late while the phone is idle. The countdown in the app is exact either way.
+- **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 14 and later leave off until you allow it). Without it, Android may deliver it a few minutes late while the phone is idle. The countdown in the app is exact either way. On Android 12 and later, once notifications are on, **Alarms & reminders** under **Rest timer notifications** says which it is, and while it's off, **Open settings** takes you to that page for Gym Log (or Gym Log's app info, on a phone without it).
+- **Coming back** from Android's settings, **Rest timer notifications**, **Alarms & reminders** and **Live Updates** (**Now Bar** on a Samsung; both below) check again, so they show what you changed there.
 - **Notification channels** in the phone's settings let you silence each: *Rest timer running* for the countdown and *Workout under way* for the workout's clock (neither makes a sound), and *Rest over* for the alert.
 
 ## Lock screen and Samsung's Now Bar
@@ -67,13 +68,25 @@ Both use Android's standard *Live Updates* (Google's API, not a Samsung one):
 - **Earlier versions:** they're ordinary notifications.
 
 Live Updates need the same notification permission as the rest timer, and the phone's own settings can turn them off
-for Gym Log, which leaves them ordinary notifications.
+for Gym Log, which leaves them ordinary notifications. On Android 16 and later, once notifications are on, **Settings →
+Rest timer & effort → Live Updates** says whether they're allowed (`NotificationManager.canPostPromotedNotifications()`),
+and while they're off, **Open settings** takes you to Android's Live Updates page for Gym Log
+(`Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS`), or on a phone without it, Gym Log's notification settings, then
+its app info. `ACTION_MANAGE_APP_PROMOTED_NOTIFICATIONS`, a page for every app's, isn't in the SDK (36 or 37), so
+there's none to fall back to.
 
 ### Samsung's Now Bar
 
 One UI puts other apps' Live Updates in the **Now Bar** only for apps Samsung has approved, or with **Developer options
 → Live notifications for all apps** on (tap **Build number** seven times, under **Settings → About phone → Software
 information**, to show Developer options). Without that, they're notifications with a running clock on the lock screen.
+
+One UI answers Android's own question, whether Gym Log may post Live Updates, with *no* even while the Now Bar shows
+Gym Log. So on a Samsung, Settings doesn't say Live Updates are off: in their place under **Rest timer notifications**
+is **Now Bar**, which says Samsung shows Gym Log's clock and countdown there with **Live notifications for all apps**
+on. Gym Log can't read that switch, or turn it on, so the row always offers **Open settings**, which opens Developer
+options (or, on a phone where that won't open, Gym Log's notification settings, then its app info). With Developer
+options not yet shown, what that page does is for your phone to say.
 
 - **One UI 8.5 and later** also let a Live Update in without either when it carries two extras Samsung's own pipeline
   reads, `android.ongoingActivityNoti.automation` (true) and `android.ongoingActivityNoti.automationPackage` (the app's
