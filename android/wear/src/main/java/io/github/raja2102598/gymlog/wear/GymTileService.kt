@@ -125,7 +125,7 @@ class GymTileService : Material3TileService(allowDynamicTheme = false, defaultCo
         private val ticking = DynamicInstant.platformTimeWithSecondsPrecision()
         private val TWO = DynamicInt32.IntFormatter.Builder().setMinIntegerDigits(2).build()
 
-        /** The workout's clock counting up from `now` as it stands, unless paused, when it stays where it is. */
+        /** The workout's clock counting up from where it stands at `at`; null when paused, when it stays there. */
         private fun clock(run: Run, at: Long): DynamicString? {
             if (run.pausedAt != null) return null
             val zero = DynamicInstant.withSecondsPrecision(Instant.ofEpochMilli(at - TimerLogic.runMs(run, at)))
