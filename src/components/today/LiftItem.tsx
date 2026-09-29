@@ -1,6 +1,6 @@
 "use client";
 import { Check, CircleHelp, Ellipsis, Mic, Trophy } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { ask } from "@/components/ds/Ask";
 import { useLibrary } from "@/components/library/LibraryContext";
 import { SyncedInput } from "@/components/ui/SyncedField";
@@ -71,6 +71,7 @@ interface Props {
 export interface LiftModel {
   item: Item;
   i: number;
+  day: DayKey;
   name: string;
   x: PlanExercise;
   r: Partial<LiftLog>;
@@ -93,6 +94,14 @@ export interface LiftModel {
   inc: number;
   /** How to do the lift, when there's anything to say and it's done as planned. */
   cue: string;
+  /** The working set whose box has the cursor, or null: it's being typed in (see logged). */
+  typing: number | null;
+  /** The cursor going into set j's boxes, and out of them. */
+  typeIn: (j: number) => void;
+  typeOut: (j: number) => void;
+  /** The weight set `j` of `sets` takes when it gets its reps without one, typed or from Complete set N alike: the
+   *  set before it's, or else the suggestion in its box (the next weight, or last time's). */
+  kgFor: (sets: Partial<SetLog>[], j: number) => number | null;
   edit: (fn: (r: LiftLog) => void, immediate: boolean) => void;
   setField: (j: number, f: "reps" | "kg", value: string) => void;
   setInfo: (j: number, patch: Partial<SetLog>) => void;
@@ -137,9 +146,11 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
   const allSets = setsOf(r as LiftLog), warmSets = allSets.filter((s) => !isWorkingSet(s));
   const sets = allSets.filter(isWorkingSet), min = extra ? 1 : minSets(target);
   const edit = (fn: (r: LiftLog) => void, immediate: boolean) => void store.editLift(sel, name, fn, immediate);
+  const t = store.typing;
   const m: LiftModel = {
     item,
     i,
+    day: sel,
     name,
     x,
     r,
@@ -156,6 +167,10 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
     inc: store.gridFor(load)?.inc ?? 2.5,
     // How to do the lift: folded, since it's the same every week. Warnings (e.g. a KNEE NOTE) always show.
     cue: r.skipped || r.swap ? "" : x.cue,
+    typing: t && t.day === sel && t.lift === name ? t.set : null,
+    typeIn: (j) => store.typeIn({ day: sel, lift: name, set: j }),
+    typeOut: (j) => store.typeOut({ day: sel, lift: name, set: j }),
+    kgFor: (sets, j) => (j > 0 ? sets[j - 1]?.kg : null) ?? num(store.placeholders(x, last, j, next)[1]),
     edit,
     setField(j, f, value) {
       // Whether these reps can start a rest: set once inside edit(), against the state just before this change.
@@ -166,8 +181,10 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
         while (work.length <= j) work.push({ reps: null, kg: null });
         const v = num(value), hadReps = work[j].reps != null;
         work[j][f] = v == null ? null : f === "kg" ? Math.round(v * 2) / 2 : Math.max(0, Math.round(v));
-        // A new set usually uses the same weight as the one before it.
-        if (f === "reps" && v != null && j > 0 && work[j].kg == null && work[j - 1].kg != null) work[j].kg = work[j - 1].kg;
+        // A new set usually uses the same weight as the one before it, and the first the suggested one: reps typed
+        // without a weight give it the one Complete set N would, rather than log none under a suggestion that looks
+        // like one.
+        if (f === "reps" && v != null && work[j].kg == null) work[j].kg = m.kgFor(work, j);
         // When a set gets its reps, whether its kg came first or not: not again as more digits go in ("1", then
         // "12"), and not for a correction to a set with a later one already logged.
         if (f === "reps" && v != null && !hadReps && !work.slice(j + 1).some((s) => s.reps != null)) first = true;
@@ -299,21 +316,46 @@ function lastSet(last: LastDone | null, j: number): string {
  *  the suggestion in its box (the next weight), and the target reps. The reps go in last, so the rest timer starts
  *  on the finished set. With no reps to suggest, the reps box takes focus instead. */
 export function logSet(store: GymStore, m: LiftModel, j: number) {
-  const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = store.placeholders(m.x, m.last, j, m.next);
+  const s: Partial<SetLog> = m.sets[j] || {}, [phR] = store.placeholders(m.x, m.last, j, m.next);
   const reps = num(s.reps ?? "") || num(phR);
   if (!reps || reps <= 0) {
     document.getElementById(`s${m.i}_${j}_r`)?.focus();
     return;
   }
   if (s.kg == null) {
-    const kg = (j > 0 ? m.sets[j - 1]?.kg : null) ?? num(phK);
+    const kg = m.kgFor(m.sets, j);
     if (kg != null) m.setField(j, "kg", String(kg));
   }
   if (!((s.reps ?? 0) > 0)) m.setField(j, "reps", String(reps));
 }
 
-/** The first working set with no reps yet: the one the workout is on. */
+/** Whether set `j` shows as logged: it has reps, and isn't being typed in. What's typed is saved as it goes in, but
+ *  the set counts once the cursor leaves it or it's completed: otherwise the "1" of "12" would log it, turning its
+ *  check into Undo and Complete set N into the next set's under the thumb that was on its way to complete it. */
+export const logged = (m: LiftModel, j: number) => (m.sets[j]?.reps ?? 0) > 0 && m.typing !== j;
+
+/** Completes set `j`, from its check or Complete set N: the keyboard goes, and the set is logged as it stands
+ *  (logSet). The cursor leaves first, so the boxes show what's saved: a box with the cursor keeps what's typed in it
+ *  (SyncedInput), and would go on showing the suggestion for reps filled in from it. */
+export function completeSet(store: GymStore, m: LiftModel, j: number) {
+  const at = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null);
+  if (at?.dataset?.set) at.blur();
+  store.typeOut();
+  logSet(store, m, j);
+}
+
+/** A set's check: it completes the set, or clears a logged one's reps. Never one being typed in: that's completed as
+ *  typed, even a logged set being changed. */
+export const checkSet = (store: GymStore, m: LiftModel, j: number) => (logged(m, j) ? m.setField(j, "reps", "") : completeSet(store, m, j));
+
+/** For a button that completes a set (its check, Complete set N): pressing it leaves the cursor, and the phone's
+ *  keyboard, in the box being typed in. Taking them would log that set before the tap landed, and the button would
+ *  then act on what it had turned into (see logged); completeSet closes the keyboard itself. */
+export const keepCursor = (ev: MouseEvent) => ev.preventDefault();
+
+/** The set the workout is on: the one being typed in, or else the first working set with no reps yet. */
 export const nextSet = (m: LiftModel) => {
+  if (m.typing != null && m.typing < m.rows) return m.typing;
   for (let j = 0; j < m.rows; j++) if (!((m.sets[j]?.reps ?? 0) > 0)) return j;
   return -1;
 };
@@ -632,9 +674,11 @@ export function SetHead({ tag }: { tag?: boolean }) {
 }
 
 /** One set's row (SetRow spec): its number (the button for its menu: kind, effort and plates), last time's set,
- *  kg and reps, and a 44px check. Done rows sit on brand-row with a filled check; the active row (the next set) has
- *  outlined boxes; later ones are muted. The boxes show the suggestion (next weight, target reps) until typed in, and
- *  the check logs it. In a superset, `tag` (A1) stands in the number's place, and the round it's in gives the set. */
+ *  kg and reps, and a 44px check. Done rows sit on brand-row with a filled check; the active row (the next set, or
+ *  the one being typed in) has outlined boxes; later ones are muted. The boxes show the suggestion (next weight,
+ *  target reps) in grey until typed in, and what's typed or logged in full ink. The check completes the set, as typed
+ *  and with the suggestion for the rest; on a logged set, it clears it. In a superset, `tag` (A1) stands in the
+ *  number's place, and the round it's in gives the set. */
 export function SetRow({
   m,
   j,
@@ -653,9 +697,11 @@ export function SetRow({
   onMenu: () => void;
 }) {
   const store = useGym();
-  const { i, did, x, last, next } = m;
+  const { i, did, x, last, next, day, name } = m;
   const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = store.placeholders(x, last, j, next), pr = marks.get(`${did}|${j}`);
-  const menuId = `sm${i}_${j}`, done = (s.reps ?? 0) > 0;
+  const menuId = `sm${i}_${j}`, done = logged(m, j);
+  // A row taken away with the cursor in it (− Set, going on to the next exercise) never hears the cursor leave.
+  useEffect(() => () => store.typeOut({ day, lift: name, set: j }), [store, day, name, j]);
   return (
     <>
       <div className={cx("srow set", done ? "done logged" : active ? "active" : "up", pr && "pr")}>
@@ -668,9 +714,12 @@ export function SetRow({
           inputMode="decimal"
           min="0"
           step="0.5"
-          placeholder={phK}
+          // A logged set shows what was logged: with no weight, nothing, not a suggestion that would pass for one.
+          placeholder={done ? "" : phK}
           value={s.kg}
           aria-label={`${did}, set ${j + 1}, weight in kg`}
+          onFocus={() => m.typeIn(j)}
+          onBlur={() => m.typeOut(j)}
           onChange={(ev) => m.setField(j, "kg", ev.target.value)}
         />
         <SyncedInput
@@ -683,6 +732,8 @@ export function SetRow({
           placeholder={phR}
           value={s.reps}
           aria-label={`${did}, set ${j + 1}, reps`}
+          onFocus={() => m.typeIn(j)}
+          onBlur={() => m.typeOut(j)}
           onChange={(ev) => m.setField(j, "reps", ev.target.value)}
         />
         <button
@@ -691,7 +742,8 @@ export function SetRow({
           data-check={`${i}:${j}`}
           aria-pressed={done}
           aria-label={done ? `${did}, set ${j + 1} done. Undo` : `Mark ${did}, set ${j + 1} done`}
-          onClick={() => (done ? m.setField(j, "reps", "") : logSet(store, m, j))}
+          onMouseDown={keepCursor}
+          onClick={() => checkSet(store, m, j)}
         >
           {done ? <Check size={22} strokeWidth={3} aria-hidden="true" /> : null}
         </button>

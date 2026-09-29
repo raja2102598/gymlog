@@ -49,8 +49,11 @@ export function supersetModels(store: GymStore, sel: DayKey, lifts: { item: Item
   return lifts.map(({ item, i }) => liftModel(store, sel, item, i, entry, onReps));
 }
 
-/** The next set to do in a superset, round by round: [lift, set], or null once every round is logged. */
+/** The set a superset is on: [lift, set] for the one being typed in (see logged), or else the next to do round by
+ *  round, or null once every round is logged. */
 export function nextInRounds(ms: LiftModel[]): [number, number] | null {
+  const t = ms.findIndex((m) => !m.r.skipped && m.typing != null && m.typing < m.rows);
+  if (t >= 0) return [t, ms[t].typing!];
   const rounds = Math.max(0, ...ms.map((m) => (m.r.skipped ? 0 : m.rows)));
   for (let j = 0; j < rounds; j++)
     for (let n = 0; n < ms.length; n++) if (!ms[n].r.skipped && j < ms[n].rows && !((ms[n].sets[j]?.reps ?? 0) > 0)) return [n, j];
