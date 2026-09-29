@@ -558,7 +558,12 @@ export function LiftHead({
   }
 
   const rest = restSecFor(store.plan, x), tempo = store.plan.tempo.replace(/[:/-]/g, "·");
-  const meta = [target.sets || target.reps ? targetWords(target) : "", m.item.extra ? "" : `rest ${mmss(rest)}`, tempo && !m.item.extra ? `tempo ${tempo}` : ""].filter(Boolean).join(" · ");
+  // Each part kept whole ("tempo 3·1·2·1", not "tempo" at the end of one line and its numbers on the next): a line
+  // breaks only between them.
+  const meta = [target.sets || target.reps ? targetWords(target) : "", m.item.extra ? "" : `rest ${mmss(rest)}`, tempo && !m.item.extra ? `tempo ${tempo}` : ""]
+    .filter(Boolean)
+    .map((part) => part.replace(/ /g, "\u00a0"))
+    .join(" · ");
   const lastTop = last ? topKg(setsOf(last.r).filter(isWorkingSet)) : null, cur = r.kg ?? null;
   return (
     <>
@@ -613,14 +618,14 @@ export function LiftHead({
   );
 }
 
-/** The set table's header row. */
+/** The set table's header row: a .srow like the sets under it, so each heading takes its column's place and centre. */
 export function SetHead({ tag }: { tag?: boolean }) {
   return (
     <div className="srow shead" aria-hidden="true">
       <span>{tag ? "" : "Set"}</span>
       <span>Last</span>
-      <span className="c">kg</span>
-      <span className="c">Reps</span>
+      <span>kg</span>
+      <span>Reps</span>
       <span />
     </div>
   );
