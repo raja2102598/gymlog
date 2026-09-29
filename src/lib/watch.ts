@@ -8,10 +8,9 @@
 import { addDays, todayKey } from "./dates";
 import { num } from "./format";
 import { blockRest, supersetModels, type LiftModel } from "./lift";
-import { workoutUnderWay } from "./session";
 import type { GymStore } from "./store";
 import type { DayKey, SetType } from "./types";
-import { currentRun, finishWorkout, pauseRun, resumeRun, startRun } from "./workout";
+import { currentRun, finishWorkout, pauseRun, resumeRun, runMs, STALE_RUN_MS, startRun } from "./workout";
 
 /** The version of these shapes, `v` in each: either side ignores one it doesn't know. */
 export const WATCH_V = 1;
@@ -128,9 +127,11 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
   if (!signedIn) return { v: WATCH_V, sentAt: now, signedIn, applied, run: null, rest: null, days: [] };
   const r = currentRun(), rest = store.rest, today = todayKey();
   const dates = Array.from({ length: 7 }, (_, n) => addDays(today, n));
-  // A workout under way for another day, started before midnight or opened for a day gone by, stays the one the watch
-  // is on, as it does on the lock screen and the widget, until it's paused, finished or left behind.
-  if (r && workoutUnderWay(store, now) && !dates.includes(r.day)) dates.unshift(r.day);
+  // A workout for another day, started before midnight or opened for a day gone by, stays the one the watch is on
+  // until it's finished or left behind (docs/watch.md): paused too, since a pause at 00:10 is still that workout, and
+  // the watch would otherwise jump to the next day's session in the middle of it. A paused clock is never left behind.
+  const left = r != null && r.pausedAt == null && runMs(r, now) >= STALE_RUN_MS;
+  if (r && !r.endedAt && !left && !dates.includes(r.day)) dates.unshift(r.day);
   return {
     v: WATCH_V,
     sentAt: now,

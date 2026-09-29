@@ -10,7 +10,7 @@ import { wdIndex } from "@/lib/dates";
 import type { GymStore } from "@/lib/store";
 import type { LiftLog } from "@/lib/types";
 import { watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
-import { currentRun, keepRunsInMemory, pauseRun, runsFor, startRun } from "@/lib/workout";
+import { currentRun, endRun, keepRunsInMemory, pauseRun, resumeRun, runsFor, startRun } from "@/lib/workout";
 import { ACK_MS, APPLIED_KEPT, PUBLISH_MS, startWatch, WATCH_KEY } from "@/native/watch";
 import { atWednesdayNoon, day, LAST, lift, memoryStorage, storeWith, WED } from "./helpers";
 import { app, watch } from "./nativeMocks";
@@ -160,14 +160,20 @@ describe("what the watch is sent", () => {
     });
   });
 
-  it("puts a workout under way for another day first: one started before midnight stays the one it's on until paused", () => {
+  it("puts a workout for another day first: one started before midnight stays the one it's on, paused too, until finished or left behind", () => {
     const TUE = "2026-09-22", late = new Date(`${WED}T00:30:00`).getTime();
     vi.setSystemTime(late);
     const s = signedIn();
     startRun(TUE, late - 50 * MIN); // Tuesday's Pull, started at 23:40
     expect(watchState(s, []).days.map((d) => d.date).slice(0, 2)).toEqual([TUE, WED]);
     expect(watchState(s, []).days[0]).toMatchObject({ title: "Pull", blocks: expect.arrayContaining([[expect.objectContaining({ key: "Lat Pulldown" })]]) });
-    pauseRun(TUE, late);
+    pauseRun(TUE, late); // paused at 00:30: still Tuesday's workout
+    expect(watchState(s, []).days[0].date).toBe(TUE);
+    resumeRun(TUE, late);
+    vi.setSystemTime(late + 3 * 60 * MIN); // left running for three hours: over
+    expect(watchState(s, []).days[0].date).toBe(WED);
+    vi.setSystemTime(late);
+    endRun(TUE, late); // finished
     expect(watchState(s, []).days[0].date).toBe(WED);
   });
 
