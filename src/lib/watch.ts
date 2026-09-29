@@ -3,8 +3,9 @@
  * the suggestions in its boxes, its weight step and cue; the day's blocks, cardio, skip and free workout), so the watch
  * has nothing to work out for itself. A command goes through the same change as the tap it stands for (Complete set
  * N, a set's check, ··· Skip today, the cardio's tick, the clock, the rest timer's buttons, Finish), so something done
- * on the wrist counts exactly as it would on the phone, whichever screen the phone is on. native/watch.ts sends the
- * one and takes the others from the app's Watch plugin. */
+ * on the wrist counts exactly as it would on the phone, whichever screen the phone is on. One more has no tap: the
+ * workout's heart rate, measured on the watch, which is kept on the day. native/watch.ts sends the one and takes the
+ * others from the app's Watch plugin. */
 import { addDays, todayKey } from "./dates";
 import { num } from "./format";
 import { blockRest, supersetModels, type LiftModel } from "./lift";
@@ -222,6 +223,20 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
         day,
         (n) => {
           n.cardio = done;
+        },
+        true,
+      );
+      return true;
+    }
+    case "hr": {
+      // The day's heart rate so far, measured on the watch through its workout: each replaces the one before, since
+      // it's the whole of it. Kept on the day for Workout complete.
+      const { avg, max, samples } = c;
+      if (!day || !isNumber(avg) || !isNumber(max) || !isNumber(samples) || samples < 1 || avg < 20 || avg > max || max > 250) return false;
+      store.editDay(
+        day,
+        (n) => {
+          n.hr = { avg: Math.round(avg), max: Math.round(max) };
         },
         true,
       );
