@@ -34,7 +34,7 @@ Today at a glance.
 - **Water** and **Weight:** **+** adds 250 ml of water; the weight's **+** opens a box for today's weight.
 - **Today:** what the day holds: when you woke and how long you slept, workouts other apps recorded, the workout up next, and the cardio after it.
 - **Home-screen shortcuts:** once installed, long-press the app icon for *Home*, *Log weight* or *Log steps* (those two open Train with the field ready).
-- **Home-screen widget:** in the [Android app](android.md#home-screen-widget), add Gym Log from your home screen's widget picker to see today's session and lift count without opening the app. Tap it for Home, or its Log weight and Log steps buttons to jump straight to that field.
+- **Home-screen widget:** in the [Android app](android.md#home-screen-widget), add Gym Log from your home screen's widget picker to see today's session and lift count without opening the app (or, while a workout is under way, that workout's, even past midnight). Tap it for Home, or its Log weight and Log steps buttons to jump straight to that field.
 
 ## Train
 
