@@ -74,7 +74,7 @@ describe("what the watch is sent", () => {
     expect(thu).toEqual({ date: "2026-09-24", title: "Rest", skipped: false, cardio: "Walk - hit 10,000 steps", cardioDone: false, blocks: [] });
   });
 
-  it("gives each lift the rows its card shows, with what Complete set N would log in each: the suggestion, or the weight of the set before it", () => {
+  it("gives each lift the rows its card shows, with what Complete set N would log in each: the suggestion, or the set logged before it", () => {
     const s = signedIn({
       [WED]: day({ cardio: true, exercises: { "Leg Press": { done: false, kg: 50, sets: [{ reps: 10, kg: 50 }] } } }),
       "2026-09-09": day({ exercises: { "Leg Extension": { done: false, kg: 30, sets: [{ reps: 0, kg: 30 }] } } }),
@@ -89,12 +89,12 @@ describe("what the watch is sent", () => {
       cue: "Hips down, curl smoothly, squeeze at bottom.",
       rows: Array(3).fill({ reps: null, kg: null, type: null, sugReps: 10, sugKg: 32.5 }),
     });
-    // Leg Press's first set went at 50 kg rather than the suggested 45: so does the next, and the one after it once
-    // that one's in.
+    // Leg Press's first set went 10 × 50 kg rather than the suggested 45: the sets after it repeat it, not last
+    // week's (10, then 8, at 45).
     expect(liftSent(s, "Leg Press")?.rows).toEqual([
       { reps: 10, kg: 50, type: null, sugReps: 10, sugKg: 45 },
       { reps: null, kg: null, type: null, sugReps: 10, sugKg: 50 },
-      { reps: null, kg: null, type: null, sugReps: 8, sugKg: 45 },
+      { reps: null, kg: null, type: null, sugReps: 10, sugKg: 50 },
     ]);
     expect(watchState(s, []).days[0].cardioDone).toBe(true);
     // Never done: the bottom of its range, and no weight to suggest.

@@ -92,10 +92,10 @@ the watch has nothing to work out for itself beyond moving through it:
 ```
 
 `sugReps` and `sugKg` are what the phone's Complete set would log in an empty row (null for nothing to suggest): the
-watch starts the bezel there. That's the suggestion greyed in the phone's boxes, except that a set takes the weight of
-the set before it once that one is logged (Leg Press's set 1 done at 50 kg rather than the suggested 45: set 2's
-`sugKg` is 50, and set 3's is 45 until set 2 is in). A row after one the watch logged itself takes that one's weight
-the same way.
+watch starts the bezel there. They're the numbers greyed in the phone's boxes: the last set logged before the row, reps
+and weight, a drop set aside (it's lighter on purpose), or before any is logged, last time's set or the next weight
+(`LiftModel.sugFor`, lib/lift.ts). Leg Press's set 1 done at 12 × 50 kg rather than the suggested 10 × 45: sets 2 and
+3 suggest 12 × 50. The rows after one the watch logged itself follow it the same way.
 
 `days` has one more day, first, when a workout is under way for a day that isn't among them: one started before
 midnight, or opened on the phone for a day gone by, while its clock is running or paused (not finished or left

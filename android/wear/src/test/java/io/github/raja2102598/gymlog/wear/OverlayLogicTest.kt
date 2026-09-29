@@ -89,17 +89,20 @@ class OverlayLogicTest {
     }
 
     @Test
-    fun aSetLogsWhatCompleteSetWouldAndTheNextSetFollowsItsWeight() {
+    fun aSetLogsWhatCompleteSetWouldAndTheSetsAfterItRepeatIt() {
         val s = state(day(listOf(lift("Squat", null, null, null))))
         // No weight given: what the phone's Complete set would log, its suggestion.
         assertEquals(SetRow(12, 100.0, null, 12, 100.0), liftIn(apply(s, listOf(set("c-1", "Squat", 0, 12, kg = null))), "Squat").rows[0])
-        // Logged heavier: the next set's suggestion is that weight, as the phone's is once a set is logged.
-        val heavier = liftIn(apply(s, listOf(set("c-1", "Squat", 0, 12, kg = 105.0))), "Squat")
-        assertEquals(105.0, heavier.rows[1].sugKg)
-        assertEquals(100.0, heavier.rows[2].sugKg) // only the set straight after
+        // Logged heavier and for more reps: every empty set after it suggests it, reps and weight, as the phone's do.
+        val heavier = liftIn(apply(s, listOf(set("c-1", "Squat", 0, 15, kg = 105.0))), "Squat")
+        assertEquals(listOf(15 to 105.0, 15 to 105.0), heavier.rows.drop(1).map { it.sugReps to it.sugKg })
         assertEquals(105.0, StepLogic.startKg(heavier, 1)) // where the bezel starts for it
         // Cleared: nothing follows from it.
-        assertEquals(100.0, liftIn(apply(s, listOf(set("c-1", "Squat", 0, null, kg = 105.0))), "Squat").rows[1].sugKg)
+        assertEquals(12 to 100.0, liftIn(apply(s, listOf(set("c-1", "Squat", 0, null, kg = 105.0))), "Squat").rows[1].let { it.sugReps to it.sugKg })
+        // A drop set is lighter on purpose: the set after it repeats the one before it instead.
+        val dropped = s.copy(days = s.days.map { d -> d.copy(blocks = d.blocks.map { b -> b.map { l -> l.copy(rows = l.rows.mapIndexed { i, r -> if (i == 1) r.copy(type = "drop") else r }) } }) })
+        val afterDrop = apply(dropped, listOf(set("c-1", "Squat", 0, 15, kg = 105.0, at = 1), set("c-2", "Squat", 1, 8, kg = 70.0, at = 2)))
+        assertEquals(15 to 105.0, liftIn(afterDrop, "Squat").rows[2].let { it.sugReps to it.sugKg })
     }
 
     @Test

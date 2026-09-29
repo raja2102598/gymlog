@@ -131,15 +131,29 @@ describe("Complete set N", () => {
     expect(nextSet(card(s, "Hamstring Curl"))).toBe(1); // on to set 2
   });
 
-  it("keeps a weight typed first, and a later set takes the weight of the one before it today over the suggestion", () => {
+  it("keeps what's typed, and the sets after a logged one repeat it over the suggestion", () => {
     const s = lastWeek();
     card(s, "Leg Press").setField(0, "kg", "50");
     for (let j = 0; j < 3; j++) logSet(s, card(s, "Leg Press"), j);
-    // Last week's reps, set by set (10, 10, 8), at today's 50 kg rather than the suggested 45.
-    expect(saved(s, "Leg Press")).toEqual([{ reps: 10, kg: 50 }, { reps: 10, kg: 50 }, { reps: 8, kg: 50 }]);
+    // Set 1 takes last week's reps (10) at today's 50 kg rather than the suggested 45; sets 2 and 3 repeat it, not
+    // last week's 10 and 8.
+    expect(saved(s, "Leg Press")).toEqual([{ reps: 10, kg: 50 }, { reps: 10, kg: 50 }, { reps: 10, kg: 50 }]);
     // The planned sets are in: the lift is ticked off, and the button moves on.
     expect(s.entry(WED).exercises["Leg Press"]).toMatchObject({ done: true, autoDone: true });
     expect(nextSet(card(s, "Leg Press"))).toBe(-1);
+  });
+
+  it("repeats the last set logged, reps and weight, and passes over a drop set", () => {
+    const s = lastWeek(), m = () => card(s, "Leg Press");
+    m().setField(0, "kg", "55");
+    m().setField(0, "reps", "12");
+    expect(m().sugFor(m().sets, 1)).toEqual(["12", "55"]); // what set 2's boxes show greyed
+    m().setInfo(0, { type: "drop" }); // set 1 a drop set after all: lighter on purpose, so not repeated
+    expect(m().sugFor(m().sets, 1)).toEqual(["10", "55"]); // last week's reps; the weight typed just before it
+    m().setInfo(0, { type: undefined });
+    logSet(s, m(), 1);
+    logSet(s, m(), 2);
+    expect(saved(s, "Leg Press")).toEqual([{ reps: 12, kg: 55 }, { reps: 12, kg: 55 }, { reps: 12, kg: 55 }]);
   });
 
   it("logs the reps alone for a lift never done, which has no weight to suggest", () => {

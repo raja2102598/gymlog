@@ -142,8 +142,9 @@ object OverlayLogic {
 
     /**
      * A set logged or cleared. A set past the lift's rows, or of a skipped lift, is dropped, as the phone drops it.
-     * With no weight given it takes what Complete set N would log (`sugKg`), and the next row's suggestion becomes the
-     * weight it was logged at, as the phone's does. A lift whose rows all have reps ticks itself done, and clearing
+     * With no weight given it takes what Complete set N would log (`sugKg`), and the empty rows after it suggest the
+     * last logged set before them, reps and weight, a drop set aside, as the phone's do (lib/lift.ts, sugFor): set 1
+     * done at 12 × 105 has sets 2 and 3 suggest 12 × 105. A lift whose rows all have reps ticks itself done, and clearing
      * one unticks it, as the phone's tick follows the planned sets. The rest starts as the phone starts it: when a
      * set gets its first reps with no later one logged, for the lift's rest, or in a superset once the round is
      * complete, for the longest rest of its lifts.
@@ -157,12 +158,11 @@ object OverlayLogic {
         if (j !in lift.rows.indices || lift.skipped) return s
         val hadReps = lift.rows[j].reps != null
         val kg = if (c.reps != null) c.kg ?: lift.rows[j].sugKg else c.kg
-        val rows = lift.rows.mapIndexed { i, r ->
-            when {
-                i == j -> r.copy(reps = c.reps, kg = kg)
-                i == j + 1 && c.reps != null && kg != null -> r.copy(sugKg = kg)
-                else -> r
-            }
+        val set = lift.rows.mapIndexed { i, r -> if (i == j) r.copy(reps = c.reps, kg = kg) else r }
+        val rows = set.mapIndexed { i, r ->
+            // Only the rows after it change; one with nothing logged before it keeps the phone's own suggestion.
+            val before = if (i > j && r.reps == null) set.subList(0, i).lastOrNull { StepLogic.logged(it) && it.type != "drop" } else null
+            if (before == null) r else r.copy(sugReps = before.reps, sugKg = before.kg ?: r.sugKg)
         }
         val done = when {
             lift.skipped -> false

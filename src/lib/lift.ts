@@ -40,8 +40,14 @@ export interface LiftModel {
   /** The cursor going into set j's boxes, and out of them. */
   typeIn: (j: number) => void;
   typeOut: (j: number) => void;
-  /** The weight set `j` of `sets` takes when it gets its reps without one, typed or from Complete set N alike: the
-   *  set before it's, or else the suggestion in its box (the next weight, or last time's). */
+  /** What set `j` of `sets` suggests, [reps, kg] as its boxes show them greyed ("-" for nothing): the numbers of the
+   *  last set before it that's logged, a drop set aside (it's lighter on purpose), so the sets after one repeat it;
+   *  before any, last time's set or the next weight (store.placeholders). What Complete set N logs for what isn't
+   *  typed. */
+  sugFor: (sets: Partial<SetLog>[], j: number) => [string, string];
+  /** The weight set `j` of `sets` takes when it gets its reps without one, typed or from Complete set N alike, and
+   *  the one its box suggests: the last logged set's before it (sugFor), or else the weight typed in the set just
+   *  before it, or else last time's or the next weight. */
   kgFor: (sets: Partial<SetLog>[], j: number) => number | null;
   edit: (fn: (r: LiftLog) => void, immediate: boolean) => void;
   setField: (j: number, f: "reps" | "kg", value: string) => void;
@@ -72,6 +78,9 @@ function tickFollows(r: LiftLog, work: SetLog[], min: number) {
     r.autoDone = true;
   }
 }
+
+/** The last set before set `j` that's logged, a drop set aside: the one the sets after it repeat (LiftModel.sugFor). */
+const loggedBefore = (sets: Partial<SetLog>[], j: number) => sets.slice(0, j).findLast((s) => (s.reps ?? 0) > 0 && s.type !== "drop");
 
 /** A lift's model on a day. `onReps` hears of a set just given its first reps with no later set of the lift logged:
  *  when a rest can start. A lift's own card starts it then; a superset waits for the round. */
@@ -111,7 +120,11 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
     typing: t && t.day === sel && t.lift === name ? t.set : null,
     typeIn: (j) => store.typeIn({ day: sel, lift: name, set: j }),
     typeOut: (j) => store.typeOut({ day: sel, lift: name, set: j }),
-    kgFor: (sets, j) => (j > 0 ? sets[j - 1]?.kg : null) ?? num(store.placeholders(x, last, j, next)[1]),
+    sugFor: (sets, j) => {
+      const reps = loggedBefore(sets, j)?.reps, kg = m.kgFor(sets, j);
+      return [reps != null ? String(reps) : store.placeholders(x, last, j, next)[0], kg != null ? String(kg) : "-"];
+    },
+    kgFor: (sets, j) => loggedBefore(sets, j)?.kg ?? (j > 0 ? sets[j - 1]?.kg : null) ?? num(store.placeholders(x, last, j, next)[1]),
     edit,
     setField(j, f, value) {
       // Whether these reps can start a rest: set once inside edit(), against the state just before this change.

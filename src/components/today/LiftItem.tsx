@@ -116,11 +116,11 @@ function lastSet(last: LastDone | null, j: number): string {
   return s.kg != null && s.reps != null ? `${s.kg} × ${s.reps}` : s.reps != null ? `${s.reps} reps` : s.kg != null ? `${s.kg} kg` : "–";
 }
 
-/** Logs set `j` as it stands: whatever is typed, and for what isn't, the weight of the set before it today or else
- *  the suggestion in its box (the next weight), and the target reps. The reps go in last, so the rest timer starts
+/** Logs set `j` as it stands: whatever is typed, and for what isn't, the suggestion in its box (LiftModel.sugFor: the
+ *  set logged before it today, or else the next weight and the target reps). The reps go in last, so the rest timer starts
  *  on the finished set. With no reps to suggest, the reps box takes focus instead. */
 export function logSet(store: GymStore, m: LiftModel, j: number) {
-  const s: Partial<SetLog> = m.sets[j] || {}, [phR] = store.placeholders(m.x, m.last, j, m.next);
+  const s: Partial<SetLog> = m.sets[j] || {}, [phR] = m.sugFor(m.sets, j);
   const reps = num(s.reps ?? "") || num(phR);
   if (!reps || reps <= 0) {
     document.getElementById(`s${m.i}_${j}_r`)?.focus();
@@ -501,8 +501,8 @@ export function SetRow({
   onMenu: () => void;
 }) {
   const store = useGym();
-  const { i, did, x, last, next, day, name } = m;
-  const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = store.placeholders(x, last, j, next), pr = marks.get(`${did}|${j}`);
+  const { i, did, last, day, name } = m;
+  const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = m.sugFor(m.sets, j), pr = marks.get(`${did}|${j}`);
   const menuId = `sm${i}_${j}`, done = logged(m, j);
   // A row taken away with the cursor in it (− Set, going on to the next exercise) never hears the cursor leave.
   useEffect(() => () => store.typeOut({ day, lift: name, set: j }), [store, day, name, j]);
