@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { wdIndex } from "@/lib/dates";
-import { liveWorkout } from "@/lib/session";
+import { liveWorkout, workoutUnderWay } from "@/lib/session";
 import type { LiftLog } from "@/lib/types";
 import { clearRun, dropStaleRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runOf, runSeconds, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
 import { day, lift, storeWith, WED } from "./helpers";
@@ -123,7 +123,7 @@ describe("the workout on the lock screen", () => {
     startRun(WED, NOON - 30 * MIN);
     pauseRun(WED, NOON - 20 * MIN);
     resumeRun(WED, NOON - 15 * MIN);
-    expect(liveWorkout(s, WED, NOON)).toEqual({ title: "Legs", text: "2 of 5 exercises done", since: NOON - 25 * MIN, forMs: STALE_RUN_MS - 25 * MIN });
+    expect(liveWorkout(s, WED, NOON)).toEqual({ title: "Legs", text: "2 of 5 exercises done", chip: "2/5 done", since: NOON - 25 * MIN, forMs: STALE_RUN_MS - 25 * MIN });
   });
 
   it("counts a superset as one exercise, done when all of it is, and names a free workout by its own name", () => {
@@ -132,11 +132,11 @@ describe("the workout on the lock screen", () => {
     startRun(WED, NOON - MIN);
     expect(liveWorkout(s, WED, NOON)?.text).toBe("0 of 4 exercises done");
     s.logs[WED].exercises["Hamstring Curl"] = lift([[10, 30]]);
-    expect(liveWorkout(s, WED, NOON)?.text).toBe("1 of 4 exercises done");
+    expect(liveWorkout(s, WED, NOON)).toMatchObject({ text: "1 of 4 exercises done", chip: "1/4 done" });
     s.logs[WED] = day({ free: { name: "Hotel gym", lifts: ["Goblet Squat"] } });
     expect(liveWorkout(s, WED, NOON)).toMatchObject({ title: "Hotel gym", text: "0 of 1 exercise done" });
     s.logs[WED] = day({ free: { name: " ", lifts: [] } });
-    expect(liveWorkout(s, WED, NOON)).toMatchObject({ title: "Free workout", text: "No exercises yet" });
+    expect(liveWorkout(s, WED, NOON)).toMatchObject({ title: "Free workout", text: "No exercises yet", chip: "" }); // Samsung's Now Bar: the app's name
   });
 
   it("shows nothing for a clock not started, paused, finished or left behind", () => {
@@ -151,5 +151,16 @@ describe("the workout on the lock screen", () => {
     expect(liveWorkout(s, WED, NOON)).not.toBeNull();
     endRun(WED, NOON);
     expect(liveWorkout(s, WED, NOON)).toBeNull();
+  });
+
+  it("follows the clock whichever day it's for: one started before midnight stays, by the rules above", () => {
+    const TUE = "2026-09-22", s = storeWith({ [TUE]: day({ exercises: { "Lat Pulldown": lift([[8, 50]]) } }) });
+    const LATE = new Date(`${WED}T00:30:00`).getTime();
+    expect(workoutUnderWay(s, LATE)).toBeNull();
+    startRun(TUE, LATE - 50 * MIN); // Tuesday's Pull, started at 23:40
+    expect(liveWorkout(s, WED, LATE)).toBeNull(); // the phone's day has moved on
+    expect(workoutUnderWay(s, LATE)).toMatchObject({ title: "Pull", text: "1 of 6 exercises done", since: LATE - 50 * MIN });
+    pauseRun(TUE, LATE);
+    expect(workoutUnderWay(s, LATE)).toBeNull();
   });
 });

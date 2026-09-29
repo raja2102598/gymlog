@@ -2,9 +2,9 @@
  * active workout and Workout complete. Reads the store; changes nothing. */
 import { addDays, DOW, mondayOf, wdIndex } from "./dates";
 import { e1rm, isStraightSet, isWorkingSet, repRange, type RecordKind } from "./stats";
-import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem } from "./store";
+import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem, type RestTimer } from "./store";
 import type { DayKey, PlanExercise } from "./types";
-import { runMs, runOf, STALE_RUN_MS } from "./workout";
+import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
 
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
 export const dash = (s: string) => s.replace(/\s*-\s*/g, "–");
@@ -136,6 +136,9 @@ export interface LiveWorkout {
   title: string;
   /** How far it's got, by the workout's own steps: a superset is one, and a skipped lift counts as done. */
   text: string;
+  /** The same in a few characters, "2/5 done", for Samsung's Now Bar, which shows a short text beside the app's icon
+   *  rather than the clock (RestAlarm.kt). Empty with no exercises yet. */
+  chip: string;
   /** When its clock would have started with no pauses, ms: the phone counts up from here on its own. */
   since: number;
   /** How long until it would count as left behind (STALE_RUN_MS), when the phone takes it down. */
@@ -154,7 +157,39 @@ export function liveWorkout(store: GymStore, day: DayKey, now = Date.now()): Liv
   return {
     title: e.free ? e.free.name.trim() || "Free workout" : store.planFor(day).name,
     text: blocks.length ? `${done} of ${blocks.length} exercise${blocks.length === 1 ? "" : "s"} done` : "No exercises yet",
+    chip: blocks.length ? `${done}/${blocks.length} done` : "",
     since: now - ms,
     forMs: STALE_RUN_MS - ms,
   };
+}
+
+/** The workout under way on this phone, whichever day it's for: the lock screen follows the clock the workout shows,
+ *  so one started at 23:40 stays there past midnight, as does one for a day gone by (liveWorkout has the rules). */
+export function workoutUnderWay(store: GymStore, now = Date.now()): LiveWorkout | null {
+  const r = currentRun();
+  return r ? liveWorkout(store, r.day, now) : null;
+}
+
+/** A running rest timer, as the phone shows it while Gym Log is out of sight (native/rest.ts): its lift, when it's
+ *  over, and what comes after it (afterRest). */
+export interface LiveRest {
+  lift: string;
+  endAt: number;
+  next: string;
+}
+
+/** What comes after a rest, in a few words, for the lock screen's countdown and its "Rest over": the rested lift's
+ *  next set while it has sets to go ("Next: set 3 of 4", or its round in a superset), else the first other lift not
+ *  yet done or skipped, else nothing (the workout has none left). Sets count as Complete set counts them: working
+ *  sets with reps, not warm-ups or drop sets. The rest's lift is the one performed, a swap's own name. */
+export function afterRest(store: GymStore, r: Pick<RestTimer, "day" | "lift">): string {
+  const e = store.entry(r.day), blocks = store.liftBlocks(r.day), did = (x: LiftItem) => performed(x.name, e.exercises[x.name]);
+  const block = blocks.find((b) => b.some((x) => did(x) === r.lift)), it = block?.find((x) => did(x) === r.lift);
+  if (block && it) {
+    const log = e.exercises[it.name], of = minSets(targetOf(log, it.x));
+    const logged = setsOf(log).filter((s) => isStraightSet(s) && (s.reps ?? 0) > 0).length;
+    if (!log?.done && !log?.skipped && logged < of) return `Next: ${block.length > 1 ? "round" : "set"} ${logged + 1} of ${of}`;
+  }
+  const next = blocks.flat().find((x) => x !== it && !e.exercises[x.name]?.done && !e.exercises[x.name]?.skipped);
+  return next ? `Next: ${did(next)}` : "";
 }

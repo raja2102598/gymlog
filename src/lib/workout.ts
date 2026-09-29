@@ -62,6 +62,13 @@ export function runOf(day: DayKey): WorkoutRun | null {
   return r && r.day === day && typeof r.startedAt === "number" ? r : null;
 }
 
+/** The phone's run, whichever day it's for: a workout started before midnight, or one for a day gone by, is still
+ *  the one under way (the lock screen's, native/rest.ts). */
+export const currentRun = (): WorkoutRun | null => {
+  const r = read();
+  return r && typeof r.startedAt === "number" ? r : null;
+};
+
 /** Whether the day's clock was left behind: still running, STALE_RUN_MS of it counted. Only asked as the workout
  *  opens, so a long workout on screen keeps its clock. A paused clock was stopped on purpose, so it waits. */
 const staleRun = (r: WorkoutRun | null, now: number): r is WorkoutRun => !!r && !r.endedAt && r.pausedAt == null && runMs(r, now) >= STALE_RUN_MS;
