@@ -60,8 +60,8 @@ export const restTimer = {
   cancelWorkout: vi.fn(async () => {}),
   cancel: vi.fn(async () => {}),
   checkPermissions: vi.fn(async () => ({ notifications: "granted" })),
-  checkAlarms: vi.fn(async (): Promise<{ exact: boolean | null; liveUpdates: boolean | null; samsung: boolean }> => ({ exact: true, liveUpdates: true, samsung: false })),
-  /** A Samsung phone, where Settings offers the Samsung timer card. */
+  checkAlarms: vi.fn(async (): Promise<{ exact: boolean | null; liveUpdates: boolean | null }> => ({ exact: true, liveUpdates: true })),
+  /** A Samsung phone, where Settings offers the Samsung timer card, and its Live Updates row is the Now Bar's. */
   isSamsung: vi.fn(async () => ({ samsung: true })),
 };
 

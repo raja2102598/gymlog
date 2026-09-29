@@ -3,6 +3,7 @@ package io.github.raja2102598.gymlog
 import android.Manifest
 import android.app.AlarmManager
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -114,9 +115,13 @@ object RestAlarm {
 
     /** Whether Android may show the countdown and the workout's clock as Live Updates, which both ask to be
      *  (setRequestPromotedOngoing, below), for Settings to say: null before Android 16, which has none, and from then
-     *  on whether the phone's settings allow them for Gym Log. */
-    fun liveUpdates(ctx: Context): Boolean? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) NotificationManagerCompat.from(ctx).canPostPromotedNotifications() else null
+     *  on whether the phone's settings allow them for Gym Log. One UI says false even while its Now Bar shows Gym Log,
+     *  so on a Samsung, Settings doesn't go by it (src/components/settings/restNotifications.ts). */
+    fun liveUpdates(ctx: Context): Boolean? {
+        // canPostPromotedNotifications() doesn't exist before API 36.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) return null
+        return ctx.getSystemService(NotificationManager::class.java).canPostPromotedNotifications()
+    }
 
     /** When a rest ends, as the phone's clock shows it (its 12- or 24-hour setting). */
     private fun clockTime(ctx: Context, at: Long): String = RestTimerLogic.clockTime(at, ZoneId.systemDefault(), DateFormat.is24HourFormat(ctx))

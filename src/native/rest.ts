@@ -33,17 +33,15 @@ interface RestTimerPlugin {
   openLiveUpdateSettings(): Promise<void>;
 }
 
-/** What else Android allows the rest timer's alerts, once notifications are on (RestTimerPlugin.checkAlarms). Each of
- *  the first two is null where the phone's Android has no such setting, so there's nothing to show or change. */
+/** What else Android allows the rest timer's alerts, once notifications are on (RestTimerPlugin.checkAlarms). Each is
+ *  null where the phone's Android has no such setting, so there's nothing to show or change. */
 export interface AlarmChecks {
   /** Whether "Rest over" gets an exact alarm, on time, rather than one Android can deliver minutes late: Alarms &
    *  reminders in Android's settings for Gym Log (Android 12 and later, and off until you allow it from 14). */
   exact: boolean | null;
-  /** Whether Android may show the workout's clock and the rest countdown as Live Updates (Android 16 and later). */
+  /** Whether Android may show the workout's clock and the rest countdown as Live Updates (Android 16 and later). One
+   *  UI says false even while its Now Bar shows them, so Settings doesn't go by it on a Samsung. */
   liveUpdates: boolean | null;
-  /** A Samsung phone, whose Now Bar shows other apps' Live Updates only for apps Samsung approves, or with Developer
-   *  options → Live notifications for all apps on (docs/android.md). */
-  samsung: boolean;
 }
 
 const RestTimer = registerPlugin<RestTimerPlugin>("RestTimer");
@@ -52,7 +50,8 @@ const RestTimer = registerPlugin<RestTimerPlugin>("RestTimer");
 
 export const SAMSUNG_CARD_KEY = "gymlog.samsungCard.v1";
 
-/** Whether this is a Samsung phone, the only kind Settings offers the Samsung timer card on. */
+/** Whether this is a Samsung phone, the only kind Settings offers the Samsung timer card on, and where it speaks of
+ *  the Now Bar rather than Live Updates (restNotifications.ts). */
 export const isSamsungPhone = async (): Promise<boolean> => (await RestTimer.isSamsung()).samsung;
 
 /** Whether "Samsung timer card (experimental)" is on, on this phone: off until it's switched on. With it on, the
@@ -78,10 +77,12 @@ export const requestNotificationPermission = async (): Promise<PermissionState> 
 /** Whether "Rest over" will be on time, and whether Live Updates are allowed: see AlarmChecks. */
 export const checkAlarms = (): Promise<AlarmChecks> => RestTimer.checkAlarms();
 
-/** Android's "Alarms & reminders" page for Gym Log, where "Rest over" is allowed to come on time. */
+/** Android's "Alarms & reminders" page for Gym Log, where "Rest over" is allowed to come on time (its app info, on a
+ *  phone without that page). */
 export const openExactAlarmSettings = (): Promise<void> => RestTimer.openExactAlarmSettings();
 
-/** Android's Live Updates page for Gym Log (its notification settings, on a phone without that page). */
+/** Android's Live Updates page for Gym Log, or on a Samsung, Developer options (its notification settings, or else
+ *  its app info, on a phone without that page: RestTimerLogic.liveUpdatePages). */
 export const openLiveUpdateSettings = (): Promise<void> => RestTimer.openLiveUpdateSettings();
 
 /** Follows the workout's clock (lib/session.ts, workoutUnderWay) and store.rest while the app is out of sight.

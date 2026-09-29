@@ -1,5 +1,6 @@
 package io.github.raja2102598.gymlog
 
+import io.github.raja2102598.gymlog.RestTimerLogic.SettingsPage
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
@@ -102,6 +103,23 @@ class RestTimerLogicTest {
         assertTrue(RestTimerLogic.samsungPhone(" Samsung "))
         assertFalse(RestTimerLogic.samsungPhone("Google"))
         assertFalse(RestTimerLogic.samsungPhone(""))
+    }
+
+    @Test
+    fun alarmsAndRemindersOpensItsOwnPageFromAndroid12AndGymLogsBefore() {
+        assertEquals(listOf(SettingsPage.EXACT_ALARMS, SettingsPage.APP_INFO), RestTimerLogic.exactAlarmPages(sdkInt = 31))
+        assertEquals(listOf(SettingsPage.EXACT_ALARMS, SettingsPage.APP_INFO), RestTimerLogic.exactAlarmPages(sdkInt = 37))
+        assertEquals(listOf(SettingsPage.APP_INFO), RestTimerLogic.exactAlarmPages(sdkInt = 30))
+    }
+
+    @Test
+    fun liveUpdatesOpensAndroidsPageOrOnASamsungDeveloperOptionsThenGymLogsNotificationsThenGymLog() {
+        assertEquals(listOf(SettingsPage.LIVE_UPDATES, SettingsPage.APP_NOTIFICATIONS, SettingsPage.APP_INFO), RestTimerLogic.liveUpdatePages(sdkInt = 36, samsung = false))
+        assertEquals(listOf(SettingsPage.LIVE_UPDATES, SettingsPage.APP_NOTIFICATIONS, SettingsPage.APP_INFO), RestTimerLogic.liveUpdatePages(sdkInt = 37, samsung = false))
+        // A Samsung: Live notifications for all apps, in Developer options, whatever One UI says of Live Updates.
+        assertEquals(listOf(SettingsPage.DEVELOPER_OPTIONS, SettingsPage.APP_NOTIFICATIONS, SettingsPage.APP_INFO), RestTimerLogic.liveUpdatePages(sdkInt = 36, samsung = true))
+        // Before Android 16 there's no Live Updates page to try.
+        assertEquals(listOf(SettingsPage.APP_NOTIFICATIONS, SettingsPage.APP_INFO), RestTimerLogic.liveUpdatePages(sdkInt = 35, samsung = false))
     }
 
     @Test

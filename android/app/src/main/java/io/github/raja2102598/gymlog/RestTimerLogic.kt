@@ -50,8 +50,7 @@ object RestTimerLogic {
      * ticking, unless a short critical text is set, which it shows instead (SystemUI's NotifChipsViewModel): a fixed
      * text there would only be worse than the clock, so it's for Samsung's phones only.
      */
-    fun shortFor(manufacturer: String, text: String): String? =
-        text.trim().takeIf { it.isNotEmpty() && samsungPhone(manufacturer) }
+    fun shortFor(manufacturer: String, text: String): String? = text.trim().takeIf { it.isNotEmpty() && samsungPhone(manufacturer) }
 
     /** A moment as the phone's clock shows it, without AM/PM ("9:05", or "21:05" on a 24-hour phone): short enough
      *  for the Now Bar and a notification's line, and a rest is never long enough for the half of the day to be in
@@ -97,9 +96,52 @@ object RestTimerLogic {
             Regex("""(\d+/\d+) done""").matchEntire(short.trim())?.let { LiveMetric.Text("Exercises", it.groupValues[1]) },
         )
 
-    /** A Samsung phone, by Build.MANUFACTURER: where samsungExtras has anything to add, and where Settings offers the
-     *  Samsung timer card (RestTimerPlugin.isSamsung). */
+    /** A Samsung phone, by Build.MANUFACTURER: where samsungExtras has anything to add, where Settings offers the
+     *  Samsung timer card (RestTimerPlugin.isSamsung), and where its Live Updates row speaks of the Now Bar and opens
+     *  Developer options (liveUpdatePages). */
     fun samsungPhone(manufacturer: String): Boolean = manufacturer.trim().equals("samsung", ignoreCase = true)
+
+    /** A page of Android's own settings that the rows under Settings' "Rest timer notifications" open, without
+     *  Android's types: RestTimerPlugin makes each an Intent. */
+    enum class SettingsPage {
+        /** Alarms & reminders for Gym Log (Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Android 12 and later). */
+        EXACT_ALARMS,
+
+        /** Live Updates for Gym Log (Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS, Android 16 and later). */
+        LIVE_UPDATES,
+
+        /** Developer options, where One UI keeps Live notifications for all apps. */
+        DEVELOPER_OPTIONS,
+
+        /** Gym Log's notification settings. */
+        APP_NOTIFICATIONS,
+
+        /** Gym Log's own page in Android's settings (App info), the last to try. */
+        APP_INFO,
+    }
+
+    /** Where "Open settings" under Alarms & reminders goes, the first of these the phone has: that page, from Android
+     *  12 (API 31), the first to have it, and otherwise Gym Log's own page. */
+    fun exactAlarmPages(sdkInt: Int): List<SettingsPage> =
+        listOfNotNull(SettingsPage.EXACT_ALARMS.takeIf { sdkInt >= 31 }, SettingsPage.APP_INFO)
+
+    /**
+     * Where "Open settings" under Live Updates goes, the first of these the phone has. Android's Live Updates page
+     * for Gym Log from Android 16 (API 36). On a Samsung, Developer options instead: One UI answers "not allowed"
+     * even while its Now Bar shows Gym Log, and the switch that lets any app in there is Developer options → Live
+     * notifications for all apps (docs/android.md), which no app can turn on itself. Then Gym Log's notification
+     * settings, and its own page, for a phone whose Settings app lacks the ones before.
+     */
+    fun liveUpdatePages(sdkInt: Int, samsung: Boolean): List<SettingsPage> =
+        listOfNotNull(
+            when {
+                samsung -> SettingsPage.DEVELOPER_OPTIONS
+                sdkInt >= 36 -> SettingsPage.LIVE_UPDATES
+                else -> null
+            },
+            SettingsPage.APP_NOTIFICATIONS,
+            SettingsPage.APP_INFO,
+        )
 
     /** What Samsung's own Now Bar card says, with Settings' "Samsung timer card (experimental)" on: its first and
      *  second lines, in the notification and the Now Bar alike, and the status bar chip's text. */

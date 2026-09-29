@@ -344,8 +344,8 @@ function Training() {
  *  closed (docs/android.md). The button only shows while asking would actually do something: once Android has
  *  turned it down for good, only its own settings screen can turn it back on. Once they're on, the rows under it say
  *  whether "Rest over" will be on time and whether Live Updates are allowed, where the phone has those settings, with
- *  a way to Android's page for each that's off (restNotifications.ts). All of it is read again as the app comes back
- *  from Android's settings. */
+ *  a way to Android's page for each that's off; on a Samsung, the second is the Now Bar's, with a way to Developer
+ *  options (restNotifications.ts). All of it is read again as the app comes back from Android's settings. */
 function RestNotifications() {
   const [s, setS] = useState<RestNotifs | null>(null);
   useEffect(() => watchRestNotifs(setS), []);
@@ -382,22 +382,22 @@ function RestNotifications() {
       </div>
       {exact ? (
         <div className="pref-row">
-          <Text title="Alarms & reminders" sub={<span id="restExactStatus" role="status">{exact.text}</span>} />
-          {exact.on ? null : (
-            <button className="btn btn-sm" id="restExactOpen" onClick={open("openExactAlarmSettings")}>
+          <Text id="restExact" title={exact.title} sub={<span id="restExactStatus" role="status">{exact.text}</span>} />
+          {exact.open ? (
+            <button className="btn btn-sm" id="restExactOpen" aria-describedby="restExactT" onClick={open("openExactAlarmSettings")}>
               Open settings
             </button>
-          )}
+          ) : null}
         </div>
       ) : null}
       {live ? (
         <div className="pref-row">
-          <Text title="Live Updates" sub={<span id="restLiveStatus" role="status">{live.text}</span>} />
-          {live.on ? null : (
-            <button className="btn btn-sm" id="restLiveOpen" onClick={open("openLiveUpdateSettings")}>
+          <Text id="restLive" title={live.title} sub={<span id="restLiveStatus" role="status">{live.text}</span>} />
+          {live.open ? (
+            <button className="btn btn-sm" id="restLiveOpen" aria-describedby="restLiveT" onClick={open("openLiveUpdateSettings")}>
               Open settings
             </button>
-          )}
+          ) : null}
         </div>
       ) : null}
     </>
