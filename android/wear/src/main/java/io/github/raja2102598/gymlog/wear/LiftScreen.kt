@@ -146,7 +146,18 @@ private fun LiftPicker(ui: WatchUi, day: Day, at: Int, n: Int, j: Int, onSets: (
             verticalArrangement = Arrangement.Center,
         ) {
             Text(lift.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-            Text(StepLogic.setLine(day, at, n, j), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            // The heart rate beside which set it is, where it takes no room from the numbers.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    StepLogic.setLine(day, at, n, j),
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                ui.bpm?.let { HeartRate(it, Modifier.padding(start = 8.dp)) }
+            }
         }
         // The numbers take what's left under the name, up to 72 dp: smaller on a smaller watch, never cut off.
         val boxHeight = (height - 54.dp).coerceIn(52.dp, 72.dp)

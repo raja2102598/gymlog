@@ -80,6 +80,8 @@ dependencies {
     implementation "androidx.wear:wear-ongoing:1.1.0"
     // Turning off the phone app's notifications on the watch, which would buzz "Rest over" a second time (MainActivity).
     implementation "androidx.wear:wear-phone-interactions:1.1.0"
+    // Heart rate during the workout (HeartMonitor): Health Services' exercise, which measures with the screen off too.
+    implementation "androidx.health:health-services-client:1.1.0"
     // The Data Layer: the phone's state in, the watch's commands out (WatchRepo).
     implementation "com.google.android.gms:play-services-wearable:20.0.1"
     // Play services brings Fragment 1.0, whose activity results predate the ones MainActivity asks for notifications

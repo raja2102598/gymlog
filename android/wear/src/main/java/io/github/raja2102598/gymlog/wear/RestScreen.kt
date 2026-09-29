@@ -82,12 +82,16 @@ fun RestScreen(ui: WatchUi, onDone: () -> Unit) {
                         Text(TimerLogic.mmss(left), style = MaterialTheme.typography.numeralLarge, fontSize = (40 * s).sp, lineHeight = (44 * s).sp, color = if (paused) c.onSurfaceVariant else c.onSurface)
                     }
                 }
-                Text(
-                    if (over) "On to the next set" else if (paused) "Tap to resume" else "of ${TimerLogic.mmss(len.toLong())}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = c.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+                // The heart rate beside the rest's length: coming down between sets.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (over) "On to the next set" else if (paused) "Tap to resume" else "of ${TimerLogic.mmss(len.toLong())}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    ui.bpm?.let { HeartRate(it, Modifier.padding(start = 8.dp)) }
+                }
                 Row(modifier = Modifier.padding(top = 8.dp * s), horizontalArrangement = Arrangement.spacedBy(6.dp * s)) {
                     RestButton("+15s", s, ui::restAdd)
                     RestButton("Skip", s) {

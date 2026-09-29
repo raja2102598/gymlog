@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -21,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -47,7 +50,7 @@ import kotlinx.coroutines.delay
  * What every screen reads, and does: the phone's state with the watch's own commands on top, the day shown, and the
  * time now. Each action is a command (docs/watch.md), shown at once and sent to the phone.
  */
-class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long, zone: ZoneId) {
+class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long, zone: ZoneId, beat: Beat? = null) {
     val state: WatchState? = snap.state
     val day: Day? = state?.let { StateLogic.dayFor(it, StateLogic.dateOf(now, zone), now) }
     val blank: String? = StateLogic.blank(snap.parsed, day)
@@ -55,6 +58,9 @@ class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long,
     /** The shown day's workout clock, if it has one. */
     val run: Run? = state?.run?.takeIf { it.day == day?.date }
     val rest: Rest? = state?.rest
+
+    /** The heart rate now, while the workout is under way and the sensor has a fresh reading (HeartMonitor). */
+    val bpm: Int? = if (TimerLogic.underWay(run, now)) HeartLogic.showing(beat, now) else null
 
     private fun send(make: (id: String, at: Long) -> Command) = WatchRepo.send(ctx, make(OverlayLogic.newId(), System.currentTimeMillis()))
 
@@ -109,11 +115,13 @@ class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long,
 /** A set picked from a step's list to change, rather than the one the step is on. */
 data class Pick(val at: Int, val lift: Int, val set: Int)
 
-/** The app: Today, then a step (a lift and its bezel, or the cardio), its sets, the rest, and Finish. */
+/** The app: Today, then a step (a lift and its bezel, or the cardio), its sets, the rest, and Finish. `onWorkout` is
+ *  called as a workout is opened, which asks for the heart rate's permission the first time (MainActivity). */
 @Composable
-fun WatchApp() {
+fun WatchApp(onWorkout: () -> Unit = {}) {
     val ctx = LocalContext.current
     val snap by WatchRepo.snapshot.collectAsStateWithLifecycle()
+    val beat by HeartMonitor.beat.collectAsStateWithLifecycle()
     // Every second while a clock is on screen (the workout's or the rest's), else often enough to see the day turn.
     val now by produceState(System.currentTimeMillis(), snap) {
         while (true) {
@@ -122,7 +130,7 @@ fun WatchApp() {
             value = System.currentTimeMillis()
         }
     }
-    val ui = WatchUi(ctx, snap, now, ZoneId.systemDefault())
+    val ui = WatchUi(ctx, snap, now, ZoneId.systemDefault(), beat)
     GymTheme {
         AppScaffold(timeText = { RestTimeText(ui) }) {
             val blank = ui.blank
@@ -139,6 +147,7 @@ fun WatchApp() {
                             ui,
                             onOpen = { at ->
                                 ui.openWorkout()
+                                onWorkout()
                                 pick = null
                                 nav.navigate("step/$at")
                             },
@@ -199,6 +208,24 @@ private fun RestTimeText(ui: WatchUi) {
             timeTextSeparator()
         }
         timeTextCurvedText(time)
+    }
+}
+
+/** The heart rate, small: a heart and the beats a minute, beside what's on screen rather than in the way of it. */
+@Composable
+fun HeartRate(bpm: Int, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.semantics(mergeDescendants = true) { contentDescription = "Heart rate $bpm" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(R.drawable.ic_heart), contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(12.dp))
+        Text(
+            bpm.toString(),
+            modifier = Modifier.padding(start = 3.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
     }
 }
 

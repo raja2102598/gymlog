@@ -1,0 +1,191 @@
+package io.github.raja2102598.gymlog.wear
+
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.SystemClock
+import android.util.Log
+import androidx.core.content.ContextCompat
+import androidx.health.services.client.ExerciseUpdateCallback
+import androidx.health.services.client.HealthServices
+import androidx.health.services.client.data.Availability
+import androidx.health.services.client.data.DataType
+import androidx.health.services.client.data.ExerciseConfig
+import androidx.health.services.client.data.ExerciseLapSummary
+import androidx.health.services.client.data.ExerciseTrackedStatus
+import androidx.health.services.client.data.ExerciseType
+import androidx.health.services.client.data.ExerciseUpdate
+import androidx.health.services.client.data.HeartRateAccuracy
+import androidx.health.services.client.endExercise
+import androidx.health.services.client.getCapabilities
+import androidx.health.services.client.getCurrentExerciseInfo
+import androidx.health.services.client.startExercise
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+
+/**
+ * Heart rate during the workout (docs/watch.md), from Health Services' ExerciseClient: an exercise of Health Services'
+ * own, weight training, from the workout clock's start to Finish (or the workout being left behind). Health Services
+ * keeps the sensor going with the screen off and while Gym Log is out of sight, and hands back what it read when the
+ * app is running again, which MeasureClient, the simpler way, doesn't: it only measures while the app is on screen,
+ * and a workout's watch is mostly dark between sets. WorkoutService, the foreground service that holds the workout on
+ * the watch face, keeps the app running through it and calls `follow` on every change.
+ *
+ * Each day's readings are kept in a file (HeartLogic has the rules), and the day's average and highest go to the phone
+ * as an `hr` command every few minutes and at the end. Without the permission, nothing is measured and the rest of
+ * the workout goes on as it would. Everything here runs on the main thread: the service, the callback and the screens.
+ */
+object HeartMonitor {
+    private const val TAG = "GymLogWatch"
+    private const val FILE = "heart.json"
+
+    /** Wear OS 6 (API 36) replaced BODY_SENSORS with Health Connect's own permission for heart rate. */
+    private const val READ_HEART_RATE = "android.permission.health.READ_HEART_RATE"
+
+    /** Weight training, as Health Services names it, else the nearest it offers, whichever measures heart rate. */
+    private val TYPES = listOf(ExerciseType.WEIGHTLIFTING, ExerciseType.STRENGTH_TRAINING, ExerciseType.WORKOUT)
+
+    private val latest = MutableStateFlow<Beat?>(null)
+
+    /** The latest reading while measuring, for the lift and rest screens (HeartLogic.showing says whether it's fresh). */
+    val beat: StateFlow<Beat?> = latest
+
+    /** The permission to ask for on this watch. */
+    val permission: String get() = if (Build.VERSION.SDK_INT >= 36) READ_HEART_RATE else Manifest.permission.BODY_SENSORS
+
+    fun granted(ctx: Context): Boolean = ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var days: Map<String, Heart>? = null
+
+    /** The day being measured, or null. */
+    private var measuring: String? = null
+
+    /** The day measured last, for Health Services' last readings, which arrive after the end. */
+    private var last: String? = null
+    private var starting: Job? = null
+    private var callback: ExerciseUpdateCallback? = null
+
+    /**
+     * Follows the workout: measuring while one is under way (a paused one too, whose readings don't count) and the
+     * permission is there, and ending with it, when the last of the day's heart rate goes to the phone.
+     */
+    fun follow(ctx: Context, state: WatchState?, now: Long) {
+        val app = ctx.applicationContext
+        val want = StepLogic.live(state, now)?.run?.day?.takeIf { granted(app) }
+        if (want == measuring) return
+        val was = measuring
+        // Set first: sending the day's heart rate below changes the state, which calls back in here.
+        measuring = want
+        if (was != null) stop(app, was)
+        if (want != null) start(app, want)
+    }
+
+    private fun start(app: Context, day: String) {
+        last = day
+        val client = HealthServices.getClient(app).exerciseClient
+        val cb = callback ?: updates(app).also { callback = it }
+        // Set before starting, and again after Android stopped the app mid-workout: Health Services then hands over
+        // what it read meanwhile, and ends an exercise left five minutes with no one to hand it to.
+        client.setUpdateCallback(cb)
+        starting = scope.launch {
+            try {
+                when (client.getCurrentExerciseInfo().exerciseTrackedStatus) {
+                    // Ours already, from before the app was stopped: it carries on.
+                    ExerciseTrackedStatus.OWNED_EXERCISE_IN_PROGRESS -> return@launch
+                    // Another app's workout (Samsung Health's, say): starting ours would end it, so it goes on without
+                    // heart rate here.
+                    ExerciseTrackedStatus.OTHER_APP_IN_PROGRESS -> {
+                        Log.i(TAG, "Another app is recording a workout: no heart rate in Gym Log")
+                        return@launch
+                    }
+                }
+                val caps = client.getCapabilities()
+                val type = TYPES.firstOrNull { it in caps.supportedExerciseTypes && DataType.HEART_RATE_BPM in caps.getExerciseTypeCapabilities(it).supportedDataTypes }
+                if (type == null) {
+                    Log.i(TAG, "This watch measures no heart rate in a workout")
+                    return@launch
+                }
+                client.startExercise(
+                    ExerciseConfig.builder(type)
+                        .setDataTypes(setOf(DataType.HEART_RATE_BPM))
+                        .setIsAutoPauseAndResumeEnabled(false)
+                        .setIsGpsEnabled(false)
+                        .build(),
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Couldn't start measuring heart rate", e)
+            }
+        }
+    }
+
+    private fun stop(app: Context, day: String) {
+        starting?.cancel()
+        latest.value = null
+        sendIfDue(app, day, ending = true)
+        scope.launch {
+            try {
+                HealthServices.getClient(app).exerciseClient.endExercise()
+            } catch (e: Exception) {
+                // None of ours was running: the start above never got that far, or Health Services ended it.
+            }
+        }
+    }
+
+    private fun updates(app: Context) = object : ExerciseUpdateCallback {
+        override fun onExerciseUpdateReceived(update: ExerciseUpdate) {
+            // A reading's time is counted from the watch's boot; the phone's times are the wall clock's.
+            val boot = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+            val beats = update.latestMetrics.getData(DataType.HEART_RATE_BPM)
+                .filter { (it.accuracy as? HeartRateAccuracy)?.sensorStatus.let { s -> s != HeartRateAccuracy.SensorStatus.NO_CONTACT && s != HeartRateAccuracy.SensorStatus.UNRELIABLE } }
+                .map { Beat(it.value, boot + it.timeDurationFromBoot.toMillis()) }
+            take(app, beats, ended = update.exerciseStateInfo.state.isEnded)
+        }
+
+        override fun onLapSummaryReceived(lapSummary: ExerciseLapSummary) {}
+
+        override fun onRegistered() {}
+
+        override fun onRegistrationFailed(throwable: Throwable) {
+            Log.w(TAG, "Health Services wouldn't take the heart rate callback", throwable)
+        }
+
+        override fun onAvailabilityChanged(dataType: DataType<*, *>, availability: Availability) {}
+    }
+
+    /** Readings in: counted for the day being measured (or the one just ended, for the last of them), shown while
+     *  measuring, and sent on when due. */
+    private fun take(app: Context, beats: List<Beat>, ended: Boolean) {
+        val day = measuring ?: last ?: return
+        val run = WatchRepo.snapshot.value.state?.run?.takeIf { it.day == day } ?: return
+        val now = System.currentTimeMillis()
+        val kept = load(app)
+        days = HeartLogic.keep(kept + (day to HeartLogic.add(kept[day], run, beats, now)))
+        if (measuring == day) beats.maxByOrNull { it.at }?.let { latest.value = it }
+        if (!sendIfDue(app, day, ending = ended || measuring != day)) save(app)
+    }
+
+    /** Sends the day's heart rate when HeartLogic says it's due, and says whether it did (and so kept the days). */
+    private fun sendIfDue(app: Context, day: String, ending: Boolean): Boolean {
+        val kept = load(app)
+        val h = kept[day] ?: return false
+        val now = System.currentTimeMillis()
+        if (!HeartLogic.due(h, now, ending)) return false
+        days = kept + (day to HeartLogic.sent(h, now))
+        save(app)
+        WatchRepo.send(app, HeartLogic.command(OverlayLogic.newId(), now, h))
+        return true
+    }
+
+    private fun load(app: Context): Map<String, Heart> = days ?: HeartLogic.fromJson(WatchRepo.read(app, FILE)).also { days = it }
+
+    private fun save(app: Context) {
+        days?.let { WatchRepo.save(app, FILE, HeartLogic.toJson(it)) }
+    }
+}

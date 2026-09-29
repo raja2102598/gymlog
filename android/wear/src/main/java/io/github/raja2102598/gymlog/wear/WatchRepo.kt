@@ -86,12 +86,15 @@ object WatchRepo {
         changed(ctx)
     }
 
-    /** Does something on the watch: shown at once, kept, and sent to the phone as its own urgent data item. */
+    /** Does something on the watch: shown at once, kept, and sent to the phone as its own urgent data item. An `hr`
+     *  replaces the day's earlier ones still waiting to be sent (OverlayLogic.supersede). */
     fun send(ctx: Context, cmd: Command) {
         synchronized(lock) {
             load(ctx)
+            val kept = OverlayLogic.supersede(flow.value.pending, unsent, cmd)
+            unsent.retainAll(kept.map { it.id }.toSet())
             unsent += cmd.id
-            flow.value = flow.value.copy(pending = flow.value.pending + cmd)
+            flow.value = flow.value.copy(pending = kept + cmd)
             savePending(ctx)
         }
         put(ctx.applicationContext, cmd)
@@ -163,14 +166,16 @@ object WatchRepo {
             emptyList<Command>() to emptySet()
         }
 
-    private fun read(ctx: Context, name: String): String? =
+    /** A file kept in the app's own storage, or null for none (HeartMonitor keeps its own this way too). */
+    internal fun read(ctx: Context, name: String): String? =
         try {
             AtomicFile(File(ctx.filesDir, name)).readFully().toString(Charsets.UTF_8)
         } catch (e: Exception) {
             null
         }
 
-    private fun save(ctx: Context, name: String, text: String) {
+    /** Writes a file whole, off the caller's thread, in the order asked. */
+    internal fun save(ctx: Context, name: String, text: String) {
         val dir = ctx.applicationContext.filesDir
         disk.execute {
             val f = AtomicFile(File(dir, name))
