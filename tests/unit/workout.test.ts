@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { liftModel, logSet, nextSet } from "@/components/today/LiftItem";
 import { wdIndex } from "@/lib/dates";
-import { liveWorkout, workoutUnderWay } from "@/lib/session";
+import { dayBests, dayTotals, liveWorkout, sessionDone, workoutUnderWay } from "@/lib/session";
+import type { GymStore } from "@/lib/store";
 import type { LiftLog } from "@/lib/types";
 import { clearRun, dropStaleRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runOf, runSeconds, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
-import { day, lift, storeWith, WED } from "./helpers";
+import { day, LAST, lift, storeWith, WED } from "./helpers";
 
 const mem = new Map<string, string>();
 globalThis.localStorage = {
@@ -104,6 +106,118 @@ describe("workout runs", () => {
     runsFor(null); // signed out, then the sample data again
     runsFor("demo");
     expect(runOf("2026-09-23")).toBeNull();
+  });
+});
+
+// The workout's big button, Complete set N (WorkoutView.tsx): the set it's on, and what it logs there. On screen, a
+// whole workout done with it is in tests/e2e/workout.e2e.mjs.
+describe("Complete set N", () => {
+  /** Wednesday's lift `name` as its card in the workout has it, `onReps` hearing of a set given its first reps. */
+  const card = (s: GymStore, name: string, onReps: (j: number) => void = () => {}) => {
+    const items = s.liftsFor(WED), i = items.findIndex((it) => it.name === name);
+    return liftModel(s, WED, items[i], i, s.entry(WED), (_, j) => onReps(j));
+  };
+  const saved = (s: GymStore, name: string) => s.entry(WED).exercises[name]?.sets;
+  // Last Wednesday: Hamstring Curl topped its range (go up to 32.5 kg), Leg Press didn't (45 kg again).
+  const lastWeek = () => storeWith({ [LAST]: day({ exercises: { "Hamstring Curl": lift([[12, 30], [12, 30], [12, 30]]), "Leg Press": lift([[10, 45], [10, 45], [8, 45]]) } }) });
+
+  it("logs the suggestion in the set's boxes when nothing's typed, the reps last, so the rest starts on the finished set", () => {
+    const s = lastWeek(), heard: string[] = [];
+    const m = card(s, "Hamstring Curl", (j) => heard.push(JSON.stringify(saved(s, "Hamstring Curl")![j])));
+    expect([nextSet(m), s.placeholders(m.x, m.last, 0, m.next)]).toEqual([0, ["10", "32.5"]]);
+    logSet(s, m, 0);
+    expect(saved(s, "Hamstring Curl")).toEqual([{ reps: 10, kg: 32.5 }]);
+    expect(heard).toEqual(['{"reps":10,"kg":32.5}']);
+    expect(nextSet(card(s, "Hamstring Curl"))).toBe(1); // on to set 2
+  });
+
+  it("keeps a weight typed first, and a later set takes the weight of the one before it today over the suggestion", () => {
+    const s = lastWeek();
+    card(s, "Leg Press").setField(0, "kg", "50");
+    for (let j = 0; j < 3; j++) logSet(s, card(s, "Leg Press"), j);
+    // Last week's reps, set by set (10, 10, 8), at today's 50 kg rather than the suggested 45.
+    expect(saved(s, "Leg Press")).toEqual([{ reps: 10, kg: 50 }, { reps: 10, kg: 50 }, { reps: 8, kg: 50 }]);
+    // The planned sets are in: the lift is ticked off, and the button moves on.
+    expect(s.entry(WED).exercises["Leg Press"]).toMatchObject({ done: true, autoDone: true });
+    expect(nextSet(card(s, "Leg Press"))).toBe(-1);
+  });
+
+  it("logs the reps alone for a lift never done, which has no weight to suggest", () => {
+    const s = storeWith();
+    logSet(s, card(s, "Calf Raise"), 0);
+    expect(saved(s, "Calf Raise")).toEqual([{ reps: 12, kg: null }]); // the bottom of its 12-15
+  });
+
+  it("puts the cursor in the reps box, and logs nothing, with no reps to suggest", () => {
+    // A lift logged outside the plan, with only a weight so far: no range, and no earlier sets.
+    const s = storeWith({ [WED]: day({ exercises: { "Goblet Squat": { done: false, kg: 20, sets: [{ reps: null, kg: 20 }] } } }) });
+    const focused: string[] = [];
+    vi.stubGlobal("document", { getElementById: (id: string) => ({ focus: () => focused.push(id) }) });
+    try {
+      const m = card(s, "Goblet Squat");
+      logSet(s, m, 0);
+      expect(focused).toEqual([`s${m.i}_0_r`]);
+      expect(saved(s, "Goblet Squat")).toEqual([{ reps: null, kg: 20 }]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+// Workout complete (CompleteView.tsx): the day's numbers, and whether the day's workout is done at all (Train's
+// Review, and no clock started when it's opened again).
+describe("what a session adds up to", () => {
+  it("counts the working sets logged against the planned ones, and the kg lifted in every one of them, drop sets too, never a warm-up", () => {
+    const s = storeWith({
+      [WED]: day({
+        exercises: {
+          "Hack Squat": { done: true, kg: 40, sets: [{ reps: 8, kg: 20, type: "warmup" }, { reps: 10, kg: 40 }, { reps: 10, kg: 40 }, { reps: 9, kg: 40, type: "failure" }] },
+          "Leg Press": { done: false, kg: null, skipped: true },
+          // Asked for 4 sets that day, whatever the plan says now; a drop set after them.
+          "Leg Extension": { done: true, kg: 27, target: { sets: "4", reps: "12-15" }, sets: [{ reps: 12, kg: 27 }, { reps: 12, kg: 27 }, { reps: 12, kg: 27 }, { reps: 15, kg: 15, type: "drop" }] },
+          "Hamstring Curl": { done: false, kg: 30, sets: [{ reps: null, kg: 30 }] }, // a weight, but no reps yet
+          "Goblet Squat": lift([[12, 20]]), // outside the plan: logged, but never planned
+        },
+      }),
+    });
+    expect(dayTotals(s, WED)).toEqual({
+      sets: 3 + 4 + 1,
+      planned: 3 + 4 + 3 + 3, // Hack Squat, Leg Extension (its own 4), Hamstring Curl, Calf Raise: not the skipped Leg Press
+      kg: 1160 + 972 + 225 + 240,
+    });
+  });
+
+  it("names each lift's best record of the day, by what was done: of its record sets, the best estimated 1RM", () => {
+    const s = storeWith({
+      [LAST]: day({
+        exercises: { "Hack Squat": lift([[10, 40], [10, 40], [10, 40]]), "Leg Press": lift([[10, 20]], { swap: "Smith Squat" }), "Leg Extension": lift([[12, 30]]), "Hamstring Curl": lift([[10, 30]]) },
+      }),
+      [WED]: day({
+        exercises: {
+          // 45 × 6 is the heaviest yet, but 40 × 12 (most reps at 40, and an estimate of 57.6 kg) is the better set.
+          "Hack Squat": lift([[10, 42.5], [6, 45], [12, 40]]),
+          "Leg Press": lift([[10, 25]], { swap: "Smith Squat" }),
+          "Leg Extension": lift([[10, 27]]), // lighter: no record
+          "Hamstring Curl": { done: true, kg: 30, sets: [{ reps: 5, kg: 50, type: "warmup" }, { reps: 10, kg: 30 }] }, // a heavy warm-up is never one
+          "Calf Raise": lift([[15, 30]]), // the first time: nothing to beat
+        },
+      }),
+    });
+    expect(dayBests(s, WED)).toEqual([
+      { lift: "Hack Squat", kg: 40, reps: 12, kinds: ["e1rm", "reps"] },
+      { lift: "Smith Squat", kg: 25, reps: 10, kinds: ["weight", "e1rm"] },
+    ]);
+  });
+
+  it("says the day's workout is done once every lift in it is done or skipped, and never for a day with none", () => {
+    const all = (r: LiftLog) => Object.fromEntries(["Hack Squat", "Leg Press", "Leg Extension", "Hamstring Curl", "Calf Raise"].map((n) => [n, r]));
+    const s = storeWith({ [WED]: day({ exercises: all(lift([[10, 20]])) }) });
+    expect(sessionDone(s, WED)).toBe(true);
+    s.logs[WED].exercises["Leg Press"] = { done: false, kg: null, skipped: true } as LiftLog;
+    expect(sessionDone(s, WED)).toBe(true);
+    s.logs[WED].exercises["Calf Raise"] = { done: false, kg: 30, sets: [{ reps: 10, kg: 30 }] };
+    expect(sessionDone(s, WED)).toBe(false);
+    expect(sessionDone(s, "2026-09-24")).toBe(false); // Thursday: a rest day
   });
 });
 
