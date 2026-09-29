@@ -1,11 +1,75 @@
 // The workout, one lift at a time: its clock (a tap pauses and resumes it, ↺ restarts it; one left running for hours
-// or finished elsewhere, and a finished day opened to review it), − Set asking before it takes a set with numbers, and
-// skipping a lift with a mouse putting the cursor in the reason box. Logging sets, skip and swap in the day's flow are in
-// today.e2e.mjs; the rest timer, set types, supersets and voice have suites of their own.
+// or finished elsewhere, and a finished day opened to review it), − Set asking before it takes a set with numbers,
+// skipping a lift with a mouse putting the cursor in the reason box, and a set typed in on a phone logging what was
+// typed. Logging sets, skip and swap in the day's flow are in today.e2e.mjs; the rest timer, set types, supersets and
+// voice have suites of their own.
 import { K, answerAsk, flat, lastAsked, open, openTab, openWorkout, ready, session, until } from "./harness.mjs";
 
 const LEGS = ["Hack Squat", "Leg Press", "Leg Extension", "Hamstring Curl", "Calf Raise"];
 const day = (exercises = {}) => ({ exercises, warmup: [], cardio: false, steps: null, weight: null, note: "" });
+const INK = "rgb(21, 23, 27)", MUTED = "rgb(95, 101, 112)";
+
+// A set typed in as a phone does it, a tap and a key at a time. Leg Press is 3 × 10–12 and done for the first time,
+// so its boxes suggest 10 reps: the 1 on the way to 12 logs nothing and moves nothing on, and Complete set 1, or the
+// set's check, logs what was typed and shows it in full ink, never as the grey suggestion. Hack Squat, 8 × 60 kg last
+// week, suggests a weight: reps typed without one take it, as Complete set does, and a logged set shows what was
+// logged. Every case of these rules is in train.test.ts.
+async function typingASet({ browser, base, check, auth }) {
+  const lastWeek = { [K(21)]: day({ "Hack Squat": { done: true, kg: 60, sets: [{ reps: 8, kg: 60 }] } }) };
+  const { ctx, page, db } = await open(browser, base, { auth, db: { logs: lastWeek, plan: {} } });
+  await ready(page);
+  await openWorkout(page, "Leg Press");
+  const saved = () => db.logs[K(28)]?.exercises?.["Leg Press"]?.sets;
+  const button = () => flat(page.locator("#completeSet"));
+  const box = (id) => page.$eval(id, (e) => ({ value: e.value, color: getComputedStyle(e).color, hint: getComputedStyle(e, "::placeholder").color, row: e.closest(".srow").className }));
+  await page.tap("#s1_0_k");
+  await page.keyboard.type("5");
+  await page.tap("#s1_0_r");
+  await page.keyboard.type("1");
+  const midway = { row: (await box("#s1_0_r")).row, button: await button(), check: await page.getAttribute('[data-check="1:0"]', "aria-label") };
+  check("the 1 of 12 logs nothing yet: set 1 is still the one to complete", !/\blogged\b/.test(midway.row) && midway.button === "Complete set 1" && midway.check === "Mark Leg Press, set 1 done", JSON.stringify(midway));
+  await page.keyboard.type("2");
+  await page.tap("#completeSet");
+  await until(() => saved()?.[0]?.reps === 12);
+  const done = await box("#s1_0_r");
+  check(
+    "Complete set 1 logs the 12 typed, not the suggested 10, and shows it in full ink",
+    JSON.stringify(saved()) === JSON.stringify([{ reps: 12, kg: 5 }]) && done.value === "12" && done.color === INK && /\blogged\b/.test(done.row) && (await button()) === "Complete set 2",
+    JSON.stringify({ saved: saved(), done, button: await button() }),
+  );
+  // The report's way: reps typed, then the set's check, which had turned into Undo by the time the tap landed.
+  await page.tap("#s1_1_r");
+  await page.keyboard.type("15");
+  await page.tap('[data-check="1:1"]');
+  await until(() => saved()?.[1]?.reps === 15);
+  check("the set's check logs what's typed in it too, rather than clearing it", JSON.stringify(saved()) === JSON.stringify([{ reps: 12, kg: 5 }, { reps: 15, kg: 5 }]) && (await page.inputValue("#s1_1_r")) === "15", JSON.stringify(saved()));
+  // A weight typed ahead into a later set, left for now: in full ink, unlike that row's grey suggestion.
+  await page.tap('[data-addset="1"]');
+  await page.tap("#s1_3_k");
+  await page.keyboard.type("7");
+  await page.tap("#screenTitle");
+  const ahead = await box("#s1_3_k");
+  check("a number typed into a later set is full ink, and only its suggestions grey", ahead.value === "7" && /\bup\b/.test(ahead.row) && ahead.color === INK && (await box("#s1_3_r")).hint === MUTED, JSON.stringify(ahead));
+  // Reps alone, then away: the set takes the suggested weight, and shows it as logged.
+  const hack = () => db.logs[K(28)]?.exercises?.["Hack Squat"]?.sets;
+  await page.tap('[aria-label^="Go to exercise 1"]');
+  await page.tap("#s0_0_r");
+  await page.keyboard.type("9");
+  await page.tap("#screenTitle");
+  await until(() => hack()?.[0]?.kg === 60);
+  const took = await box("#s0_0_k");
+  check("reps typed without a weight take the suggested 60 kg, as Complete set does, shown as logged", JSON.stringify(hack()) === JSON.stringify([{ reps: 9, kg: 60 }]) && took.value === "60" && took.color === INK && /\blogged\b/.test(took.row), JSON.stringify({ saved: hack(), took }));
+  await page.tap("#s0_0_k");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Backspace");
+  await page.tap("#screenTitle");
+  await until(() => hack()?.[0]?.kg === null);
+  const none = await page.$eval("#s0_0_k", (e) => ({ value: e.value, placeholder: e.placeholder, row: e.closest(".srow").className }));
+  check("a logged set with its weight taken off shows none, not the suggestion that would pass for one", hack()?.[0]?.kg === null && none.value === "" && none.placeholder === "" && /\blogged\b/.test(none.row), JSON.stringify({ saved: hack(), none }));
+  check("typing a set: no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
+}
 
 export default async function workout({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-00000000e0e0", "2026-09-01T00:00:00Z", "raja@example.com");
@@ -131,4 +195,6 @@ export default async function workout({ browser, base, check }) {
     check("no console errors", page.errors.length === 0, page.errors.join(" | "));
     await ctx.close();
   }
+
+  await typingASet({ browser, base, check, auth });
 }

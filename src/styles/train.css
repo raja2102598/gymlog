@@ -128,7 +128,7 @@
 .srow .sn[aria-expanded="true"]{background:var(--surface-sunken)}
 .srow .last{font:700 15px/1 var(--font-sans);color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .srow input{width:100%;min-width:0;height:48px;padding:0 4px;border-radius:var(--radius-md);border:1.5px solid transparent;background:transparent;color:var(--ink);text-align:center;font:var(--type-input-num)}
-.srow.up input{color:var(--ink-muted);font-weight:800}
+/* A number typed in is in full ink on every row, later ones too: only a suggestion (the placeholder) is grey. */
 .srow.active input{background:var(--surface);border-color:var(--ink-subtle)}
 .srow.active input:first-of-type{border:2px solid var(--brand)}
 .srow input:focus{border:2px solid var(--brand);background:var(--surface);outline:none}

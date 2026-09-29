@@ -131,12 +131,13 @@ export default async function layout({ browser, base, check }) {
     const hs = page.locator(".ex-card.lift").first();
     check("no set is marked logged before reps are entered", (await hs.locator(".srow.set.logged").count()) === 0);
     await page.fill("#s0_0_r", "10");
+    await page.locator("#s0_0_r").blur();
     await until(async () => (await hs.locator(".srow.set").first().getAttribute("class")).includes("logged"));
     check("entering reps marks the set as logged", (await hs.locator(".srow.set").first().getAttribute("class")).includes("logged"));
     await page.evaluate(settled); // the row's tint fades in
     const typed = await page.$eval("#s0_0_r", (e) => ({ w: getComputedStyle(e).fontWeight, c: getComputedStyle(e).color, row: getComputedStyle(e.closest(".srow")).backgroundColor }));
-    const later = await page.$eval("#s0_2_r", (e) => ({ w: getComputedStyle(e).fontWeight, c: getComputedStyle(e).color }));
-    check("typed numbers are heavy ink on the logged row's tint, unlike later sets' muted ones", typed.w === "900" && typed.c === INK && typed.row === "rgb(255, 244, 238)" && later.c === MUTED && +later.w < 900, JSON.stringify({ typed, later }));
+    const later = await page.$eval("#s0_2_r", (e) => getComputedStyle(e, "::placeholder").color);
+    check("typed numbers are heavy ink on the logged row's tint, unlike later sets' muted suggestions", typed.w === "900" && typed.c === INK && typed.row === "rgb(255, 244, 238)" && later === MUTED, JSON.stringify({ typed, later }));
     await page.click("#closeWorkout");
     await page.waitForSelector("#trainView");
 

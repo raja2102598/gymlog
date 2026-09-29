@@ -139,6 +139,7 @@ export default async function today({ browser, base, check }) {
   await page.fill("#s0_0_r", "8");
   await page.fill("#s0_0_k", "40");
   await page.fill("#s0_1_r", "8");
+  await page.locator("#s0_1_r").blur(); // set 2 counts once the cursor leaves it
   const ticked = () => card.evaluate((c) => c.classList.contains("checked"));
   check("not done before the planned 3 sets", !(await ticked()) && (await flat(page.locator("#completeSet"))) === "Complete set 3");
   await page.fill("#s0_2_r", "7");

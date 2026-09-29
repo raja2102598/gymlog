@@ -149,6 +149,7 @@ export default async function voice({ browser, base, check }) {
     const lp = cardOf(page);
     await lp.locator('input[data-set$=":0:reps"]').fill("10");
     await lp.locator('input[data-set$=":0:kg"]').fill("45");
+    await lp.locator('input[data-set$=":0:kg"]').blur(); // typed, a set counts once the cursor leaves it
     await until(() => typedDb.logs[TODAY]?.exercises["Leg Press"]?.sets?.[0]?.kg === 45);
     typed = { row: await rowOf(lp, 0), saved: typedDb.logs[TODAY]?.exercises["Leg Press"] };
     await ctx.close();
