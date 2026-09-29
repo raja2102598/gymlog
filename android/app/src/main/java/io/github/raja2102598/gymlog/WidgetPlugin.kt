@@ -6,9 +6,9 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.annotation.CapacitorPlugin
 
 /**
- * The home-screen widget's data from JavaScript (src/native/widget.ts): today's session and lift progress, saved
- * through GymWidgetStore and pushed straight to any placed widget. GymWidgetLogic has the pure parts: parsing this
- * JSON, whether it's still today's, and the words on screen.
+ * The home-screen widget's data from JavaScript (src/native/widget.ts): today's session and lift progress, or the
+ * workout under way's, saved through GymWidgetStore and pushed straight to any placed widget. GymWidgetLogic has the
+ * pure parts: parsing this JSON, whether it's still one to show, and the words on screen.
  */
 @CapacitorPlugin(name = "GymWidget")
 class WidgetPlugin : Plugin() {

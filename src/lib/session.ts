@@ -167,8 +167,9 @@ export function liveWorkout(store: GymStore, day: DayKey, now = Date.now()): Liv
   };
 }
 
-/** The workout under way on this phone, whichever day it's for: the lock screen follows the clock the workout shows,
- *  so one started at 23:40 stays there past midnight, as does one for a day gone by (liveWorkout has the rules). */
+/** The workout under way on this phone, whichever day it's for: the lock screen and the home-screen widget
+ *  (native/rest.ts, native/widget.ts) follow the clock the workout shows, so one started at 23:40 stays there past
+ *  midnight, as does one for a day gone by (liveWorkout has the rules). */
 export function workoutUnderWay(store: GymStore, now = Date.now()): LiveWorkout | null {
   const r = currentRun();
   return r ? liveWorkout(store, r.day, now) : null;

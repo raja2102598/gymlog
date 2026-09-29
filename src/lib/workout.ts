@@ -63,7 +63,7 @@ export function runOf(day: DayKey): WorkoutRun | null {
 }
 
 /** The phone's run, whichever day it's for: a workout started before midnight, or one for a day gone by, is still
- *  the one under way (the lock screen's, native/rest.ts). */
+ *  the one under way (the lock screen's and the widget's, native/rest.ts and native/widget.ts). */
 export const currentRun = (): WorkoutRun | null => {
   const r = read();
   return r && typeof r.startedAt === "number" ? r : null;
