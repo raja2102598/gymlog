@@ -243,4 +243,142 @@ export default async function layout({ browser, base, check }) {
     check("…and in the workout", workout.sw <= workout.cw && /Supercalifragilistic/.test(await flat(page.locator(".ex-name"))), JSON.stringify(workout));
     await ctx.close();
   }
+
+  await setTable({ browser, base, check });
+}
+
+/** The workout's set table as a person sees it, on the card on show: across the screen, the centre of each column's
+ *  heading and of what each set row shows under it (its number or A1, last time's set, the two boxes, a record's
+ *  badge, the check), each set row's height, the boxes' widths, and anything cut short or running outside the card. */
+const tableOf = (page) =>
+  page.$eval("#workoutView .ex-card", (card) => {
+    // Text by where its letters are, not its box: a heading's box is its whole column however its text sits in it.
+    const text = (e) => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      const b = r.getBoundingClientRect();
+      return b.width ? b.left + b.width / 2 : null;
+    };
+    const mid = (e) => {
+      const b = e.getBoundingClientRect();
+      return b.left + b.width / 2;
+    };
+    const cardBox = card.getBoundingClientRect();
+    const head = [...card.querySelectorAll(".shead > span")].map(text);
+    const rows = [...card.querySelectorAll(".srow.set")].map((row) => {
+      const q = (s) => row.querySelector(s), kg = q('[data-set$=":kg"]'), reps = q('[data-set$=":reps"]'), chk = q(".chk").getBoundingClientRect(), prb = q(".prb");
+      return {
+        set: text(q(".sn span")),
+        last: text(q(".last")),
+        kg: mid(kg),
+        reps: mid(reps),
+        pr: getComputedStyle(prb).display === "none" ? null : mid(prb),
+        chk: chk.left + chk.width / 2,
+        chkY: chk.top + chk.height / 2,
+        h: row.getBoundingClientRect().height,
+        kgW: kg.getBoundingClientRect().width,
+        repsW: reps.getBoundingClientRect().width,
+        active: row.classList.contains("active"),
+        // In a superset, the round it's in: a round's heading comes between rounds.
+        group: [...row.parentElement.parentElement.children].indexOf(row.parentElement),
+      };
+    });
+    const lastW = card.querySelector(".shead > span:nth-child(2)").getBoundingClientRect().width;
+    // Text wider than its box (both widths rounded to whole pixels): ellipsed, or scrolled out of sight in a box.
+    const cut = [...card.querySelectorAll(".srow .last, .srow input")].filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.dataset.set || e.textContent);
+    const out = [...card.querySelectorAll(".sets *")].filter((e) => e.getClientRects().length && (e.getBoundingClientRect().left < cardBox.left - 0.5 || e.getBoundingClientRect().right > cardBox.right + 0.5)).map((e) => e.className || e.tagName);
+    return { head, rows, lastW, cut, out };
+  });
+
+// The workout's set table on a small phone (360 x 800), and on a large one: each column's heading over what's under it,
+// the active row's boxes and the plain numbers of the other rows in the same places and widths, one check column with
+// evenly spaced rows, and a long name, a 3-digit weight, 2-digit reps and last time's "102.5 × 10" all fitting; in a
+// superset's rounds too.
+async function setTable({ browser, base, check }) {
+  const auth = session("00000000-0000-4000-8000-000000000006", "2026-09-01T05:00:00Z", "t@example.com");
+  const plan = JSON.parse(JSON.stringify(PLAN));
+  // Each with a cue, so each has How to beside ···: two buttons for its name and numbers to make room for.
+  const lift = (name, sets, reps, more = {}) => ({ name, sets, reps, cue: "Slow and controlled.", flag: "", ...more });
+  plan.days[2].exercises = [lift("Single-Arm Dumbbell Row", "3", "10-12"), lift("Lat Pulldown", "3", "8-10"), lift("Seated Row", "3", "10-12", { superset: true })];
+  const day = (exercises) => ({ exercises, warmup: [], cardio: false, steps: null, weight: null, note: "" });
+  const logs = {
+    [K(21)]: day({
+      "Single-Arm Dumbbell Row": { done: true, kg: 102.5, sets: [{ reps: 10, kg: 102.5 }, { reps: 10, kg: 100 }, { reps: 8, kg: 100 }] },
+      "Lat Pulldown": { done: true, kg: 65, sets: [{ reps: 10, kg: 65 }, { reps: 9, kg: 65 }, { reps: 8, kg: 65 }] },
+      "Seated Row": { done: true, kg: 60, sets: [{ reps: 12, kg: 60 }, { reps: 11, kg: 60 }, { reps: 10, kg: 60 }] },
+    }),
+    // Today's first set, heavier than ever: a record.
+    [K(28)]: day({ "Single-Arm Dumbbell Row": { done: false, kg: 105, sets: [{ reps: 12, kg: 105 }] } }),
+  };
+  const { ctx, page } = await open(browser, base, { auth, db: { logs, plan }, width: 360, height: 800 });
+  await ready(page);
+  await page.evaluate(() => document.fonts.ready);
+  await openWorkout(page, 0);
+  // The second set is the one being done: a 3-digit weight typed in its box.
+  await page.fill("#s0_1_k", "102.5");
+  await until(async () => (await page.locator("#workoutView .srow.set.pr").count()) === 1);
+
+  const spread = (xs) => {
+    const v = xs.filter((x) => x != null);
+    return Math.round((Math.max(...v) - Math.min(...v)) * 10) / 10;
+  };
+  const tableChecks = async (where, { record }) => {
+    await page.evaluate(settled);
+    const t = await tableOf(page), rows = t.rows;
+    const cols = {
+      Set: [t.head[0], ...rows.map((r) => r.set)],
+      Last: [t.head[1], ...rows.map((r) => r.last)],
+      kg: [t.head[2], ...rows.map((r) => r.kg), ...rows.map((r) => r.pr)],
+      Reps: [t.head[3], ...rows.map((r) => r.reps)],
+      check: rows.map((r) => r.chk),
+    };
+    const spreads = Object.fromEntries(Object.entries(cols).map(([k, v]) => [k, spread(v)]));
+    check(
+      `${where}: each column's heading, the active row's boxes, the other rows' numbers and a record's badge share one centre`,
+      rows.length >= 3 && rows.some((r) => r.active) && rows.some((r) => r.pr != null) === record && Object.values(spreads).every((s) => s <= 1),
+      JSON.stringify(spreads),
+    );
+    const widths = { kg: rows.map((r) => Math.round(r.kgW * 10) / 10), reps: rows.map((r) => Math.round(r.repsW * 10) / 10), last: Math.round(t.lastW) };
+    check(
+      `${where}: the kg and Reps boxes are one width, in every row, and Last is no wide gap beside them`,
+      spread([...rows.map((r) => r.kgW), ...rows.map((r) => r.repsW)]) <= 0.5 && t.lastW <= rows[0].kgW * 1.25,
+      JSON.stringify(widths),
+    );
+    const gaps = rows.slice(1).flatMap((r, j) => (r.group === rows[j].group ? [r.chkY - rows[j].chkY] : []));
+    check(
+      `${where}: every set row is one height, so the checks run down one column evenly spaced`,
+      spread(rows.map((r) => r.h)) <= 0.5 && spread(gaps) <= 0.5,
+      JSON.stringify({ heights: rows.map((r) => r.h), gaps }),
+    );
+    check(`${where}: nothing in the set table is cut short or runs outside its card`, !t.cut.length && !t.out.length && (await page.evaluate(() => document.documentElement.scrollWidth)) <= page.viewportSize().width, JSON.stringify({ cut: t.cut, out: t.out.slice(0, 4) }));
+  };
+
+  await tableChecks("the lift at 360px", { record: true });
+  // Its name runs the card's width under the buttons, and what it's asked for (sets, rest, tempo) stays on one line;
+  // + Add set and Warm-up sets too. (A button's height can't tell: two lines of its words are 44px, as one line is.)
+  const lines = (sel) =>
+    page.$$eval(sel, (els) =>
+      els.map((e) => {
+        const r = document.createRange();
+        r.selectNodeContents(e);
+        return [e.textContent.trim(), Math.round(r.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight))];
+      }),
+    );
+  const buttons = await page.evaluate(() => document.querySelector("#workoutView .ex-btns").getBoundingClientRect().bottom);
+  const name = await page.evaluate(() => document.querySelector("#workoutView .ex-name").getBoundingClientRect().top);
+  const meta = await lines("#workoutView .ex-meta .sr");
+  check("the lift's name sits under its buttons, and its sets, rest and tempo on one line", name >= buttons - 0.5 && meta.length === 1 && meta[0][1] === 1, JSON.stringify({ name, buttons, meta }));
+  const btns = await lines("#workoutView .setbtns > .btn, #workoutView .setbtns .wset-t");
+  check("+ Add set and Warm-up sets each fit on one line", btns.length === 2 && btns.every(([, n]) => n === 1), JSON.stringify(btns));
+
+  await page.click("#nextEx");
+  await page.waitForSelector("#workoutView .ex-card.superset");
+  await tableChecks("a superset's rounds at 360px", { record: false });
+
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.click("#workoutView .wprog li:first-child button");
+  await page.waitForSelector("#s0_1_k");
+  await tableChecks("the lift at 412px", { record: true });
+  check("no page errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
 }
