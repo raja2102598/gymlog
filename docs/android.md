@@ -37,9 +37,9 @@ With **Settings → Voice** on, the exercise in the workout gets a microphone: t
 
 ## Home-screen widget
 
-Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, **Skipped** once you skip it, or **Rest day** with none planned. Beside that, a clock ticks on its own, even with the app closed: a rest counting down (*Rest 1:12*), or else the workout under way counting up from when you started, less any pauses. It's gone while the clock is paused, once the workout is finished, and after three hours, when the app would count the workout as left behind. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Home**; the small buttons open **Train** at today with that field ready to type in, even when the app wasn't running.
+Touch and hold the home screen, tap **Widgets**, find **Gym Log** and drag it on. It shows today's plan: the session's name and how many lifts are done, **Skipped** once you skip it, or **Rest day** with none planned. Beside that, a clock ticks on its own, even with the app closed: a rest counting down (*Rest 1:12*), or else the workout under way counting up from when you started, less any pauses. It's gone while the clock is paused, once the workout is finished, and after three hours, when the app would count the workout as left behind. While a workout is under way, the widget shows that workout, whatever day it's for: one started before midnight keeps its session, lift count and clock past midnight, as does one opened for a day gone by. Paused, finished or left behind, it goes back to today's. With room for it, two small buttons, **Log weight** and **Log steps**, sit under that. Tapping the session opens **Home**; the small buttons open **Train** at today with that field ready to type in, even when the app wasn't running.
 
-It updates itself as you log a set, tick a lift or a new day begins, and settles to a plain **Open Gym Log** once the day it was showing has passed, so it never shows yesterday's session as today's.
+It updates itself as you log a set, tick a lift or a new day begins, and settles to a plain **Open Gym Log** once the day it was showing has passed (and its workout, if one was under way, is left behind), so it never shows yesterday's session as today's, even with the app closed.
 
 ## Rest timer
 
@@ -54,25 +54,76 @@ The rest timer started by logging a set keeps counting with the app in the backg
 
 With the app in the background or the phone locked, a workout under way stays in view. It shows the session, how many exercises are done, and its clock counting up, even past midnight for a workout started before it. While a rest timer runs, its countdown shows too, first: *Resting · Leg Press*, with what's next (*Next: set 3 of 4*). At zero Android takes the countdown down by itself and the workout's clock is still there, whenever the **Rest over** alert arrives. Pausing the clock or finishing the workout takes it down. So does coming back to the app, which shows all of it itself. If a workout is left running, Android takes it down once it has run for three hours, the point at which the app counts it as left behind.
 
-Both use Android 16's standard *Live Updates* (Google's API, not a Samsung one):
+Both use Android's standard *Live Updates* (Google's API, not a Samsung one):
 
-- **Android 16 phones such as Pixels:** they show as a chip in the status bar and at the top of the lock screen.
-- **Samsung phones:** they're notifications with a running clock on the lock screen. One UI 8 puts other apps' Live
-  Updates in the **Now Bar** only for apps Samsung has approved. To see Gym Log there on your own phone, turn on
-  **Developer options → Live notifications for all apps** (tap **Build number** seven times, under **Settings → About
-  phone → Software information**, to show Developer options). The Now Bar shows a short text beside Gym Log's icon,
-  not the running clock (without one it shows only *Gym Log*): when the rest ends while resting (*Till 10:14*), and
-  otherwise how many exercises are done (*2/5 done*). The clock itself is in the notification, where One UI draws it
-  right after the title.
+- **Android 17 phones:** they use Android 17's Live Update template for timers and fitness (`Notification.MetricStyle`),
+  whose clock Android draws and counts itself: the rest counting down, labelled *Rest*, then what's next (*Next*, *Set 3
+  of 4*), or the workout counting up, labelled *Workout*, then how many exercises are done (*Exercises*, *2/5*). The
+  status bar chip shows that clock, ticking, and so do the lock screen and the always-on display, even with Gym Log
+  frozen. The template has no line of text under the title, which is why what's next and the exercises done are
+  metrics of their own.
+- **Android 16 phones such as Pixels:** they show as a chip in the status bar and at the top of the lock screen, the
+  chip counting with the notification's own clock.
+- **Samsung phones:** see below.
 - **Earlier versions:** they're ordinary notifications.
 
-Samsung also has an API of its own for the Now Bar, *Live Notifications*, but it only works for apps on Samsung's
-allowlist, so Gym Log doesn't use it. Live Updates need the same notification permission as the rest timer, and the
-phone's own settings can turn them off for Gym Log, which leaves them ordinary notifications. On Android 16 and later,
-once notifications are on, **Settings → Rest timer & effort → Live Updates** says whether they're allowed, and when they're
-off, **Open settings** takes you to Android's Live Updates page for Gym Log (or its notification settings, on a phone
-without that page). On a Samsung phone, it also says that the Now Bar needs **Live notifications for all apps**: the app
-can't turn that on itself.
+Live Updates need the same notification permission as the rest timer, and the phone's own settings can turn them off
+for Gym Log, which leaves them ordinary notifications. On Android 16 and later, once notifications are on, **Settings →
+Rest timer & effort → Live Updates** says whether they're allowed, and when they're off, **Open settings** takes you to
+Android's Live Updates page for Gym Log (or its notification settings, on a phone without that page). On a Samsung
+phone, it also says that the Now Bar needs **Live notifications for all apps**: the app can't turn that on itself.
+
+### Samsung's Now Bar
+
+One UI puts other apps' Live Updates in the **Now Bar** only for apps Samsung has approved, or with **Developer options
+→ Live notifications for all apps** on (tap **Build number** seven times, under **Settings → About phone → Software
+information**, to show Developer options). Without that, they're notifications with a running clock on the lock screen.
+
+- **One UI 8.5 and later** also let a Live Update in without either when it carries two extras Samsung's own pipeline
+  reads, `android.ongoingActivityNoti.automation` (true) and `android.ongoingActivityNoti.automationPackage` (the app's
+  package), so on a Samsung both of Gym Log's carry them. That comes from One UI's own code, as another app found it
+  (tigerduck-app-android, pull request 126, tried on One UI 8.5 and 9); older One UI ignores them.
+- **One UI 9 (Android 17):** they're the `MetricStyle` ones above, with no short text, so there's no fixed text to
+  show in place of the ticking clock. Whether the Now Bar shows that clock is for your phone to say.
+- **One UI 8 (Android 16):** they're as they were, and also carry a short text meant for the Now Bar: when the rest
+  ends while resting (*Till 10:14*), and otherwise how many exercises are done (*2/5 done*). Without a text, the Now Bar
+  showed only *Gym Log*, not the clock; whether it shows this text instead is for your phone to say. Android's own chip
+  shows such a text in place of its clock, so no other phone gets one.
+
+Any of this failing on a phone (a part of Android 17's API missing, say) posts the notification as it was before, never
+none at all.
+
+### Samsung timer card (experimental)
+
+Samsung also has an API of its own for the Now Bar, *Live Notifications*, with a card that can hold a ticking clock.
+One UI honours it only for apps on Samsung's allowlist, so it may do nothing for Gym Log. **Settings → Rest timer &
+effort → Samsung timer card (experimental)**, on Samsung phones only, off until you switch it on and kept on that phone
+like Voice, tries it anyway. With it on, both notifications also carry the card's fields, all
+`android.ongoingActivityNoti.` followed by:
+
+- `style`: 1, which asks for the card;
+- `primaryInfo` and `nowbarPrimaryInfo`: the title (*Resting · Leg Press*, or the session);
+- `secondaryInfo` and `nowbarSecondaryInfo`: the line under it (*Next: set 3 of 4*, or *2 of 5 exercises done*);
+- `chipExpandedText`: *Till 10:14*, or *2/5 done* (the session's name before any exercise is done);
+- `chronometerRemoteView`: a `Chronometer` (`res/layout/samsung_chronometer.xml`) counting the rest down or the workout
+  up, with `chronometerRemoteViewTag` *gymlog_clock*;
+- `chronometerRemoteViewPosition` and `nowbarChronometerPosition`: 1. Samsung doesn't document what the positions
+  mean; 1 is what the examples of it use (akexorcist.dev, *Live Notifications and Now Bar in Samsung One UI 7*).
+
+The card's `style` takes the notification down Samsung's own card lane, which cancels the automation pair above, so
+that goes while the switch is on, and Gym Log may drop out of the Now Bar altogether: if it does, switch it off.
+Android 17's `MetricStyle` stays, so it's a fair test of the card alone.
+
+Samsung's partners also declare `<meta-data android:name="com.samsung.android.support.ongoing_activity"
+android:value="true"/>` in their manifest. Gym Log doesn't: a manifest entry can't be switched off, so it would apply
+with the switch off as well, and the automation pair is known to work without it.
+
+## The watch
+
+With Gym Log's Wear OS app on a watch paired with the phone (a Galaxy Watch, say: [installing it](watch.md#build-and-install)), a workout can be done from the wrist: the day's session, each set with the suggested weight and reps, Complete set, the rest countdown and the workout's clock. The phone keeps the data. The app's own plugin, `WatchPlugin.kt`, sends the watch today's workout and the next six days' over Wear OS's Data Layer whenever they change, and hands back what's done on the watch, which the app applies just as if it had been done on the phone, whichever screen it's on. What's done on the watch while Gym Log is closed waits on the phone (`WatchListenerService.kt` takes it in, even then) and is applied the next time the app runs; the watch shows it as done meanwhile. [watch.md](watch.md) has how the two talk.
+
+- **Needs:** Google Play services on the phone, and the watch paired with it (on a Samsung phone, with the Galaxy Wearable app). The watch app must be signed with the same key as the phone app, as CI's builds are.
+- Signed out, the watch says to sign in on the phone. The demo's sample data never goes to the watch.
 
 ## Updates and the signing key
 
@@ -90,7 +141,7 @@ The build also reads the same `NEXT_PUBLIC_*` variables as the site, from reposi
 
 ## Building it yourself
 
-Needs JDK 21 and the Android SDK (Android Studio installs both), and a `.env.local` with your project (see `.env.example`).
+Needs JDK 21 and the Android SDK (Android Studio installs both) with the Android 17 platform (API 37, `platforms;android-37.0`: Android Studio's SDK Manager, or `sdkmanager "platforms;android-37.0"`; a build that finds it missing installs it, with the SDK's licences accepted, but only the next build can use it), and a `.env.local` with your project (see `.env.example`). The app is compiled against Android 17 for `MetricStyle`, which it only uses on phones running 17, and still targets Android 16. The Android Gradle plugin it uses (8.13) was tested only up to Android 16 and warns about 17, which `android/gradle.properties` turns off: it builds fine, and the first plugin tested with 17 needs Gradle 9 and a migration of its own.
 
 ```bash
 npm run android                        # builds the site and copies it into android/

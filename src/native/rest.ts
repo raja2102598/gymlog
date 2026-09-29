@@ -9,18 +9,23 @@
 import { App } from "@capacitor/app";
 import { registerPlugin, type PermissionState } from "@capacitor/core";
 import { afterRest, workoutUnderWay, type LiveRest, type LiveWorkout } from "@/lib/session";
+import { lsGet, lsSet } from "@/lib/storage";
 import type { GymStore } from "@/lib/store";
 import { onRunChange } from "@/lib/workout";
 
+/** Whether Settings' "Samsung timer card (experimental)" is on, sent with each running notification. */
+type Card = { samsungCard: boolean };
+
 interface RestTimerPlugin {
   /** The rest's countdown and its alarm, which says "Rest over" at `endAt`. */
-  schedule(o: LiveRest): Promise<void>;
+  schedule(o: LiveRest & Card): Promise<void>;
   /** Takes down the countdown, its alarm, and a "Rest over" already said. */
   cancelRest(): Promise<void>;
-  workout(o: LiveWorkout): Promise<void>;
+  workout(o: LiveWorkout & Card): Promise<void>;
   cancelWorkout(): Promise<void>;
   /** All of it: coming back to the app. */
   cancel(): Promise<void>;
+  isSamsung(): Promise<{ samsung: boolean }>;
   checkPermissions(): Promise<{ notifications: PermissionState }>;
   requestPermissions(): Promise<{ notifications: PermissionState }>;
   checkAlarms(): Promise<AlarmChecks>;
@@ -42,6 +47,24 @@ export interface AlarmChecks {
 }
 
 const RestTimer = registerPlugin<RestTimerPlugin>("RestTimer");
+
+/* ---------- Samsung's timer card, an experiment in Settings ---------- */
+
+export const SAMSUNG_CARD_KEY = "gymlog.samsungCard.v1";
+
+/** Whether this is a Samsung phone, the only kind Settings offers the Samsung timer card on. */
+export const isSamsungPhone = async (): Promise<boolean> => (await RestTimer.isSamsung()).samsung;
+
+/** Whether "Samsung timer card (experimental)" is on, on this phone: off until it's switched on. With it on, the
+ *  workout's clock and the rest countdown also carry the fields of Samsung's own Now Bar card, which One UI honours
+ *  only for apps Samsung approves, so it may do nothing (RestTimerLogic.samsungExtras, docs/android.md). */
+export const samsungCardPref = (): boolean => lsGet<unknown>(SAMSUNG_CARD_KEY, false) === true;
+
+/** The switch, as Settings flips it: kept on this phone, like Voice. The notifications only show once Gym Log is out
+ *  of sight, and going there sends them afresh (syncOngoingNotifications), so they carry it from then on. */
+export function setSamsungCard(on: boolean): void {
+  lsSet(SAMSUNG_CARD_KEY, on);
+}
 
 /** Whether Gym Log can post one right now: "prompt" or "prompt-with-rationale" while asking would show Android's
  *  dialog, "denied" once it won't (only the phone's own settings can turn it back on from there), "granted" once
@@ -82,17 +105,17 @@ export function syncOngoingNotifications(store: GymStore): () => void {
       void RestTimer.cancel();
     }
     if (active) return;
-    const w = workoutUnderWay(store), r = store.rest;
-    const wantWorkout = w ? JSON.stringify([w.title, w.text, w.chip, w.since]) : "";
-    const wantRest = !r || r.pausedAt != null ? "" : r.ended ? rest : `${r.lift}|${r.endAt}`;
+    const w = workoutUnderWay(store), r = store.rest, samsungCard = samsungCardPref();
+    const wantWorkout = w ? JSON.stringify([w.title, w.text, w.chip, w.since, samsungCard]) : "";
+    const wantRest = !r || r.pausedAt != null ? "" : r.ended ? rest : `${r.lift}|${r.endAt}|${samsungCard}`;
     // The workout first: Android ranks the newer of two Live Updates first, and while resting that's the countdown.
     if (wantWorkout !== workout) {
       workout = wantWorkout;
-      void (w ? RestTimer.workout(w) : RestTimer.cancelWorkout());
+      void (w ? RestTimer.workout({ ...w, samsungCard }) : RestTimer.cancelWorkout());
     }
     if (wantRest !== rest) {
       rest = wantRest;
-      void (wantRest && r ? RestTimer.schedule({ lift: r.lift, endAt: r.endAt, next: afterRest(store, r) }) : RestTimer.cancelRest());
+      void (wantRest && r ? RestTimer.schedule({ lift: r.lift, endAt: r.endAt, next: afterRest(store, r), samsungCard }) : RestTimer.cancelRest());
     }
   };
   const stop = store.subscribe(apply);

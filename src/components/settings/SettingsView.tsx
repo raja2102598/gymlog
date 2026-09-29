@@ -332,6 +332,7 @@ function Training() {
         />
       </div>
       {isNative() ? <RestNotifications /> : null}
+      {isNative() ? <SamsungTimerCard /> : null}
     </Group>
   );
 }
@@ -432,6 +433,55 @@ function Voice() {
         <span className="switch" aria-hidden="true" />
       </button>
     </Group>
+  );
+}
+
+/* ---------- Samsung's timer card ---------- */
+
+/** An experiment under the rest timer's notifications, in the Android app on a Samsung phone only: with it on, the
+ *  workout's clock and rest countdown also carry the fields of Samsung's own Now Bar card (native/rest.ts,
+ *  docs/android.md). Off until switched on, and kept on this phone, like Voice. */
+function SamsungTimerCard() {
+  // Null until the phone says it's a Samsung, so nothing shows before that, or ever on another phone.
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void native()
+      .then(async (m) => ((await m.isSamsungPhone()) ? m.samsungCardPref() : null))
+      .then(
+        (v) => {
+          if (live) setOn(v);
+        },
+        () => {},
+      );
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (on === null) return null;
+  const flip = () =>
+    void native().then((m) => {
+      m.setSamsungCard(!on);
+      setOn(!on);
+    });
+  return (
+    <button
+      type="button"
+      className="pref-row pref-tap"
+      role="switch"
+      id="samsungCard"
+      aria-checked={on}
+      aria-labelledby="samsungT"
+      aria-describedby="samsungD"
+      onClick={flip}
+    >
+      <Text
+        id="samsung"
+        title="Samsung timer card (experimental)"
+        sub="An experiment: your workout’s clock and rest countdown also carry what Samsung’s own Now Bar card reads. Samsung may ignore it, as it shows that card only for apps it approves. If Gym Log leaves the Now Bar while it’s on, turn it off."
+      />
+      <span className="switch" aria-hidden="true" />
+    </button>
   );
 }
 

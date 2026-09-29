@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The clock in Samsung's own Now Bar card, sent only with Settings' experimental "Samsung timer card" on
+     (RestAlarm.samsungExtras): counting down a rest, or up from a workout's start. Its tag is the one the card names
+     as chronometerRemoteViewTag (RestTimerLogic.samsungExtras). The text takes the phone's own notification style. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <Chronometer
+        android:id="@+id/samsungClock"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:tag="gymlog_clock"
+        android:textAppearance="@android:style/TextAppearance.Material.Notification.Title" />
+</FrameLayout>

@@ -1271,9 +1271,13 @@ export class GymStore {
     const r = this.rest;
     return r ? Math.max(0, Math.round((r.endAt - (r.pausedAt ?? Date.now())) / 1000)) : 0;
   }
-  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx). */
-  startRest(day: DayKey, lift: string, sec: number) {
-    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false, sec };
+  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx), or logged on the
+   *  watch at `from` (lib/watch.ts), which can reach the phone a while later: its rest counts from then, as it did on
+   *  the watch, and one that would be over by now isn't started at all. */
+  startRest(day: DayKey, lift: string, sec: number, from = Date.now()) {
+    const now = Date.now(), at = Math.min(from, now);
+    if (at + sec * 1000 < now) return;
+    this.rest = { day, lift, endAt: at + sec * 1000, pausedAt: null, ended: false, sec };
     this.armRest();
     this.persistRest();
     this.changed();

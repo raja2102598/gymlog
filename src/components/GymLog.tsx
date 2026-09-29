@@ -19,7 +19,7 @@ import { canMoveScreens, directionOf, moveScreens } from "@/lib/pageTransition";
 import { sessionDone } from "@/lib/session";
 import { applyTheme, savedTheme } from "@/lib/theme";
 import type { DayKey } from "@/lib/types";
-import { clearRun, dropStaleRun, endRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
+import { clearRun, dropStaleRun, finishWorkout as finishRun, keepRunsInMemory, runsFor, startRun } from "@/lib/workout";
 import { LiftDetail } from "./dashboard/LiftDetail";
 import { ProgressView } from "./dashboard/ProgressView";
 import { HealthDetail } from "./health/HealthDetail";
@@ -323,10 +323,7 @@ export default function GymLog() {
     navigate({ view: "workout" });
   };
   const finishWorkout = () => {
-    keepRunsInMemory(store.demo);
-    endRun(sel);
-    // The rest after its last set goes with the clock: there's no next set to rest for, on Home or in a notification.
-    if (store.rest?.day === sel) store.skipRest();
+    finishRun(store, sel);
     navigate({ view: "workout", done: true });
   };
   const doneWorkout = () => {

@@ -80,6 +80,8 @@ dependencies {
     implementation "androidx.credentials:credentials:1.6.0"
     implementation "androidx.credentials:credentials-play-services-auth:1.6.0"
     implementation "com.google.android.libraries.identity.googleid:googleid:1.2.1"
+    // The watch: Wear OS's Data Layer, to and from the Wear OS app (WatchPlugin, WatchListenerService; docs/watch.md).
+    implementation "com.google.android.gms:play-services-wearable:20.0.1"
     testImplementation "junit:junit:$junitVersion"
     // The real org.json for unit tests (Android's is only stubs off a device).
     testImplementation "org.json:json:20260814"
