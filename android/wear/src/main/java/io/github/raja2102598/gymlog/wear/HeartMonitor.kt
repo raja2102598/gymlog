@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.health.services.client.ExerciseClient
 import androidx.health.services.client.ExerciseUpdateCallback
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.data.Availability
@@ -69,8 +70,22 @@ object HeartMonitor {
 
     /** The day measured last, for Health Services' last readings, which arrive after the end. */
     private var last: String? = null
-    private var starting: Job? = null
     private var callback: ExerciseUpdateCallback? = null
+    private var exercise: ExerciseClient? = null
+
+    /** One client for the process: each holds its own connection to Health Services. */
+    private fun client(app: Context): ExerciseClient = exercise ?: HealthServices.getClient(app).exerciseClient.also { exercise = it }
+
+    /** Health Services' calls, one after the other: an end is done before the next start asks what's running. */
+    private var calls: Job? = null
+
+    private fun queue(call: suspend () -> Unit) {
+        val before = calls
+        calls = scope.launch {
+            before?.join()
+            call()
+        }
+    }
 
     /**
      * Follows the workout: measuring while one is under way (a paused one too, whose readings don't count) and the
@@ -89,28 +104,28 @@ object HeartMonitor {
 
     private fun start(app: Context, day: String) {
         last = day
-        val client = HealthServices.getClient(app).exerciseClient
+        val client = client(app)
         val cb = callback ?: updates(app).also { callback = it }
         // Set before starting, and again after Android stopped the app mid-workout: Health Services then hands over
         // what it read meanwhile, and ends an exercise left five minutes with no one to hand it to.
         client.setUpdateCallback(cb)
-        starting = scope.launch {
+        queue {
             try {
                 when (client.getCurrentExerciseInfo().exerciseTrackedStatus) {
                     // Ours already, from before the app was stopped: it carries on.
-                    ExerciseTrackedStatus.OWNED_EXERCISE_IN_PROGRESS -> return@launch
+                    ExerciseTrackedStatus.OWNED_EXERCISE_IN_PROGRESS -> return@queue
                     // Another app's workout (Samsung Health's, say): starting ours would end it, so it goes on without
                     // heart rate here.
                     ExerciseTrackedStatus.OTHER_APP_IN_PROGRESS -> {
                         Log.i(TAG, "Another app is recording a workout: no heart rate in Gym Log")
-                        return@launch
+                        return@queue
                     }
                 }
                 val caps = client.getCapabilities()
                 val type = TYPES.firstOrNull { it in caps.supportedExerciseTypes && DataType.HEART_RATE_BPM in caps.getExerciseTypeCapabilities(it).supportedDataTypes }
                 if (type == null) {
                     Log.i(TAG, "This watch measures no heart rate in a workout")
-                    return@launch
+                    return@queue
                 }
                 client.startExercise(
                     ExerciseConfig.builder(type)
@@ -126,12 +141,11 @@ object HeartMonitor {
     }
 
     private fun stop(app: Context, day: String) {
-        starting?.cancel()
         latest.value = null
         sendIfDue(app, day, ending = true)
-        scope.launch {
+        queue {
             try {
-                HealthServices.getClient(app).exerciseClient.endExercise()
+                client(app).endExercise()
             } catch (e: Exception) {
                 // None of ours was running: the start above never got that far, or Health Services ended it.
             }
@@ -166,9 +180,11 @@ object HeartMonitor {
         val run = WatchRepo.snapshot.value.state?.run?.takeIf { it.day == day } ?: return
         val now = System.currentTimeMillis()
         val kept = load(app)
-        days = HeartLogic.keep(kept + (day to HeartLogic.add(kept[day], run, beats, now)))
-        if (measuring == day) beats.maxByOrNull { it.at }?.let { latest.value = it }
-        if (!sendIfDue(app, day, ending = ended || measuring != day)) save(app)
+        val before = kept[day]
+        val after = HeartLogic.add(before, run, beats, now)
+        if (after != before) days = HeartLogic.keep(kept + (day to after))
+        if (ended) latest.value = null else if (measuring == day) beats.maxByOrNull { it.at }?.let { latest.value = it }
+        if (!sendIfDue(app, day, ending = ended || measuring != day) && after != before) save(app)
     }
 
     /** Sends the day's heart rate when HeartLogic says it's due, and says whether it did (and so kept the days). */

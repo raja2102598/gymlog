@@ -20,7 +20,7 @@ class HeartLogicTest {
     @Test
     fun theAverageAndHighestAreOverEveryReadingCounted() {
         val first = HeartLogic.add(null, run, beats(100.0, 120.0, 131.0), now = t0 + min)
-        assertEquals(Heart(TODAY, 351.0, 3, 131, sentSamples = 0, sentAt = t0 + min), first)
+        assertEquals(Heart(TODAY, 351.0, 3, 131, sentSamples = 0, sentAt = t0 + min, lastAt = t0 + min + 2_000L), first)
         assertEquals(117, HeartLogic.avg(first))
         // More readings add to the day's, rather than start it again.
         val more = HeartLogic.add(first, run, beats(165.4, 140.0, from = t0 + 2 * min), now = t0 + 2 * min)
@@ -50,10 +50,20 @@ class HeartLogicTest {
     }
 
     @Test
+    fun aReadingHandedOverAgainCountsOnce() {
+        // Health Services hands its last readings over again when the callback is set anew (the app restarted).
+        val first = HeartLogic.add(null, run, beats(100.0, 120.0), now = t0 + min)
+        assertEquals(first, HeartLogic.add(first, run, beats(100.0, 120.0), now = t0 + 2 * min))
+        val again = HeartLogic.add(first, run, beats(100.0, 120.0, 150.0), now = t0 + 2 * min)
+        assertEquals(3, again.samples)
+        assertEquals(370.0, again.sum, 0.0)
+    }
+
+    @Test
     fun eachDayHasItsOwn() {
         val today = HeartLogic.add(null, run, beats(120.0), now = t0 + min)
         val tomorrow = HeartLogic.add(today, Run("2026-09-30", startedAt = t0), beats(90.0), now = t0 + 2 * min)
-        assertEquals(Heart("2026-09-30", 90.0, 1, 90, sentAt = t0 + 2 * min), tomorrow)
+        assertEquals(Heart("2026-09-30", 90.0, 1, 90, sentAt = t0 + 2 * min, lastAt = t0 + min), tomorrow)
         // A week's kept, the latest.
         val days = (1..9).associate { d -> "2026-09-0$d" to Heart("2026-09-0$d", 100.0, 1, 100) }
         assertEquals((3..9).map { "2026-09-0$it" }.toSet(), HeartLogic.keep(days).keys)
@@ -100,7 +110,7 @@ class HeartLogicTest {
 
     @Test
     fun theDaysAreKeptAsTheyWere() {
-        val days = mapOf(TODAY to Heart(TODAY, 351.5, 3, 131, sentSamples = 2, sentAt = t0))
+        val days = mapOf(TODAY to Heart(TODAY, 351.5, 3, 131, sentSamples = 2, sentAt = t0, lastAt = t0 + min))
         assertEquals(days, HeartLogic.fromJson(HeartLogic.toJson(days)))
         assertEquals(emptyMap<String, Heart>(), HeartLogic.fromJson("not json"))
         assertEquals(emptyMap<String, Heart>(), HeartLogic.fromJson(null))

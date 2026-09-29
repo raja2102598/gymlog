@@ -197,8 +197,9 @@ Wear OS, Material 3.
   body's sensors in the background.
 - **When**: from the workout clock's start (the service starts with it, while the app is on screen) to Finish, on the
   watch or the phone, or the workout left running for three hours. A reading counts when it's in range (30 to 240)
-  and taken while the clock ran: from its start, to its end, and not after it was paused. The screens show the
-  latest reading, paused or not.
+  and taken while the clock ran: from its start, to its end, and not after it was paused; and once, since Health
+  Services hands its last readings over again when the app sets its callback anew. The screens show the latest
+  reading, paused or not.
 - **Another app's workout** (Samsung Health's, say): Gym Log doesn't start its own, which would end that one, and goes
   without heart rate. After Android stopped Gym Log mid-workout, it picks up its own exercise again (Health Services
   ends one left five minutes with no app to hand it to).

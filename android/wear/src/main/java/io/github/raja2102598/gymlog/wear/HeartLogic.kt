@@ -9,9 +9,9 @@ data class Beat(val bpm: Double, val at: Long)
 
 /**
  * A day's heart rate during its workout, as the watch keeps it (docs/watch.md): the readings counted so far, as their
- * sum and how many there were, and the highest. `sentSamples` and `sentAt` are how many readings the last `hr` sent to
- * the phone covered, and when it went (or, before the first, when the day's count began), so the next goes only when
- * there's more to say.
+ * sum and how many there were, the highest, and when the latest was taken. `sentSamples` and `sentAt` are how many
+ * readings the last `hr` sent to the phone covered, and when it went (or, before the first, when the day's count
+ * began), so the next goes only when there's more to say.
  */
 data class Heart(
     val day: String,
@@ -20,6 +20,7 @@ data class Heart(
     val max: Int,
     val sentSamples: Int = 0,
     val sentAt: Long = 0L,
+    val lastAt: Long = 0L,
 )
 
 /**
@@ -49,16 +50,18 @@ object HeartLogic {
     fun counts(run: Run, at: Long): Boolean =
         at >= run.startedAt && (run.pausedAt == null || at < run.pausedAt) && (run.endedAt == null || at <= run.endedAt)
 
-    /** The day's heart rate with `beats` added: those in range and taken during `run`. A day with none yet starts
-     *  afresh, its time for sending counted from `now`. */
+    /** The day's heart rate with `beats` added: those in range, taken during `run`, and after the latest counted
+     *  (Health Services hands its last readings over again when the app sets its callback anew, after Android stopped
+     *  it, say). A day with none yet starts afresh, its time for sending counted from `now`. */
     fun add(h: Heart?, run: Run, beats: List<Beat>, now: Long): Heart {
         val day = h?.takeIf { it.day == run.day } ?: Heart(run.day, 0.0, 0, 0, sentAt = now)
-        val good = beats.filter { it.bpm in MIN_BPM..MAX_BPM && counts(run, it.at) }
+        val good = beats.filter { it.bpm in MIN_BPM..MAX_BPM && counts(run, it.at) && it.at > day.lastAt }
         if (good.isEmpty()) return day
         return day.copy(
             sum = day.sum + good.sumOf { it.bpm },
             samples = day.samples + good.size,
             max = max(day.max, good.maxOf { Math.round(it.bpm).toInt() }),
+            lastAt = good.maxOf { it.at },
         )
     }
 
@@ -88,7 +91,7 @@ object HeartLogic {
         JSONArray(
             days.values.map {
                 JSONObject().put("day", it.day).put("sum", it.sum).put("samples", it.samples).put("max", it.max)
-                    .put("sentSamples", it.sentSamples).put("sentAt", it.sentAt)
+                    .put("sentSamples", it.sentSamples).put("sentAt", it.sentAt).put("lastAt", it.lastAt)
             },
         ).toString()
 
@@ -99,7 +102,7 @@ object HeartLogic {
             val a = JSONArray(json)
             (0 until a.length()).mapNotNull { a.optJSONObject(it) }.mapNotNull { o ->
                 val day = o.optString("day").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-                day to Heart(day, o.optDouble("sum", 0.0), o.optInt("samples"), o.optInt("max"), o.optInt("sentSamples"), o.optLong("sentAt"))
+                day to Heart(day, o.optDouble("sum", 0.0), o.optInt("samples"), o.optInt("max"), o.optInt("sentSamples"), o.optLong("sentAt"), o.optLong("lastAt"))
             }.toMap()
         } catch (e: Exception) {
             emptyMap()
