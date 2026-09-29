@@ -2,6 +2,7 @@
  * the time elapsed and Workout complete its duration. Kept on this device only, like the theme: it's the screen's
  * state, not part of the day's log. */
 import { lsDel, lsGet, lsSet } from "./storage";
+import type { GymStore } from "./store";
 import type { DayKey } from "./types";
 
 export const WORKOUT_KEY = "gymlog.workout.v1";
@@ -113,6 +114,14 @@ export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);
   if (!r) return null;
   return write({ ...r, endedAt: r.endedAt ?? now });
+}
+
+/** Finish workout, from the workout's Finish (GymLog.tsx) or the watch's: the day's clock stops, and the rest after its
+ *  last set goes with it, since there's no next set to rest for, on Home or in a notification. */
+export function finishWorkout(store: Pick<GymStore, "demo" | "rest" | "skipRest">, day: DayKey, now = Date.now()) {
+  keepRunsInMemory(store.demo);
+  endRun(day, now);
+  if (store.rest?.day === day) store.skipRest();
 }
 
 /** Forgets the run, or with `day`, only a run for that day: a finished workout reviewed later leaves another
