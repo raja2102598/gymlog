@@ -427,6 +427,7 @@ describe("Settings' notification rows, in the Android app", () => {
   it("reads what Android allows as Settings opens, and again each time the app comes back from Android's settings, the newest answer winning", async () => {
     app.forget();
     restTimer.isSamsung.mockClear();
+    restTimer.checkAlarms.mockClear();
     restTimer.checkPermissions.mockResolvedValue({ notifications: "prompt" });
     restTimer.checkAlarms.mockResolvedValue(says(false, false));
     // The real wrappers over the plugin, and the real onAppResume over Android's resume.
@@ -459,12 +460,16 @@ describe("Settings' notification rows, in the Android app", () => {
     expect(seen[3]).toEqual({ permission: "granted", alarms: null, samsung: true });
     // Being a Samsung never changes, so the phone was asked that once.
     expect(restTimer.isSamsung).toHaveBeenCalledTimes(1);
-    // Settings closed: nothing is read any more.
+    // Settings closed with a reading on its way: it shows nothing when it answers, and nothing is read any more.
+    let closing: (a: AlarmChecks) => void = () => {};
+    restTimer.checkAlarms.mockReturnValueOnce(new Promise((r) => (closing = r)));
+    app.fire("resume");
+    await vi.waitFor(() => expect(restTimer.checkAlarms).toHaveBeenCalledTimes(6));
     stop();
-    const reads = restTimer.checkAlarms.mock.calls.length;
+    closing(says(false, false));
     app.fire("resume");
     await vi.advanceTimersByTimeAsync(0);
-    expect(restTimer.checkAlarms).toHaveBeenCalledTimes(reads);
+    expect(restTimer.checkAlarms).toHaveBeenCalledTimes(6);
     expect(seen).toHaveLength(4);
   });
 });
