@@ -114,6 +114,13 @@ Samsung's partners also declare `<meta-data android:name="com.samsung.android.su
 android:value="true"/>` in their manifest. Gym Log doesn't: a manifest entry can't be switched off, so it would apply
 with the switch off as well, and the automation pair is known to work without it.
 
+## The watch
+
+With Gym Log's Wear OS app on a watch paired with the phone (a Galaxy Watch, say: [installing it](watch.md#build-and-install)), a workout can be done from the wrist: the day's session, each set with the suggested weight and reps, Complete set, the rest countdown and the workout's clock. The phone keeps the data. The app's own plugin, `WatchPlugin.kt`, sends the watch today's workout and the next six days' over Wear OS's Data Layer whenever they change, and hands back what's done on the watch, which the app applies just as if it had been done on the phone, whichever screen it's on. What's done on the watch while Gym Log is closed waits on the phone (`WatchListenerService.kt` takes it in, even then) and is applied the next time the app runs; the watch shows it as done meanwhile. [watch.md](watch.md) has how the two talk.
+
+- **Needs:** Google Play services on the phone, and the watch paired with it (on a Samsung phone, with the Galaxy Wearable app). The watch app must be signed with the same key as the phone app, as CI's builds are.
+- Signed out, the watch says to sign in on the phone. The demo's sample data never goes to the watch.
+
 ## Updates and the signing key
 
 The app carries its own copy of the site, so changes to the site only reach it in a new APK. Every push to `main` builds one and publishes it as the **android-latest** release (GitHub → Actions → *Android app* shows each build; pull requests get an APK under the run's *Artifacts*), together with a `version.json` naming its version, commit and checksum, which is how the app in the next paragraph tells there's something new.

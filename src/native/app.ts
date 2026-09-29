@@ -1,7 +1,7 @@
 /* The Android app's extras, loaded only inside the app (see GymLog): sign-in links that open the app, and
  * Health Connect, read once you're signed in, whenever the app comes back to the front, and every 15 minutes while
  * it's open. Background sync (sync.ts) covers the time it's closed. Voice logging asks the phone, once, whether it
- * can listen (speech.ts). */
+ * can listen (speech.ts). The home-screen widget and the watch follow the store (widget.ts, watch.ts). */
 import { App } from "@capacitor/app";
 import { SystemBars, SystemBarsStyle } from "@capacitor/core";
 import { handleBack } from "@/lib/back";
@@ -11,6 +11,7 @@ import type { GymStore } from "@/lib/store";
 import { syncHealth, syncToday } from "./health";
 import { syncOngoingNotifications } from "./rest";
 import { backgroundStatus, checkBackgroundOwner, turnOffBackground } from "./sync";
+import { startWatch } from "./watch";
 import { startWidget } from "./widget";
 
 export { signInWithGoogle } from "./google";
@@ -70,6 +71,8 @@ export async function startNative(store: GymStore): Promise<void> {
   });
   // The widget follows the store, clearing itself on any sign-out.
   startWidget(store);
+  // So does the watch, which also sends back what's done on it (docs/watch.md).
+  startWatch(store);
   // While open, too: a watch's numbers keep arriving through the day. syncHealth skips runs under 5 minutes apart.
   setInterval(() => void syncHealth(store), 15 * 60_000);
   // And today's numbers every 30 seconds while the app is on screen, so steps and calories move as you do.

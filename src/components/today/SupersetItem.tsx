@@ -6,10 +6,11 @@ import type { FocusNext } from "@/hooks/useFocusNext";
 import { useVoice, useVoiceOn } from "@/hooks/useVoice";
 import { cx } from "@/lib/cx";
 import { setsSummary } from "@/lib/format";
-import { isWorkingSet, type RecordKind } from "@/lib/stats";
-import { minSets, restSecFor, setsOf, targetOf, type GymStore, type LiftItem as Item } from "@/lib/store";
+import { supersetModels } from "@/lib/lift";
+import type { RecordKind } from "@/lib/stats";
+import type { LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog } from "@/lib/types";
-import { LiftHead, liftModel, ProgHint, SetHead, SetRow, voiceHandler, type LiftModel, type Moves } from "./LiftItem";
+import { LiftHead, ProgHint, SetHead, SetRow, voiceHandler, type LiftModel, type Moves } from "./LiftItem";
 import type { LiftMenu } from "./types";
 import { WarmupCalc } from "./WarmupCalc";
 
@@ -30,24 +31,8 @@ interface Props {
   moves: Moves;
 }
 
-/** A superset's lifts as models, with the rest timer starting once a round is complete rather than after each set,
- *  for the longest rest any of its lifts has. Shared by the card and the workout's Complete button. */
-export function supersetModels(store: GymStore, sel: DayKey, lifts: { item: Item; i: number }[], entry: DayLog): LiftModel[] {
-  // Each lift as saved now, not as of this render: voice changes a set after it.
-  const now = () =>
-    lifts.map(({ item }) => {
-      const r = store.entry(sel).exercises[item.name];
-      const sets = setsOf(r).filter(isWorkingSet), min = item.extra ? 1 : minSets(targetOf(r, item.x));
-      return { sets, rows: r?.skipped ? 0 : Math.max(min, sets.length), rest: r?.skipped ? 0 : restSecFor(store.plan, item.x) };
-    });
-  const onReps = (m: LiftModel, j: number) => {
-    const all = now();
-    const complete = all.every((l) => j >= l.rows || l.sets[j]?.reps != null);
-    const later = all.some((l) => l.sets.slice(j + 1).some((s) => s.reps != null));
-    if (complete && !later) store.startRest(sel, m.did, Math.max(...all.map((l) => l.rest)));
-  };
-  return lifts.map(({ item, i }) => liftModel(store, sel, item, i, entry, onReps));
-}
+/** A superset's lifts as models, shared with the watch: lib/lift.ts. */
+export { supersetModels };
 
 /** The set a superset is on: [lift, set] for the one being typed in (see logged), or else the next to do round by
  *  round, or null once every round is logged. */
