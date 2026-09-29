@@ -180,20 +180,26 @@ describe("what comes after a rest", () => {
     expect(after(s, "Hamstring Curl")).toBe("Next: round 1 of 3");
   });
 
-  it("is the first other lift not done or skipped, by the name it's done under, once the rested one is through", () => {
+  it("is the workout's Next once the rested lift is through: the step after it, whatever its state, by the name it's done under", () => {
     const skip = { done: false, kg: null, skipped: true } as unknown as LiftLog;
-    const s = legs({ "Hack Squat": lift([[8, 100]]), "Leg Press": open(sets([[12, 100], [12, 100], [11, 100]])), "Leg Extension": skip });
-    expect(after(s, "Leg Press")).toBe("Next: Hamstring Curl");
-    s.logs[WED].exercises["Hamstring Curl"] = open([], { swap: "Nordic Curl" });
-    expect(after(s, "Leg Press")).toBe("Next: Nordic Curl");
+    const s = legs({ "Leg Press": open(sets([[12, 100], [12, 100], [11, 100]])), "Leg Extension": skip });
+    // Hack Squat, before it, not started: the workout's Next goes on from where it is, not back to the top.
+    expect(after(s, "Leg Press")).toBe("Next: Leg Extension");
+    s.logs[WED].exercises["Leg Extension"] = open([], { swap: "Sissy Squat" });
+    expect(after(s, "Leg Press")).toBe("Next: Sissy Squat");
+    // A superset next: both its lifts, as the workout's Next has them.
+    s.plan.days[wdIndex(WED)].exercises[3].superset = true; // Hamstring Curl joins Leg Extension
+    expect(after(s, "Leg Press")).toBe("Next: Sissy Squat + Hamstring Curl");
     // Ticked done after one set: the workout's Complete set 2 is still there, so the lock screen says it too.
     s.logs[WED].exercises["Leg Press"] = lift([[12, 100]]);
     expect(after(s, "Leg Press")).toBe("Next: set 2 of 3");
   });
 
-  it("is nothing once the workout has nothing left", () => {
+  it("is the day's cardio after the last lift, and nothing after a free workout's", () => {
     const s = legs(Object.fromEntries(LEGS.map((n) => [n, lift([[10, 50], [10, 50], [10, 50], [10, 50]])])));
-    expect(after(s, "Calf Raise")).toBe("");
+    expect(after(s, "Calf Raise")).toBe("Next: Cycling - 15-20 min");
+    const free = storeWith({ [WED]: day({ free: { name: "Hotel gym", lifts: ["Leg Press"] }, exercises: { "Leg Press": lift([[12, 100], [12, 100], [12, 100]]) } }) });
+    expect(after(free, "Leg Press")).toBe("");
   });
 });
 

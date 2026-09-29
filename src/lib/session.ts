@@ -153,8 +153,11 @@ export function liveWorkout(store: GymStore, day: DayKey, now = Date.now()): Liv
   if (!r || r.endedAt || r.pausedAt != null) return null;
   const ms = runMs(r, now);
   if (ms >= STALE_RUN_MS) return null;
-  const e = store.entry(day), blocks = store.liftBlocks(day);
-  const done = blocks.filter((b) => b.every((it) => e.exercises[it.name]?.done || e.exercises[it.name]?.skipped)).length;
+  const e = store.entry(day), blocks = store.liftBlocks(day), t = store.typing;
+  // A lift ticked off by its last set's reps isn't done while that set is still being typed in (the phone locked with
+  // the cursor in its box): the workout is still on it, as afterRest says.
+  const typed = (it: LiftItem) => !!e.exercises[it.name]?.autoDone && t?.day === day && t.lift === it.name;
+  const done = blocks.filter((b) => b.every((it) => e.exercises[it.name]?.skipped || (e.exercises[it.name]?.done && !typed(it)))).length;
   return {
     title: e.free ? e.free.name.trim() || "Free workout" : store.planFor(day).name,
     text: blocks.length ? `${done} of ${blocks.length} exercise${blocks.length === 1 ? "" : "s"} done` : "No exercises yet",
@@ -179,15 +182,16 @@ export interface LiveRest {
   next: string;
 }
 
-/** What comes after a rest, in a few words, for the lock screen's countdown and its "Rest over": the rested lift's
- *  next set while it has one to go ("Next: set 3 of 4", or its round in a superset), else the first other lift not
- *  yet done or skipped, else nothing (the workout has none left). The set is the one the workout's Complete set N is
- *  on: the first of its rows with no reps, its rows being the planned sets or as many working sets as it has, drop
- *  sets and one added included, or before those the set being typed in (LiftItem.tsx, nextSet; SupersetItem.tsx,
- *  nextInRounds). The rest's lift is the one performed, a swap's own name. */
+/** What comes after a rest, in a few words, for the lock screen's countdown and its "Rest over", as the workout says
+ *  it: the rested lift's next set while it has one to go ("Next: set 3 of 4", or its round in a superset), else the
+ *  step after it, as the workout's Next names it (the next lift or superset, or the day's cardio after the last), else
+ *  nothing (Finish workout). The set is the one Complete set N is on: the one being typed in, or else the first of
+ *  its rows with no reps, its rows being the planned sets or as many working sets as it has, drop sets and one added
+ *  included (LiftItem.tsx, nextSet; SupersetItem.tsx, nextInRounds; WorkoutView.tsx). The rest's lift is the one
+ *  performed, a swap's own name. */
 export function afterRest(store: GymStore, r: Pick<RestTimer, "day" | "lift">): string {
   const e = store.entry(r.day), blocks = store.liftBlocks(r.day), did = (x: LiftItem) => performed(x.name, e.exercises[x.name]);
-  const block = blocks.find((b) => b.some((x) => did(x) === r.lift)), it = block?.find((x) => did(x) === r.lift);
+  const block = blocks.find((b) => b.some((x) => did(x) === r.lift));
   if (block) {
     const ls = block.map((x) => {
       const log = e.exercises[x.name], sets = setsOf(log).filter(isWorkingSet);
@@ -200,6 +204,9 @@ export function afterRest(store: GymStore, r: Pick<RestTimer, "day" | "lift">): 
     for (let j = 0; j < rounds; j++)
       if (ls.some((l) => j < l.rows && !((l.sets[j]?.reps ?? 0) > 0))) return say(j);
   }
-  const next = blocks.flat().find((x) => x !== it && !e.exercises[x.name]?.done && !e.exercises[x.name]?.skipped);
-  return next ? `Next: ${did(next)}` : "";
+  // Through with it: the workout's own Next, the step after the rested one's, whatever state it's in.
+  const b = block ? blocks.indexOf(block) : -1, cardio = store.planFor(r.day).cardio.name;
+  if (b < 0) return "";
+  if (b + 1 < blocks.length) return `Next: ${blocks[b + 1].map(did).join(" + ")}`;
+  return cardio && !e.free ? `Next: ${cardio}` : "";
 }

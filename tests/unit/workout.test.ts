@@ -240,6 +240,19 @@ describe("the workout on the lock screen", () => {
     expect(liveWorkout(s, WED, NOON)).toEqual({ title: "Legs", text: "2 of 5 exercises done", chip: "2/5 done", since: NOON - 25 * MIN, forMs: STALE_RUN_MS - 25 * MIN });
   });
 
+  it("doesn't count a lift its last set's reps ticked off while that set is still being typed in", () => {
+    const s = storeWith({ [WED]: day({ exercises: { "Hack Squat": lift([[8, 100], [8, 100], [8, 100]], { autoDone: true }) } }) });
+    startRun(WED, NOON - MIN);
+    s.typeIn({ day: WED, lift: "Hack Squat", set: 2 }); // the phone locked with the cursor in set 3's box
+    expect(liveWorkout(s, WED, NOON)?.chip).toBe("0/5 done");
+    s.typeOut();
+    expect(liveWorkout(s, WED, NOON)?.chip).toBe("1/5 done");
+    // Ticked off by hand, it's done whatever's being typed in it.
+    s.logs[WED].exercises["Hack Squat"] = lift([[8, 100], [8, 100], [8, 100]]);
+    s.typeIn({ day: WED, lift: "Hack Squat", set: 2 });
+    expect(liveWorkout(s, WED, NOON)?.chip).toBe("1/5 done");
+  });
+
   it("counts a superset as one exercise, done when all of it is, and names a free workout by its own name", () => {
     const s = storeWith({ [WED]: day({ exercises: { "Leg Extension": lift([[12, 40]]) } }) });
     s.plan.days[wdIndex(WED)].exercises[3].superset = true; // Hamstring Curl joins Leg Extension
