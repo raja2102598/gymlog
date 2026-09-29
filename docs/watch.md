@@ -46,7 +46,8 @@ the watch has nothing to work out for itself beyond moving through it:
   "rest": {                         // store.rest, or null
     "day": "2026-09-29", "lift": "Leg Press", "endAt": 0, "pausedAt": null, "sec": 90
   },
-  "days": [                         // today first, then the next six days: the watch picks the one for its date
+  "days": [                         // today first, then the next six days: the watch picks the one for its date,
+                                    // unless a workout is under way for another day (see below)
     {
       "date": "2026-09-29",
       "title": "Legs",              // the session's name, or the free workout's
@@ -59,9 +60,10 @@ the watch has nothing to work out for itself beyond moving through it:
             "key": "Leg Press",     // the day's name for it (as planned): what commands name
             "name": "Leg Press",    // what it's done as (a swap's own name): what the watch shows
             "done": false, "skipped": false,
-            "restSec": 90,          // its rest, as the phone would start it
+            "restSec": 90,          // its rest, as the phone would start it (a superset's lifts: the round's, the
+                                    // longest of theirs not skipped, started once the round is complete)
             "inc": 2.5,             // the weight step on its equipment, kg: one bezel click
-            "cue": "…",             // how to do it, when there's anything to say
+            "cue": "…",             // how to do it, when there's anything to say, else ""
             "rows": [               // one per working set the phone shows (never warm-ups)
               { "reps": 12, "kg": 100, "type": null, "sugReps": 12, "sugKg": 100 },
               { "reps": null, "kg": null, "type": null, "sugReps": 12, "sugKg": 100 }
@@ -74,15 +76,24 @@ the watch has nothing to work out for itself beyond moving through it:
 }
 ```
 
-`sugReps` and `sugKg` are what the phone shows greyed in an empty row (its placeholder), and what its Complete set
-would log: the watch starts the bezel there.
+`sugReps` and `sugKg` are what the phone's Complete set would log in an empty row (null for nothing to suggest): the
+watch starts the bezel there. That's the suggestion greyed in the phone's boxes, except that a set takes the weight of
+the set before it once that one is logged (Leg Press's set 1 done at 50 kg rather than the suggested 45: set 2's
+`sugKg` is 50, and set 3's is 45 until set 2 is in). A row after one the watch logged itself takes that one's weight
+the same way.
+
+`days` has one more day, first, when a workout is under way for a day that isn't among them: one started before
+midnight, or opened on the phone for a day gone by, while its clock is running (not paused, finished or left running
+for three hours), as the phone's lock screen and widget follow it. The watch shows `run.day`'s day while `run` has no
+`endedAt` and `days` has it, and otherwise the one for its date.
 
 ### Watch → phone: `/gymlog/cmd/<id>`
 
-One item per thing done on the watch, `id` unique (e.g. `c-` and a random UUID), never reused. The phone applies
-each once, in the order of `at`, adds its id to `applied`, then deletes the item. Until its id comes back in
-`applied`, the watch shows its own command as done on top of the last state it had (so it keeps working away from the
-phone); once it's there, the state already includes it.
+One item per thing done on the watch, `id` unique (e.g. `c-` and a random UUID), never reused, and made of letters,
+digits and `.` `_` `:` `-` only, since it's part of the path (the phone deletes anything else unread). The phone
+applies each once, in the order of `at`, adds its id to `applied`, then a few seconds later deletes the item. Until
+its id comes back in `applied`, the watch shows its own command as done on top of the last state it had (so it keeps
+working away from the phone); once it's there, the state already includes it.
 
 ```jsonc
 { "v": 1, "id": "c-…", "at": 1790000000000, "type": "…", /* the type's own fields */ }
@@ -90,18 +101,21 @@ phone); once it's there, the state already includes it.
 
 | `type` | fields | the phone does |
 |---|---|---|
-| `set` | `day`, `lift` (key), `set` (row index), `reps`, `kg` | Logs that working set as Complete set N does, weight then reps (`reps: null` clears it: the tick's undo). The rest it starts is the phone's own rule; one for a set logged longer ago than its rest isn't started. |
-| `startRun` | `day` | Starts the day's workout clock, or does nothing if it's running. |
-| `pauseRun` / `resumeRun` | `day` | Pauses or resumes it. |
-| `finish` | `day` | Finish: ends the clock and the day's rest, as the phone's Finish workout does. |
+| `set` | `day`, `lift` (key), `set` (row index), `reps`, `kg` | Logs that working set as Complete set N does, weight then reps (`kg: null` takes the weight Complete set N would; `reps: null` clears it: the tick's undo). The rest it starts is the phone's own rule, counted from `at`; one for a set logged longer ago than its rest isn't started. |
+| `startRun` | `day` | Starts the day's workout clock from `at`, or does nothing if it's running. |
+| `pauseRun` / `resumeRun` | `day` | Pauses or resumes it, as of `at`. |
+| `finish` | `day` | Finish: ends the clock (at `at`) and the day's rest, as the phone's Finish workout does. |
 | `restSkip` | | Skips the rest. |
 | `restAdd` | `sec` | Adds to the rest (+15 s). |
 | `restPause` / `restResume` | | Pauses or resumes the rest. |
 | `skipLift` | `day`, `lift` | Skips the lift (no reason). |
 | `cardioDone` | `day`, `done` | Ticks the day's cardio. |
 
-A command the phone can't apply (a day or lift it doesn't have, a set past the rows) is dropped: its id still goes
-into `applied`, so the watch stops showing it.
+`at` is never taken as later than the phone's own clock. The rest timer's buttons act on the rest as it is when they
+arrive.
+
+A command the phone can't apply (a day or lift it doesn't have, a set past the rows or of a skipped lift, a `type` or
+`v` it doesn't know) is dropped: its id still goes into `applied`, so the watch stops showing it.
 
 Commands are only ever applied by the phone app's JavaScript, where the store is. When the phone app isn't running,
 the phone's listener service (`WatchListenerService`) keeps the commands that arrive and the app applies them the

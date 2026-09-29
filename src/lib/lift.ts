@@ -1,14 +1,14 @@
 /* One lift on one day, as the workout shows it and the changes it makes to it: a lift's own card (LiftItem.tsx), a
- * superset's (SupersetItem.tsx) and the workout's Complete set N (WorkoutView.tsx). Out of the components, so the watch
- * can log its sets through the same changes, and a set done on the wrist counts exactly as one done on the phone. */
+ * superset's (SupersetItem.tsx), the workout's Complete set N (WorkoutView.tsx), and the watch (lib/watch.ts), which
+ * logs its sets through the same changes so a set done on the wrist counts exactly as one done on the phone. */
 import { num } from "./format";
 import { isWorkingSet } from "./stats";
 import { minSets, performed, restSecFor, setsComplete, setsOf, targetOf, topKg, type GymStore, type LastDone, type LiftItem as Item, type NextWeight } from "./store";
 import type { DayKey, DayLog, LiftLog, PlanExercise, SetLog } from "./types";
 
-/** One lift on one day, as a card shows it, and the changes a card makes to it: shared by a lift's own card and a
- *  superset's (SupersetItem.tsx), and plain values and functions rather than hooks, so a superset has one for each
- *  of its lifts. */
+/** One lift on one day, as a card shows it, and the changes a card makes to it: shared by a lift's own card, a
+ *  superset's (SupersetItem.tsx) and the watch (lib/watch.ts), and plain values and functions rather than hooks, so a
+ *  superset has one for each of its lifts. */
 export interface LiftModel {
   item: Item;
   i: number;
@@ -200,8 +200,9 @@ export function blockRest(store: GymStore, sel: DayKey, items: Item[]): number {
 }
 
 /** A superset's lifts as models, with the rest timer starting once a round is complete rather than after each set,
- *  for the longest rest any of its lifts has (blockRest). Shared by the card and the workout's Complete button. */
-export function supersetModels(store: GymStore, sel: DayKey, lifts: { item: Item; i: number }[], entry: DayLog): LiftModel[] {
+ *  for the longest rest any of its lifts has (blockRest). Shared by the card, the workout's Complete button and the
+ *  watch, whose sets were logged at `from` (store.startRest). */
+export function supersetModels(store: GymStore, sel: DayKey, lifts: { item: Item; i: number }[], entry: DayLog, from?: number): LiftModel[] {
   // Each lift as saved now, not as of this render: voice changes a set after it.
   const now = () =>
     lifts.map(({ item }) => {
@@ -213,7 +214,7 @@ export function supersetModels(store: GymStore, sel: DayKey, lifts: { item: Item
     const all = now();
     const complete = all.every((l) => j >= l.rows || l.sets[j]?.reps != null);
     const later = all.some((l) => l.sets.slice(j + 1).some((s) => s.reps != null));
-    if (complete && !later) store.startRest(sel, m.did, blockRest(store, sel, lifts.map((l) => l.item)));
+    if (complete && !later) store.startRest(sel, m.did, blockRest(store, sel, lifts.map((l) => l.item)), from);
   };
   return lifts.map(({ item, i }) => liftModel(store, sel, item, i, entry, onReps));
 }

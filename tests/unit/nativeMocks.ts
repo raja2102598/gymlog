@@ -60,6 +60,31 @@ export const restTimer = {
   cancel: vi.fn(async () => {}),
 };
 
+type WatchCommand = { id: string; [field: string]: unknown };
+const watchListeners = new Set<() => void>();
+/** Watch: the Wear OS app's Data Layer. `queue` is what the plugin holds for JavaScript until acked, and `arrive` is the
+ *  listener service taking in commands from the watch and saying so. `sent()` is the last state published, parsed. */
+export const watch = {
+  queue: [] as WatchCommand[],
+  arrive: (...cmds: WatchCommand[]) => {
+    watch.queue.push(...cmds);
+    watchListeners.forEach((f) => f());
+  },
+  sent: () => {
+    const call = watch.publish.mock.lastCall as unknown as [{ json: string }] | undefined;
+    return call ? JSON.parse(call[0].json) : undefined;
+  },
+  /** Drops every listener, so a test's app starts afresh. */
+  forget: () => watchListeners.clear(),
+  publish: vi.fn(async (o: { json: string }) => void o),
+  pending: vi.fn(async () => ({ commands: [...watch.queue] })),
+  ack: vi.fn(async ({ ids }: { ids: string[] }) => void (watch.queue = watch.queue.filter((c) => !ids.includes(c.id)))),
+  addListener: vi.fn(async (_: string, fn: () => void) => {
+    watchListeners.add(fn);
+    return { remove: async () => void watchListeners.delete(fn) };
+  }),
+};
+
 type Progress = { received: number; total: number };
 const progressListeners = new Set<(p: Progress) => void>();
 let end: { resolve: () => void; reject: (e: Error) => void } = { resolve: () => {}, reject: () => {} };
@@ -76,7 +101,7 @@ export const appUpdate = {
   }),
 };
 
-const plugins: Record<string, unknown> = { GoogleSignIn: googleSignIn, Speech: speech, AppUpdate: appUpdate, GymWidget: widget, RestTimer: restTimer, GymSync: gymSync };
+const plugins: Record<string, unknown> = { GoogleSignIn: googleSignIn, Speech: speech, AppUpdate: appUpdate, GymWidget: widget, RestTimer: restTimer, GymSync: gymSync, Watch: watch };
 /** @capacitor/core: each plugin by its name. */
 export const capacitorCore = {
   registerPlugin: (name: string) => plugins[name] ?? gymSync,

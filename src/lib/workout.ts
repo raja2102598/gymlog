@@ -116,8 +116,8 @@ export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   return write({ ...r, endedAt: r.endedAt ?? now });
 }
 
-/** Finish workout, from the workout's Finish (GymLog.tsx) or the watch's: the day's clock stops, and the rest after its
- *  last set goes with it, since there's no next set to rest for, on Home or in a notification. */
+/** Finish workout, from the workout's Finish (GymLog.tsx) or the watch's (lib/watch.ts): the day's clock stops, and the
+ *  rest after its last set goes with it, since there's no next set to rest for, on Home or in a notification. */
 export function finishWorkout(store: Pick<GymStore, "demo" | "rest" | "skipRest">, day: DayKey, now = Date.now()) {
   keepRunsInMemory(store.demo);
   endRun(day, now);
