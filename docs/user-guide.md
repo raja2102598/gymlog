@@ -66,6 +66,15 @@ One exercise at a time. The top bar has the session, the time since you started 
 - **Knee:** if pain after a session goes above your limit (5 unless you change it), or hasn't settled by the morning, knee-sensitive lifts say *Hold … kg* instead of going up next time. A deload still shows, since it only takes weight off.
 - **Workout complete:** **Finish** shows how long it took, the kg lifted and the sets done, the day's personal bests, the knee after the session (on knee days), and where the day's rings stand. **Share** sends a one-line summary; **Done** goes Home.
 
+## On the watch
+
+With the Android app on your phone, a Wear OS watch can run the workout from your wrist, built for a Galaxy Watch4 Classic and its bezel. It isn't on Google Play: [the watch app](watch.md#build-and-install) says how to install it.
+
+- **Today** shows the day's session, its clock (tap it to pause or carry on) and each exercise with how far it's got. **Start** opens the first one not done and starts the clock, as on the phone.
+- **An exercise** shows the set you're on, with the weight and reps big: what's logged, or else the suggestion. Tap one of them, then turn the bezel to change it, a click at a time (the weight by the step your equipment goes up by). **Complete set N** logs it and starts the rest. Tap the exercise's name for all its sets: a set's tick logs or clears it, tapping a set changes it, and **Skip today**, **Next** and **Finish workout** are there too. Supersets go round by round, as on the phone.
+- **The rest** counts down in a ring, with **+15s** and **Skip**; tap the time to pause it. At zero the watch buzzes, screen on or off, app open or not, for a rest started on the phone too. While the workout runs, it's on the watch face, one tap from the app.
+- The phone keeps your data. What you do on the watch shows at once, and reaches the phone as soon as the two are in reach, even if they were apart for the whole workout.
+
 ## Health
 
 The day's activity as three heart-shaped rings, coloured as in Samsung Health (steps green, exercise blue, active calories purple, against your goals). Under them, in the Android app, a line says when the app your steps come from last shared them with Health Connect, e.g. *Samsung Health last shared steps at 8:40 pm*: it passes them on every so often, so the count here is its count as of then. Then a tile for each kind of data with a small chart: steps over the week, the night's sleep by stage, heart rate ranges over the week, calories burned in all (at rest and moving: the resting part from Health Connect's resting rate, or else estimated from your weight, and only up to now today) against your goal, body weight and its change this week, and water, which **−** and **+** change right there. ‹ › moves between days, under the day's name and date, and one line under the tiles says what would help most today. Your daily goals are in **Settings → Daily goals**.

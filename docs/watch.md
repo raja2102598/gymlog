@@ -14,12 +14,27 @@ it, and sends back what was done on it, which the phone applies exactly as if it
 - `android/wear` is its own Gradle module (`:wear`), a native Kotlin app with Compose for Wear OS. Its
   `applicationId` is the phone app's, `io.github.raja2102598.gymlog`, and CI signs both with the same key: Wear OS's
   Data Layer only connects an app to its twin with the same package name and signature.
-- CI builds it next to the phone app and puts `gym-log-watch.apk` on the `android-latest` release.
-- It isn't on Google Play, so it's installed on the watch over Wi-Fi debugging: on the watch, Settings → About
-  watch → Software → tap Software version five times, then Settings → Developer options → ADB debugging and
-  Wireless debugging on. From a computer: `adb pair <ip>:<port>` with the code the watch shows, `adb connect
-  <ip>:<port>`, `adb install gym-log-watch.apk`. From the phone alone, an app such as Bugjaeger or Wear Installer
-  does the same. An update is installed the same way, over the one before.
+- CI builds it next to the phone app and puts `gym-log-watch.apk` on the `android-latest` release (and on a tag's
+  release), numbered as the phone's build is. Each CI run also keeps it as the `gym-log-watch-apk` artifact.
+- The phone app has to be CI's too (`gym-log.apk` from the same releases): a phone app built and signed on your own
+  computer has another key, and the watch never hears from it.
+- It isn't on Google Play, so it's installed on the watch over Wi-Fi debugging, once to set up and then for each
+  update:
+  1. On the watch, Settings → About watch → Software information → tap Software version five times, until it says
+     Developer mode is on.
+  2. Settings → Developer options → ADB debugging on, then Wireless debugging (Debug over Wi-Fi on some versions)
+     on. The watch has to be on the same Wi-Fi as the computer, or the phone: while it's connected to the phone by
+     Bluetooth, a Galaxy Watch keeps its Wi-Fi off, so set Settings → Connections → Wi-Fi to Always on (or turn
+     Bluetooth off for a minute).
+  3. From a computer with Android's platform tools: Wireless debugging → Pair new device shows an address and a
+     code; `adb pair <ip>:<pairing port>` and type the code (once per computer). Then `adb connect <ip>:<port>` with
+     the port the Wireless debugging screen itself shows (not the pairing one), and `adb install -r
+     gym-log-watch.apk`.
+  4. From the phone alone, an app such as Bugjaeger or Wear Installer does the same pairing and install.
+  5. An update installs the same way, over the one before (`adb install -r`): what the watch has kept stays.
+  6. Open Gym Log on the watch once, and allow notifications when it asks (Wear OS 4 and later): "Rest over" and the
+     workout on the watch face are notifications. The buzz itself doesn't need them.
+  7. Turn Wireless debugging (and Wi-Fi's Always on) off again afterwards: it costs battery.
 
 ## How the phone and the watch talk
 
@@ -83,9 +98,13 @@ the set before it once that one is logged (Leg Press's set 1 done at 50 kg rathe
 the same way.
 
 `days` has one more day, first, when a workout is under way for a day that isn't among them: one started before
-midnight, or opened on the phone for a day gone by, while its clock is running (not paused, finished or left running
-for three hours), as the phone's lock screen and widget follow it. The watch shows `run.day`'s day while `run` has no
-`endedAt` and `days` has it, and otherwise the one for its date.
+midnight, or opened on the phone for a day gone by, while its clock is running or paused (not finished or left
+running for three hours). A paused one counts too, unlike on the phone's lock screen and widget: otherwise pausing at
+00:10 would take the day away and the watch would jump to the next day's session mid-workout. The watch shows
+`run.day`'s day while `run` has no `endedAt`, isn't left running for three hours (`pausedAt` null and three hours
+counted: the phone's `STALE_RUN_MS`), and `days` has it, and otherwise the one for its date. The three hours are
+for a state it has kept since the day before: a workout never finished yesterday doesn't hold the watch on
+yesterday's session.
 
 ### Watch → phone: `/gymlog/cmd/<id>`
 
@@ -123,19 +142,69 @@ next time it runs; the watch meanwhile shows them as done, as above.
 
 ## The watch app
 
-- **Today**: the session's title, the workout clock once started, and its steps with how far each has got. Start
-  (or Continue) opens the first step not done. With no state yet, or none for today: "Open Gym Log on your phone".
-- **A lift**: its name, set N of M, and two big numbers, weight and reps, starting at what's logged or else the
-  suggestion. Tap one to pick it; the bezel changes the picked one (weight by `inc`, reps by 1), with a light tick
-  of haptic per click. Complete set logs it and starts the rest. A done set's tick undoes it. Next lift and a
-  superset's rounds follow the phone's order.
-- **Rest**: a ring counting down from `endAt`, +15 s, Skip, and a strong buzz at zero, screen on or off (an exact
-  alarm on the watch, and the workout kept alive in the background while it runs; see below).
-- **Finish**: from the last step, as on the phone.
-- It keeps the screen's round shape in mind: nothing important in the corners, lists that curve at the edge
-  (ScalingLazyColumn), and the bezel scrolling any list (rotary input).
+`android/wear/src/main/java/io/github/raja2102598/gymlog/wear/`. The rules are plain Kotlin with JVM tests, as the
+phone app's Kotlin is: reading the state and choosing the day (`StateLogic`), the steps, sets and words
+(`StepLogic`), the commands and showing them as done (`OverlayLogic`), the clock and the rest (`TimerLogic`), and
+the bezel (`BezelLogic`). The screens are Compose for Wear OS, Material 3.
+
+- **Today**: the session's title (or "Rest day"), the workout clock once started (a tap pauses it, another resumes
+  it, as on the phone), Start (Continue once it's under way, Review once every lift is done), then each step with
+  how far it's got ("2 of 4 sets", "Done", "Skipped"), and Finish workout while it's under way. Opening a step starts
+  the clock, as opening the workout does on the phone. A skipped day says so and offers nothing to start: it's undone
+  on the phone. With no state yet, or none for today: "Open Gym Log on your phone"; signed out: "Sign in on your
+  phone"; a state from a newer phone app: "Update Gym Log on your watch".
+- **A lift**: its name and "Set 3 of 4" (a superset's "A1 · round 2 of 3"), and two big numbers, weight and reps,
+  starting at what's logged or else `sugKg` and `sugReps`. Tap one to pick it (weight is picked first); the bezel
+  changes the picked one, weight by `inc` and reps by 1, never below 0, with a light tick of haptic per click (the
+  one Wear OS's own lists give). Complete set N, at the bottom edge, logs it (with no reps to log, it picks the reps
+  instead, as the phone puts the cursor there), buzzes lightly, and brings up the rest when it starts one. The step
+  then moves on: a lift to its next set, a superset round by round, as the phone's Complete set does.
+- **Sets**: tapping the lift's name lists every set of the step with its tick. A tick completes a set with what the
+  lift screen would start at, and a done set's tick undoes it (`reps: null`); tapping a set opens it on the lift
+  screen to change. Then Skip today for each lift (it asks first, since only the phone can undo it), Next, and
+  Finish workout. Once a step's sets are all logged, the step itself shows this list with Next exercise (or Finish
+  workout) first.
+- **Rest**: a ring counting down from `endAt`, the time left (a tap pauses or resumes it, as the phone's ring does),
+  +15s and Skip, then "Rest over" at zero. The rest also counts down beside the time at the top of every other
+  screen.
+- **The cardio**: its name, which exercise it is, and Done; then Finish workout, or Not done yet.
+- **Finish**: the workout's time, sets and kg lifted, and Finish workout; then "Workout complete".
+- Round screens: the time curves along the top, the step's button hugs the bottom edge, nothing sits in the corners,
+  and each list (Today, Sets) curves at the edge and scrolls with the bezel (ScalingLazyColumn). The lift screen's
+  numbers and the rest's buttons size themselves to the screen, from a 42 mm watch to a 46 mm one.
+- Swiping right, or the back button, goes back a screen, as everywhere on Wear OS.
+
+### What the watch keeps
+
+The last `/gymlog/state` and the commands the phone hasn't applied yet are kept in two files in the app's own
+storage, so the watch opens on the last workout from cold, away from the phone. The state arrives whether or not the
+app is open (a `WearableListenerService` for `/gymlog/state`), and the app reads the Data Layer again each time it
+comes to the front. A command is shown as done at once, kept, and put as its urgent data item; one that never
+reached the Data Layer (the app killed that moment) is put again the next time the app opens. One the phone never
+takes stops being shown after two days.
+
+### The rest's buzz, and the workout in the background
+
+- The buzz is an exact alarm (`AlarmManager.setExactAndAllowWhileIdle`) at the rest's end, for whichever rest the
+  watch has, the phone's or its own, so a rest started on the phone buzzes on the wrist too. Its receiver buzzes
+  three long pulses, as an alarm (so with the screen off, and through Do Not Disturb unless alarms are off too), and
+  posts "Rest over" with what's next ("Leg Press · Next: set 3 of 4") unless the app is on screen. It checks the
+  rest is still the one due first: skipped, paused or pushed out by +15s since, it stays quiet. The alarm follows
+  every change, from either side, and needs nothing running: it fires with the app closed.
+- Exact alarms: `USE_EXACT_ALARM` from Wear OS 4 (API 33), granted on install. It's meant for alarm and timer apps,
+  which a rest timer is, and Google Play's limit on it doesn't apply to an app that isn't on Play. On Wear OS 3 (API
+  30 to 32), `SCHEDULE_EXACT_ALARM`, granted on install too.
+- While the workout clock runs, a foreground service (of the special-use kind: it only keeps a clock) holds an
+  Ongoing Activity: the workout's icon and clock, or the rest counting down, on the watch face and at the top of the
+  app list, one tap from the app, and Gym Log's process alive through the workout, so it opens at once where it was.
+  Android only lets an app start one while it's on screen, so it starts when the app opens with a workout under
+  way, and stops itself once it's finished or left running for three hours. The buzz doesn't depend on it.
+- The phone app's own notifications are turned off on the watch while the watch app is installed (Wear OS's
+  bridging, `BridgingManager`), or "Rest over" would buzz twice, once from each. The phone's only other
+  notifications are ongoing ones, which Wear OS never shows on the watch anyway.
 
 ## Later, in the same app
 
 - Heart rate during the workout (Health Services), its average and highest sent to the phone for Workout complete.
-- A tile with the workout clock and the next set, and the workout on the watch face (Ongoing Activity).
+- A tile with the workout clock and the next set.
+- Staying on screen, dimmed, while the watch is idle (ambient mode), for the rest's countdown at a glance.
