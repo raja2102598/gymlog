@@ -140,15 +140,20 @@ export default async function workout({ browser, base, check }) {
       saved("Hack Squat") === JSON.stringify([{ reps: null, kg: k0 }]) && (await big()) === "Complete set 1" && (await page.getAttribute('[data-check="0:0"]', "aria-pressed")) === "false",
       `${saved("Hack Squat")} / ${await big()}`,
     );
-    const typed = k0 + 2.5;
+    const typed = k0 + 2.5, reps = r0 + 2;
     await page.fill("#s0_0_k", String(typed));
+    await page.fill("#s0_0_r", String(reps));
     await tap();
-    const [r1, k1] = await suggested(0, 1), [r2] = await suggested(0, 2);
+    const [r1, k1] = await suggested(0, 1), [r2, k2] = await suggested(0, 2);
     await tap();
     await tap();
-    const hack = JSON.stringify([{ reps: r0, kg: typed }, { reps: r1, kg: typed }, { reps: r2, kg: typed }]);
+    const hack = JSON.stringify(Array(3).fill({ reps, kg: typed }));
     await until(() => saved("Hack Squat") === hack && today().exercises["Hack Squat"].done);
-    check("a weight typed stays, and the sets after it take it rather than the suggestion", k1 === k0 && saved("Hack Squat") === hack, `${saved("Hack Squat")} (suggested ${k1} kg)`);
+    check(
+      "what's typed stays, and the sets after it repeat it, greyed in their boxes and logged, rather than the suggestion",
+      r1 === reps && k1 === typed && r2 === reps && k2 === typed && saved("Hack Squat") === hack,
+      `${saved("Hack Squat")} (set 2 greyed ${r1} × ${k1} kg, set 3 ${r2} × ${k2} kg)`,
+    );
     check(
       "the planned sets tick the lift off, fill its step, and the big button moves on, naming what's next",
       today()?.exercises?.["Hack Squat"]?.done === true && (await page.locator("ol.wprog li").first().getAttribute("class")) === "done" && (await big()) === "Next exercise" && (await next()) === "Next: Leg Press",
@@ -233,7 +238,7 @@ export default async function workout({ browser, base, check }) {
       `${heart} / ${JSON.stringify(today().hr)}`,
     );
     const pbs = (await page.locator("#doneBests").count()) ? await flat(page.locator("#doneBests")) : "no personal bests";
-    check("its personal best: Hack Squat at the weight typed", new RegExp(`^1 personal best ?Hack Squat ?${typed} kg × ${r0} heaviest yet`).test(pbs), pbs);
+    check("its personal best: Hack Squat at what was typed", new RegExp(`^1 personal best ?Hack Squat ?${typed} kg × ${reps} heaviest yet`).test(pbs), pbs);
     check("where the day's rings stand, and the steps left", /3,000 steps left for today\./.test(await flat(page.locator("#doneRings"))), await flat(page.locator("#doneRings")));
     await page.click('#doneKnee button[data-knee="kneeAfter:3"]');
     await until(() => today()?.kneeAfter === 3);

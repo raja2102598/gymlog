@@ -16,7 +16,16 @@ import { startWidget } from "./widget";
 
 export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
-export { notificationPermission, requestNotificationPermission } from "./rest";
+export {
+  checkAlarms,
+  isSamsungPhone,
+  notificationPermission,
+  openExactAlarmSettings,
+  openLiveUpdateSettings,
+  requestNotificationPermission,
+  samsungCardPref,
+  setSamsungCard,
+} from "./rest";
 export { backgroundStatus, runBackgroundNow, turnOffBackground, turnOnBackground, type SyncStatus } from "./sync";
 export {
   checkUpdate,
@@ -31,7 +40,6 @@ export {
   type LatestUpdate,
   type UpdateCheck,
 } from "./update";
-export { isSamsungPhone, samsungCardPref, setSamsungCard } from "./rest";
 
 /** The phone's status and navigation bars follow the theme picked in Settings: light icons on the dark theme. */
 export const setBarStyle = (theme: "system" | "light" | "dark"): Promise<void> =>

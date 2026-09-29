@@ -100,7 +100,7 @@ function liftOf(store: GymStore, m: LiftModel, restSec: number): WatchLift {
     inc: m.inc,
     cue: m.cue,
     rows: Array.from({ length: rows }, (_, j): WatchRow => {
-      const s = m.sets[j], reps = num(store.placeholders(m.x, m.last, j, m.next)[0]);
+      const s = m.sets[j], reps = num(m.sugFor(m.sets, j)[0]);
       return { reps: s?.reps ?? null, kg: s?.kg ?? null, type: s?.type ?? null, sugReps: reps != null && reps > 0 ? reps : null, sugKg: m.kgFor(m.sets, j) };
     }),
   };

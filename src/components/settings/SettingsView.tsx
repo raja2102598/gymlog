@@ -1,5 +1,4 @@
 "use client";
-import type { PermissionState } from "@capacitor/core";
 import { ChevronRight, Download, ExternalLink, LogOut, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { SegmentedControl } from "@/components/ds/parts";
@@ -7,6 +6,7 @@ import { ask } from "@/components/ds/Ask";
 import { firstName } from "@/components/ds/ProfileButton";
 import { downloadFailed, retryWith, useAndroidUpdate, withProgress } from "@/components/shell/useAndroidUpdate";
 import { Group, NumField, Text } from "@/components/settings/parts";
+import { alarmRows, watchRestNotifs, type RestNotifs } from "@/components/settings/restNotifications";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
 import { useSpeechSupported, useVoicePref } from "@/hooks/useVoice";
@@ -342,46 +342,65 @@ function Training() {
 /** Android 13 and later ask permission to post notifications; older versions grant it automatically (checked the
  *  same way either way, RestTimerPlugin.kt). Lets the rest timer notify at zero while Gym Log is backgrounded or
  *  closed (docs/android.md). The button only shows while asking would actually do something: once Android has
- *  turned it down for good, only its own settings screen can turn it back on. */
+ *  turned it down for good, only its own settings screen can turn it back on. Once they're on, the rows under it say
+ *  whether "Rest over" will be on time and whether Live Updates are allowed, where the phone has those settings, with
+ *  a way to Android's page for each that's off; on a Samsung, the second is the Now Bar's, with a way to Developer
+ *  options (restNotifications.ts). All of it is read again as the app comes back from Android's settings. */
 function RestNotifications() {
-  const [state, setState] = useState<PermissionState | null>(null);
-  useEffect(() => {
-    let live = true;
-    void native().then((m) =>
-      m.notificationPermission().then((s) => {
-        if (live) setState(s);
-      }),
-    );
-    return () => {
-      live = false;
-    };
-  }, []);
+  const [s, setS] = useState<RestNotifs | null>(null);
+  useEffect(() => watchRestNotifs(setS), []);
   const ask = () =>
     void native()
       .then((m) => m.requestNotificationPermission())
-      .then(setState);
-  if (!state) return null;
+      .then((permission) => setS((cur) => cur && { ...cur, permission }));
+  // Android's own page for it: the rows read it again on the way back (watchRestNotifs).
+  const open = (page: "openExactAlarmSettings" | "openLiveUpdateSettings") => () => void native().then((m) => m[page]()).catch(() => {});
+  if (!s) return null;
+  const state = s.permission;
   const canAsk = state === "prompt" || state === "prompt-with-rationale";
+  const { exact, live } = alarmRows(s);
   return (
-    <div className="pref-row">
-      <Text
-        title="Rest timer notifications"
-        sub={
-          <span id="restNotifStatus" role="status">
-            {state === "granted"
-              ? "On. While Gym Log is out of sight, your workout’s clock and rest countdown stay on the lock screen, and it tells you when a rest ends."
-              : canAsk
-                ? "Off. Gym Log can show your workout’s clock and rest countdown on the lock screen while it’s out of sight, and tell you when a rest ends."
-                : "Off, and Android is blocking it. Allow notifications for Gym Log in Android’s settings to get one when a rest timer ends in the background."}
-          </span>
-        }
-      />
-      {canAsk ? (
-        <button className="btn btn-sm" id="restNotifAsk" onClick={ask}>
-          Allow
-        </button>
+    <>
+      <div className="pref-row">
+        <Text
+          title="Rest timer notifications"
+          sub={
+            <span id="restNotifStatus" role="status">
+              {state === "granted"
+                ? "On. While Gym Log is out of sight, your workout’s clock and rest countdown stay on the lock screen, and it tells you when a rest ends."
+                : canAsk
+                  ? "Off. Gym Log can show your workout’s clock and rest countdown on the lock screen while it’s out of sight, and tell you when a rest ends."
+                  : "Off, and Android is blocking it. Allow notifications for Gym Log in Android’s settings to get one when a rest timer ends in the background."}
+            </span>
+          }
+        />
+        {canAsk ? (
+          <button className="btn btn-sm" id="restNotifAsk" onClick={ask}>
+            Allow
+          </button>
+        ) : null}
+      </div>
+      {exact ? (
+        <div className="pref-row">
+          <Text id="restExact" title={exact.title} sub={<span id="restExactStatus" role="status">{exact.text}</span>} />
+          {exact.open ? (
+            <button className="btn btn-sm" id="restExactOpen" aria-describedby="restExactT" onClick={open("openExactAlarmSettings")}>
+              Open settings
+            </button>
+          ) : null}
+        </div>
       ) : null}
-    </div>
+      {live ? (
+        <div className="pref-row">
+          <Text id="restLive" title={live.title} sub={<span id="restLiveStatus" role="status">{live.text}</span>} />
+          {live.open ? (
+            <button className="btn btn-sm" id="restLiveOpen" aria-describedby="restLiveT" onClick={open("openLiveUpdateSettings")}>
+              Open settings
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }
 
