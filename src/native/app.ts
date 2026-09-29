@@ -30,6 +30,7 @@ export {
   type LatestUpdate,
   type UpdateCheck,
 } from "./update";
+export { isSamsungPhone, samsungCardPref, setSamsungCard } from "./rest";
 
 /** The phone's status and navigation bars follow the theme picked in Settings: light icons on the dark theme. */
 export const setBarStyle = (theme: "system" | "light" | "dark"): Promise<void> =>

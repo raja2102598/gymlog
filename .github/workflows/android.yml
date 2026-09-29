@@ -50,6 +50,10 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('android/**', 'package-lock.json') }}
           restore-keys: gradle-${{ runner.os }}-
       - run: npm ci
+      # Android 17's platform, which the app compiles against (android/variables.gradle). The runner's image has it; this
+      # makes sure, since the Android Gradle plugin, finding it missing, installs it only for the build after.
+      - name: Install the Android 17 platform
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" > /dev/null
       # Next.js's build cache (its compiler's and TypeScript's work, in .next/cache), which Next.js asks CI to keep:
       # a run starts from the newest one for the same packages and only redoes what changed.
       - uses: actions/cache@v6

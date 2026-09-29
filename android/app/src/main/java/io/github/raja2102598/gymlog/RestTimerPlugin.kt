@@ -23,12 +23,13 @@ private const val NOTIFICATIONS = "notifications"
  */
 @CapacitorPlugin(name = "RestTimer", permissions = [Permission(alias = NOTIFICATIONS, strings = [Manifest.permission.POST_NOTIFICATIONS])])
 class RestTimerPlugin : Plugin() {
-    /** { lift, endAt, next }: schedules the alert for `endAt` (epoch ms), `next` being what comes after the rest. */
+    /** { lift, endAt, next, samsungCard }: schedules the alert for `endAt` (epoch ms), `next` being what comes after
+     *  the rest, and `samsungCard` whether Settings' Samsung timer card is on. */
     @PluginMethod
     fun schedule(call: PluginCall) {
         val lift = call.getString("lift") ?: ""
         val endAt = call.getLong("endAt", 0L) ?: 0L
-        RestAlarm.schedule(context, lift, endAt, call.getString("next") ?: "")
+        RestAlarm.schedule(context, lift, endAt, call.getString("next") ?: "", call.getBoolean("samsungCard", false) ?: false)
         call.resolve()
     }
 
@@ -39,7 +40,7 @@ class RestTimerPlugin : Plugin() {
         call.resolve()
     }
 
-    /** { title, text, chip, since, forMs }: the workout under way, its clock counting up from `since`
+    /** { title, text, chip, since, forMs, samsungCard }: the workout under way, its clock counting up from `since`
      *  (RestAlarm.showWorkout). */
     @PluginMethod
     fun workout(call: PluginCall) {
@@ -50,6 +51,7 @@ class RestTimerPlugin : Plugin() {
             call.getString("chip") ?: "",
             call.getLong("since", 0L) ?: 0L,
             call.getLong("forMs", 0L) ?: 0L,
+            call.getBoolean("samsungCard", false) ?: false,
         )
         call.resolve()
     }
@@ -66,6 +68,12 @@ class RestTimerPlugin : Plugin() {
     fun cancel(call: PluginCall) {
         RestAlarm.cancel(context)
         call.resolve()
+    }
+
+    /** { samsung }: whether this is a Samsung phone, the only kind Settings offers the Samsung timer card on. */
+    @PluginMethod
+    fun isSamsung(call: PluginCall) {
+        call.resolve(JSObject().put("samsung", RestTimerLogic.samsungPhone(Build.MANUFACTURER)))
     }
 
     // Android 12 and older have no POST_NOTIFICATIONS to ask for (notifications come with the app), so Capacitor's
