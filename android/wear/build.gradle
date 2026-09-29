@@ -82,6 +82,11 @@ dependencies {
     implementation "androidx.wear:wear-phone-interactions:1.1.0"
     // Heart rate during the workout (HeartMonitor): Health Services' exercise, which measures with the screen off too.
     implementation "androidx.health:health-services-client:1.1.0"
+    // The tile (GymTileService), laid out with ProtoLayout's Material 3, its time ticking on the watch's own.
+    implementation "androidx.wear.tiles:tiles:1.6.2"
+    implementation "androidx.wear.protolayout:protolayout:1.4.2"
+    implementation "androidx.wear.protolayout:protolayout-expression:1.4.2"
+    implementation "androidx.wear.protolayout:protolayout-material3:1.4.2"
     // The Data Layer: the phone's state in, the watch's commands out (WatchRepo).
     implementation "com.google.android.gms:play-services-wearable:20.0.1"
     // Play services brings Fragment 1.0, whose activity results predate the ones MainActivity asks for notifications

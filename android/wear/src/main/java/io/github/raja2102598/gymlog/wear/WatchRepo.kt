@@ -141,11 +141,12 @@ object WatchRepo {
             .addOnFailureListener { Log.w(TAG, "Couldn't send ${cmd.type} to the phone; it's sent again next time", it) }
     }
 
-    /** The rest alarm and the workout on the watch face follow every change, from wherever it came. */
+    /** The rest alarm, the workout on the watch face and the tile follow every change, from wherever it came. */
     private fun changed(ctx: Context) {
         val snap = flow.value
         RestAlarm.sync(ctx.applicationContext, snap.state, System.currentTimeMillis())
         WorkoutService.sync(ctx.applicationContext, snap.state)
+        GymTileService.update(ctx.applicationContext)
     }
 
     // Callers hold the lock, so the file is written with the lists as they are at this change.
