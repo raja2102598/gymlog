@@ -63,7 +63,8 @@ object TileLogic {
     /**
      * The next set, as "Leg Press · Set 3 of 4 · 100 kg × 12": the rested lift's next set while its step has one (what
      * "Rest over" names), else the first step not finished; its cardio after the lifts; and once everything's done,
-     * that.
+     * that. Which set, and its weight and reps, are each kept on one line (no-break spaces), so a narrow tile breaks
+     * the line between them, never "100 / kg".
      */
     fun next(day: Day, rest: Rest?): String {
         val rested = rest?.let { r -> day.blocks.indexOfFirst { b -> b.any { it.name == r.lift } } } ?: -1
@@ -74,11 +75,13 @@ object TileLogic {
             val (n, j) = on
             val lift = block[n]
             val set = setWords(StepLogic.startKg(lift, j), StepLogic.startReps(lift, j))
-            return listOf(lift.name, StepLogic.setLine(day, at, n, j), set).filter { it.isNotEmpty() }.joinToString(" · ")
+            return listOf(lift.name, keep(StepLogic.setLine(day, at, n, j)), keep(set)).filter { it.isNotEmpty() }.joinToString(" · ")
         }
         if (day.cardio != null && !day.cardioDone) return day.cardio
         return "Every set done"
     }
+
+    private fun keep(words: String) = words.replace(' ', '\u00A0')
 
     /** What a set is to be done with, weight first: "100 kg × 12", "12 reps" with no weight, "" with nothing. */
     fun setWords(kg: Double?, reps: Int?): String =

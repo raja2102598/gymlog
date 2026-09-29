@@ -20,6 +20,9 @@ class TileLogicTest {
 
     private fun ok(s: WatchState) = StateLogic.Parsed.Ok(s)
 
+    /** The next set's words as read, its no-break spaces as spaces. */
+    private fun read(next: String) = next.replace('\u00A0', ' ')
+
     private fun face(s: WatchState, at: Long = now) = TileLogic.face(ok(s), s, TODAY, at)
 
     /** Hack Squat with a set left, then Leg Press on its third of four, then the cycling. */
@@ -29,7 +32,8 @@ class TileLogicTest {
     fun duringAWorkoutItShowsItsClockAndTheNextSet() {
         val run = Run(TODAY, startedAt = now - (18 * min + 42 * sec))
         val live = face(state(legs, run = run)) as TileLogic.Live
-        assertEquals(TileLogic.Live("Legs", run, null, "Hack Squat · Set 2 of 2 · 100 kg × 12"), live)
+        // Which set, and its weight and reps, each held on one line: a narrow tile breaks between them.
+        assertEquals(TileLogic.Live("Legs", run, null, "Hack Squat · Set\u00A02\u00A0of\u00A02 · 100\u00A0kg\u00A0×\u00A012"), live)
         assertEquals("Workout", TileLogic.label(live, now))
         assertEquals("18:42", TileLogic.time(live, now))
         assertEquals("Continue", live.button)
@@ -45,7 +49,7 @@ class TileLogicTest {
         // Leg Press done out of order, Hack Squat still to finish: after Leg Press's rest, Leg Press's next set.
         val rest = Rest(TODAY, "Leg Press", endAt = now + 65 * sec, sec = 90)
         val live = face(state(legs, run = run, rest = rest)) as TileLogic.Live
-        assertEquals("Leg Press · Set 3 of 4 · 100 kg × 12", live.next)
+        assertEquals("Leg Press · Set 3 of 4 · 100 kg × 12", read(live.next))
         assertTrue(TileLogic.resting(live, now))
         assertEquals("Rest", TileLogic.label(live, now))
         assertEquals("1:05", TileLogic.time(live, now))
@@ -63,10 +67,10 @@ class TileLogicTest {
     fun theNextSetFollowsTheWorkoutsOwnOrder() {
         // The rested lift has no set left: the first step not finished.
         val done = day(listOf(lift("Hack Squat", 12, null)), listOf(lift("Leg Press", 12, 12, done = true)))
-        assertEquals("Hack Squat · Set 2 of 2 · 100 kg × 12", TileLogic.next(done, Rest(TODAY, "Leg Press", now + min)))
+        assertEquals("Hack Squat · Set 2 of 2 · 100 kg × 12", read(TileLogic.next(done, Rest(TODAY, "Leg Press", now + min))))
         // A superset round by round, named as its letter and round.
         val superset = day(listOf(lift("Leg Curl", 12, null), lift("Calf Raise", null, null)))
-        assertEquals("Calf Raise · A2 · round 1 of 2 · 100 kg × 12", TileLogic.next(superset, null))
+        assertEquals("Calf Raise · A2 · round 1 of 2 · 100 kg × 12", read(TileLogic.next(superset, null)))
         // The lifts done: the cardio, then nothing left.
         val lifted = day(listOf(lift("Hack Squat", 12, 12, done = true)), cardio = "Cycling")
         assertEquals("Cycling", TileLogic.next(lifted, null))
@@ -77,7 +81,7 @@ class TileLogicTest {
         assertEquals("60 kg", TileLogic.setWords(60.0, null))
         assertEquals("", TileLogic.setWords(null, null))
         val noWeight = day(listOf(Lift("Plank", "Plank", false, false, 60, 2.5, "", listOf(SetRow(null, null, null, 30, null)))))
-        assertEquals("Plank · Set 1 of 1 · 30 reps", TileLogic.next(noWeight, null))
+        assertEquals("Plank · Set 1 of 1 · 30 reps", read(TileLogic.next(noWeight, null)))
     }
 
     @Test
@@ -104,7 +108,7 @@ class TileLogicTest {
         // One started before midnight stays on it after.
         val late = Run("2026-09-28", startedAt = now - 30 * min)
         val live = face(state(legs.copy(date = "2026-09-28"), day(date = TODAY), run = late))
-        assertEquals("Hack Squat · Set 2 of 2 · 100 kg × 12", (live as TileLogic.Live).next)
+        assertEquals("Hack Squat · Set 2 of 2 · 100 kg × 12", read((live as TileLogic.Live).next))
     }
 
     @Test

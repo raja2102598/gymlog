@@ -53,8 +53,9 @@ class GymTileService : Material3TileService(allowDynamicTheme = false, defaultCo
     companion object {
         private const val TAG = "GymLogWatch"
 
-        /** The phone app's colours in dark mode, as the app's own (Theme.kt): the brand orange for the button. */
-        private val COLORS = ColorScheme(
+        /** The phone app's colours in dark mode, as the app's own (Theme.kt): the brand orange for the button. The tile's
+         *  preview image is drawn with them too. */
+        internal val COLORS = ColorScheme(
             primary = 0xFFC2410C.argb,
             onPrimary = 0xFFFFFFFF.argb,
             primaryContainer = 0xFF3A1D0E.argb,
@@ -108,7 +109,7 @@ class GymTileService : Material3TileService(allowDynamicTheme = false, defaultCo
                     mainSlot = {
                         column(
                             *listOfNotNull(
-                                face.title.takeIf { it.isNotEmpty() }?.let { text(it.layoutString, typography = Typography.TITLE_LARGE, maxLines = 2) },
+                                face.title.takeIf { it.isNotEmpty() }?.let { text(it.layoutString, typography = Typography.TITLE_LARGE, color = colorScheme.onSurface, maxLines = 2) },
                                 text(face.line.layoutString, typography = Typography.BODY_MEDIUM, color = colorScheme.onSurfaceVariant, maxLines = 3),
                             ).toTypedArray(),
                             width = expand(),
