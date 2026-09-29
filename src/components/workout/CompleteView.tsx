@@ -6,18 +6,19 @@ import { Button, PainScale } from "@/components/ds/parts";
 import { useGym } from "@/hooks/useGym";
 import { fmt } from "@/lib/format";
 import { dayNumbers } from "@/lib/healthView";
-import { dayBests, dayTotals, longDay } from "@/lib/session";
+import { dayBests, dayTotals, heartWords, longDay } from "@/lib/session";
 import { PR_WORDS } from "@/lib/store";
 import type { DayKey } from "@/lib/types";
 import { clock, runOf, runSeconds } from "@/lib/workout";
 
-/** Workout complete (its board): a check badge, the session's duration, kg lifted and sets, the day's personal
- *  bests, the knee after the session, where the day's rings stand, and Share and Done. */
+/** Workout complete (its board): a check badge, the session's duration, kg lifted and sets, the heart rate when the
+ *  watch measured it, the day's personal bests, the knee after the session, where the day's rings stand, and Share and
+ *  Done. */
 export function CompleteView({ day, onDone }: { day: DayKey; onDone: () => void }) {
   const store = useGym();
   const p = store.planFor(day), e = store.entry(day), free = e.free ?? null;
   const name = free ? free.name.trim() || "Free workout" : p.name;
-  const run = runOf(day), totals = dayTotals(store, day), bests = dayBests(store, day);
+  const run = runOf(day), totals = dayTotals(store, day), bests = dayBests(store, day), heart = heartWords(e);
   const [shared, setShared] = useState("");
   const n = dayNumbers(store, day), plan = store.plan;
   const rings = [
@@ -70,6 +71,11 @@ export function CompleteView({ day, onDone }: { day: DayKey; onDone: () => void 
             <div className="l">sets</div>
           </div>
         </div>
+        {heart ? (
+          <p className="note" id="doneHr">
+            {heart}
+          </p>
+        ) : null}
         {bests.length ? (
           <section className="card pbs" id="doneBests" aria-labelledby="pbH">
             <h2 className="pb-h" id="pbH">

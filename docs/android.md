@@ -133,6 +133,8 @@ With Gym Log's Wear OS app on a watch paired with the phone (a Galaxy Watch, say
 
 - **Needs:** Google Play services on the phone, and the watch paired with it (on a Samsung phone, with the Galaxy Wearable app). The watch app must be signed with the same key as the phone app, as CI's builds are.
 - Signed out, the watch says to sign in on the phone. The demo's sample data never goes to the watch.
+- The watch measures the heart rate through the workout and sends the day's average and highest the same way; the
+  app keeps them on the day's log (`hr`), which syncs with it, for Workout complete.
 
 ## Updates and the signing key
 

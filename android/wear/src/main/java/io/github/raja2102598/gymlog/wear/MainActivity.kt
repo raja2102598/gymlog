@@ -21,6 +21,11 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val askToNotify = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+    // Given: the workout on the watch face looks again, to measure the heart rate from now on.
+    private val askForHeartRate = registerForActivityResult(ActivityResultContracts.RequestPermission()) { given ->
+        if (given) WorkoutService.sync(applicationContext, WatchRepo.snapshot.value.state, again = true)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WatchRepo.load(this)
@@ -33,7 +38,7 @@ class MainActivity : ComponentActivity() {
             Log.w(TAG, "Couldn't turn off the phone app's notifications on the watch", e)
         }
         askOnceToNotify()
-        setContent { WatchApp() }
+        setContent { WatchApp(onWorkout = ::askOnceForHeartRate) }
     }
 
     override fun onStart() {
@@ -63,9 +68,20 @@ class MainActivity : ComponentActivity() {
         askToNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    // The heart rate during the workout (HeartMonitor) needs the body sensors: asked the first time a workout is
+    // started here, and never again. Refused, the workout goes on without it; Settings can allow it later.
+    private fun askOnceForHeartRate() {
+        if (HeartMonitor.granted(this)) return
+        val prefs = getSharedPreferences("gymlog", MODE_PRIVATE)
+        if (prefs.getBoolean(ASKED_HEART, false)) return
+        prefs.edit().putBoolean(ASKED_HEART, true).apply()
+        askForHeartRate.launch(HeartMonitor.permission)
+    }
+
     companion object {
         private const val TAG = "GymLogWatch"
         private const val ASKED = "askedToNotify"
+        private const val ASKED_HEART = "askedForHeartRate"
 
         /** Opens the app where it was: from "Rest over" or the workout on the watch face. */
         fun openIntent(ctx: Context): PendingIntent =

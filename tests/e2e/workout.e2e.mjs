@@ -77,12 +77,15 @@ export default async function workout({ browser, base, check }) {
   // A whole workout with the big button, from Home's Start to Workout complete. Complete set N logs what's typed and,
   // for what isn't, the suggestion in its boxes; the planned sets tick the lift off and Next exercise moves on; ✕ leaves
   // the clock running and Continue carries on; a reload keeps the lift on screen; the cycling is the last step; and
-  // Finish adds the session up, asks after the knee, and shares it. The clock runs here, and the test moves it on.
+  // Finish adds the session up, with the heart rate the watch measured, asks after the knee, and shares it. The clock
+  // runs here, and the test moves it on.
   {
     // Last Wednesday: Hack Squat topped its 8-10 (so it goes up today), the rest didn't (the same again).
     const last = { "Hack Squat": [10, 20], "Leg Press": [10, 45], "Leg Extension": [12, 27], "Hamstring Curl": [10, 30], "Calf Raise": [12, 40] };
     const lastWeek = Object.fromEntries(Object.entries(last).map(([n, [reps, kg]]) => [n, { done: true, kg, sets: [0, 1, 2].map(() => ({ reps, kg })) }]));
-    const db = { logs: { [K(21)]: day(lastWeek), [K(28)]: { ...day(), steps: 7000 } }, plan: {} };
+    // Today's heart rate so far, as the watch sends it (docs/watch.md): kept on the day through every set logged.
+    const hr = { avg: 128, max: 165 };
+    const db = { logs: { [K(21)]: day(lastWeek), [K(28)]: { ...day(), steps: 7000, hr } }, plan: {} };
     const { ctx, page } = await open(browser, base, { auth, db, clock: "running", url: null });
     // The phone's share sheet, recorded rather than shown.
     await ctx.addInitScript(() => void (navigator.share = (d) => ((window.__shared = d), Promise.resolve())));
@@ -227,6 +230,12 @@ export default async function workout({ browser, base, check }) {
       (await flat(page.locator("#screenTitle"))) === "Workout complete" && (await flat(page.locator(".done-top .sub"))) === "Legs · Wednesday 23 September" &&
         /^10:\d\d$/.test(stats[0]) && stats[1] === kg.toLocaleString("en-IN") && stats[2].replace(/\s/g, "") === "15/15" && all.length === 15,
       `${await flat(page.locator(".done-top .sub"))} / ${stats.join(" | ")} / ${kg} kg in ${all.length} sets`,
+    );
+    const heart = (await page.locator("#doneHr").count()) ? await flat(page.locator("#doneHr")) : "no heart rate";
+    check(
+      "under them, the heart rate the watch measured, still on the day after every set logged",
+      heart === "Avg 128 bpm · max 165" && JSON.stringify(today().hr) === JSON.stringify(hr),
+      `${heart} / ${JSON.stringify(today().hr)}`,
     );
     const pbs = (await page.locator("#doneBests").count()) ? await flat(page.locator("#doneBests")) : "no personal bests";
     check("its personal best: Hack Squat at what was typed", new RegExp(`^1 personal best ?Hack Squat ?${typed} kg × ${reps} heaviest yet`).test(pbs), pbs);

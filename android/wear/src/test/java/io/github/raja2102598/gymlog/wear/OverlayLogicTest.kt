@@ -181,11 +181,32 @@ class OverlayLogicTest {
         val cardio = JSONObject(OverlayLogic.toJson(OverlayLogic.cardioDone("c-12", 45L, TODAY, false)))
         assertEquals(false, cardio.getBoolean("done"))
 
+        val hr = JSONObject(OverlayLogic.toJson(OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240)))
+        assertEquals(listOf(128, 165, 240), listOf(hr.getInt("avg"), hr.getInt("max"), hr.getInt("samples")))
+
         // Kept on the watch as the same JSON, and read back the same.
-        for (c in listOf(set("c-9", "Squat", 1, null), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, 15), OverlayLogic.cardioDone("c-12", 45L, TODAY, false))) {
+        for (c in listOf(set("c-9", "Squat", 1, null), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, 15), OverlayLogic.cardioDone("c-12", 45L, TODAY, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
             assertEquals(c, OverlayLogic.fromJson(OverlayLogic.toJson(c)))
         }
         assertNull(OverlayLogic.fromJson("{}"))
+    }
+
+    @Test
+    fun aDaysHeartRateReplacesItsEarlierOnesNotYetSent() {
+        val older = OverlayLogic.heart("c-hr1", t0, TODAY, 120, 150, 60)
+        val reached = OverlayLogic.heart("c-hr0", t0 - 1, TODAY, 110, 140, 30)
+        val otherDay = OverlayLogic.heart("c-hr2", t0, "2026-09-28", 100, 130, 90)
+        val logged = set("c-3", "Squat", 0, 12)
+        val pending = listOf(reached, older, otherDay, logged)
+        val unsent = setOf("c-hr1", "c-hr2", "c-3")
+        val newer = OverlayLogic.heart("c-hr3", t0 + 300_000L, TODAY, 125, 160, 120)
+        // The day's one that never reached the Data Layer goes: sent after this one, it would take the phone back to
+        // less of the workout. One that reached it, another day's, and anything else stay.
+        assertEquals(listOf(reached, otherDay, logged), OverlayLogic.supersede(pending, unsent, newer))
+        assertEquals(pending, OverlayLogic.supersede(pending, unsent, set("c-4", "Squat", 1, 12)))
+        // The watch shows its own readings: the phone's copy changes nothing on screen.
+        val s = state(day(listOf(lift("Squat", null))))
+        assertEquals(s, apply(s, listOf(newer)))
     }
 
     @Test

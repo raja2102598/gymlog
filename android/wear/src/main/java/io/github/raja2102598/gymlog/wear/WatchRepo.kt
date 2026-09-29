@@ -86,12 +86,15 @@ object WatchRepo {
         changed(ctx)
     }
 
-    /** Does something on the watch: shown at once, kept, and sent to the phone as its own urgent data item. */
+    /** Does something on the watch: shown at once, kept, and sent to the phone as its own urgent data item. An `hr`
+     *  replaces the day's earlier ones still waiting to be sent (OverlayLogic.supersede). */
     fun send(ctx: Context, cmd: Command) {
         synchronized(lock) {
             load(ctx)
+            val kept = OverlayLogic.supersede(flow.value.pending, unsent, cmd)
+            unsent.retainAll(kept.map { it.id }.toSet())
             unsent += cmd.id
-            flow.value = flow.value.copy(pending = flow.value.pending + cmd)
+            flow.value = flow.value.copy(pending = kept + cmd)
             savePending(ctx)
         }
         put(ctx.applicationContext, cmd)
@@ -138,11 +141,12 @@ object WatchRepo {
             .addOnFailureListener { Log.w(TAG, "Couldn't send ${cmd.type} to the phone; it's sent again next time", it) }
     }
 
-    /** The rest alarm and the workout on the watch face follow every change, from wherever it came. */
+    /** The rest alarm, the workout on the watch face and the tile follow every change, from wherever it came. */
     private fun changed(ctx: Context) {
         val snap = flow.value
         RestAlarm.sync(ctx.applicationContext, snap.state, System.currentTimeMillis())
         WorkoutService.sync(ctx.applicationContext, snap.state)
+        GymTileService.update(ctx.applicationContext)
     }
 
     // Callers hold the lock, so the file is written with the lists as they are at this change.
@@ -163,14 +167,16 @@ object WatchRepo {
             emptyList<Command>() to emptySet()
         }
 
-    private fun read(ctx: Context, name: String): String? =
+    /** A file kept in the app's own storage, or null for none (HeartMonitor keeps its own this way too). */
+    internal fun read(ctx: Context, name: String): String? =
         try {
             AtomicFile(File(ctx.filesDir, name)).readFully().toString(Charsets.UTF_8)
         } catch (e: Exception) {
             null
         }
 
-    private fun save(ctx: Context, name: String, text: String) {
+    /** Writes a file whole, off the caller's thread, in the order asked. */
+    internal fun save(ctx: Context, name: String, text: String) {
         val dir = ctx.applicationContext.filesDir
         disk.execute {
             val f = AtomicFile(File(dir, name))

@@ -77,6 +77,14 @@ export interface DayLog {
   /** Water drunk, ml, added with Home's and Health's + and −: what you log wins over Health Connect's reading, as
    *  with weight, and starts from it. */
   water?: number;
+  /** The workout's heart rate, bpm, measured on the watch (docs/watch.md): the average and highest over its readings,
+   *  the watch's latest replacing the one before. */
+  hr?: WorkoutHeart;
+}
+
+export interface WorkoutHeart {
+  avg: number;
+  max: number;
 }
 
 export interface FreeWorkout {

@@ -33,11 +33,18 @@ import kotlinx.coroutines.launch
  *
  * Android only lets an app start one while it's on screen, so MainActivity's start does (sync); from then on it
  * follows WatchRepo itself, and stops once the workout is finished or left behind.
+ *
+ * While it runs it measures the heart rate too (HeartMonitor): it's of the health kind as well then, which Android
+ * asks of a service reading the body's sensors in the background, and which it only allows once the permission is
+ * there.
  */
 class WorkoutService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val handler = Handler(Looper.getMainLooper())
     private var foreground = false
+
+    /** The kinds it was last made a foreground service with: the health kind joins them once the permission is given. */
+    private var shownKinds = -1
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -48,7 +55,9 @@ class WorkoutService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Android wants startForeground within seconds of startForegroundService: done here with what there is now.
+        // Android wants startForeground within seconds of startForegroundService: done here with what there is now,
+        // and again when already running (sync's `again`), for the kinds it has now.
+        foreground = false
         show(WatchRepo.load(this).state)
         return START_NOT_STICKY
     }
@@ -65,16 +74,23 @@ class WorkoutService : Service() {
         val now = System.currentTimeMillis()
         val live = StepLogic.live(state, now)
         val n = notification(live, now)
-        if (!foreground) {
+        val want = kinds()
+        if (!foreground || want != shownKinds) {
+            // Tried once for these kinds: a refusal isn't tried again with every change.
+            shownKinds = want
             try {
-                ServiceCompat.startForeground(this, NOTIFICATION_ID, n, if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, n, want)
                 foreground = true
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't keep the workout on the watch face", e)
-                stopSelf()
-                return
+                if (!foreground) {
+                    HeartMonitor.follow(this, null, now)
+                    stopSelf()
+                    return
+                }
             }
         }
+        HeartMonitor.follow(this, state, now)
         if (live == null) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -84,6 +100,14 @@ class WorkoutService : Service() {
         // Nothing changes in the state when a rest runs out or a clock is left running for hours, so look again then.
         val next = listOfNotNull(live.restEndAt, if (live.run.pausedAt == null) now + TimerLogic.LEFT_BEHIND_MS - TimerLogic.runMs(live.run, now) else null).minOrNull()
         if (next != null) handler.postDelayed({ show(WatchRepo.snapshot.value.state) }, (next - now).coerceAtLeast(0L) + 500L)
+    }
+
+    // Special use below Android 14 is only the manifest's word for it; from 14 on it's said here, with health once the
+    // heart rate may be read (Android refuses the health kind without that permission).
+    private fun kinds(): Int {
+        if (Build.VERSION.SDK_INT < 34) return 0
+        val health = if (HeartMonitor.granted(this)) ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH else 0
+        return ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or health
     }
 
     private fun canNotify(): Boolean =
@@ -140,9 +164,10 @@ class WorkoutService : Service() {
         private var running = false
 
         /** Starts it for a workout under way, while Gym Log is on screen, which is the only time Android allows it.
-         *  Once running, it follows the state itself. */
-        fun sync(ctx: Context, state: WatchState?) {
-            if (running || !AppVisibility.visible || StepLogic.live(state, System.currentTimeMillis()) == null) return
+         *  Once running, it follows the state itself; `again` has it look again anyway, for the heart rate's
+         *  permission, just given. */
+        fun sync(ctx: Context, state: WatchState?, again: Boolean = false) {
+            if ((running && !again) || !AppVisibility.visible || StepLogic.live(state, System.currentTimeMillis()) == null) return
             try {
                 ContextCompat.startForegroundService(ctx, Intent(ctx, WorkoutService::class.java))
             } catch (e: Exception) {

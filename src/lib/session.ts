@@ -3,7 +3,7 @@
 import { addDays, DOW, mondayOf, wdIndex } from "./dates";
 import { e1rm, isWorkingSet, repRange, type RecordKind } from "./stats";
 import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem, type RestTimer } from "./store";
-import type { DayKey, PlanExercise } from "./types";
+import type { DayKey, DayLog, PlanExercise } from "./types";
 import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
 
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
@@ -94,6 +94,9 @@ export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: 
   }
   return { sets, planned, kg: Math.round(kg) };
 }
+
+/** The workout's heart rate from the watch, for Workout complete: "Avg 128 bpm · max 165", or null without one. */
+export const heartWords = (e: DayLog): string | null => (e.hr ? `Avg ${e.hr.avg} bpm · max ${e.hr.max}` : null);
 
 export interface Best {
   lift: string;

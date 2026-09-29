@@ -17,6 +17,9 @@ data class Command(
     val kg: Double? = null,
     val sec: Int? = null,
     val done: Boolean? = null,
+    val avg: Int? = null,
+    val max: Int? = null,
+    val samples: Int? = null,
 )
 
 /**
@@ -40,6 +43,7 @@ object OverlayLogic {
     const val REST_RESUME = "restResume"
     const val SKIP_LIFT = "skipLift"
     const val CARDIO_DONE = "cardioDone"
+    const val HR = "hr"
 
     /** A new command's id: "c-" and a random UUID, never reused. It's part of the item's path, so only letters, digits
      *  and `. _ : -`, and at most 128 characters, which the phone checks. */
@@ -62,6 +66,11 @@ object OverlayLogic {
 
     fun cardioDone(id: String, at: Long, day: String, done: Boolean) = Command(id, at, CARDIO_DONE, day = day, done = done)
 
+    /** The day's heart rate so far (HeartLogic): its average and highest over `samples` readings, replacing the one
+     *  the phone had. */
+    fun heart(id: String, at: Long, day: String, avg: Int, max: Int, samples: Int) =
+        Command(id, at, HR, day = day, avg = avg, max = max, samples = samples)
+
     /** The command as the phone reads it. A set's reps and kg are always there, null included, since null reps is
      *  what clears it. */
     fun toJson(c: Command): String {
@@ -75,6 +84,9 @@ object OverlayLogic {
         }
         c.sec?.let { o.put("sec", it) }
         c.done?.let { o.put("done", it) }
+        c.avg?.let { o.put("avg", it) }
+        c.max?.let { o.put("max", it) }
+        c.samples?.let { o.put("samples", it) }
         return o.toString()
     }
 
@@ -95,10 +107,21 @@ object OverlayLogic {
                 kg = num("kg"),
                 sec = num("sec")?.toInt(),
                 done = if (o.isNull("done")) null else o.optBoolean("done"),
+                avg = num("avg")?.toInt(),
+                max = num("max")?.toInt(),
+                samples = num("samples")?.toInt(),
             )
         } catch (e: Exception) {
             null
         }
+
+    /**
+     * The commands to keep once `cmd` is sent: all of them, except that an `hr` replaces the same day's earlier ones
+     * that never reached the Data Layer (`unsent`). Each carries the day's whole heart rate so far, so one of those sent
+     * again later, after this one, would only take the phone back to less of the workout.
+     */
+    fun supersede(pending: List<Command>, unsent: Set<String>, cmd: Command): List<Command> =
+        if (cmd.type != HR) pending else pending.filter { !(it.type == HR && it.day == cmd.day && it.id in unsent) }
 
     /** The commands still to show: not yet in `applied`, and not so old the phone is never going to take them. */
     fun prune(pending: List<Command>, applied: Set<String>, now: Long): List<Command> =
@@ -129,6 +152,8 @@ object OverlayLogic {
             REST_RESUME -> s.copy(rest = s.rest?.let { TimerLogic.resumeRest(it, c.at) })
             SKIP_LIFT -> editLift(s, c.day, c.lift) { _, l -> l.copy(skipped = true, done = false) }
             CARDIO_DONE -> s.copy(days = s.days.map { if (it.date == c.day) it.copy(cardioDone = c.done ?: true) else it })
+            // The phone keeps the day's heart rate for Workout complete; the watch shows its own readings, not the state's.
+            HR -> s
             else -> s
         }
 

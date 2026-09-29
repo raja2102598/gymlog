@@ -8,7 +8,7 @@ vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).ap
 
 import { wdIndex } from "@/lib/dates";
 import type { GymStore } from "@/lib/store";
-import type { LiftLog } from "@/lib/types";
+import type { DayLog, LiftLog } from "@/lib/types";
 import { watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
 import { currentRun, endRun, keepRunsInMemory, pauseRun, resumeRun, runsFor, startRun } from "@/lib/workout";
 import { ACK_MS, APPLIED_KEPT, PUBLISH_MS, startWatch, WATCH_KEY } from "@/native/watch";
@@ -368,6 +368,11 @@ describe("what the watch sends back", () => {
       cmd("skipLift", { day: WED, lift: "Bench Press" }),
       cmd("cardioDone", { day: "2026-09-24", done: "yes" }),
       cmd("restAdd", { sec: -15 }),
+      cmd("hr", { day: WED, avg: 128, max: 165, samples: 0 }), // nothing measured
+      cmd("hr", { day: WED, avg: 170, max: 165, samples: 60 }), // an average over the highest
+      cmd("hr", { day: WED, avg: 128, max: 300, samples: 60 }),
+      cmd("hr", { day: WED, avg: "128", max: 165, samples: 60 }),
+      cmd("hr", { avg: 128, max: 165, samples: 60 }),
       cmd("startRun", {}),
       cmd("teleport", { day: WED }),
       { ...cmd("cardioDone", { day: WED, done: true }), v: 2 }, // a version this phone doesn't know
@@ -428,6 +433,26 @@ describe("what the watch sends back", () => {
     watch.arrive(cmd("cardioDone", { day: "2026-09-24", done: true }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.entry("2026-09-24").cardio).toBe(false);
+    stop();
+  });
+
+  it("keeps the workout's heart rate on its day, the latest replacing the one before, through the day's later edits", async () => {
+    const { s, stop } = await running();
+    watch.arrive(cmd("hr", { day: WED, avg: 118.4, max: 151, samples: 60 }, 5 * MIN), cmd("hr", { day: WED, avg: 128, max: 165, samples: 240 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.entry(WED).hr).toEqual({ avg: 128, max: 165 });
+    expect(s.pending[WED].hr).toEqual({ avg: 128, max: 165 }); // on its way to Supabase with the day
+    expect(watch.sent().applied).toHaveLength(2);
+    // Everything else done to the day since keeps it, as does the day as it comes back from Supabase.
+    s.editDay(WED, (n) => void (n.kneeAfter = 3), true);
+    s.editLift(WED, "Leg Press", (r) => void (r.sets = [{ reps: 10, kg: 45 }]), true);
+    expect(s.entry(WED).hr).toEqual({ avg: 128, max: 165 });
+    expect(storeWith({ [WED]: { ...day(), hr: { avg: 131, max: 170 } } }).entry(WED).hr).toEqual({ avg: 131, max: 170 });
+    expect(storeWith({ [WED]: { ...day(), hr: { avg: "fast" } } as unknown as DayLog }).entry(WED).hr).toBeUndefined();
+    // Rounded, as a whole beat, whatever the watch sends.
+    watch.arrive(cmd("hr", { day: WED, avg: 130.6, max: 171.2, samples: 300 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.entry(WED).hr).toEqual({ avg: 131, max: 171 });
     stop();
   });
 

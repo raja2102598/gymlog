@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyListScope
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
@@ -135,9 +138,11 @@ private fun LiftPicker(ui: WatchUi, day: Day, at: Int, n: Int, j: Int, onSets: (
             }
             .focusable(),
     ) { height ->
+        // As wide as the numbers under it, which the round screen leaves room for at this height, so a superset's
+        // round fits beside the heart rate.
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.74f)
+                .fillMaxWidth(0.86f)
                 .clip(RoundedCornerShape(24.dp))
                 .clickable(onClickLabel = "See every set") { onSets() }
                 .heightIn(min = 48.dp)
@@ -146,7 +151,20 @@ private fun LiftPicker(ui: WatchUi, day: Day, at: Int, n: Int, j: Int, onSets: (
             verticalArrangement = Arrangement.Center,
         ) {
             Text(lift.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-            Text(StepLogic.setLine(day, at, n, j), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            // The heart rate beside which set it is, where it takes no room from the numbers. The set's line gets a
+            // little smaller rather than cut short when both don't fit (a superset's round on a 42 mm watch).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val style = MaterialTheme.typography.labelMedium
+                BasicText(
+                    StepLogic.setLine(day, at, n, j),
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = style.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = style.fontSize, stepSize = 0.5.sp),
+                )
+                ui.bpm?.let { HeartRate(it, Modifier.padding(start = 6.dp)) }
+            }
         }
         // The numbers take what's left under the name, up to 72 dp: smaller on a smaller watch, never cut off.
         val boxHeight = (height - 54.dp).coerceIn(52.dp, 72.dp)

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { liftModel, logSet, nextSet } from "@/components/today/LiftItem";
 import { wdIndex } from "@/lib/dates";
-import { dayBests, dayTotals, liveWorkout, sessionDone, workoutUnderWay } from "@/lib/session";
+import { dayBests, dayTotals, heartWords, liveWorkout, sessionDone, workoutUnderWay } from "@/lib/session";
 import type { GymStore } from "@/lib/store";
 import type { LiftLog } from "@/lib/types";
 import { clearRun, dropStaleRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runOf, runSeconds, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
@@ -178,8 +178,8 @@ describe("Complete set N", () => {
   });
 });
 
-// Workout complete (CompleteView.tsx): the day's numbers, and whether the day's workout is done at all (Train's
-// Review, and no clock started when it's opened again).
+// Workout complete (CompleteView.tsx): the day's numbers, the heart rate the watch measured, and whether the day's
+// workout is done at all (Train's Review, and no clock started when it's opened again).
 describe("what a session adds up to", () => {
   it("counts the working sets logged against the planned ones, and the kg lifted in every one of them, drop sets too, never a warm-up", () => {
     const s = storeWith({
@@ -221,6 +221,12 @@ describe("what a session adds up to", () => {
       { lift: "Hack Squat", kg: 40, reps: 12, kinds: ["e1rm", "reps"] },
       { lift: "Smith Squat", kg: 25, reps: 10, kinds: ["weight", "e1rm"] },
     ]);
+  });
+
+  it("gives the workout's heart rate from the watch as its average and highest, and nothing without one", () => {
+    const s = storeWith({ [WED]: day({ hr: { avg: 128, max: 165 } }), [LAST]: day() });
+    expect(heartWords(s.entry(WED))).toBe("Avg 128 bpm · max 165");
+    expect(heartWords(s.entry(LAST))).toBeNull();
   });
 
   it("says the day's workout is done once every lift in it is done or skipped, and never for a day with none", () => {
