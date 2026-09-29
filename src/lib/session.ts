@@ -183,8 +183,8 @@ export interface LiveRest {
  *  next set while it has one to go ("Next: set 3 of 4", or its round in a superset), else the first other lift not
  *  yet done or skipped, else nothing (the workout has none left). The set is the one the workout's Complete set N is
  *  on: the first of its rows with no reps, its rows being the planned sets or as many working sets as it has, drop
- *  sets and one added included (LiftItem.tsx, nextSet; SupersetItem.tsx, nextInRounds). The rest's lift is the one
- *  performed, a swap's own name. */
+ *  sets and one added included, or before those the set being typed in (LiftItem.tsx, nextSet; SupersetItem.tsx,
+ *  nextInRounds). The rest's lift is the one performed, a swap's own name. */
 export function afterRest(store: GymStore, r: Pick<RestTimer, "day" | "lift">): string {
   const e = store.entry(r.day), blocks = store.liftBlocks(r.day), did = (x: LiftItem) => performed(x.name, e.exercises[x.name]);
   const block = blocks.find((b) => b.some((x) => did(x) === r.lift)), it = block?.find((x) => did(x) === r.lift);
@@ -193,9 +193,12 @@ export function afterRest(store: GymStore, r: Pick<RestTimer, "day" | "lift">): 
       const log = e.exercises[x.name], sets = setsOf(log).filter(isWorkingSet);
       return { sets, rows: log?.skipped ? 0 : Math.max(x.extra ? 1 : minSets(targetOf(log, x.x)), sets.length) };
     });
-    const rounds = Math.max(0, ...ls.map((l) => l.rows));
+    const rounds = Math.max(0, ...ls.map((l) => l.rows)), t = store.typing;
+    const say = (j: number) => `Next: ${block.length > 1 ? "round" : "set"} ${j + 1} of ${rounds}`;
+    // A set still being typed in, the phone locked with the cursor in its box: the workout is still on it.
+    if (t && t.day === r.day && block.some((x, n) => x.name === t.lift && t.set < ls[n].rows)) return say(t.set);
     for (let j = 0; j < rounds; j++)
-      if (ls.some((l) => j < l.rows && !((l.sets[j]?.reps ?? 0) > 0))) return `Next: ${block.length > 1 ? "round" : "set"} ${j + 1} of ${rounds}`;
+      if (ls.some((l) => j < l.rows && !((l.sets[j]?.reps ?? 0) > 0))) return say(j);
   }
   const next = blocks.flat().find((x) => x !== it && !e.exercises[x.name]?.done && !e.exercises[x.name]?.skipped);
   return next ? `Next: ${did(next)}` : "";

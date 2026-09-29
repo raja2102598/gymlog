@@ -164,6 +164,10 @@ describe("what comes after a rest", () => {
     // A set added after the planned ones, which ticked it done: still that lift's.
     const added = open([...sets([[12, 100], [12, 100], [11, 100]]), { reps: null, kg: null }], { done: true });
     expect(after(legs({ "Leg Press": added }), "Leg Press")).toBe("Next: set 4 of 4");
+    // The phone locked with the cursor still in a set's box: the workout is on that set, reps or not.
+    const typed = legs({ "Leg Press": open([{ reps: 12, kg: 100 }, { reps: null, kg: null }, { reps: 1, kg: 100 }]) });
+    typed.typeIn({ day: WED, lift: "Leg Press", set: 2 });
+    expect(after(typed, "Leg Press")).toBe("Next: set 3 of 3");
     // Swapped: the rest names the lift performed.
     expect(after(legs({ "Leg Press": open(sets([[12, 100]]), { swap: "Belt Squat" }) }), "Belt Squat")).toBe("Next: set 2 of 3");
   });
@@ -172,6 +176,8 @@ describe("what comes after a rest", () => {
     const s = legs({ "Leg Extension": open(sets([[12, 40]])), "Hamstring Curl": open(sets([[10, 30]])) });
     s.plan.days[wdIndex(WED)].exercises[3].superset = true; // Hamstring Curl joins Leg Extension
     expect(after(s, "Hamstring Curl")).toBe("Next: round 2 of 3");
+    s.typeIn({ day: WED, lift: "Hamstring Curl", set: 0 }); // its first round's reps still being typed
+    expect(after(s, "Hamstring Curl")).toBe("Next: round 1 of 3");
   });
 
   it("is the first other lift not done or skipped, by the name it's done under, once the rested one is through", () => {
