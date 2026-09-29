@@ -1,7 +1,7 @@
 /* What a day's session adds up to, for the screens that summarise it: Home's workout card, Train's session card, the
  * active workout and Workout complete. Reads the store; changes nothing. */
 import { addDays, DOW, mondayOf, wdIndex } from "./dates";
-import { e1rm, isStraightSet, isWorkingSet, repRange, type RecordKind } from "./stats";
+import { e1rm, isWorkingSet, repRange, type RecordKind } from "./stats";
 import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem, type RestTimer } from "./store";
 import type { DayKey, PlanExercise } from "./types";
 import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
@@ -180,16 +180,22 @@ export interface LiveRest {
 }
 
 /** What comes after a rest, in a few words, for the lock screen's countdown and its "Rest over": the rested lift's
- *  next set while it has sets to go ("Next: set 3 of 4", or its round in a superset), else the first other lift not
- *  yet done or skipped, else nothing (the workout has none left). Sets count as Complete set counts them: working
- *  sets with reps, not warm-ups or drop sets. The rest's lift is the one performed, a swap's own name. */
+ *  next set while it has one to go ("Next: set 3 of 4", or its round in a superset), else the first other lift not
+ *  yet done or skipped, else nothing (the workout has none left). The set is the one the workout's Complete set N is
+ *  on: the first of its rows with no reps, its rows being the planned sets or as many working sets as it has, drop
+ *  sets and one added included (LiftItem.tsx, nextSet; SupersetItem.tsx, nextInRounds). The rest's lift is the one
+ *  performed, a swap's own name. */
 export function afterRest(store: GymStore, r: Pick<RestTimer, "day" | "lift">): string {
   const e = store.entry(r.day), blocks = store.liftBlocks(r.day), did = (x: LiftItem) => performed(x.name, e.exercises[x.name]);
   const block = blocks.find((b) => b.some((x) => did(x) === r.lift)), it = block?.find((x) => did(x) === r.lift);
-  if (block && it) {
-    const log = e.exercises[it.name], of = minSets(targetOf(log, it.x));
-    const logged = setsOf(log).filter((s) => isStraightSet(s) && (s.reps ?? 0) > 0).length;
-    if (!log?.done && !log?.skipped && logged < of) return `Next: ${block.length > 1 ? "round" : "set"} ${logged + 1} of ${of}`;
+  if (block) {
+    const ls = block.map((x) => {
+      const log = e.exercises[x.name], sets = setsOf(log).filter(isWorkingSet);
+      return { sets, rows: log?.skipped ? 0 : Math.max(x.extra ? 1 : minSets(targetOf(log, x.x)), sets.length) };
+    });
+    const rounds = Math.max(0, ...ls.map((l) => l.rows));
+    for (let j = 0; j < rounds; j++)
+      if (ls.some((l) => j < l.rows && !((l.sets[j]?.reps ?? 0) > 0))) return `Next: ${block.length > 1 ? "round" : "set"} ${j + 1} of ${rounds}`;
   }
   const next = blocks.flat().find((x) => x !== it && !e.exercises[x.name]?.done && !e.exercises[x.name]?.skipped);
   return next ? `Next: ${did(next)}` : "";

@@ -154,10 +154,16 @@ describe("what comes after a rest", () => {
   const after = (s: GymStore, lift: string) => afterRest(s, { day: WED, lift });
   const open = (xs: SetLog[], more: Partial<LiftLog> = {}): LiftLog => ({ done: false, kg: null, sets: xs, ...more });
 
-  it("is the rested lift's next set while it has sets to go, counting working sets as Complete set does", () => {
+  it("is the rested lift's next set while it has one to go: the set Complete set N is on", () => {
     expect(after(legs({ "Leg Press": open(sets([[12, 100]])) }), "Leg Press")).toBe("Next: set 2 of 3");
+    // A warm-up isn't one of the rows; a drop set is.
     const warmedUp = open([{ reps: 10, kg: 40, type: "warmup" }, { reps: 12, kg: 100 }, { reps: 8, kg: 70, type: "drop" }]);
-    expect(after(legs({ "Leg Press": warmedUp }), "Leg Press")).toBe("Next: set 2 of 3");
+    expect(after(legs({ "Leg Press": warmedUp }), "Leg Press")).toBe("Next: set 3 of 3");
+    // Logged out of order: the first row with no reps, not the count logged plus one.
+    expect(after(legs({ "Leg Press": open([{ reps: null, kg: null }, { reps: null, kg: null }, { reps: 12, kg: 100 }]) }), "Leg Press")).toBe("Next: set 1 of 3");
+    // A set added after the planned ones, which ticked it done: still that lift's.
+    const added = open([...sets([[12, 100], [12, 100], [11, 100]]), { reps: null, kg: null }], { done: true });
+    expect(after(legs({ "Leg Press": added }), "Leg Press")).toBe("Next: set 4 of 4");
     // Swapped: the rest names the lift performed.
     expect(after(legs({ "Leg Press": open(sets([[12, 100]]), { swap: "Belt Squat" }) }), "Belt Squat")).toBe("Next: set 2 of 3");
   });
@@ -174,12 +180,13 @@ describe("what comes after a rest", () => {
     expect(after(s, "Leg Press")).toBe("Next: Hamstring Curl");
     s.logs[WED].exercises["Hamstring Curl"] = open([], { swap: "Nordic Curl" });
     expect(after(s, "Leg Press")).toBe("Next: Nordic Curl");
-    s.logs[WED].exercises["Leg Press"] = lift([[12, 100]]); // ticked done after one set
-    expect(after(s, "Leg Press")).toBe("Next: Nordic Curl");
+    // Ticked done after one set: the workout's Complete set 2 is still there, so the lock screen says it too.
+    s.logs[WED].exercises["Leg Press"] = lift([[12, 100]]);
+    expect(after(s, "Leg Press")).toBe("Next: set 2 of 3");
   });
 
   it("is nothing once the workout has nothing left", () => {
-    const s = legs(Object.fromEntries(LEGS.map((n) => [n, lift([[10, 50]])])));
+    const s = legs(Object.fromEntries(LEGS.map((n) => [n, lift([[10, 50], [10, 50], [10, 50], [10, 50]])])));
     expect(after(s, "Calf Raise")).toBe("");
   });
 });
