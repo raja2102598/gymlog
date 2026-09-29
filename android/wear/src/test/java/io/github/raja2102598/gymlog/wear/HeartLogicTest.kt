@@ -19,15 +19,18 @@ class HeartLogicTest {
 
     @Test
     fun theAverageAndHighestAreOverEveryReadingCounted() {
-        val first = HeartLogic.add(null, run, beats(100.0, 120.0, 131.0), now = t0 + min)
-        assertEquals(Heart(TODAY, 351.0, 3, 131, sentSamples = 0, sentAt = t0 + min, lastAt = t0 + min + 2_000L), first)
-        assertEquals(117, HeartLogic.avg(first))
-        // More readings add to the day's, rather than start it again.
-        val more = HeartLogic.add(first, run, beats(165.4, 140.0, from = t0 + 2 * min), now = t0 + 2 * min)
+        val first = HeartLogic.add(null, run, beats(102.0, 165.4, 131.0), now = t0 + min)
+        assertEquals(3, first.samples)
+        assertEquals(398.4, first.sum, 1e-9)
+        assertEquals(165, first.max) // to the nearest beat
+        assertEquals(133, HeartLogic.avg(first)) // 132.8, rounded
+        assertEquals(t0 + min, first.sentAt) // the time for sending starts with the day's count
+        // More readings add to the day's, rather than start it again: the highest stays the day's.
+        val more = HeartLogic.add(first, run, beats(120.0, 140.0, from = t0 + 2 * min), now = t0 + 2 * min)
         assertEquals(5, more.samples)
-        assertEquals(165, more.max) // to the nearest beat
-        assertEquals(131, HeartLogic.avg(more)) // 656.4 / 5
-        assertEquals(t0 + min, more.sentAt) // the time for sending runs on from the day's first
+        assertEquals(165, more.max)
+        assertEquals(132, HeartLogic.avg(more)) // 658.4 / 5 = 131.68
+        assertEquals(t0 + min, more.sentAt)
         assertEquals(0, HeartLogic.avg(Heart(TODAY, 0.0, 0, 0)))
     }
 
