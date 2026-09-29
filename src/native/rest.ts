@@ -4,7 +4,8 @@
  * to be an Android 16 Live Update: on the lock screen and in the status bar's chip (Samsung's Now Bar only for apps
  * Samsung approves, or with Live notifications for all apps on; docs/android.md). They go up as the app goes to the
  * background and come down on coming back. Settings asks for POST_NOTIFICATIONS (13+) before this can do
- * anything; older versions grant it on install (see the "Rest timer notifications" row, SettingsView.tsx). */
+ * anything; older versions grant it on install (see the "Rest timer notifications" row, SettingsView.tsx). Under that
+ * row, Settings says whether "Rest over" will be on time and whether Live Updates are allowed (checkAlarms). */
 import { App } from "@capacitor/app";
 import { registerPlugin, type PermissionState } from "@capacitor/core";
 import { afterRest, workoutUnderWay, type LiveRest, type LiveWorkout } from "@/lib/session";
@@ -22,6 +23,22 @@ interface RestTimerPlugin {
   cancel(): Promise<void>;
   checkPermissions(): Promise<{ notifications: PermissionState }>;
   requestPermissions(): Promise<{ notifications: PermissionState }>;
+  checkAlarms(): Promise<AlarmChecks>;
+  openExactAlarmSettings(): Promise<void>;
+  openLiveUpdateSettings(): Promise<void>;
+}
+
+/** What else Android allows the rest timer's alerts, once notifications are on (RestTimerPlugin.checkAlarms). Each of
+ *  the first two is null where the phone's Android has no such setting, so there's nothing to show or change. */
+export interface AlarmChecks {
+  /** Whether "Rest over" gets an exact alarm, on time, rather than one Android can deliver minutes late: Alarms &
+   *  reminders in Android's settings for Gym Log (Android 12 and later, and off until you allow it from 14). */
+  exact: boolean | null;
+  /** Whether Android may show the workout's clock and the rest countdown as Live Updates (Android 16 and later). */
+  liveUpdates: boolean | null;
+  /** A Samsung phone, whose Now Bar shows other apps' Live Updates only for apps Samsung approves, or with Developer
+   *  options → Live notifications for all apps on (docs/android.md). */
+  samsung: boolean;
 }
 
 const RestTimer = registerPlugin<RestTimerPlugin>("RestTimer");
@@ -34,6 +51,15 @@ export const notificationPermission = async (): Promise<PermissionState> => (awa
 /** Asks Android's notification permission sheet. Settings only offers this while it would actually help: see
  *  notificationPermission's states above. */
 export const requestNotificationPermission = async (): Promise<PermissionState> => (await RestTimer.requestPermissions()).notifications;
+
+/** Whether "Rest over" will be on time, and whether Live Updates are allowed: see AlarmChecks. */
+export const checkAlarms = (): Promise<AlarmChecks> => RestTimer.checkAlarms();
+
+/** Android's "Alarms & reminders" page for Gym Log, where "Rest over" is allowed to come on time. */
+export const openExactAlarmSettings = (): Promise<void> => RestTimer.openExactAlarmSettings();
+
+/** Android's Live Updates page for Gym Log (its notification settings, on a phone without that page). */
+export const openLiveUpdateSettings = (): Promise<void> => RestTimer.openLiveUpdateSettings();
 
 /** Follows the workout's clock (lib/session.ts, workoutUnderWay) and store.rest while the app is out of sight.
  *  Going to the background, a workout under way gets its clock and a running rest timer its countdown and alarm, the

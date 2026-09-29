@@ -91,6 +91,22 @@ object RestAlarm {
         (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
             NotificationManagerCompat.from(ctx).areNotificationsEnabled()
 
+    /** Whether "Rest over" gets its exact alarm (schedule, below), for Settings to say (RestTimerPlugin.checkAlarms):
+     *  null before Android 12, where exact alarms need no permission and there's nothing to allow, and from then on
+     *  whether the phone allows them now (Alarms & reminders), which schedule() asks each time. */
+    fun exactAlarms(ctx: Context): Boolean? {
+        // canScheduleExactAlarms() doesn't exist before API 31.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return RestTimerLogic.useExactAlarm(Build.VERSION.SDK_INT, am.canScheduleExactAlarms())
+    }
+
+    /** Whether Android may show the countdown and the workout's clock as Live Updates, which both ask to be
+     *  (setRequestPromotedOngoing, below), for Settings to say: null before Android 16, which has none, and from then
+     *  on whether the phone's settings allow them for Gym Log. */
+    fun liveUpdates(ctx: Context): Boolean? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) NotificationManagerCompat.from(ctx).canPostPromotedNotifications() else null
+
     /** When a rest ends, as the phone's clock shows it (its 12- or 24-hour setting). */
     private fun clockTime(ctx: Context, at: Long): String = RestTimerLogic.clockTime(at, ZoneId.systemDefault(), DateFormat.is24HourFormat(ctx))
 

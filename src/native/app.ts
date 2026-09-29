@@ -15,7 +15,7 @@ import { startWidget } from "./widget";
 
 export { signInWithGoogle } from "./google";
 export { connectHealth, healthAccess, openHealthSettings, syncHealth } from "./health";
-export { notificationPermission, requestNotificationPermission } from "./rest";
+export { checkAlarms, notificationPermission, openExactAlarmSettings, openLiveUpdateSettings, requestNotificationPermission, type AlarmChecks } from "./rest";
 export { backgroundStatus, runBackgroundNow, turnOffBackground, turnOnBackground, type SyncStatus } from "./sync";
 export {
   checkUpdate,

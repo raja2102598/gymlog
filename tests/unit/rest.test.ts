@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The rest timer (RAJ-35): its length, its countdown, pausing, more time, skipping, reaching zero, what a reload brings
-// back, and, in the Android app, its alarm while the app is in the background and its end on the widget. The top bar
-// and the plan editor's field are in tests/e2e/rest.e2e.mjs.
+// back, and, in the Android app, its alarm while the app is in the background, its end on the widget, and what Settings
+// says Android allows it. The top bar, the plan editor's field and Settings' rows are in tests/e2e/rest.e2e.mjs.
 vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitorCore);
 vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).app }));
 
+import type { PermissionState } from "@capacitor/core";
+import { alarmRows, watchRestNotifs, type RestNotifs } from "@/components/settings/restNotifications";
 import { todayKey, wdIndex } from "@/lib/dates";
 import { mmss } from "@/lib/format";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import { afterRest } from "@/lib/session";
 import { GymStore, liveRest, restSecFor, type RestTimer } from "@/lib/store";
 import type { LiftLog, SetLog } from "@/lib/types";
+import type { AlarmChecks } from "@/native/rest";
 import { atWednesdayNoon, day, LEGS, lift, memoryStorage, sets, storeWith, WED } from "./helpers";
 import { app, restTimer, widget } from "./nativeMocks";
 
@@ -339,5 +342,75 @@ describe("in the background, in the Android app", () => {
     expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: new Date(2026, 8, 23, 12, 1, 30).toISOString() }));
     s.pauseRest();
     expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: null }));
+  });
+});
+
+describe("Settings' notification rows, in the Android app", () => {
+  const rows = (permission: PermissionState, alarms: AlarmChecks | null) => alarmRows({ permission, alarms });
+  const says = (exact: boolean | null, liveUpdates: boolean | null, samsung = false): AlarmChecks => ({ exact, liveUpdates, samsung });
+  const EXACT_ON = "On. “Rest over” comes the moment a rest ends, even with the phone locked.";
+  const EXACT_OFF = "Off, so “Rest over” can come a few minutes late while the phone is idle. Turn it on to get it on time.";
+  const LIVE_ON = "On. Your workout’s clock and rest countdown stay at the top of the lock screen.";
+  const LIVE_OFF = "Off. Turn them on to keep your workout’s clock and rest countdown at the top of the lock screen.";
+  const NOW_BAR = "Samsung’s Now Bar shows them only with Developer options → Live notifications for all apps on.";
+
+  it("say whether ‘Rest over’ will be on time and whether Live Updates are on, each only where the phone's Android has it", () => {
+    // Android 16: both, and a way to Android's page (on: false) for each that's off.
+    expect(rows("granted", says(true, true))).toEqual({ exact: { on: true, text: EXACT_ON }, live: { on: true, text: LIVE_ON } });
+    expect(rows("granted", says(false, false))).toEqual({ exact: { on: false, text: EXACT_OFF }, live: { on: false, text: LIVE_OFF } });
+    // Android 12 to 15 have no Live Updates; before 12, exact alarms need no allowing, so there's nothing to show.
+    expect(rows("granted", says(false, null))).toEqual({ exact: { on: false, text: EXACT_OFF }, live: null });
+    expect(rows("granted", says(null, null))).toEqual({ exact: null, live: null });
+  });
+
+  it("add a line about the Now Bar to Live Updates on a Samsung phone, on or off", () => {
+    expect(rows("granted", says(true, true, true))).toEqual({ exact: { on: true, text: EXACT_ON }, live: { on: true, text: `${LIVE_ON} ${NOW_BAR}` } });
+    expect(rows("granted", says(true, false, true)).live).toEqual({ on: false, text: `${LIVE_OFF} ${NOW_BAR}` });
+    expect(rows("granted", says(null, null, true))).toEqual({ exact: null, live: null }); // an older Samsung: no Live Updates to speak of
+  });
+
+  it("show neither while notifications are off, which the row above asks for first, or when the phone couldn't say", () => {
+    for (const p of ["prompt", "prompt-with-rationale", "denied"] as const) expect(rows(p, says(false, false, true))).toEqual({ exact: null, live: null });
+    expect(rows("granted", null)).toEqual({ exact: null, live: null });
+  });
+
+  it("reads what Android allows as Settings opens, and again each time the app comes back from Android's settings, the newest answer winning", async () => {
+    app.forget();
+    restTimer.checkPermissions.mockResolvedValue({ notifications: "prompt" });
+    restTimer.checkAlarms.mockResolvedValue(says(false, false, true));
+    // The real wrappers over the plugin, and the real onAppResume over Android's resume.
+    const load = async () => ({ ...(await import("@/native/rest")), ...(await import("@/native/update")) });
+    const seen: RestNotifs[] = [];
+    const stop = watchRestNotifs((s) => seen.push(s), load);
+    await vi.waitFor(() => expect(seen).toEqual([{ permission: "prompt", alarms: says(false, false, true) }]));
+    // Notifications allowed, and Alarms & reminders, in Android's settings: back in the app, both are read again.
+    restTimer.checkPermissions.mockResolvedValue({ notifications: "granted" });
+    restTimer.checkAlarms.mockResolvedValue(says(true, false, true));
+    app.fire("resume");
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]).toEqual({ permission: "granted", alarms: says(true, false, true) });
+    // Back twice in quick succession: the first reading, answering last, doesn't put back what it read.
+    let late: (a: AlarmChecks) => void = () => {};
+    restTimer.checkAlarms.mockReturnValueOnce(new Promise((r) => (late = r)));
+    app.fire("resume");
+    restTimer.checkAlarms.mockResolvedValueOnce(says(true, true, true));
+    app.fire("resume");
+    await vi.waitFor(() => expect(seen).toHaveLength(3));
+    late(says(true, false, true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toHaveLength(3);
+    expect(seen[2].alarms).toEqual(says(true, true, true));
+    // A phone that can't say: no rows under notifications, which are still read.
+    restTimer.checkAlarms.mockRejectedValueOnce(new Error("no answer"));
+    app.fire("resume");
+    await vi.waitFor(() => expect(seen).toHaveLength(4));
+    expect(seen[3]).toEqual({ permission: "granted", alarms: null });
+    // Settings closed: nothing is read any more.
+    stop();
+    const reads = restTimer.checkAlarms.mock.calls.length;
+    app.fire("resume");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(restTimer.checkAlarms).toHaveBeenCalledTimes(reads);
+    expect(seen).toHaveLength(4);
   });
 });

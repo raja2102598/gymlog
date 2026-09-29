@@ -60,6 +60,15 @@ class RestTimerLogicTest {
     }
 
     @Test
+    fun theNowBarIsSamsungsWhateverTheCaseOfItsName() {
+        // Settings adds its line about Samsung's Now Bar for these phones alone (RestTimerPlugin.checkAlarms).
+        assertTrue(RestTimerLogic.isSamsung("samsung"))
+        assertTrue(RestTimerLogic.isSamsung(" SAMSUNG "))
+        assertFalse(RestTimerLogic.isSamsung("Google"))
+        assertFalse(RestTimerLogic.isSamsung(""))
+    }
+
+    @Test
     fun clockTimeFollowsThePhones12Or24HourSetting() {
         val zone = ZoneId.of("Asia/Kolkata")
         val at = ZonedDateTime.of(2026, 9, 29, 22, 14, 40, 0, zone).toInstant().toEpochMilli()

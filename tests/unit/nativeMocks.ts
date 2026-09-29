@@ -51,13 +51,16 @@ export const googleSignIn = { signIn: vi.fn() };
 export const speech = { available: vi.fn(async () => ({ available: true })) };
 /** GymWidget, the home-screen widget. */
 export const widget = { update: vi.fn(async () => {}), clear: vi.fn(async () => {}) };
-/** RestTimer: the lock screen while the app is in the background: the workout, and a rest timer's countdown and alarm. */
+/** RestTimer: the lock screen while the app is in the background: the workout, and a rest timer's countdown and alarm.
+ *  And for Settings, what Android allows them: here, notifications, an on-time "Rest over" and Live Updates. */
 export const restTimer = {
   schedule: vi.fn(async () => {}),
   cancelRest: vi.fn(async () => {}),
   workout: vi.fn(async () => {}),
   cancelWorkout: vi.fn(async () => {}),
   cancel: vi.fn(async () => {}),
+  checkPermissions: vi.fn(async () => ({ notifications: "granted" })),
+  checkAlarms: vi.fn(async (): Promise<{ exact: boolean | null; liveUpdates: boolean | null; samsung: boolean }> => ({ exact: true, liveUpdates: true, samsung: false })),
 };
 
 type Progress = { received: number; total: number };

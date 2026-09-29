@@ -1,13 +1,18 @@
 package io.github.raja2102598.gymlog
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
+import org.json.JSONObject
 
 private const val NOTIFICATIONS = "notifications"
 
@@ -19,7 +24,8 @@ private const val NOTIFICATIONS = "notifications"
  * itself) or on any change to either, so the native side always matches the page's. checkPermissions() and
  * requestPermissions() (asking for POST_NOTIFICATIONS, Android 13 and later; older versions grant it on install) are
  * Plugin's own, built from `permissions` below, exactly as SpeechPlugin uses them for the microphone; Settings'
- * "Rest timer notifications" row (SettingsView.tsx) is what calls them.
+ * "Rest timer notifications" row (SettingsView.tsx) is what calls them. The rows under it call checkAlarms(), for
+ * whether "Rest over" will be on time and Live Updates are allowed, and open Android's page for each that isn't.
  */
 @CapacitorPlugin(name = "RestTimer", permissions = [Permission(alias = NOTIFICATIONS, strings = [Manifest.permission.POST_NOTIFICATIONS])])
 class RestTimerPlugin : Plugin() {
@@ -80,5 +86,54 @@ class RestTimerPlugin : Plugin() {
     override fun requestPermissions(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return super.requestPermissions(call)
         checkPermissions(call)
+    }
+
+    /**
+     * { exact, liveUpdates, samsung }: what Settings shows under "Rest timer notifications", each of the first two
+     * null where this phone's Android has no such setting, so there's nothing to show or change. `exact`: whether
+     * "Rest over" gets its exact alarm rather than an inexact one that can be minutes late (RestAlarm.exactAlarms,
+     * Android 12 and later). `liveUpdates`: whether the countdown and the workout's clock may be Live Updates
+     * (RestAlarm.liveUpdates, Android 16 and later). `samsung`: a Samsung phone, whose Now Bar has a say of its own
+     * (RestTimerLogic.isSamsung). Read again each time the app comes back from Android's settings.
+     */
+    @PluginMethod
+    fun checkAlarms(call: PluginCall) {
+        call.resolve(
+            JSObject()
+                .put("exact", RestAlarm.exactAlarms(context) ?: JSONObject.NULL)
+                .put("liveUpdates", RestAlarm.liveUpdates(context) ?: JSONObject.NULL)
+                .put("samsung", RestTimerLogic.isSamsung(Build.MANUFACTURER)),
+        )
+    }
+
+    /** Android's "Alarms & reminders" page for Gym Log, where "Rest over" is allowed to come on time. Settings only
+     *  offers it from Android 12, the first to have it; a phone without it gets Gym Log's page in its settings. */
+    @PluginMethod
+    fun openExactAlarmSettings(call: PluginCall) {
+        val app = Uri.parse("package:${context.packageName}")
+        val alarms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, app) else null
+        open(call, alarms, Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, app))
+    }
+
+    /** Android 16's Live Updates page for Gym Log. Settings only offers it from Android 16; a phone whose own Settings
+     *  app hasn't got that page (a maker's may not) gets Gym Log's notification settings instead. */
+    @PluginMethod
+    fun openLiveUpdateSettings(call: PluginCall) {
+        val app = context.packageName
+        val promotion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, app) else null
+        open(call, promotion, Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, app))
+    }
+
+    /** Opens the first of `screens` this phone has, a null being one its Android is too old for. */
+    private fun open(call: PluginCall, vararg screens: Intent?) {
+        for (screen in screens.filterNotNull()) {
+            try {
+                context.startActivity(screen)
+                return call.resolve()
+            } catch (e: ActivityNotFoundException) {
+                // Not on this phone: the next one.
+            }
+        }
+        call.reject("Couldn’t open Android’s settings")
     }
 }

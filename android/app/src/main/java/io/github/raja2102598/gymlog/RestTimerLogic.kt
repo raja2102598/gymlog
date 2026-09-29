@@ -44,14 +44,21 @@ object RestTimerLogic {
     fun restShort(endsAt: String): String = "Till $endsAt"
 
     /**
+     * Whether the phone is a Samsung, by Build.MANUFACTURER: One UI's Now Bar is where its Live Updates go, and it
+     * takes other apps' only for those Samsung approves, or with Developer options → Live notifications for all apps
+     * on (docs/android.md). The short text beside the icon is for it alone (shortFor), and Settings says so under Live
+     * Updates (RestTimerPlugin.checkAlarms).
+     */
+    fun isSamsung(manufacturer: String): Boolean = manufacturer.trim().equals("samsung", ignoreCase = true)
+
+    /**
      * The Live Update's short critical text (Notification.Builder.setShortCriticalText), or null for none. Samsung's
      * Now Bar (One UI 8) puts this beside the app's icon, and without it only the app's name: it doesn't show the
      * chronometer the notification counts with. Android's own status bar chip does show that chronometer, ticking,
      * unless a short critical text is set, which it shows instead (SystemUI's NotifChipsViewModel): a fixed text
      * there would only be worse than the clock, so it's for Samsung's phones only.
      */
-    fun shortFor(manufacturer: String, text: String): String? =
-        text.trim().takeIf { it.isNotEmpty() && manufacturer.trim().equals("samsung", ignoreCase = true) }
+    fun shortFor(manufacturer: String, text: String): String? = text.trim().takeIf { it.isNotEmpty() && isSamsung(manufacturer) }
 
     /** A moment as the phone's clock shows it, without AM/PM ("9:05", or "21:05" on a 24-hour phone): short enough
      *  for the Now Bar and a notification's line, and a rest is never long enough for the half of the day to be in

@@ -46,7 +46,8 @@ It updates itself as you log a set, tick a lift or a new day begins, and settles
 The rest timer started by logging a set keeps counting with the app in the background or closed: a quiet notification counts down, and when it reaches zero a second one says **Rest over**, with a sound and a buzz. While the timer runs, the home-screen widget counts it down too (*Rest 1:12*).
 
 - **Notifications:** Android 13 and later ask first. Tap **Allow** under **Settings → Rest timer & effort → Rest timer notifications**. If Android has stopped asking, turn notifications on for Gym Log in the phone's own settings. Older versions allow them when the app is installed.
-- **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 13 and later leave off by default). Without it, Android may deliver it a little late while the phone is idle. The countdown in the app is exact either way.
+- **On time:** the alert uses an exact alarm when the phone allows one (*Alarms & reminders* in the phone's settings for Gym Log, which Android 14 and later leave off until you allow it). Without it, Android may deliver it a few minutes late while the phone is idle. The countdown in the app is exact either way. On Android 12 and later, once notifications are on, **Alarms & reminders** under **Rest timer notifications** says which it is, and when it's off, **Open settings** takes you to that page for Gym Log.
+- **Coming back** from Android's settings, **Rest timer notifications**, **Alarms & reminders** and **Live Updates** (below) check again, so they show what you changed there.
 - **Notification channels** in the phone's settings let you silence each: *Rest timer running* for the countdown and *Workout under way* for the workout's clock (neither makes a sound), and *Rest over* for the alert.
 
 ## Lock screen and Samsung's Now Bar
@@ -67,7 +68,11 @@ Both use Android 16's standard *Live Updates* (Google's API, not a Samsung one):
 
 Samsung also has an API of its own for the Now Bar, *Live Notifications*, but it only works for apps on Samsung's
 allowlist, so Gym Log doesn't use it. Live Updates need the same notification permission as the rest timer, and the
-phone's own settings can turn them off for Gym Log, which leaves them ordinary notifications.
+phone's own settings can turn them off for Gym Log, which leaves them ordinary notifications. On Android 16 and later,
+once notifications are on, **Settings → Rest timer & effort → Live Updates** says whether they're allowed, and when they're
+off, **Open settings** takes you to Android's Live Updates page for Gym Log (or its notification settings, on a phone
+without that page). On a Samsung phone, it also says that the Now Bar needs **Live notifications for all apps**: the app
+can't turn that on itself.
 
 ## Updates and the signing key
 
