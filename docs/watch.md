@@ -3,8 +3,8 @@
 A Wear OS app for the watch paired with the phone (built and tested for a Galaxy Watch4 Classic: round, 450×450,
 a rotating bezel, Wear OS 3 to 6, so API 30 to 36). It does the workout from the wrist: today's session, each
 lift's sets with the suggested weight and reps, the bezel to change them, Complete set, the rest countdown with a
-buzz when it's over, and the workout clock. It keeps working away from the phone and catches up when the two are
-back in reach.
+buzz when it's over, the workout clock, and the heart rate through it; and a tile with the workout's clock and next
+set. It keeps working away from the phone and catches up when the two are back in reach.
 
 The phone stays the one place the data lives. The watch never talks to Supabase: it shows what the phone last sent
 it, and sends back what was done on it, which the phone applies exactly as if it had been done on the phone.
@@ -33,8 +33,11 @@ it, and sends back what was done on it, which the phone applies exactly as if it
   4. From the phone alone, an app such as Bugjaeger or Wear Installer does the same pairing and install.
   5. An update installs the same way, over the one before (`adb install -r`): what the watch has kept stays.
   6. Open Gym Log on the watch once, and allow notifications when it asks (Wear OS 4 and later): "Rest over" and the
-     workout on the watch face are notifications. The buzz itself doesn't need them.
-  7. Turn Wireless debugging (and Wi-Fi's Always on) off again afterwards: it costs battery.
+     workout on the watch face are notifications. The buzz itself doesn't need them. The first workout started on the
+     watch asks for the heart rate (Body sensors, or Heart rate on Wear OS 6): allow it to have the workout's heart
+     rate; refused, everything else works without it.
+  7. For the tile, touch and hold a tile (or swipe past the last one), tap +, and pick Gym Log.
+  8. Turn Wireless debugging (and Wi-Fi's Always on) off again afterwards: it costs battery.
 
 ## How the phone and the watch talk
 
@@ -129,9 +132,14 @@ working away from the phone); once it's there, the state already includes it.
 | `restPause` / `restResume` | | Pauses or resumes the rest. |
 | `skipLift` | `day`, `lift` | Skips the lift (no reason). |
 | `cardioDone` | `day`, `done` | Ticks the day's cardio. |
+| `hr` | `day`, `avg`, `max`, `samples` | Keeps the day's heart rate from the watch (bpm, the average and highest over `samples` readings), rounded, as the day's `hr` (`{ avg, max }`, on its log, so it syncs with the day) for Workout complete. Each is the day's whole so far, so it replaces the one before. One over no readings, or with an average above its highest or a highest over 250, is dropped. |
 
 `at` is never taken as later than the phone's own clock. The rest timer's buttons act on the rest as it is when they
 arrive.
+
+The watch sends `hr` every five minutes during the workout (with new readings since the last), so little is lost if it's
+reset or lost before the end, and at the end. A newer `hr` for a day replaces that day's older ones still waiting to
+reach the Data Layer on the watch, so one sent again later never takes the phone back to less of the workout.
 
 A command the phone can't apply (a day or lift it doesn't have, a set past the rows or of a skipped lift, a `type` or
 `v` it doesn't know) is dropped: its id still goes into `applied`, so the watch stops showing it.
@@ -145,7 +153,8 @@ next time it runs; the watch meanwhile shows them as done, as above.
 `android/wear/src/main/java/io/github/raja2102598/gymlog/wear/`. The rules are plain Kotlin with JVM tests, as the
 phone app's Kotlin is: reading the state and choosing the day (`StateLogic`), the steps, sets and words
 (`StepLogic`), the commands and showing them as done (`OverlayLogic`), the clock and the rest (`TimerLogic`), and
-the bezel (`BezelLogic`). The screens are Compose for Wear OS, Material 3.
+the bezel (`BezelLogic`), the heart rate (`HeartLogic`) and the tile's words (`TileLogic`). The screens are Compose for
+Wear OS, Material 3.
 
 - **Today**: the session's title (or "Rest day"), the workout clock once started (a tap pauses it, another resumes
   it, as on the phone), Start (Continue once it's under way, Review once every lift is done), then each step with
@@ -167,12 +176,53 @@ the bezel (`BezelLogic`). The screens are Compose for Wear OS, Material 3.
 - **Rest**: a ring counting down from `endAt`, the time left (a tap pauses or resumes it, as the phone's ring does),
   +15s and Skip, then "Rest over" at zero. The rest also counts down beside the time at the top of every other
   screen.
+- **Heart rate**: small, a heart and the beats a minute, beside "Set 3 of 4" on a lift and beside the rest's length on
+  the rest, while the sensor has a reading from the last 30 seconds.
 - **The cardio**: its name, which exercise it is, and Done; then Finish workout, or Not done yet.
 - **Finish**: the workout's time, sets and kg lifted, and Finish workout; then "Workout complete".
 - Round screens: the time curves along the top, the step's button hugs the bottom edge, nothing sits in the corners,
   and each list (Today, Sets) curves at the edge and scrolls with the bezel (ScalingLazyColumn). The lift screen's
   numbers and the rest's buttons size themselves to the screen, from a 42 mm watch to a 46 mm one.
 - Swiping right, or the back button, goes back a screen, as everywhere on Wear OS.
+
+### Heart rate
+
+- **Health Services' exercise** (`androidx.health:health-services-client`'s `ExerciseClient`, `HeartMonitor.kt`): an
+  exercise of weight training (`WEIGHTLIFTING`, or `STRENGTH_TRAINING` or `WORKOUT` where the watch has no such
+  exercise), measuring heart rate only. Health Services keeps the sensor going with the screen off and while Gym Log
+  is out of sight, and hands back what it read when the app runs again; that's why it's this rather than
+  `MeasureClient`, which is simpler but only measures while the app is on screen, when a workout's watch is mostly
+  dark between sets. The workout service (below) keeps the app running through the workout, and is of Android's
+  health kind as well as special use once the permission is there, which Android asks of a service reading the
+  body's sensors in the background.
+- **When**: from the workout clock's start (the service starts with it, while the app is on screen) to Finish, on the
+  watch or the phone, or the workout left running for three hours. A reading counts when it's in range (30 to 240)
+  and taken while the clock ran: from its start, to its end, and not after it was paused. The screens show the
+  latest reading, paused or not.
+- **Another app's workout** (Samsung Health's, say): Gym Log doesn't start its own, which would end that one, and goes
+  without heart rate. After Android stopped Gym Log mid-workout, it picks up its own exercise again (Health Services
+  ends one left five minutes with no app to hand it to).
+- **Permission**: `BODY_SENSORS` up to Wear OS 5 (API 35), and `android.permission.health.READ_HEART_RATE` from Wear OS
+  6 (API 36), which replaced it. Asked once, the first time a workout is started on the watch; refused, nothing is
+  measured and everything else works. Settings → Apps → Gym Log → Permissions can allow it later.
+- **Kept and sent**: each day's sum, count and highest (so the average and highest over every reading) in a file, a
+  week of days. The day's `hr` goes to the phone five minutes after its first readings, then every five minutes with
+  new ones, and at the end with whatever came since: at Finish, and again should Health Services' last readings
+  arrive after.
+
+### The tile
+
+`GymTileService.kt`, with ProtoLayout's Material 3 (`androidx.wear.tiles`), its words from `TileLogic`:
+
+- **During a workout**: its session, the rest counting down (then the workout's clock once it's over) or the workout's
+  clock, and the next set: "Leg Press · Set 3 of 4 · 100 kg × 12", the rested lift's next set while it has one, else
+  the first exercise not done, then the cardio. The time ticks on the watch's own (ProtoLayout's dynamic time), with
+  nothing from the app. A paused clock or rest shows where it stopped.
+- **Otherwise**: today's session, how far it's got ("5 exercises"), and Start; or a rest day, a skipped day, "Workout
+  complete", or what to do on the phone, as the app says it.
+- A tap opens the app where it was. The tile is asked for again with every change to what the watch has, every five
+  minutes during a workout (for one left behind), and otherwise half an hour on, or just past midnight for the next
+  day's session.
 
 ### What the watch keeps
 
@@ -181,7 +231,7 @@ storage, so the watch opens on the last workout from cold, away from the phone. 
 app is open (a `WearableListenerService` for `/gymlog/state`), and the app reads the Data Layer again each time it
 comes to the front. A command is shown as done at once, kept, and put as its urgent data item; one that never
 reached the Data Layer (the app killed that moment) is put again the next time the app opens. One the phone never
-takes stops being shown after two days.
+takes stops being shown after two days. A third file keeps the heart rate's days.
 
 ### The rest's buzz, and the workout in the background
 
@@ -194,8 +244,8 @@ takes stops being shown after two days.
 - Exact alarms: `USE_EXACT_ALARM` from Wear OS 4 (API 33), granted on install. It's meant for alarm and timer apps,
   which a rest timer is, and Google Play's limit on it doesn't apply to an app that isn't on Play. On Wear OS 3 (API
   30 to 32), `SCHEDULE_EXACT_ALARM`, granted on install too.
-- While the workout clock runs, a foreground service (of the special-use kind: it only keeps a clock) holds an
-  Ongoing Activity: the workout's icon and clock, or the rest counting down, on the watch face and at the top of the
+- While the workout clock runs, a foreground service (of the special-use kind, and health too while it measures the
+  heart rate) holds an Ongoing Activity: the workout's icon and clock, or the rest counting down, on the watch face and at the top of the
   app list, one tap from the app, and Gym Log's process alive through the workout, so it opens at once where it was.
   Android only lets an app start one while it's on screen, so it starts when the app opens with a workout under
   way, and stops itself once it's finished or left running for three hours. The buzz doesn't depend on it.
@@ -205,6 +255,4 @@ takes stops being shown after two days.
 
 ## Later, in the same app
 
-- Heart rate during the workout (Health Services), its average and highest sent to the phone for Workout complete.
-- A tile with the workout clock and the next set.
 - Staying on screen, dimmed, while the watch is idle (ambient mode), for the rest's countdown at a glance.
