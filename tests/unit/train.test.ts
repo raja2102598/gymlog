@@ -3,6 +3,7 @@ import { checkSet, completeSet, liftModel, logged, nextSet } from "@/components/
 import { nextInRounds, supersetModels } from "@/components/today/SupersetItem";
 import { wdIndex } from "@/lib/dates";
 import { DEFAULT_PLAN } from "@/lib/plan";
+import { liftLine, targetWords } from "@/lib/session";
 import { setsOf, targetOf, type GymStore } from "@/lib/store";
 import type { LiftLog } from "@/lib/types";
 import { atWednesdayNoon, day, LAST, lift, storeWith, WED } from "./helpers";
@@ -271,6 +272,13 @@ describe("what a lift was asked for", () => {
     const s = storeWith({});
     s.editLift("2026-09-23", "Face Pulls", (r) => void (r.sets = [{ reps: 15, kg: 10 }]), false);
     expect(s.logs["2026-09-23"].exercises["Face Pulls"].target).toBeUndefined();
+  });
+
+  it("prints a range of sets with an en dash, as a range of reps has: 3–4 × 8–10, not 3-4 × 8–10", () => {
+    expect([targetWords({ sets: "3-4", reps: "8-10" }), targetWords({ sets: "2 - 3", reps: "10-12" }), targetWords({ sets: "3", reps: "12" })]).toEqual(["3–4 × 8–10", "2–3 × 10–12", "3 × 12"]);
+    // Train's row, and the lift's sheet, which shows the same line.
+    const s = storeWith();
+    expect(liftLine(s, WED, s.liftsFor(WED)[0])).toBe("3–4 × 8–10");
   });
 
   it("targetOf falls back to today's plan when a lift has no stored target, and otherwise reads its own", () => {

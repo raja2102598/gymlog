@@ -9,8 +9,8 @@ import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
 export const dash = (s: string) => s.replace(/\s*-\s*/g, "–");
 
-/** A lift's target in words: "3 × 8–10". */
-export const targetWords = (t: { sets: string; reps: string }) => [t.sets, dash(t.reps)].filter(Boolean).join(" × ");
+/** A lift's target in words: "3 × 8–10", "3–4 × 8–10": a range of sets with an en dash too, as reps have. */
+export const targetWords = (t: { sets: string; reps: string }) => [dash(t.sets), dash(t.reps)].filter(Boolean).join(" × ");
 
 export interface SessionSummary {
   lifts: number;
