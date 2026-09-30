@@ -182,10 +182,12 @@ object OverlayLogic {
     private fun one(s: WatchState, c: Command): WatchState =
         when (c.type) {
             SET -> logSet(s, c)
-            // The phone's startRun: nothing if that day's clock is already going, else it starts from 0:00.
+            // The phone's startRun: nothing if that day's clock is already going, or any run was started after this was
+            // pressed (another day's, on the phone, while this waited out of reach), else it starts from 0:00.
             START_RUN -> {
                 val day = c.day
-                if (day == null || (s.run?.day == day && TimerLogic.underWay(s.run, c.at))) s else s.copy(run = Run(day, c.at))
+                val newer = (s.run?.startedAt ?: Long.MIN_VALUE) > c.at
+                if (day == null || newer || (s.run?.day == day && TimerLogic.underWay(s.run, c.at))) s else s.copy(run = Run(day, c.at))
             }
             // The clock's pause, resume and Finish act on the run they were pressed for, and never on one restarted (↺)
             // on the phone since, as the phone drops them then.

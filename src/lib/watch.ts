@@ -221,9 +221,14 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
     case "set":
       // The rest it starts takes the watch's own `at` as its startedAt (startRest counts down from no later than now).
       return !!day && logWatchSet(store, day, c, isNumber(c.at) ? c.at : now);
-    case "startRun":
-      if (day) startRun(day, at);
-      return !!day;
+    case "startRun": {
+      // Never over a run started after it was pressed, whatever its day: the phone keeps one run, and one started there
+      // for another day while this waited out of reach is the newer.
+      const r = currentRun();
+      if (!day || (r && r.startedAt > at)) return false;
+      startRun(day, at);
+      return true;
+    }
     // Only for the run they were pressed for: a pause queued away from the phone never stops a clock restarted since.
     case "pauseRun":
       if (!day || !sameRun(day, c)) return false;

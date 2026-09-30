@@ -455,6 +455,20 @@ describe("what the watch sends back", () => {
 
   it("runs the workout's clock from when it was started, paused and resumed on the watch, and Finish ends it and the day's rest", async () => {
     const { s, stop } = await running();
+    // The phone keeps one run. Tuesday's, started on the watch at 11:30 out of reach, never replaces Wednesday's,
+    // started on the phone at 11:35: it's dropped, and acked. Over one started before it (11:25), it starts, as ever.
+    const TUE = "2026-09-22", tuesday = cmd("startRun", { day: TUE }, 30 * MIN);
+    startRun(WED, NOON - 25 * MIN);
+    watch.arrive(tuesday);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()).toMatchObject({ day: WED, startedAt: NOON - 25 * MIN });
+    expect(watch.sent().applied).toContain(tuesday.id);
+    restartRun(WED, NOON - 35 * MIN);
+    watch.arrive(cmd("startRun", { day: TUE }, 30 * MIN));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()).toMatchObject({ day: TUE, startedAt: NOON - 30 * MIN });
+    clearRun();
+
     // Pause, resume and Finish name the run the watch showed, by its start.
     const run = { day: WED, runStartedAt: NOON - 20 * MIN };
     watch.arrive(cmd("startRun", { day: WED }, 20 * MIN), cmd("pauseRun", run, 10 * MIN));
