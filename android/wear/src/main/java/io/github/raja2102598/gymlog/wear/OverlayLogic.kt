@@ -117,7 +117,9 @@ object OverlayLogic {
     fun skipLift(id: String, at: Long, day: String, lift: Lift) =
         Command(id, at, SKIP_LIFT, day = day, lift = lift.key, baseDone = lift.done, baseSkipped = lift.skipped, baseLogged = lift.rows.count(StepLogic::logged))
 
-    fun cardioDone(id: String, at: Long, day: String, done: Boolean) = Command(id, at, CARDIO_DONE, day = day, done = done)
+    /** The day's cardio ticked or unticked, over the tick the watch shows for it, so neither the phone nor the watch
+     *  undoes one changed on the phone since. */
+    fun cardioDone(id: String, at: Long, day: Day, done: Boolean) = Command(id, at, CARDIO_DONE, day = day.date, done = done, baseDone = day.cardioDone)
 
     /** The day's heart rate so far (HeartLogic): its average and highest over `samples` readings, replacing the one
      *  the phone had. */
@@ -254,7 +256,8 @@ object OverlayLogic {
                 val same = l.done == c.baseDone && c.baseSkipped == false && l.rows.count(StepLogic::logged) == c.baseLogged
                 if (!l.skipped && same) l.copy(skipped = true, done = false) else l
             }
-            CARDIO_DONE -> s.copy(days = s.days.map { if (it.date == c.day) it.copy(cardioDone = c.done ?: true) else it })
+            // Only over the tick the watch showed: one ticked or unticked on the phone since stays so.
+            CARDIO_DONE -> s.copy(days = s.days.map { if (it.date == c.day && it.cardioDone == c.baseDone) it.copy(cardioDone = c.done ?: true) else it })
             // The phone keeps the day's heart rate for Workout complete; the watch shows its own readings, not the state's.
             HR -> s
             else -> s

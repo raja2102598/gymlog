@@ -288,9 +288,13 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
       return true;
     }
     case "cardioDone": {
-      // The cardio's tick, on a day whose workout has it.
+      // The cardio's tick, on a day whose workout has it, over the tick the watch showed (`baseDone`): one ticked or
+      // unticked on the phone since is newer, and stays. Already as the watch has it, it needs nothing.
       const done = c.done;
       if (!day || typeof done !== "boolean" || !store.planFor(day).cardio.name || store.isFree(day)) return false;
+      const cur = store.entry(day).cardio === true;
+      if (cur === done) return true;
+      if (c.baseDone !== cur) return false;
       store.editDay(
         day,
         (n) => {

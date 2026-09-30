@@ -314,7 +314,11 @@ class OverlayLogicTest {
         assertFalse(liftIn(apply(logged, listOf(skip)), "Squat").skipped)
         val unticked = s.copy(days = listOf(day(listOf(lift("Squat", 12, null, done = false)), cardio = "Walk")))
         assertFalse(liftIn(apply(unticked, listOf(skip)), "Squat").skipped)
-        assertTrue(apply(s, listOf(OverlayLogic.cardioDone("c-2", t0, TODAY, true))).days[0].cardioDone)
+        val tick = OverlayLogic.cardioDone("c-2", t0, s.days[0], true)
+        assertEquals(false, tick.baseDone) // the tick as shown
+        assertTrue(apply(s, listOf(tick)).days[0].cardioDone)
+        // Only over that tick: one made over the cardio ticked, which the phone has taken back since, changes nothing.
+        assertFalse(apply(s, listOf(OverlayLogic.cardioDone("c-3", t0, s.days[0].copy(cardioDone = true), true))).days[0].cardioDone)
     }
 
     @Test
@@ -344,8 +348,9 @@ class OverlayLogicTest {
         assertEquals(setOf("v", "id", "at", "type", "day", "runStartedAt"), pause.keys().asSequence().toSet())
         assertEquals(40L, pause.getLong("runStartedAt"))
         assertEquals(OverlayLogic.ofRun("c-16", 48L, OverlayLogic.PAUSE_RUN, TODAY, Run(TODAY, 40L)), OverlayLogic.fromJson(pause.toString()))
-        val cardio = JSONObject(OverlayLogic.toJson(OverlayLogic.cardioDone("c-12", 45L, TODAY, false)))
-        assertEquals(false, cardio.getBoolean("done"))
+        val walked = day(cardio = "Walk", cardioDone = true)
+        val cardio = JSONObject(OverlayLogic.toJson(OverlayLogic.cardioDone("c-12", 45L, walked, false)))
+        assertEquals(false to true, cardio.getBoolean("done") to cardio.getBoolean("baseDone")) // and the tick it was over
         // The lift as it was shown: its tick, not skipped, and one set with reps.
         val squat = lift("Squat", 12, null, done = false)
         val skip = JSONObject(OverlayLogic.toJson(OverlayLogic.skipLift("c-18", 49L, TODAY, squat)))
@@ -358,7 +363,7 @@ class OverlayLogicTest {
         assertEquals("8f14e45f", JSONObject(OverlayLogic.toJson(set("c-15", "Squat", 0, 12).copy(account = "8f14e45f"))).getString("account"))
 
         // Kept on the watch as the same JSON, and read back the same.
-        for (c in listOf(set("c-9", "Squat", 1, null, base = twelve, baseDone = true).copy(account = "8f14e45f"), OverlayLogic.skipLift("c-18", 49L, TODAY, squat), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15), OverlayLogic.ofRest("c-14", 47L, OverlayLogic.REST_SKIP, shown.copy(startedAt = null)), OverlayLogic.cardioDone("c-12", 45L, TODAY, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
+        for (c in listOf(set("c-9", "Squat", 1, null, base = twelve, baseDone = true).copy(account = "8f14e45f"), OverlayLogic.skipLift("c-18", 49L, TODAY, squat), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15), OverlayLogic.ofRest("c-14", 47L, OverlayLogic.REST_SKIP, shown.copy(startedAt = null)), OverlayLogic.cardioDone("c-12", 45L, walked, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
             assertEquals(c, OverlayLogic.fromJson(OverlayLogic.toJson(c)))
         }
         assertNull(OverlayLogic.fromJson("{}"))

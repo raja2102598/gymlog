@@ -115,7 +115,7 @@ class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long,
 
     fun cardio(done: Boolean) {
         val d = day ?: return
-        send { id, at -> OverlayLogic.cardioDone(id, at, d.date, done) }
+        send { id, at -> OverlayLogic.cardioDone(id, at, d, done) }
     }
 
     /** The rest counting down now, if one is. */

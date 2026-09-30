@@ -280,7 +280,7 @@ describe("sending it", () => {
     await vi.advanceTimersByTimeAsync(PUBLISH_MS);
     watch.publish.mockClear();
     demo.startDemo();
-    watch.arrive({ v: 1, id: "c-demo", at: Date.now(), type: "cardioDone", day: WED, done: true });
+    watch.arrive({ v: 1, id: "c-demo", at: Date.now(), type: "cardioDone", day: WED, done: true, baseDone: false });
     await vi.advanceTimersByTimeAsync(PUBLISH_MS);
     expect(watch.publish).not.toHaveBeenCalled();
     expect(demo.entry(WED).cardio).toBe(false);
@@ -462,7 +462,7 @@ describe("what the watch sends back", () => {
       cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: -5 }),
       cmd("set", { day: "Wednesday", lift: "Leg Press", set: 0, reps: 10, kg: 45 }),
       cmd("skipLift", { day: WED, lift: "Bench Press" }),
-      cmd("cardioDone", { day: "2026-09-24", done: "yes" }),
+      cmd("cardioDone", { day: "2026-09-24", done: "yes", baseDone: false }),
       restCmd("restAdd", s.rest, { sec: -15 }),
       // Made under another account, before the phone signed out and into this one with the watch out of reach, and
       // made under none: each would otherwise log Leg Press's set 1, or skip its rest.
@@ -476,7 +476,7 @@ describe("what the watch sends back", () => {
       cmd("hr", { avg: 128, max: 165, samples: 60 }),
       cmd("startRun", {}),
       cmd("teleport", { day: WED }),
-      { ...cmd("cardioDone", { day: WED, done: true }), v: 2 }, // a version this phone doesn't know
+      { ...cmd("cardioDone", { day: WED, done: true, baseDone: false }), v: 2 }, // a version this phone doesn't know
     ];
     watch.arrive(...cant);
     await vi.advanceTimersByTimeAsync(0);
@@ -703,6 +703,13 @@ describe("what the watch sends back", () => {
         left: (s) => expect(s.rest).toMatchObject({ pausedAt: P }),
       },
       {
+        name: "cardioDone: made over the cardio ticked, taken back on the phone after it, changes nothing",
+        before: (s) => s.editDay(WED, (d) => void (d.cardio = true), true),
+        command: () => cmd("cardioDone", { day: WED, done: true, baseDone: true }, AGO),
+        after: (s) => s.editDay(WED, (d) => void (d.cardio = false), true),
+        left: (s) => expect(s.entry(WED).cardio).toBe(false),
+      },
+      {
         name: "hr: the day's fuller heart rate, from a later snapshot, stays",
         command: () => cmd("hr", { day: WED, avg: 110, max: 140, samples: 30 }, AGO),
         after: (s) => s.editDay(WED, (d) => void (d.hr = { avg: 125, max: 160, samples: 90 }), true),
@@ -773,13 +780,13 @@ describe("what the watch sends back", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(s.rest).toBeNull();
 
-    watch.arrive(cmd("skipLift", { day: WED, lift: "Leg Extension", baseDone: false, baseSkipped: false, baseLogged: 0 }), cmd("cardioDone", { day: WED, done: true }));
+    watch.arrive(cmd("skipLift", { day: WED, lift: "Leg Extension", baseDone: false, baseSkipped: false, baseLogged: 0 }), cmd("cardioDone", { day: WED, done: true, baseDone: false }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.entry(WED).exercises["Leg Extension"]).toMatchObject({ skipped: true, done: false });
     expect(s.entry(WED).cardio).toBe(true);
     // A free workout has no cardio to tick.
     s.logs["2026-09-24"] = day({ free: { name: "Hotel gym", lifts: [] } });
-    watch.arrive(cmd("cardioDone", { day: "2026-09-24", done: true }));
+    watch.arrive(cmd("cardioDone", { day: "2026-09-24", done: true, baseDone: false }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.entry("2026-09-24").cardio).toBe(false);
     stop();
@@ -885,7 +892,7 @@ describe("what the watch sends back", () => {
     expect(watch.sent().applied).toHaveLength(1);
 
     // Taken in by the plugin while the app was in the background, without a word: applied on coming back.
-    watch.queue.push(cmd("cardioDone", { day: WED, done: true }));
+    watch.queue.push(cmd("cardioDone", { day: WED, done: true, baseDone: false }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.entry(WED).cardio).toBe(false);
     app.fire("resume");
