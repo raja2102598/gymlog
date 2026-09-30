@@ -342,7 +342,9 @@ app's own screens and the workout service stay running while their writes go thr
   three long pulses, as an alarm (so with the screen off, and through Do Not Disturb unless alarms are off too), and
   posts "Rest over" with what's next ("Leg Press · Next: set 3 of 4") unless the app is on screen. It checks the
   rest is still the one due first: skipped, paused or pushed out by +15s since, it stays quiet. The alarm follows
-  every change, from either side, and needs nothing running: it fires with the app closed.
+  every change, from either side, and needs nothing running: it fires with the app closed. A rest with time to come,
+  counting or paused (a new one from the phone, or one pushed out by +15s), takes down a "Rest over" still showing
+  from the one before, as the phone's own scheduler does.
 - Exact alarms: `USE_EXACT_ALARM` from Wear OS 4 (API 33), granted on install. It's meant for alarm and timer apps,
   which a rest timer is, and Google Play's limit on it doesn't apply to an app that isn't on Play. On Wear OS 3 (API
   30 to 32), `SCHEDULE_EXACT_ALARM`, granted on install too.

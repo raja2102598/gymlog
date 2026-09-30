@@ -40,10 +40,13 @@ object RestAlarm {
     /**
      * Follows the rest there is now: an alarm at its end while it counts down, none once it's skipped or paused. One
      * already over is left alone, since its alarm has gone off or is going off right now; the receiver checks it's
-     * still due before buzzing.
+     * still due before buzzing. A rest with time to come (a new one from the phone or said to it, say, while the app is
+     * out of sight) takes down a "Rest over" still showing, which is for the rest before it, as the phone's scheduler
+     * does.
      */
     fun sync(ctx: Context, state: WatchState?, now: Long) {
         val r = state?.rest
+        if (TimerLogic.restToCome(r, now)) clearOver(ctx)
         when {
             r == null || r.pausedAt != null -> cancel(ctx)
             r.endAt > now -> schedule(ctx, r.endAt)

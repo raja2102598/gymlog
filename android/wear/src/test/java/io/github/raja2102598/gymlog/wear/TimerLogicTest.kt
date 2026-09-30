@@ -107,6 +107,13 @@ class TimerLogicTest {
         assertFalse(TimerLogic.alarmStillDue(null, t0 + 90_000L)) // skipped
         assertFalse(TimerLogic.alarmStillDue(r.copy(pausedAt = t0), t0 + 90_000L))
         assertFalse(TimerLogic.alarmStillDue(r.copy(endAt = t0 + 105_000L), t0 + 90_000L)) // +15 s moved it on
+        // "Rest over" goes once there's a rest with time to come, counting or paused: a new one, or this one pushed
+        // out by +15 s. It stays while the rest is over, and with no rest.
+        assertTrue(TimerLogic.restToCome(r, t0 + 30_000L))
+        assertTrue(TimerLogic.restToCome(r.copy(pausedAt = t0 + 30_000L), t0 + 500_000L))
+        assertFalse(TimerLogic.restToCome(r, t0 + 90_000L))
+        assertTrue(TimerLogic.restToCome(TimerLogic.addRest(r, 15, t0 + 95_000L), t0 + 95_000L))
+        assertFalse(TimerLogic.restToCome(null, t0))
     }
 
     @Test

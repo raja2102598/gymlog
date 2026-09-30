@@ -80,6 +80,10 @@ object TimerLogic {
         return r.copy(endAt = at + (r.endAt - p), pausedAt = null)
     }
 
+    /** Whether there's a rest with time still to count, running or paused: not over, so a "Rest over" still showing is
+     *  an earlier rest's (or this one's, before +15 s or a pause took it back from zero), and goes. */
+    fun restToCome(r: Rest?, now: Long): Boolean = r != null && restLeftMs(r, now) > 0
+
     /** Whether an alarm set for a rest ending at `endAt` is still for the rest there is now: nothing skipped, paused
      *  or moved it since (a second's leeway for rounding on the way). */
     fun alarmStillDue(r: Rest?, endAt: Long): Boolean = r != null && r.pausedAt == null && kotlin.math.abs(r.endAt - endAt) < 1000L
