@@ -335,8 +335,8 @@ export function logSet(store: GymStore, m: LiftModel, j: number) {
 export const logged = (m: LiftModel, j: number) => (m.sets[j]?.reps ?? 0) > 0 && m.typing !== j;
 
 /** Completes set `j`, from its check or Complete set N: the keyboard goes, and the set is logged as it stands
- *  (logSet). The cursor leaves first, so the boxes show what's saved: a box with the cursor keeps what's typed in it
- *  (SyncedInput), and would go on showing the suggestion for reps filled in from it. */
+ *  (logSet). The cursor leaves first, so the set is no longer being typed in (see logged), and the box it was in
+ *  shows what's saved, tidied ("5." as 5), as a box does once its typing is over (SyncedInput). */
 export function completeSet(store: GymStore, m: LiftModel, j: number) {
   const at = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null);
   if (at?.dataset?.set) at.blur();
@@ -612,8 +612,15 @@ export function LiftHead({
       <div className="ex-head">
         <div className="ex-t">
           {step ? <div className="ex-step">{step}</div> : null}
+          {/* In a superset, the lift's place (A1) is its first line, beside the buttons, so its name runs the card's
+              width under them as a lift's own card's does. The heading says it too, for a screen reader. */}
+          {tag ? (
+            <div className="ex-tag" aria-hidden="true">
+              <span className="sstag">{tag}</span>
+            </div>
+          ) : null}
           <h2 className="ex-name">
-            {tag ? <span className="sstag">{tag}</span> : null}
+            {tag ? <span className="sr-only">{tag} </span> : null}
             <span className="nm">{did}</span>
           </h2>
           {r.swap ? <div className="ex-was">instead of {name}</div> : null}

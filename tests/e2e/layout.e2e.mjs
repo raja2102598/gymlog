@@ -294,13 +294,17 @@ const tableOf = (page) =>
 // The workout's set table on a small phone (360 x 800), and on a large one: each column's heading over what's under it,
 // the active row's boxes and the plain numbers of the other rows in the same places and widths, one check column with
 // evenly spaced rows, and a long name, a 3-digit weight, 2-digit reps and last time's "102.5 × 10" all fitting; in a
-// superset's rounds too.
+// superset's rounds too. Above the table, a lift's name, a superset's too, has the card's width under its buttons; and
+// the cardio's big button stays on one line.
 async function setTable({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000006", "2026-09-01T05:00:00Z", "t@example.com");
   const plan = JSON.parse(JSON.stringify(PLAN));
-  // Each with a cue, so each has How to beside ···: two buttons for its name and numbers to make room for.
+  // Each with a cue, and voice logging on, so each has its microphone and How to beside ···: three buttons for its
+  // name and numbers to make room for.
   const lift = (name, sets, reps, more = {}) => ({ name, sets, reps, cue: "Slow and controlled.", flag: "", ...more });
   plan.days[2].exercises = [lift("Single-Arm Dumbbell Row", "3", "10-12"), lift("Lat Pulldown", "3", "8-10"), lift("Seated Row", "3", "10-12", { superset: true })];
+  // The plan's longest cardio name.
+  plan.days[2].cardio = PLAN.days[4].cardio;
   const day = (exercises) => ({ exercises, warmup: [], cardio: false, steps: null, weight: null, note: "" });
   const logs = {
     [K(21)]: day({
@@ -311,7 +315,9 @@ async function setTable({ browser, base, check }) {
     // Today's first set, heavier than ever: a record.
     [K(28)]: day({ "Single-Arm Dumbbell Row": { done: false, kg: 105, sets: [{ reps: 12, kg: 105 }] } }),
   };
-  const { ctx, page } = await open(browser, base, { auth, db: { logs, plan }, width: 360, height: 800 });
+  const { ctx, page } = await open(browser, base, { auth, db: { logs, plan }, width: 360, height: 800, url: null });
+  await ctx.addInitScript(() => localStorage.setItem("gymlog.voice.v1", "true"));
+  await page.goto(base);
   await ready(page);
   await page.evaluate(() => document.fonts.ready);
   await openWorkout(page, 0);
@@ -372,14 +378,53 @@ async function setTable({ browser, base, check }) {
   const btns = await lines("#workoutView .setbtns > .btn, #workoutView .setbtns .wset-t");
   check("+ Add set and Warm-up sets each fit on one line", btns.length === 2 && btns.every(([, n]) => n === 1), JSON.stringify(btns));
 
+  // A superset's lifts, as a lift's own card: each one's tag (A1) beside its buttons, and its name under them, the
+  // card's width, rather than wrapping in the space beside them; its microphone 44px.
+  const supersetHeads = async (where) => {
+    const heads = await page.$$eval("#workoutView .ss-lift", (ls) =>
+      ls.map((l) => {
+        const box = (s) => l.querySelector(s).getBoundingClientRect(), nm = l.querySelector(".nm"), r = document.createRange();
+        r.selectNodeContents(nm);
+        const btns = box(".ex-btns"), mic = box(".mic"), name = box(".ex-name");
+        return {
+          name: nm.textContent,
+          lines: Math.round(r.getBoundingClientRect().height / parseFloat(getComputedStyle(nm).lineHeight)),
+          under: Math.round(name.top - btns.bottom),
+          narrower: Math.round(box(".ex-head").width - name.width),
+          mic: [Math.round(mic.width), Math.round(mic.height)],
+        };
+      }),
+    );
+    check(
+      `a superset's lifts ${where}: each name under its buttons, the card's width, on one line, and its microphone 44px`,
+      heads.length === 2 && heads.every((h) => h.lines === 1 && h.under >= 0 && h.narrower === 0 && h.mic.every((n) => n >= 44)),
+      JSON.stringify(heads),
+    );
+  };
+
   await page.click("#nextEx");
   await page.waitForSelector("#workoutView .ex-card.superset");
   await tableChecks("a superset's rounds at 360px", { record: false });
+  await supersetHeads("at 360px");
+
+  // The cardio, the last step: its big button on one line, and the cardio's whole name on the card above it.
+  await page.click("#workoutView .wprog li:last-child button");
+  await page.waitForSelector("#workoutView .ex-card.cardio");
+  const bigButton = await lines("#completeSet");
+  const cardio = await page.$eval("#workoutView .ex-card.cardio .ex-name", (e) => ({ name: e.textContent, cut: e.scrollWidth > e.clientWidth }));
+  check(
+    "the cardio's big button is on one line at 360px, and its whole name is on the card",
+    bigButton.length === 1 && bigButton[0][1] === 1 && cardio.name === PLAN.days[4].cardio.name && !cardio.cut,
+    JSON.stringify({ bigButton, cardio }),
+  );
 
   await page.setViewportSize({ width: 412, height: 915 });
   await page.click("#workoutView .wprog li:first-child button");
   await page.waitForSelector("#s0_1_k");
   await tableChecks("the lift at 412px", { record: true });
+  await page.click("#nextEx");
+  await page.waitForSelector("#workoutView .ex-card.superset");
+  await supersetHeads("at 412px");
   check("no page errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();
 }

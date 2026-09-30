@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkSet, completeSet, liftModel, logged, nextSet } from "@/components/today/LiftItem";
 import { nextInRounds, supersetModels } from "@/components/today/SupersetItem";
+import { takesSaved } from "@/components/ui/SyncedField";
 import { wdIndex } from "@/lib/dates";
 import { DEFAULT_PLAN } from "@/lib/plan";
 import { setsOf, targetOf, type GymStore } from "@/lib/store";
@@ -243,6 +244,22 @@ describe("a set typed in the workout", () => {
     expect(next()).toEqual([1, 0]);
     phone(s, "Hamstring Curl").tap(1, "kg"); // straight to A2's second set
     expect(next()).toEqual([1, 1]);
+  });
+
+  it("shows in the box being typed in a change that isn't its own typing, as a set said by voice, never its own redone", () => {
+    // [how, [saved now, saved at the last render, the box's text, has the cursor, typed since that render], takes it]
+    const cases: [string, Parameters<typeof takesSaved>, boolean][] = [
+      ["no cursor: a set filled in shows", ["45", "", "", false, false], true],
+      ["no cursor: its own 5. shows as saved once the cursor leaves", ["5", "5", "5.", false, false], true],
+      ["no cursor, showing it already", ["45", "", "45", false, false], false],
+      ["5. typed: saved as 5, unchanged since, it stays 5.", ["5", "5", "5.", true, false], false],
+      ["5. taken back to 5: its own change", ["5", "", "5", true, true], false],
+      ["52.3 typed, saved to the half kilo: its own, it stays", ["52.5", "52", "52.3", true, true], false],
+      ["42.5 said by voice while 5. is typed: it shows", ["42.5", "5", "5.", true, false], true],
+      ["undone by voice while 1 is typed: it clears", ["", "1", "1", true, false], true],
+      ["said by voice as what's typed: nothing to write", ["5", "", "5", true, false], false],
+    ];
+    for (const [how, args, want] of cases) expect(takesSaved(...args), how).toBe(want);
   });
 
   it("is on the set typed in, past one still to do; keeps it to its own lift; a row that goes takes only its own set out", () => {

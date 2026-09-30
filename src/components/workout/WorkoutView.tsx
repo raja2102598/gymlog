@@ -94,7 +94,9 @@ export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLif
     primary = e.cardio
       ? { label: "Finish workout", icon: "next", act: onFinish }
       : {
-          label: `Done with ${cardio!.name.toLowerCase()}`,
+          // Not the cardio's name, which the card above it shows in full: names like "Treadmill brisk walk - 20-30
+          // min" would break the button onto two lines on a small phone.
+          label: "Done with cardio",
           icon: "check",
           act: () =>
             store.editDay(
@@ -241,22 +243,9 @@ function TopBar({ name, day, onClose, onFinish }: { name: string; day: DayKey; o
           </span>
         ) : run ? (
           // One pill: a tap pauses the clock, and another resumes it; the time paused doesn't count. Paused, it's grey
-          // with a play mark, and ↺ beside it starts the clock again from 0:00 (it asks first).
+          // with a play mark, and ↺ to its left starts the clock again from 0:00 (it asks first). ↺ comes first, as
+          // it shows, so focus goes left to right.
           <div className="wclock-row">
-            <button
-              type="button"
-              className={cx("wclock", paused && "paused")}
-              id="wclock"
-              aria-label={paused ? `Resume the clock, paused at ${Math.floor(runSeconds(run) / 60)} minutes` : `Pause the clock, ${Math.floor(runSeconds(run) / 60)} minutes in`}
-              onClick={() => {
-                if (paused) resumeRun(day);
-                else pauseRun(day);
-                tick((n) => n + 1);
-              }}
-            >
-              {paused ? <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" /> : <Pause size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
-              {clock(runSeconds(run))}
-            </button>
             {paused ? (
               <button
                 type="button"
@@ -272,6 +261,20 @@ function TopBar({ name, day, onClose, onFinish }: { name: string; day: DayKey; o
                 <RotateCcw size={15} strokeWidth={2.5} aria-hidden="true" />
               </button>
             ) : null}
+            <button
+              type="button"
+              className={cx("wclock", paused && "paused")}
+              id="wclock"
+              aria-label={paused ? `Resume the clock, paused at ${Math.floor(runSeconds(run) / 60)} minutes` : `Pause the clock, ${Math.floor(runSeconds(run) / 60)} minutes in`}
+              onClick={() => {
+                if (paused) resumeRun(day);
+                else pauseRun(day);
+                tick((n) => n + 1);
+              }}
+            >
+              {paused ? <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" /> : <Pause size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
+              {clock(runSeconds(run))}
+            </button>
           </div>
         ) : null}
       </div>
