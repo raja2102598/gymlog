@@ -41,6 +41,11 @@ object TimerLogic {
         return r.copy(pausedAt = null, pausedMs = r.pausedMs + (to - p), pauses = r.pauses + Pause(p, to))
     }
 
+    /** When a run last changed: started, paused, resumed or finished (the phone's runChangedAt). A command made before
+     *  that leaves it as it is. */
+    fun changedAt(r: Run): Long =
+        maxOf(r.startedAt, r.pausedAt ?: Long.MIN_VALUE, r.endedAt ?: Long.MIN_VALUE, r.pauses.maxOfOrNull { it.to } ?: Long.MIN_VALUE)
+
     /** Finish: the duration stops there, and stays put if it had already. */
     fun endRun(r: Run, at: Long): Run = r.copy(endedAt = r.endedAt ?: at)
 

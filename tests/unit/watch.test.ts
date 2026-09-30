@@ -546,6 +546,37 @@ describe("what the watch sends back", () => {
     stop();
   });
 
+  it("never undoes a change made to the run on the phone after a clock command was done on the watch", async () => {
+    const { stop } = await running();
+    const run = { day: WED, runStartedAt: NOON - 30 * MIN };
+    // Started at 11:30 and finished at 11:50 on the phone: a start pressed on the watch at 11:40 leaves it finished.
+    startRun(WED, NOON - 30 * MIN);
+    endRun(WED, NOON - 10 * MIN);
+    watch.arrive(cmd("startRun", { day: WED }, 20 * MIN));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()).toMatchObject({ startedAt: NOON - 30 * MIN, endedAt: NOON - 10 * MIN });
+    // Paused at 11:45 and resumed at 11:50 on the phone: a pause from 11:40 leaves it running, and a Finish from then
+    // leaves it under way.
+    restartRun(WED, NOON - 30 * MIN);
+    pauseRun(WED, NOON - 15 * MIN);
+    resumeRun(WED, NOON - 10 * MIN);
+    watch.arrive(cmd("pauseRun", run, 20 * MIN), cmd("finish", run, 20 * MIN));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()).toMatchObject({ pausedMs: 5 * MIN, pauses: [[NOON - 15 * MIN, NOON - 10 * MIN]] });
+    expect(currentRun()?.pausedAt).toBeUndefined();
+    expect(currentRun()?.endedAt).toBeUndefined();
+    // Paused again at 11:55: a resume from 11:52, pressed for the pause before, leaves it paused.
+    pauseRun(WED, NOON - 5 * MIN);
+    watch.arrive(cmd("resumeRun", run, 8 * MIN));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()).toMatchObject({ pausedAt: NOON - 5 * MIN, pausedMs: 5 * MIN });
+    // One from after the phone's last change still applies.
+    watch.arrive(cmd("resumeRun", run, 2 * MIN));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()).toMatchObject({ pausedMs: 8 * MIN });
+    stop();
+  });
+
   it("pauses, resumes, adds to and skips the rest as of when each was pressed, skips a lift and ticks the cardio", async () => {
     const { s, stop } = await running();
     s.startRest(WED, "Leg Press", 90);

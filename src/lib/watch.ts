@@ -11,7 +11,7 @@ import { num } from "./format";
 import { blockRest, supersetModels, type LiftModel } from "./lift";
 import type { GymStore } from "./store";
 import type { DayKey, SetType } from "./types";
-import { currentRun, finishWorkout, pauseRun, resumeRun, runMs, runOf, STALE_RUN_MS, startRun } from "./workout";
+import { currentRun, finishWorkout, pauseRun, resumeRun, runChangedAt, runMs, runOf, STALE_RUN_MS, startRun } from "./workout";
 
 /** The version of these shapes, `v` in each: either side ignores one it doesn't know. */
 export const WATCH_V = 1;
@@ -199,12 +199,13 @@ function sameRest(store: GymStore, day: DayKey | null, c: WatchCommand): boolean
   return r.startedAt == null || from == null || r.startedAt === from;
 }
 
-/** Whether the clock's pause, resume or Finish pressed on the watch was pressed for the day's run there is now: the
+/** Whether the clock's pause, resume or Finish pressed on the watch, at `at`, is for the day's run as it is now: the
  *  command names the run the watch showed by its startedAt (`runStartedAt`, or none for a day with no clock yet), and
- *  one restarted (↺) or started again on the phone since has another. */
-function sameRun(day: DayKey, c: WatchCommand): boolean {
-  const from = c.runStartedAt;
-  return (from == null || isNumber(from)) && (runOf(day)?.startedAt ?? null) === (from ?? null);
+ *  one restarted (↺) or started again on the phone since has another; and that run hasn't changed since `at` (paused,
+ *  resumed or finished on the phone after it), which a late one would undo. */
+function sameRun(day: DayKey, c: WatchCommand, at: number): boolean {
+  const from = c.runStartedAt, r = runOf(day);
+  return (from == null || isNumber(from)) && (r?.startedAt ?? null) === (from ?? null) && (!r || runChangedAt(r) <= at);
 }
 
 /** Does what a command from the watch stands for, through the same change as the phone's own tap, and says whether it
@@ -222,24 +223,25 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
       // The rest it starts takes the watch's own `at` as its startedAt (startRest counts down from no later than now).
       return !!day && logWatchSet(store, day, c, isNumber(c.at) ? c.at : now);
     case "startRun": {
-      // Never over a run started after it was pressed, whatever its day: the phone keeps one run, and one started there
-      // for another day while this waited out of reach is the newer.
+      // Never over a run changed after it was pressed, whatever its day: the phone keeps one run, and one started,
+      // paused, resumed or finished there while this waited out of reach is the newer.
       const r = currentRun();
-      if (!day || (r && r.startedAt > at)) return false;
+      if (!day || (r && runChangedAt(r) > at)) return false;
       startRun(day, at);
       return true;
     }
-    // Only for the run they were pressed for: a pause queued away from the phone never stops a clock restarted since.
+    // Only for the run they were pressed for, as it was: a pause queued away from the phone never stops a clock
+    // restarted since, nor one paused and resumed there after it.
     case "pauseRun":
-      if (!day || !sameRun(day, c)) return false;
+      if (!day || !sameRun(day, c, at)) return false;
       pauseRun(day, at);
       return true;
     case "resumeRun":
-      if (!day || !sameRun(day, c)) return false;
+      if (!day || !sameRun(day, c, at)) return false;
       resumeRun(day, at);
       return true;
     case "finish":
-      if (!day || !sameRun(day, c)) return false;
+      if (!day || !sameRun(day, c, at)) return false;
       finishWorkout(store, day, at);
       return true;
     case "restSkip":

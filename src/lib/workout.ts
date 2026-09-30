@@ -133,6 +133,11 @@ export function clearRun(day?: DayKey) {
   if (day === undefined || read()?.day === day) write(null);
 }
 
+/** When a run last changed, ms since the epoch: started, paused, resumed or finished. A command from the watch older
+ *  than that, delivered late, leaves it as it is (lib/watch.ts). */
+export const runChangedAt = (r: WorkoutRun): number =>
+  Math.max(r.startedAt, r.pausedAt ?? -Infinity, r.endedAt ?? -Infinity, ...(r.pauses ?? []).map((p) => p[1]));
+
 /** How long a run has lasted, ms, to its end or to now, less the time it was paused (still paused: up to then). */
 export function runMs(r: WorkoutRun, now: number): number {
   const end = r.endedAt ?? now, paused = (r.pausedMs ?? 0) + (r.pausedAt != null ? Math.max(0, end - r.pausedAt) : 0);

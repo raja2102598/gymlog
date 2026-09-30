@@ -190,11 +190,11 @@ class OverlayLogicTest {
         assertEquals(Run(TODAY, t0), apply(s.copy(run = Run("2026-09-28", t0 - 1)), listOf(cmd(OverlayLogic.START_RUN, t0))).run)
         assertEquals(Run(TODAY, t0), apply(s.copy(run = Run(TODAY, t0 - 10, endedAt = t0 - 5)), listOf(cmd(OverlayLogic.START_RUN, t0))).run)
         assertEquals(Run(TODAY, t0), apply(s.copy(run = Run(TODAY, t0 - TimerLogic.LEFT_BEHIND_MS)), listOf(cmd(OverlayLogic.START_RUN, t0))).run)
-        // But never over a run started after it was pressed, whatever its day: another day's, started on the phone
-        // while this waited out of reach, or this day's, finished there since.
+        // But never over a run changed after it was pressed, whatever its day: another day's, started on the phone
+        // while this waited out of reach, or this day's, started before it and finished there since.
         val newer = Run("2026-09-28", t0 + 5_000L)
         assertEquals(newer, apply(s.copy(run = newer), listOf(cmd(OverlayLogic.START_RUN, t0))).run)
-        val finishedSince = Run(TODAY, t0 + 5_000L, endedAt = t0 + 60_000L)
+        val finishedSince = Run(TODAY, t0 - 60_000L, endedAt = t0 + 60_000L)
         assertEquals(finishedSince, apply(s.copy(run = finishedSince), listOf(cmd(OverlayLogic.START_RUN, t0))).run)
 
         val paused = apply(started, listOf(clock(OverlayLogic.PAUSE_RUN, t0 + 60_000L, started)))
@@ -219,6 +219,14 @@ class OverlayLogicTest {
         // Finish pressed with no clock on screen: the day's rest goes, unless a clock has been started since.
         assertNull(apply(s, listOf(clock(OverlayLogic.FINISH, t0, s))).rest)
         assertEquals(started, apply(started, listOf(clock(OverlayLogic.FINISH, t0 + 5_000L, s))))
+        // The same run, paused and resumed on the phone after a pause or Finish was pressed: left running; paused again
+        // after a resume was pressed: left paused.
+        val phoneResumed = started.copy(run = Run(TODAY, t0, null, 10_000L, pauses = listOf(Pause(t0 + 20_000L, t0 + 30_000L))))
+        assertEquals(phoneResumed, apply(phoneResumed, listOf(clock(OverlayLogic.PAUSE_RUN, t0 + 10_000L, started))))
+        assertEquals(phoneResumed, apply(phoneResumed, listOf(clock(OverlayLogic.FINISH, t0 + 10_000L, started))))
+        val phonePaused = phoneResumed.copy(run = phoneResumed.run?.copy(pausedAt = t0 + 50_000L))
+        assertEquals(phonePaused, apply(phonePaused, listOf(clock(OverlayLogic.RESUME_RUN, t0 + 40_000L, phonePaused))))
+        assertNull(apply(phonePaused, listOf(clock(OverlayLogic.RESUME_RUN, t0 + 60_000L, phonePaused))).run?.pausedAt) // after: as ever
     }
 
     @Test

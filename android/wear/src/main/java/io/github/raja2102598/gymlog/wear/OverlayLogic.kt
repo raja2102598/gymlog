@@ -93,7 +93,11 @@ object OverlayLogic {
 
     /** Whether a clock command was made for the day's run there is now, `r`, as the phone checks it (lib/watch.ts,
      *  sameRun): the one it showed, by its start, or none when it showed none. */
-    fun sameRun(r: Run?, c: Command): Boolean = r?.takeIf { it.day == c.day }?.startedAt == c.runStartedAt
+    fun sameRun(r: Run?, c: Command): Boolean {
+        val run = r?.takeIf { it.day == c.day }
+        // ...and as it was: not paused, resumed or finished on the phone after this was pressed.
+        return run?.startedAt == c.runStartedAt && (run == null || TimerLogic.changedAt(run) <= c.at)
+    }
 
     /** A command about the rest shown, `rest`: restSkip, restPause or restResume, or restAdd with `sec`. It names that
      *  rest, so neither the phone nor the watch applies it to a newer one started since. */
@@ -196,11 +200,11 @@ object OverlayLogic {
     private fun one(s: WatchState, c: Command): WatchState =
         when (c.type) {
             SET -> logSet(s, c)
-            // The phone's startRun: nothing if that day's clock is already going, or any run was started after this was
-            // pressed (another day's, on the phone, while this waited out of reach), else it starts from 0:00.
+            // The phone's startRun: nothing if that day's clock is already going, or any run changed after this was
+            // pressed (started, paused, resumed or finished on the phone while this waited), else it starts from 0:00.
             START_RUN -> {
                 val day = c.day
-                val newer = (s.run?.startedAt ?: Long.MIN_VALUE) > c.at
+                val newer = s.run?.let { TimerLogic.changedAt(it) > c.at } == true
                 if (day == null || newer || (s.run?.day == day && TimerLogic.underWay(s.run, c.at))) s else s.copy(run = Run(day, c.at))
             }
             // The clock's pause, resume and Finish act on the run they were pressed for, and never on one restarted (↺)

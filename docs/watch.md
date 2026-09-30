@@ -147,7 +147,7 @@ app's own Data Layer items.
 | `type` | fields | the phone does |
 |---|---|---|
 | `set` | `day`, `lift` (key), `set` (row index), `reps`, `kg`, `baseReps`, `baseKg` | Only over the row as the watch had it when the set was done, `baseReps` and `baseKg` (its `reps` and `kg`, null for none): a row changed on the phone since (corrected or cleared there) keeps the phone's, and this is dropped; one that already has this set's `reps` (and `kg`, if given) needs nothing. Weights are compared to the half kg, as the phone keeps them. The watch's own sets on a row follow one another, each over the one before's, and apply in the order of `at`. Then it logs that working set as Complete set N does, weight then reps (`kg: null` takes the weight Complete set N would; `reps: null` clears it: the tick's undo). The rest it starts is the phone's own rule, counted from `at`, and started at `at` (its `startedAt`, as the watch gave it, so it's the rest the watch started itself); one for a set logged longer ago than its rest isn't started, and neither is one over a rest started after `at` (a set logged or said on the phone while this one was on its way), which stays: the set itself is still logged. |
-| `startRun` | `day` | Starts the day's workout clock from `at`, or does nothing if it's running. The phone keeps one run, of whichever day: one started after `at` (another day's, started on the phone while this waited out of reach, or this day's, finished since) stays, and this is dropped. |
+| `startRun` | `day` | Starts the day's workout clock from `at`, or does nothing if it's running. The phone keeps one run, of whichever day: one changed after `at` (started, paused, resumed or finished on the phone while this waited out of reach, another day's or this day's) stays, and this is dropped. |
 | `pauseRun` / `resumeRun` | `day`, `runStartedAt` | Pauses or resumes it, as of `at`, if it's the run named (below). |
 | `finish` | `day`, `runStartedAt` | Finish: ends the clock (at `at`) and the day's rest, as the phone's Finish workout does, if it's the run named: with no `runStartedAt` (the watch showed no clock), only while the day has none. |
 | `restSkip` | `day`, `lift`, `restStartedAt` | Skips the rest, if it's the one named (below). |
@@ -172,10 +172,11 @@ of a rest the phone has since replaced isn't shown on the newer one.
 
 The clock's pause, resume and Finish name the run they were pressed for the same way: `runStartedAt`, the `startedAt`
 of the day's `run` the watch showed (none when it showed no clock). The phone applies one only while its run for that
-day has the same `startedAt`: a pause queued out of reach, while the clock was started again from 0:00 (↺) on the
-phone, would otherwise pause the new run, even from before it started. It drops the others, and the watch shows its
-own by the same rule. `startRun` names no run: it does nothing to a clock already going, nor to any run started after
-it.
+day has the same `startedAt`, and hasn't changed since `at`: a pause queued out of reach, while the clock was started
+again from 0:00 (↺) on the phone, would otherwise pause the new run, even from before it started, and one pressed
+before the phone paused and resumed the same clock would stop it again. A run's last change is the latest of its
+`startedAt`, `pausedAt`, `endedAt` and its pauses' ends. It drops the others, and the watch shows its own by the same
+rule. `startRun` names no run: it does nothing to a clock already going, nor to any run changed after it.
 
 The watch sends `hr` every five minutes during the workout (with new readings since the last), so little is lost if it's
 reset or lost before the end, and at the end. A newer `hr` for a day replaces that day's older ones still waiting to
