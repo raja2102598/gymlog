@@ -32,7 +32,7 @@ function store() {
   s.auth = "signedIn";
   return s;
 }
-const saved = () => JSON.parse(localStorage.getItem("gymlog.rest.v1")!) as { user: string; rest: RestTimer | null };
+const saved = () => JSON.parse(localStorage.getItem("gymlog.rest.v1")!) as { user: string; rest: RestTimer | null; changedAt: number | null };
 
 describe("rest length", () => {
   it("is the plan's default, 90 s unless changed, kept within 5 s and 10 minutes", () => {
@@ -122,6 +122,9 @@ describe("rest timer", () => {
     expect(s.rest).toBeNull();
     expect(navigator.vibrate).not.toHaveBeenCalled();
     expect(saved().rest).toBeNull();
+    // When it was, kept with it: a set from the watch done before then, arriving later, even after a reload, starts no
+    // rest (lib/watch.ts).
+    expect(saved().changedAt).toBe(new Date("2026-09-23T12:00:00").getTime());
   });
 
   it("goes on signing out, here and on this phone, so signing back in doesn't bring it back", () => {
@@ -130,6 +133,7 @@ describe("rest timer", () => {
     expect(saved().rest).not.toBeNull();
     (s as unknown as { onSignedOut(): void }).onSignedOut();
     expect(s.rest).toBeNull();
+    expect(s.restChangedAt).toBeNull();
     expect(localStorage.getItem("gymlog.rest.v1")).toBeNull();
   });
 });

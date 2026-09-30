@@ -120,11 +120,13 @@ export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
 }
 
 /** Finish workout, from the workout's Finish (GymLog.tsx) or the watch's (lib/watch.ts): the day's clock stops, and the
- *  rest after its last set goes with it, since there's no next set to rest for, on Home or in a notification. */
-export function finishWorkout(store: Pick<GymStore, "demo" | "rest" | "skipRest">, day: DayKey, now = Date.now()) {
+ *  rest after its last set goes with it, since there's no next set to rest for, on Home or in a notification; so does
+ *  one a set logged before it would start, arriving late from the watch. Not a rest changed after `now`, a Finish
+ *  from the watch arriving late: that one's newer (a set logged on the phone since, say). */
+export function finishWorkout(store: Pick<GymStore, "demo" | "rest" | "restChangedAt" | "skipRest">, day: DayKey, now = Date.now()) {
   keepRunsInMemory(store.demo);
   endRun(day, now);
-  if (store.rest?.day === day) store.skipRest();
+  if ((store.restChangedAt ?? -Infinity) <= now && (!store.rest || store.rest.day === day)) store.skipRest(now);
 }
 
 /** Forgets the run, or with `day`, only a run for that day: a finished workout reviewed later leaves another

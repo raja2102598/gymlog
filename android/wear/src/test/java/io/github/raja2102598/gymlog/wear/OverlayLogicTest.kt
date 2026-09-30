@@ -247,6 +247,27 @@ class OverlayLogicTest {
     }
 
     @Test
+    fun whatThePhoneDidToTheRestAfterACommandWasDoneStays() {
+        // Pressed at 0:10 for the rest from 0:00, which the phone made longer, paused, or ended at 0:20: not shown.
+        val rest = Rest(TODAY, "Squat", t0 + 105_000L, sec = 90, startedAt = t0)
+        val s = state(day(listOf(lift("Squat", 12, null, null))), run = Run(TODAY, t0 - 60_000L), rest = rest).copy(restChangedAt = t0 + 20_000L)
+        for (type in listOf(OverlayLogic.REST_SKIP, OverlayLogic.REST_ADD, OverlayLogic.REST_PAUSE, OverlayLogic.REST_RESUME)) {
+            assertEquals(type, s, apply(s, listOf(OverlayLogic.ofRest("c-1", t0 + 10_000L, type, rest, 15))))
+        }
+        // A set done at 0:10 starts no rest over it, nor after it was skipped there at 0:20.
+        assertEquals(rest, apply(s, listOf(set("c-2", "Squat", 1, 12, at = t0 + 10_000L))).rest)
+        assertNull(apply(s.copy(rest = null), listOf(set("c-2", "Squat", 1, 12, at = t0 + 10_000L))).rest)
+        // Finish from 0:10 ends the run then, and leaves the rest.
+        val finished = apply(s, listOf(OverlayLogic.ofRun("c-3", t0 + 10_000L, OverlayLogic.FINISH, TODAY, s.run)))
+        assertEquals(t0 + 10_000L, finished.run?.endedAt)
+        assertEquals(rest, finished.rest)
+        // The watch's own, one after the other, follow each other: paused at 0:30, resumed at 0:40.
+        val both = apply(s, listOf(OverlayLogic.ofRest("c-4", t0 + 30_000L, OverlayLogic.REST_PAUSE, rest), OverlayLogic.ofRest("c-5", t0 + 40_000L, OverlayLogic.REST_RESUME, rest)))
+        assertEquals(Rest(TODAY, "Squat", t0 + 115_000L, null, 90, t0), both.rest)
+        assertEquals(t0 + 40_000L, both.restChangedAt)
+    }
+
+    @Test
     fun aRestButtonActsOnlyOnTheRestItWasPressedFor() {
         val first = Rest(TODAY, "Squat", t0 + 90_000L, sec = 90, startedAt = t0)
         val skip = OverlayLogic.ofRest("c-1", t0 + 5_000L, OverlayLogic.REST_SKIP, first)

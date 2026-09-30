@@ -65,7 +65,9 @@ data class Rest(
 )
 
 /** The whole of /gymlog/state. `applied` holds the ids of the watch's commands the phone has applied. `account` is the
- *  account signed in on the phone (null: none), which every command made on it carries. */
+ *  account signed in on the phone (null: none), which every command made on it carries. `restChangedAt` is when the
+ *  rest timer last changed (started, paused, resumed, made longer, skipped, ended by Finish), or null: a rest button or
+ *  set done before then doesn't touch the rest. */
 data class WatchState(
     val sentAt: Long,
     val signedIn: Boolean,
@@ -74,4 +76,5 @@ data class WatchState(
     val rest: Rest?,
     val days: List<Day>,
     val account: String? = null,
+    val restChangedAt: Long? = null,
 )

@@ -11,7 +11,7 @@ import { addDays, wdIndex } from "@/lib/dates";
 import type { GymStore, RestTimer } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
 import { applyWatchCommand, watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
-import { clearRun, currentRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runsFor, startRun } from "@/lib/workout";
+import { clearRun, currentRun, endRun, finishWorkout, keepRunsInMemory, pauseRun, restartRun, resumeRun, runsFor, startRun } from "@/lib/workout";
 import { ACK_MS, APPLIED_KEPT, PUBLISH_MS, startWatch, WATCH_KEY } from "@/native/watch";
 import { atWednesdayNoon, day, LAST, lift, memoryStorage, storeWith, WED } from "./helpers";
 import { app, watch } from "./nativeMocks";
@@ -162,6 +162,7 @@ describe("what the watch is sent", () => {
     expect(watchState(s, [])).toMatchObject({
       run: { day: WED, startedAt: NOON - 30 * MIN, pausedAt: NOON - 10 * MIN, pausedMs: 0, endedAt: null },
       rest: { day: WED, lift: "Leg Press", endAt: NOON + 90 * SEC, pausedAt: null, sec: 90, startedAt: NOON },
+      restChangedAt: NOON, // when the rest timer last changed, skipped too
     });
     // Once resumed, the pause goes with the run, from and to: the watch leaves its heart rate readings in it out.
     expect(watchState(s, []).run?.pauses).toEqual([]);
@@ -217,7 +218,7 @@ describe("what the watch is sent", () => {
   it("says only that no one is signed in, signed out or trying the sample data", () => {
     const out = storeWith();
     out.auth = "signedOut";
-    const empty = { v: 1, sentAt: NOON, signedIn: false, account: null, applied: [], run: null, rest: null, days: [] };
+    const empty = { v: 1, sentAt: NOON, signedIn: false, account: null, applied: [], run: null, rest: null, restChangedAt: null, days: [] };
     expect(watchState(out, [])).toEqual(empty);
     const demo = storeWith();
     demo.auth = "signedOut";
@@ -533,10 +534,12 @@ describe("what the watch sends back", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(currentRun()?.endedAt).toBeUndefined();
 
+    // Finished on the watch 30 s ago, a minute into Calf Raise's rest: the clock ends then, and the rest with it.
     s.startRest(WED, "Calf Raise", 90);
+    await vi.advanceTimersByTimeAsync(60 * SEC);
     watch.arrive(cmd("finish", { day: WED, runStartedAt: NOON - MIN }, 30 * SEC));
     await vi.advanceTimersByTimeAsync(0);
-    expect(currentRun()).toMatchObject({ endedAt: NOON - 30 * SEC });
+    expect(currentRun()).toMatchObject({ endedAt: NOON + 30 * SEC });
     expect(s.rest).toBeNull();
     // Another day's rest isn't this workout's.
     s.startRest("2026-09-22", "Lat Pulldown", 90);
@@ -546,35 +549,155 @@ describe("what the watch sends back", () => {
     stop();
   });
 
-  it("never undoes a change made to the run on the phone after a clock command was done on the watch", async () => {
-    const { stop } = await running();
-    const run = { day: WED, runStartedAt: NOON - 30 * MIN };
-    // Started at 11:30 and finished at 11:50 on the phone: a start pressed on the watch at 11:40 leaves it finished.
-    startRun(WED, NOON - 30 * MIN);
-    endRun(WED, NOON - 10 * MIN);
-    watch.arrive(cmd("startRun", { day: WED }, 20 * MIN));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(currentRun()).toMatchObject({ startedAt: NOON - 30 * MIN, endedAt: NOON - 10 * MIN });
-    // Paused at 11:45 and resumed at 11:50 on the phone: a pause from 11:40 leaves it running, and a Finish from then
-    // leaves it under way.
-    restartRun(WED, NOON - 30 * MIN);
-    pauseRun(WED, NOON - 15 * MIN);
-    resumeRun(WED, NOON - 10 * MIN);
-    watch.arrive(cmd("pauseRun", run, 20 * MIN), cmd("finish", run, 20 * MIN));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(currentRun()).toMatchObject({ pausedMs: 5 * MIN, pauses: [[NOON - 15 * MIN, NOON - 10 * MIN]] });
-    expect(currentRun()?.pausedAt).toBeUndefined();
-    expect(currentRun()?.endedAt).toBeUndefined();
-    // Paused again at 11:55: a resume from 11:52, pressed for the pause before, leaves it paused.
-    pauseRun(WED, NOON - 5 * MIN);
-    watch.arrive(cmd("resumeRun", run, 8 * MIN));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(currentRun()).toMatchObject({ pausedAt: NOON - 5 * MIN, pausedMs: 5 * MIN });
-    // One from after the phone's last change still applies.
-    watch.arrive(cmd("resumeRun", run, 2 * MIN));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(currentRun()).toMatchObject({ pausedMs: 8 * MIN });
-    stop();
+  describe("late, over what the phone changed after it was done: nothing newer is undone", () => {
+    /** The watch's command is done at 11:59:20 (`AGO` before noon), over a rest or run from 11:59:10 (`S`), and the
+     *  phone changes what it acts on at 11:59:40 (`P`), before the command arrives. */
+    const S = NOON - 50 * SEC, P = NOON - 20 * SEC, AGO = 40 * SEC;
+    const firstSet = () => cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45, baseReps: null, baseKg: null }, AGO);
+    const rows: { name: string; before?: (s: GymStore) => void; command: (s: GymStore) => WatchCommand; after: (s: GymStore) => void; left: (s: GymStore) => void }[] = [
+      {
+        name: "set: a row corrected on the phone keeps the correction",
+        command: firstSet,
+        after: (s) => s.editLift(WED, "Leg Press", (r) => void (r.sets = [{ reps: 12, kg: 50 }]), true),
+        left: (s) => expect(sets(s, "Leg Press")).toEqual([{ reps: 12, kg: 50 }]),
+      },
+      {
+        name: "set: a rest skipped on the phone isn't started again",
+        before: (s) => s.startRest(WED, "Calf Raise", 90, S),
+        command: firstSet,
+        after: (s) => s.skipRest(P),
+        left: (s) => {
+          expect(sets(s, "Leg Press")).toEqual([{ reps: 10, kg: 45 }]);
+          expect(s.rest).toBeNull();
+        },
+      },
+      {
+        name: "set: no rest starts after the workout was finished on the phone",
+        before: () => startRun(WED, S),
+        command: firstSet,
+        after: (s) => finishWorkout(s, WED, P),
+        left: (s) => {
+          expect(sets(s, "Leg Press")).toEqual([{ reps: 10, kg: 45 }]);
+          expect(s.rest).toBeNull();
+        },
+      },
+      {
+        name: "startRun: a run started before it and finished on the phone after it stays finished",
+        before: () => startRun(WED, S),
+        command: () => cmd("startRun", { day: WED }, AGO),
+        after: () => endRun(WED, P),
+        left: () => expect(currentRun()).toMatchObject({ startedAt: S, endedAt: P }),
+      },
+      {
+        name: "startRun: another day's run started on the phone after it stays",
+        command: () => cmd("startRun", { day: "2026-09-22" }, AGO),
+        after: () => startRun(WED, P),
+        left: () => expect(currentRun()).toMatchObject({ day: WED, startedAt: P }),
+      },
+      {
+        name: "pauseRun: the run paused and resumed on the phone after it keeps running",
+        before: () => startRun(WED, S),
+        command: () => cmd("pauseRun", { day: WED, runStartedAt: S }, AGO),
+        after: () => {
+          pauseRun(WED, P - 5 * SEC);
+          resumeRun(WED, P);
+        },
+        left: () => expect(currentRun()).toEqual({ day: WED, startedAt: S, pausedMs: 5 * SEC, pauses: [[P - 5 * SEC, P]], user: "u" }),
+      },
+      {
+        name: "resumeRun: the run resumed and paused again on the phone after it stays paused",
+        before: () => {
+          startRun(WED, S);
+          pauseRun(WED, S + SEC);
+        },
+        command: () => cmd("resumeRun", { day: WED, runStartedAt: S }, AGO),
+        after: () => {
+          resumeRun(WED, P - 5 * SEC);
+          pauseRun(WED, P);
+        },
+        left: () => expect(currentRun()).toMatchObject({ pausedAt: P, pausedMs: P - 5 * SEC - (S + SEC) }),
+      },
+      {
+        name: "finish: a rest started on the phone after it stays, and the run still ends",
+        before: () => startRun(WED, S),
+        command: () => cmd("finish", { day: WED, runStartedAt: S }, AGO),
+        after: (s) => s.startRest(WED, "Calf Raise", 90),
+        left: (s) => {
+          expect(currentRun()?.endedAt).toBe(NOON - AGO);
+          expect(s.rest).toMatchObject({ lift: "Calf Raise", startedAt: NOON });
+        },
+      },
+      {
+        name: "finish: the run paused on the phone after it isn't finished",
+        before: () => startRun(WED, S),
+        command: () => cmd("finish", { day: WED, runStartedAt: S }, AGO),
+        after: () => pauseRun(WED, P),
+        left: () => {
+          expect(currentRun()).toMatchObject({ pausedAt: P });
+          expect(currentRun()?.endedAt).toBeUndefined();
+        },
+      },
+      {
+        name: "restSkip: a rest made longer on the phone after it stays",
+        before: (s) => s.startRest(WED, "Leg Press", 90, S),
+        command: (s) => restCmd("restSkip", s.rest, {}, AGO),
+        after: (s) => s.addRestTime(15, P),
+        left: (s) => expect(s.rest).toMatchObject({ endAt: S + 105 * SEC }),
+      },
+      {
+        name: "restAdd: a rest paused on the phone after it keeps what it had left",
+        before: (s) => s.startRest(WED, "Leg Press", 90, S),
+        command: (s) => restCmd("restAdd", s.rest, { sec: 15 }, AGO),
+        after: (s) => s.pauseRest(P),
+        left: (s) => expect(s.rest).toMatchObject({ pausedAt: P, endAt: S + 90 * SEC }),
+      },
+      {
+        name: "restPause: a rest paused and resumed on the phone after it keeps running",
+        before: (s) => s.startRest(WED, "Leg Press", 90, S),
+        command: (s) => restCmd("restPause", s.rest, {}, AGO),
+        after: (s) => {
+          s.pauseRest(P - 5 * SEC);
+          s.resumeRest(P);
+        },
+        left: (s) => expect(s.rest).toMatchObject({ pausedAt: null, endAt: S + 95 * SEC }),
+      },
+      {
+        name: "restResume: a rest resumed and paused again on the phone after it stays paused",
+        before: (s) => {
+          s.startRest(WED, "Leg Press", 90, S);
+          s.pauseRest(S + 5 * SEC);
+        },
+        command: (s) => restCmd("restResume", s.rest, {}, AGO),
+        after: (s) => {
+          s.resumeRest(P - 5 * SEC);
+          s.pauseRest(P);
+        },
+        left: (s) => expect(s.rest).toMatchObject({ pausedAt: P }),
+      },
+      {
+        name: "hr: the day's fuller heart rate, from a later snapshot, stays",
+        command: () => cmd("hr", { day: WED, avg: 110, max: 140, samples: 30 }, AGO),
+        after: (s) => s.editDay(WED, (d) => void (d.hr = { avg: 125, max: 160, samples: 90 }), true),
+        left: (s) => expect(s.entry(WED).hr).toEqual({ avg: 125, max: 160, samples: 90 }),
+      },
+      {
+        name: "any: one made under the account signed out of since changes nothing",
+        command: () => ({ ...firstSet(), account: "someone-else" }),
+        after: () => {},
+        left: (s) => expect(sets(s, "Leg Press")).toBeUndefined(),
+      },
+    ];
+    it.each(rows)("$name", async ({ before, command, after, left }) => {
+      const { s, stop } = await running();
+      before?.(s);
+      const c = command(s);
+      after(s);
+      watch.arrive(c);
+      await vi.advanceTimersByTimeAsync(0);
+      left(s);
+      expect(watch.sent().applied).toContain(c.id); // dropped, or done as far as it can be, and acked either way
+      stop();
+    });
   });
 
   it("pauses, resumes, adds to and skips the rest as of when each was pressed, skips a lift and ticks the cardio", async () => {

@@ -68,6 +68,9 @@ export interface WatchState {
   run: { day: DayKey; startedAt: number; pausedAt: number | null; pausedMs: number; endedAt: number | null; pauses: [number, number][] } | null;
   /** store.rest, or null. `startedAt` tells it from the next rest (null for a timer saved before it was kept). */
   rest: { day: DayKey; lift: string; endAt: number; pausedAt: number | null; sec: number; startedAt: number | null } | null;
+  /** When the rest timer was last changed (store.restChangedAt), skipped too, or null: the watch's rest buttons and
+   *  sets from before then aren't shown on it. */
+  restChangedAt: number | null;
   /** Today and the next six days, and first, when it's another day, the one whose workout is under way. */
   days: WatchDay[];
 }
@@ -128,7 +131,7 @@ function dayOf(store: GymStore, date: DayKey): WatchDay {
  *  data), and otherwise the workout's clock, the rest timer, and the days it may be asked about. */
 export function watchState(store: GymStore, applied: string[], now = Date.now()): WatchState {
   const signedIn = store.auth === "signedIn" && !store.demo, account = (signedIn && store.user?.id) || null;
-  if (!signedIn || !account) return { v: WATCH_V, sentAt: now, signedIn: false, account: null, applied, run: null, rest: null, days: [] };
+  if (!signedIn || !account) return { v: WATCH_V, sentAt: now, signedIn: false, account: null, applied, run: null, rest: null, restChangedAt: null, days: [] };
   const r = currentRun(), rest = store.rest, today = todayKey();
   const dates = Array.from({ length: 7 }, (_, n) => addDays(today, n));
   // A workout for another day, started before midnight or opened for a day gone by, stays the one the watch is on
@@ -145,6 +148,7 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
     run: r && { day: r.day, startedAt: r.startedAt, pausedAt: r.pausedAt ?? null, pausedMs: r.pausedMs ?? 0, endedAt: r.endedAt ?? null, pauses: r.pauses ?? [] },
     // (A timer saved before its length was kept counts as the plan's.)
     rest: rest && { day: rest.day, lift: rest.lift, endAt: rest.endAt, pausedAt: rest.pausedAt, sec: rest.sec ?? store.plan.restSec, startedAt: rest.startedAt ?? null },
+    restChangedAt: store.restChangedAt,
     days: dates.map((d) => dayOf(store, d)),
   };
 }
@@ -189,14 +193,15 @@ function logWatchSet(store: GymStore, day: DayKey, c: WatchCommand, at: number):
 /** A weight as the phone keeps it, to the half kg (LiftModel.setField): the watch's are compared with it so. */
 const halfKg = (kg: number | null) => (kg == null ? null : Math.round(kg * 2) / 2);
 
-/** Whether a rest button pressed on the watch was pressed for the rest there is now. The command names the rest the
- *  watch showed, by its day, lift and startedAt (`restStartedAt`); a newer rest started since, by a set logged on the
- *  phone or said to it, has another startedAt. A timer saved before rests had one, or a command about one, is known by
- *  its day and lift alone. */
-function sameRest(store: GymStore, day: DayKey | null, c: WatchCommand): boolean {
+/** Whether a rest button pressed on the watch, at `at`, was pressed for the rest there is now, as it was. The command
+ *  names the rest the watch showed, by its day, lift and startedAt (`restStartedAt`); a newer rest started since, by a
+ *  set logged on the phone or said to it, has another startedAt. A timer saved before rests had one, or a command about
+ *  one, is known by its day and lift alone. And the rest hasn't changed since `at` (paused, resumed or made longer on
+ *  the phone after it), which a late one would undo. */
+function sameRest(store: GymStore, day: DayKey | null, c: WatchCommand, at: number): boolean {
   const r = store.rest, from = c.restStartedAt;
   if (!r || !day || r.day !== day || r.lift !== c.lift || !(from == null || isNumber(from))) return false;
-  return r.startedAt == null || from == null || r.startedAt === from;
+  return (r.startedAt == null || from == null || r.startedAt === from) && (store.restChangedAt ?? -Infinity) <= at;
 }
 
 /** Whether the clock's pause, resume or Finish pressed on the watch, at `at`, is for the day's run as it is now: the
@@ -244,21 +249,21 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
       if (!day || !sameRun(day, c, at)) return false;
       finishWorkout(store, day, at);
       return true;
-    case "restSkip":
-      if (!sameRest(store, day, c)) return false;
-      store.skipRest();
-      return true;
     // As of `at`, when they were pressed, as the watch shows them: +15s arriving once even the longer rest is over
     // changes nothing, and a pause keeps what was left then.
+    case "restSkip":
+      if (!sameRest(store, day, c, at)) return false;
+      store.skipRest(at);
+      return true;
     case "restAdd":
-      if (!isNumber(c.sec) || c.sec <= 0 || !sameRest(store, day, c)) return false;
+      if (!isNumber(c.sec) || c.sec <= 0 || !sameRest(store, day, c, at)) return false;
       return store.addRestTime(c.sec, at);
     case "restPause":
-      if (!sameRest(store, day, c)) return false;
+      if (!sameRest(store, day, c, at)) return false;
       store.pauseRest(at);
       return true;
     case "restResume":
-      if (!sameRest(store, day, c)) return false;
+      if (!sameRest(store, day, c, at)) return false;
       store.resumeRest(at);
       return true;
     case "skipLift": {

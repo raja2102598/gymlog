@@ -212,17 +212,21 @@ object OverlayLogic {
             PAUSE_RUN -> s.run?.takeIf { it.day == c.day && sameRun(it, c) }?.let { s.copy(run = TimerLogic.pauseRun(it, c.at)) } ?: s
             RESUME_RUN -> s.run?.takeIf { it.day == c.day && sameRun(it, c) }?.let { s.copy(run = TimerLogic.resumeRun(it, c.at)) } ?: s
             // Finish ends the clock, and the rest after the last set with it: there's no next set to rest for.
+            // Not the rest, though, if it changed after this was pressed (a set logged on the phone since): that's newer.
             FINISH -> if (!sameRun(s.run, c)) {
                 s
             } else {
+                val ends = !restChangedSince(s, c) && (s.rest == null || s.rest.day == c.day)
                 s.copy(
                     run = s.run?.let { if (it.day == c.day) TimerLogic.endRun(it, c.at) else it },
-                    rest = s.rest?.takeIf { it.day != c.day },
+                    rest = if (ends) null else s.rest,
+                    restChangedAt = if (ends) maxOf(s.restChangedAt ?: Long.MIN_VALUE, c.at) else s.restChangedAt,
                 )
             }
-            // The rest's buttons act on the rest they were pressed for, and never on one that's replaced it since (a
-            // set logged on the phone, say), as the phone drops them then.
-            REST_SKIP, REST_ADD, REST_PAUSE, REST_RESUME -> s.rest?.takeIf { sameRest(it, c) }?.let { r ->
+            // The rest's buttons act on the rest they were pressed for, as it was: never on one that's replaced it since
+            // (a set logged on the phone, say), nor one paused, resumed or made longer there after, as the phone drops
+            // them then.
+            REST_SKIP, REST_ADD, REST_PAUSE, REST_RESUME -> s.rest?.takeIf { sameRest(it, c) && !restChangedSince(s, c) }?.let { r ->
                 s.copy(
                     rest = when (c.type) {
                         REST_SKIP -> null
@@ -230,6 +234,7 @@ object OverlayLogic {
                         REST_PAUSE -> TimerLogic.pauseRest(r, c.at)
                         else -> TimerLogic.resumeRest(r, c.at)
                     },
+                    restChangedAt = c.at,
                 )
             } ?: s
             SKIP_LIFT -> editLift(s, c.day, c.lift) { _, l -> l.copy(skipped = true, done = false) }
@@ -289,10 +294,15 @@ object OverlayLogic {
         val sec = restAfter(block, j) ?: return out
         // A rest started after this set was done (on the phone, for a set logged or said there, which the state has
         // already) is the newer one, and stays, as the phone keeps it.
-        if ((out.rest?.startedAt ?: Long.MIN_VALUE) > c.at) return out
+        // Nor over one changed after it at all (paused, made longer, skipped, or ended by Finish on the phone).
+        if ((out.rest?.startedAt ?: Long.MIN_VALUE) > c.at || restChangedSince(out, c)) return out
         // Started at `at`, as the phone starts it (store.startRest's `from`), so it's the same rest there.
-        return if (sec > 0) out.copy(rest = Rest(day.date, edited.name, c.at + sec * 1000L, null, sec, startedAt = c.at)) else out
+        return if (sec > 0) out.copy(rest = Rest(day.date, edited.name, c.at + sec * 1000L, null, sec, startedAt = c.at), restChangedAt = c.at) else out
     }
+
+    /** Whether the rest timer changed after `c` was done (the phone's store.restChangedAt, or one of the watch's own
+     *  commands laid on before it): what `c` would do to it is undone by that, so it doesn't. */
+    private fun restChangedSince(s: WatchState, c: Command): Boolean = (s.restChangedAt ?: Long.MIN_VALUE) > c.at
 
     /** The rest set `j` of a block starts, in seconds, or null for none yet: a superset waits for its round, with
      *  every lift's set j logged and none of them further on. */

@@ -18,6 +18,7 @@ class StateLogicTest {
           "run": { "day": "2026-09-29", "startedAt": 1789999000000, "pausedAt": null, "pausedMs": 60000, "endedAt": null,
                    "pauses": [[1789999300000, 1789999360000], ["not", "one"]] },
           "rest": { "day": "2026-09-29", "lift": "Leg Press", "endAt": 1790000090000, "pausedAt": null, "sec": 90, "startedAt": 1790000000000 },
+          "restChangedAt": 1790000000000,
           "days": [
             {
               "date": "2026-09-29", "title": "Legs", "skipped": false,
@@ -51,6 +52,7 @@ class StateLogicTest {
         // Its pauses resumed so far, for the heart rate (one that can't be read is left out).
         assertEquals(Run("2026-09-29", 1789999000000L, null, 60000L, null, listOf(Pause(1789999300000L, 1789999360000L))), s.run)
         assertEquals(Rest("2026-09-29", "Leg Press", 1790000090000L, null, 90, startedAt = 1790000000000L), s.rest)
+        assertEquals(1790000000000L, s.restChangedAt)
         val d = s.days.single()
         assertEquals("Legs", d.title)
         assertEquals("Cycling - 15-20 min", d.cardio)
