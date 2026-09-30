@@ -86,7 +86,7 @@ object StepLogic {
                 if ((day.blocks.getOrNull(at)?.size ?: 1) > 1) "Complete ${letter(day, at)}${p.lift + 1} · set ${p.set + 1}" else "Complete set ${p.set + 1}"
             Primary.NextStep -> "Next exercise"
             Primary.Finish -> "Finish workout"
-            Primary.CardioDone -> "Done with ${day.cardio.orEmpty().lowercase()}"
+            Primary.CardioDone -> "Done with cardio"
         }
 
     /** The step after `at`, named as the phone's "Next:" names it: its lifts, or the day's cardio after the last. */
