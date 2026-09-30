@@ -88,15 +88,15 @@ object WatchRepo {
         changed(ctx)
     }
 
-    /** Does something on the watch: shown at once, kept, and sent to the phone as its own urgent data item. An `hr`
-     *  replaces the day's earlier ones still waiting to be sent (OverlayLogic.supersede). */
+    /** Does something on the watch: shown at once, kept (the latest OverlayLogic.KEPT waiting), and sent to the phone
+     *  as its own urgent data item. An `hr` replaces the day's earlier ones still waiting to be sent (OverlayLogic.supersede). */
     fun send(ctx: Context, cmd: Command) {
         synchronized(lock) {
             load(ctx)
-            val kept = OverlayLogic.supersede(flow.value.pending, unsent, cmd)
-            unsent.retainAll(kept.map { it.id }.toSet())
+            val kept = OverlayLogic.keep(OverlayLogic.supersede(flow.value.pending, unsent, cmd) + cmd)
             unsent += cmd.id
-            flow.value = flow.value.copy(pending = kept + cmd)
+            unsent.retainAll(kept.map { it.id }.toSet())
+            flow.value = flow.value.copy(pending = kept)
             savePending(ctx)
         }
         put(ctx.applicationContext, cmd)

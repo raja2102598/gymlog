@@ -58,7 +58,7 @@ the watch has nothing to work out for itself beyond moving through it:
   "sentAt": 1790000000000,          // epoch ms
   "signedIn": true,                 // false: the watch says to sign in on the phone, and shows nothing else
   "account": "0b6f2a4e-…",          // the account signed in (its Supabase user id), or null: see the commands' own
-  "applied": ["c-…", "c-…"],        // ids of the watch's commands applied so far (the last 200)
+  "applied": ["c-…", "c-…"],        // ids of the watch's commands applied so far, the last 1000 (see below)
   "run": {                          // the workout under way (lib/workout.ts's WorkoutRun), or null
     "day": "2026-09-29", "startedAt": 0, "pausedAt": null, "pausedMs": 0, "endedAt": null,
     "pauses": [[0, 0]]              // each pause resumed so far, [from, to] (pausedMs is their total): the heart
@@ -116,11 +116,18 @@ yesterday's session.
 
 ### Watch → phone: `/gymlog/cmd/<id>`
 
-One item per thing done on the watch, `id` unique (e.g. `c-` and a random UUID), never reused, and made of letters,
-digits and `.` `_` `:` `-` only, since it's part of the path (the phone deletes anything else unread). The phone
-applies each once, in the order of `at`, adds its id to `applied`, then a few seconds later deletes the item. Until
-its id comes back in `applied`, the watch shows its own command as done on top of the last state it had (so it keeps
-working away from the phone); once it's there, the state already includes it.
+One item per thing done on the watch, `id` unique (`c-` and 96 random bits as 16 characters of base64url), never
+reused, and made of letters, digits and `.` `_` `:` `-` only, since it's part of the path (the phone deletes anything
+else unread). The phone applies each once, in the order of `at`, adds its id to `applied`, then a few seconds later
+deletes the item. Until its id comes back in `applied`, the watch shows its own command as done on top of the last
+state it had (so it keeps working away from the phone); once it's there, the state already includes it.
+
+`applied` lists the last 1000: as many as the phone's plugin keeps waiting for the app (`WatchLogic.QUEUE_MAX`) and
+the watch keeps waiting on the phone (`OverlayLogic.KEPT`, the latest by `at`), so however many the phone takes
+before the watch next hears from it, each is listed, and the watch stops showing it. The ids are short for that: the
+state with a week of full workouts (the default plan's, five sets a lift, and an eighth day under way) and all 1000
+comes to about 39 KB, and with eight sets a lift and six more lifts a day about 72 KB, within a data item's 100 KB (a
+unit test keeps the first under it).
 
 ```jsonc
 { "v": 1, "id": "c-…", "at": 1790000000000, "account": "0b6f2a4e-…", "type": "…", /* the type's own fields */ }
@@ -280,8 +287,8 @@ storage, so the watch opens on the last workout from cold, away from the phone. 
 app is open (a `WearableListenerService` for `/gymlog/state`), and the app reads the Data Layer again each time it
 comes to the front. A command is shown as done at once, kept, and put as its urgent data item; one that never
 reached the Data Layer (the app killed that moment) is put again the next time the app opens. One the phone never
-takes stops being shown after two days, and one made under another account than the state's, at once. A third file
-keeps the heart rate's days.
+takes stops being shown after two days, and one made under another account than the state's, at once; and no more
+than the latest 1000 wait at a time, as many as the phone lists in `applied`. A third file keeps the heart rate's days.
 
 Each file is written whole (`Disk`): to a temporary file, to the disk, then renamed over the one before in one step, so
 one read after Android killed the app mid-write is the last whole one. Writes go in order, off the thread that made

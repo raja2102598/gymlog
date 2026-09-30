@@ -52,6 +52,16 @@ class OverlayLogicTest {
     }
 
     @Test
+    fun noMoreAreKeptWaitingThanThePhoneListsAsApplied() {
+        // The latest OverlayLogic.KEPT, as the phone's queue keeps them: every one of those the phone takes is in its
+        // `applied`, so the watch stops showing it.
+        val many = List(OverlayLogic.KEPT + 1) { set("c-$it", "Squat", 0, 12, at = t0 + it) }
+        assertEquals(many.drop(1), OverlayLogic.keep(many.shuffled()).sortedBy { it.at })
+        val few = many.take(3)
+        assertSame(few, OverlayLogic.keep(few))
+    }
+
+    @Test
     fun commandsMadeUnderAnotherAccountGoOnceThePhoneIsSignedIntoIt() {
         val a = state(day(listOf(lift("Squat", null, null))), account = "a")
         val logged = set("c-1", "Squat", 0, 12).copy(account = "a")
@@ -328,9 +338,11 @@ class OverlayLogicTest {
 
     @Test
     fun idsAreNewEachTimeAndFitInTheItemsPath() {
-        val ids = List(100) { OverlayLogic.newId() }
-        assertEquals(100, ids.toSet().size)
+        val ids = List(1000) { OverlayLogic.newId() }
+        assertEquals(1000, ids.toSet().size)
         assertTrue(ids.all { it.startsWith("c-") && OverlayLogic.validId(it) })
+        // Short, for the state to list OverlayLogic.KEPT of them: "c-" and 16 characters of base64url, 96 random bits.
+        assertTrue(ids.all { it.length == 18 && it.drop(2).all { ch -> ch.isLetterOrDigit() || ch in "-_" } })
         assertTrue(OverlayLogic.validId("c-1.a_b:c"))
         assertFalse(OverlayLogic.validId("c/1")) // would be another path
         assertFalse(OverlayLogic.validId("c 1"))

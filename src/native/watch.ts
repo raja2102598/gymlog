@@ -26,8 +26,11 @@ const Watch = registerPlugin<WatchPlugin>("Watch");
 /** The ids of the watch's commands applied on this phone, the latest last: the watch's own list of what's been done
  *  (`applied`), and what keeps one from being applied twice. */
 export const WATCH_KEY = "gymlog.watch.v1";
-/** How many ids `applied` keeps (docs/watch.md). */
-export const APPLIED_KEPT = 200;
+/** How many ids `applied` keeps (docs/watch.md): as many as the plugin's queue holds (WatchLogic.kt, QUEUE_MAX) and the
+ *  watch keeps waiting (OverlayLogic.kt, KEPT), so every command taken from it is listed until the watch has seen it,
+ *  however many were taken before the watch next heard from the phone. The state stays well within a data item's
+ *  100 KB with all of them (the watch's ids are 18 characters). */
+export const APPLIED_KEPT = 1000;
 /** How long a change waits to be sent, so a burst of them (a set's digits going in, commands being applied) goes as one. */
 export const PUBLISH_MS = 1500;
 /** How long an applied command stays with the plugin before it's acked: the phone's storage keeps what was changed

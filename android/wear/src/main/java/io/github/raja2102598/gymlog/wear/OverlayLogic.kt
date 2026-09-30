@@ -52,9 +52,23 @@ object OverlayLogic {
     const val CARDIO_DONE = "cardioDone"
     const val HR = "hr"
 
-    /** A new command's id: "c-" and a random UUID, never reused. It's part of the item's path, so only letters, digits
-     *  and `. _ : -`, and at most 128 characters, which the phone checks. */
-    fun newId(): String = "c-" + java.util.UUID.randomUUID()
+    /** The most commands kept waiting on the phone: as many as the phone's queue holds (WatchLogic.QUEUE_MAX) and its
+     *  `applied` lists (src/native/watch.ts, APPLIED_KEPT), so every one the phone has taken is listed there. */
+    const val KEPT = 1000
+
+    private val random = java.security.SecureRandom()
+
+    /** A new command's id: "c-" and 96 random bits, 16 characters of base64url, never reused. It's part of the item's
+     *  path, so only letters, digits and `. _ : -`, and at most 128 characters, which the phone checks; and short,
+     *  since the state lists up to KEPT of them. */
+    fun newId(): String {
+        val bits = ByteArray(12).also(random::nextBytes)
+        return "c-" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bits)
+    }
+
+    /** The commands to keep waiting: the latest KEPT, as the phone's queue keeps them. One older than those, were the
+     *  phone to take it, might not be in its `applied` any more. */
+    fun keep(pending: List<Command>): List<Command> = if (pending.size <= KEPT) pending else pending.sortedBy { it.at }.takeLast(KEPT)
 
     /** Whether an id is one the phone will read (see newId). */
     fun validId(id: String): Boolean = id.length in 1..128 && id.all { it.isLetterOrDigit() && it.code < 128 || it in "._:-" }

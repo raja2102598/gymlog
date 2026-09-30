@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The watch (docs/watch.md): what the phone sends Gym Log's Wear OS app (lib/watch.ts's watchState), sending it through
@@ -6,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitorCore);
 vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).app }));
 
-import { wdIndex } from "@/lib/dates";
+import { addDays, wdIndex } from "@/lib/dates";
 import type { GymStore, RestTimer } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
 import { applyWatchCommand, watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
@@ -17,6 +18,10 @@ import { app, watch } from "./nativeMocks";
 
 atWednesdayNoon();
 const NOON = new Date(`${WED}T12:00:00`).getTime(), SEC = 1000, MIN = 60_000;
+/** A number the Android apps' Kotlin holds, `const val name = N` in the file at `path` under android/. */
+const kotlinConst = (path: string, name: string) => Number(readFileSync(new URL(`../../android/${path}`, import.meta.url), "utf8").match(new RegExp(`const val ${name} = (\\d+)`))?.[1]);
+/** The most commands the plugin keeps for JavaScript (WatchLogic.kt). */
+const QUEUE_MAX = kotlinConst("app/src/main/java/io/github/raja2102598/gymlog/WatchLogic.kt", "QUEUE_MAX");
 /** Each watch started, stopped after its test whether or not it passed. */
 const started: (() => void)[] = [];
 function watching(s: GymStore) {
@@ -182,6 +187,31 @@ describe("what the watch is sent", () => {
     vi.setSystemTime(late);
     endRun(TUE, late); // finished
     expect(watchState(s, []).days[0].date).toBe(WED);
+  });
+
+  it("fits in a Data Layer item, 100 KB, with a week of full workouts and every id the phone's queue can hold", () => {
+    // Every day of the plan's week logged in full, five sets a lift, with its cardio, the workout of the day before
+    // still under way (an eighth day) and a rest, and as many applied ids as the phone's queue holds, each as the
+    // watch makes them (OverlayLogic.newId: "c-" and 16 characters of base64url).
+    const s = signedIn();
+    for (let n = -1; n < 7; n++) {
+      const date = addDays(WED, n);
+      for (const it of s.liftBlocks(date).flat()) s.editLift(date, it.name, (r) => void (r.sets = Array.from({ length: 5 }, () => ({ reps: 10, kg: 102.5 }))), false);
+      s.editDay(date, (d) => void (d.cardio = true), false);
+    }
+    startRun(addDays(WED, -1), NOON - 60 * MIN);
+    s.startRest(WED, "Leg Press", 90);
+    const ids = Array.from({ length: APPLIED_KEPT }, () => "c-" + Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64url"));
+    const state = watchState(s, ids), bytes = new TextEncoder().encode(JSON.stringify(state)).length;
+    expect(state.days).toHaveLength(8);
+    expect(state.days.every((d) => d.blocks.flat().every((l) => l.rows.length === 5 && l.rows.every((r) => r.reps === 10)))).toBe(true);
+    expect(bytes).toBeLessThan(100 * 1024);
+  });
+
+  it("lists as many applied ids as the phone's queue holds and the watch keeps waiting", () => {
+    // The three have to agree: the watch stops showing a command as its own only once it's listed.
+    expect(APPLIED_KEPT).toBe(QUEUE_MAX);
+    expect(kotlinConst("wear/src/main/java/io/github/raja2102598/gymlog/wear/OverlayLogic.kt", "KEPT")).toBe(QUEUE_MAX);
   });
 
   it("says only that no one is signed in, signed out or trying the sample data", () => {
@@ -682,10 +712,13 @@ describe("what the watch sends back", () => {
     stop();
   });
 
-  it("keeps the last 200 ids", async () => {
+  it("lists every command the plugin's queue can hold, taken all at once before the watch hears from the phone, then the latest", async () => {
     const { stop } = await running();
-    const many = Array.from({ length: APPLIED_KEPT + 1 }, () => cmd("restSkip"));
-    watch.arrive(...many);
+    const many = Array.from({ length: QUEUE_MAX + 1 }, () => cmd("restSkip"));
+    watch.arrive(...many.slice(0, QUEUE_MAX));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(watch.sent().applied).toEqual(many.slice(0, QUEUE_MAX).map((c) => c.id));
+    watch.arrive(many[QUEUE_MAX]);
     await vi.advanceTimersByTimeAsync(0);
     expect(watch.sent().applied).toEqual(many.slice(1).map((c) => c.id));
     stop();
