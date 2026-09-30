@@ -157,19 +157,17 @@ object RestTimerLogic {
     const val SAMSUNG_CHRONOMETER_VIEW = "${SAMSUNG}chronometerRemoteView"
 
     /**
-     * Samsung's private extras for the two running notifications, or none on any other phone, which doesn't read them.
-     * By default (`card` null), One UI's automation pair: on One UI 8.5 and later it lets a notification that passes
-     * Android's own Live Update checks into the Now Bar without Samsung's allowlist or the Developer option
-     * (tigerduck-app-android, PR 126, from One UI's SystemUI), and older One UI ignores it. With `card` (the
-     * experiment in Settings), instead the fields of Samsung's own "chronometer card", which One UI honours only for
-     * apps Samsung approves, so it may do nothing; its style sends the notification down that card's lane, which
-     * cancels the automation pair anyway, so that goes. Samsung doesn't document the two positions: 1 is what its
-     * partners' examples use (akexorcist.dev, "Live Notifications and Now Bar in Samsung One UI 7").
+     * Samsung's private extras for the two running notifications: with `card` (the experiment in Settings), on a
+     * Samsung, the fields of Samsung's own "chronometer card", which One UI honours only for apps Samsung approves, so
+     * it may do nothing; none otherwise, and on any other phone, which doesn't read them. Samsung doesn't document the
+     * two positions: 1 is what its partners' examples use (akexorcist.dev, "Live Notifications and Now Bar in Samsung
+     * One UI 7"). Not One UI's automation pair (`automation`, `automationPackage`): from One UI 8.5 it lets a Live
+     * Update into the Now Bar without Samsung's allowlist, but that's Gemini's lane, for Gemini acting in an app, and
+     * the Now Bar shows it under Gemini's name and logo, whatever the package it names (docs/android.md).
      */
-    fun samsungExtras(manufacturer: String, packageName: String, card: SamsungCard?): Map<String, Any> =
+    fun samsungExtras(manufacturer: String, card: SamsungCard?): Map<String, Any> =
         when {
-            !samsungPhone(manufacturer) -> emptyMap()
-            card == null -> mapOf("${SAMSUNG}automation" to true, "${SAMSUNG}automationPackage" to packageName)
+            !samsungPhone(manufacturer) || card == null -> emptyMap()
             else ->
                 mapOf(
                     SAMSUNG_STYLE to 1,
