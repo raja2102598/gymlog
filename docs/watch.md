@@ -161,7 +161,8 @@ app's own Data Layer items.
 
 A command applies as of its `at`, and only to what the watch showed when it was made, however late it reaches the
 phone: the phone and the watch's overlay work it out the same way (`TimerLogic` on the watch). `at` is never taken as
-later than the phone's own clock (a rest's `startedAt` aside: it only names the rest).
+later than the phone's own clock (a rest's `startedAt` aside: it only names the rest). Every command's rule, side by
+side: "Each command, however late", below.
 
 The rest timer's buttons name the rest they were pressed for: the `day`, `lift` and `startedAt` (as `restStartedAt`)
 of the rest the watch showed, the phone's or one the watch started itself for a set done on it (started at that
@@ -191,12 +192,39 @@ has the most. (Should the watch lose its count mid-day, its data cleared, the ph
 the new count passes it.)
 
 A command the phone can't apply (another account's, or one with none; a day or lift it doesn't have, a set past the rows
-or of a skipped lift, a rest that's no longer the one it was for, a `type` or `v` it doesn't know) is dropped: its id
-still goes into `applied`, so the watch stops showing it.
+or of a skipped lift, a rest or run that's no longer the one it was for, or changed since, a lift or cardio no longer as
+the watch showed it, a `type` or `v` it doesn't know) is dropped: its id still goes into `applied`, so the watch stops
+showing it.
 
 Commands are only ever applied by the phone app's JavaScript, where the store is. When the phone app isn't running,
 the phone's listener service (`WatchListenerService`) keeps the commands that arrive and the app applies them the
 next time it runs; the watch meanwhile shows them as done, as above.
+
+#### Each command, however late
+
+A command changes only what the watch showed when it was made, as of its `at`: whatever changed on the phone after
+it (a set, a rest, the clock started, paused, resumed or finished, a lift skipped or ticked, the cardio, a fuller heart
+rate, another account signed in) stays as the phone has it. What each reads and writes, and what it carries to tell,
+with the rule the phone (`applyWatchCommand`, lib/watch.ts) and the watch's overlay (`OverlayLogic.apply`) both apply:
+
+| `type` | reads | writes | carries | the rule |
+|---|---|---|---|---|
+| every one | the account signed in | its id into `applied` | `id`, `at`, `account` | Only under the account it names: another's, or none, is dropped (on the watch, once a state of another account comes). `at` is taken as no later than the phone's clock. |
+| `set` | the lift (skipped, its rows), the row's `reps` and `kg`, the lift's tick, the rest timer and `restChangedAt` | the row's `kg` and `reps`; the lift's tick, as its sets have it; the rest it starts (at `at`, and `restChangedAt`) | `day`, `lift`, `set`, `baseReps`, `baseKg`, `baseDone` | The row must still be `baseReps` × `baseKg` (to the half kg), or it's dropped; already this set, it needs nothing. The tick follows the sets unless it's no longer `baseDone`: then it stays. No rest is started over one started after `at`, when the rest timer changed after `at` (a rest skipped, paused or made longer, or Finish), or once it would be over. |
+| `startRun` | the phone's one run, whichever day's, and when it last changed | a run for `day` from `at` | `day` | Dropped when the run changed after `at` (started, paused, resumed or finished); nothing over the day's run still going. |
+| `pauseRun`, `resumeRun` | the day's run: its `startedAt`, and when it last changed | `pausedAt`; or `pausedMs` and `pauses` | `day`, `runStartedAt` | Only the run named, unchanged since `at`. |
+| `finish` | the day's run, as above; the rest timer and `restChangedAt` | the run's `endedAt`; the day's rest ended, and `restChangedAt` | `day`, `runStartedAt` | The run as for a pause. The rest ends only if it's the day's (or there's none) and the rest timer hasn't changed since `at`: a newer rest stays, while the run still ends. |
+| `restSkip`, `restAdd`, `restPause`, `restResume` | the rest (`day`, `lift`, `startedAt`), `restChangedAt` | the rest (gone; its `endAt`; its `pausedAt`), `restChangedAt` | `day`, `lift`, `restStartedAt`; `sec` for `restAdd` | Only the rest named, unchanged since `at`. |
+| `skipLift` | the lift: skipped, its tick, its working sets with reps | `skipped`, and the tick off; not the rest | `day`, `lift`, `baseDone`, `baseSkipped`, `baseLogged` | Only the lift as shown: not skipped, the same tick, the same number of sets with reps. Already skipped, it needs nothing. |
+| `cardioDone` | whether the day's workout has a cardio, and its tick | the day's `cardio` | `day`, `done`, `baseDone` | Only over the tick shown; already `done`, it needs nothing. |
+| `hr` | the day's `hr` and its `samples` | the day's `hr` | `day`, `samples` | Dropped over fewer readings than the day's `hr` already has. The watch shows its own readings, not this. |
+
+The clock and the rest timer keep when they last changed (a run's `startedAt`, `pausedAt`, `endedAt` and pauses; the
+phone's `restChangedAt`), so a late command sees any change after it. The day's log keeps no such times (they'd have
+to sync with it), so the sets', the lift's and the cardio's bases are what the watch showed rather than when it last
+changed: one changed on the phone and put back there before the command arrives (a row corrected and corrected back,
+a tick given and taken away, a lift skipped and brought back with its tick and sets as they were) looks as the watch
+saw it, and the command applies over it.
 
 ## The watch app
 
