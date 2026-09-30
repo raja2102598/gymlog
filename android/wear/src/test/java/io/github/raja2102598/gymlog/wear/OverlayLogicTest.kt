@@ -177,6 +177,10 @@ class OverlayLogicTest {
         val paused = s.copy(rest = shown.copy(pausedAt = t0 + 30_000L))
         // Paused, resumed or 15 s longer, it's still the rest it was.
         assertEquals(Rest(TODAY, "Squat", t0 + 160_000L, null, 90, startedAt = t0), apply(paused, listOf(OverlayLogic.ofRest("c-2", t0 + 100_000L, OverlayLogic.REST_RESUME, shown))).rest)
+        // Each as of when it was pressed, as the phone applies it however late it gets there: +15s pressed 5 s before
+        // the end is 15 s more from the end, and a pause then keeps those 5 s.
+        assertEquals(t0 + 105_000L, rest(OverlayLogic.REST_ADD, t0 + 85_000L, 15)?.endAt)
+        assertEquals(5L, TimerLogic.restLeftSec(rest(OverlayLogic.REST_PAUSE, t0 + 85_000L)!!, now = t0 + 600_000L))
     }
 
     @Test

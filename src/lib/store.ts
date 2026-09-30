@@ -1299,33 +1299,43 @@ export class GymStore {
     this.persistRest();
     this.changed();
   }
-  pauseRest() {
+  /* The rest card's buttons act as of `at`: now, or when they were pressed on the watch (lib/watch.ts), which can reach
+   * the phone a while later. The watch works each out the same way (TimerLogic.kt), so both read the same. */
+  /** Stops it where it was at `at`: what was left then is what's left while it's paused, so a pause pressed before it
+   *  reached zero, arriving after, takes it back from "Rest over". */
+  pauseRest(at = Date.now()) {
     const r = this.rest;
     if (!r || r.pausedAt != null) return;
-    r.pausedAt = Date.now();
+    r.pausedAt = at;
+    if (r.endAt > at) r.ended = false;
     this.disarmRest(); // nothing to notify while it isn't counting
     this.persistRest();
     this.changed();
   }
-  resumeRest() {
+  /** What was left when it paused, counting down from `at`: one resumed a while before it arrived may be over. */
+  resumeRest(at = Date.now()) {
     const r = this.rest;
     if (!r || r.pausedAt == null) return;
-    r.endAt = Date.now() + (r.endAt - r.pausedAt); // what was left, from now
+    r.endAt = at + (r.endAt - r.pausedAt);
     r.pausedAt = null;
     this.armRest();
     this.persistRest();
     this.changed();
   }
   /** +30 s (or any amount): pushes the end time out, whether running or paused, and un-ends a timer that had
-   *  already reached zero, so tapping it after "Rest over" counts that much down again, from now. */
-  addRestTime(sec: number) {
+   *  already reached zero, so tapping it after "Rest over" counts that much down again, from `at`. Says whether it
+   *  did: +15 s pressed on the watch that arrives once even the longer rest would be over changes nothing. */
+  addRestTime(sec: number, at = Date.now()): boolean {
     const r = this.rest;
-    if (!r) return;
-    r.endAt = (r.pausedAt == null ? Math.max(r.endAt, Date.now()) : r.endAt) + sec * 1000;
+    if (!r) return false;
+    const endAt = (r.pausedAt == null ? Math.max(r.endAt, at) : r.endAt) + sec * 1000;
+    if (r.pausedAt == null && endAt <= Date.now()) return false;
+    r.endAt = endAt;
     r.ended = false;
     if (r.pausedAt == null) this.armRest();
     this.persistRest();
     this.changed();
+    return true;
   }
   /** Dismisses the timer without announcing it, as if it had never been needed. */
   skipRest() {

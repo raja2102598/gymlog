@@ -443,20 +443,47 @@ describe("what the watch sends back", () => {
     stop();
   });
 
-  it("pauses, resumes, adds to and skips the rest, skips a lift and ticks the cardio", async () => {
+  it("pauses, resumes, adds to and skips the rest as of when each was pressed, skips a lift and ticks the cardio", async () => {
     const { s, stop } = await running();
     s.startRest(WED, "Leg Press", 90);
     const shown = { ...s.rest! };
-    await vi.advanceTimersByTimeAsync(5 * SEC);
-    watch.arrive(restCmd("restPause", shown));
-    await vi.advanceTimersByTimeAsync(10 * SEC);
+    // Paused on the watch at 12:00:05, reaching the phone at 12:00:08: what was left at 12:00:05 is kept.
+    await vi.advanceTimersByTimeAsync(8 * SEC);
+    watch.arrive(restCmd("restPause", shown, {}, 3 * SEC));
+    await vi.advanceTimersByTimeAsync(7 * SEC);
+    expect(s.rest).toMatchObject({ pausedAt: NOON + 5 * SEC });
     expect(s.restRemaining()).toBe(85);
-    watch.arrive(restCmd("restResume", shown), restCmd("restAdd", shown, { sec: 15 }));
+    // Resumed and 15 s added at 12:00:15, reaching the phone at 12:00:20: it has counted down since 12:00:15.
+    await vi.advanceTimersByTimeAsync(5 * SEC);
+    watch.arrive(restCmd("restResume", shown, {}, 5 * SEC), restCmd("restAdd", shown, { sec: 15 }, 5 * SEC));
     await vi.advanceTimersByTimeAsync(0);
-    expect(s.rest).toMatchObject({ pausedAt: null });
-    expect(s.restRemaining()).toBe(100);
+    expect(s.rest).toMatchObject({ pausedAt: null, endAt: NOON + 115 * SEC });
+    expect(s.restRemaining()).toBe(95);
     // Still the rest it was, paused, resumed and 15 s longer: the watch's next button is for it too.
     expect(s.rest?.startedAt).toBe(NOON);
+
+    // +15s pressed 5 s before the rest ended, reaching the phone 5 s after: 15 s more from its end.
+    await vi.advanceTimersByTimeAsync(100 * SEC);
+    expect(s.rest?.ended).toBe(true);
+    watch.arrive(restCmd("restAdd", shown, { sec: 15 }, 10 * SEC));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toMatchObject({ ended: false, endAt: NOON + 130 * SEC });
+    // Pressed once that was over too, at 12:02:15, and reaching the phone at 12:02:40, when even 15 s more would be
+    // over: nothing changes, and it's acked.
+    await vi.advanceTimersByTimeAsync(40 * SEC);
+    const over = { ...s.rest! }, late = restCmd("restAdd", shown, { sec: 15 }, 25 * SEC);
+    watch.arrive(late);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toEqual(over);
+    expect(watch.sent().applied).toContain(late.id);
+    // A pause pressed 5 s before the end, arriving after it: paused with those 5 s, no longer over.
+    s.addRestTime(15);
+    await vi.advanceTimersByTimeAsync(20 * SEC);
+    expect(s.rest).toMatchObject({ endAt: NOON + 175 * SEC, ended: true });
+    watch.arrive(restCmd("restPause", shown, {}, 10 * SEC));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toMatchObject({ pausedAt: NOON + 170 * SEC, ended: false });
+    expect(s.restRemaining()).toBe(5);
     watch.arrive(restCmd("restSkip", shown));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.rest).toBeNull();

@@ -191,8 +191,8 @@ function sameRest(store: GymStore, day: DayKey | null, c: WatchCommand): boolean
 /** Does what a command from the watch stands for, through the same change as the phone's own tap, and says whether it
  *  could: false for one it can't apply (made under another account than the one signed in, or under none; a day or
  *  lift it doesn't have, a set past the rows, a rest since replaced, a type or version it doesn't know), which is
- *  dropped. The clock counts from when it was done on the watch (never later than now, should the watch's clock be
- *  ahead); the rest timer's buttons act on the rest they were pressed for, as it is now, and never on a newer one. */
+ *  dropped. The clock and the rest timer's buttons act as of when they were done on the watch (never later than now,
+ *  should the watch's clock be ahead), and the rest's only on the rest they were pressed for, never on a newer one. */
 export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.now()): boolean {
   // Made while the watch showed another account's workout: signed out and into this one since, with the watch out of
   // reach. Its day and lift are that account's, never this one's.
@@ -218,17 +218,18 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
       if (!sameRest(store, day, c)) return false;
       store.skipRest();
       return true;
+    // As of `at`, when they were pressed, as the watch shows them: +15s arriving once even the longer rest is over
+    // changes nothing, and a pause keeps what was left then.
     case "restAdd":
       if (!isNumber(c.sec) || c.sec <= 0 || !sameRest(store, day, c)) return false;
-      store.addRestTime(c.sec);
-      return true;
+      return store.addRestTime(c.sec, at);
     case "restPause":
       if (!sameRest(store, day, c)) return false;
-      store.pauseRest();
+      store.pauseRest(at);
       return true;
     case "restResume":
       if (!sameRest(store, day, c)) return false;
-      store.resumeRest();
+      store.resumeRest(at);
       return true;
     case "skipLift": {
       // ··· Skip today, with no reason.

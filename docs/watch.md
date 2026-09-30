@@ -142,18 +142,20 @@ app's own Data Layer items.
 | `pauseRun` / `resumeRun` | `day` | Pauses or resumes it, as of `at`. |
 | `finish` | `day` | Finish: ends the clock (at `at`) and the day's rest, as the phone's Finish workout does. |
 | `restSkip` | `day`, `lift`, `restStartedAt` | Skips the rest, if it's the one named (below). |
-| `restAdd` | `day`, `lift`, `restStartedAt`, `sec` | Adds to the rest (+15 s), if it's the one named. |
-| `restPause` / `restResume` | `day`, `lift`, `restStartedAt` | Pauses or resumes the rest, if it's the one named. |
+| `restAdd` | `day`, `lift`, `restStartedAt`, `sec` | Adds to the rest (+15 s), if it's the one named, as of `at`: `sec` more from its end, or from `at` if it was over by then. One that arrives when even that end has passed changes nothing. |
+| `restPause` / `restResume` | `day`, `lift`, `restStartedAt` | Pauses or resumes the rest, if it's the one named, as of `at`: a pause keeps what was left at `at` (taking a rest that's since reached zero back from "Rest over"), and a resume counts that down from `at`. |
 | `skipLift` | `day`, `lift` | Skips the lift (no reason). |
 | `cardioDone` | `day`, `done` | Ticks the day's cardio. |
 | `hr` | `day`, `avg`, `max`, `samples` | Keeps the day's heart rate from the watch (bpm, the average and highest over `samples` readings), rounded, as the day's `hr` (`{ avg, max, samples }`, on its log, so it syncs with the day) for Workout complete. Each is the day's whole so far, so it replaces the one before, unless it's over fewer readings than the day's `hr` already is: an older one that arrived after it, which is dropped (a day's `hr` kept before it had `samples` takes any). One over no readings, or with an average above its highest or a highest over 250, is dropped. |
 
-`at` is never taken as later than the phone's own clock (a rest's `startedAt` aside: it only names the rest).
+A command applies as of its `at`, and only to what the watch showed when it was made, however late it reaches the
+phone: the phone and the watch's overlay work it out the same way (`TimerLogic` on the watch). `at` is never taken as
+later than the phone's own clock (a rest's `startedAt` aside: it only names the rest).
 
 The rest timer's buttons name the rest they were pressed for: the `day`, `lift` and `startedAt` (as `restStartedAt`)
 of the rest the watch showed, the phone's or one the watch started itself for a set done on it (started at that
-`set`'s `at`, as the phone starts it). The phone applies one only while that's still its rest, as it is when the
-command arrives: the same `startedAt`, so paused, resumed or 15 s longer since, but not a newer rest started on the
+`set`'s `at`, as the phone starts it). The phone applies one only while that's still its rest when the command
+arrives: the same `startedAt`, so paused, resumed or 15 s longer since, but not a newer rest started on the
 phone meanwhile, by a set logged or said there, which a command delayed out of reach would otherwise skip or push
 out. It drops the others. A rest with no `startedAt` (a timer the phone kept from before it had one), or a command
 with none, is matched by its `day` and `lift` alone. The watch shows its own rest commands by the same rule, so a skip
