@@ -53,18 +53,52 @@ class GymWidgetLogicTest {
     }
 
     @Test
-    fun isCurrentOnlyForTodaysOwnDate() {
+    fun isCurrentForTodaysOwnDateOrWhileItsWorkoutIsUnderWay() {
         val s = GymWidgetLogic.parse(json)!!
-        assertTrue(GymWidgetLogic.isCurrent(s, "2026-09-25"))
-        assertFalse(GymWidgetLogic.isCurrent(s, "2026-09-26"))
-        assertFalse(GymWidgetLogic.isCurrent(s, "2026-09-24"))
+        assertTrue(GymWidgetLogic.isCurrent(s, "2026-09-25", 0L))
+        assertFalse(GymWidgetLogic.isCurrent(s, "2026-09-26", 0L))
+        assertFalse(GymWidgetLogic.isCurrent(s, "2026-09-24", 0L))
+        // Another day's workout, opened on the 25th for the Monday gone by: current while its clock counts, and not
+        // once it's left behind, or before it started by the phone's clock (set back since).
+        val since = java.time.Instant.parse("2026-09-25T10:00:00Z").toEpochMilli()
+        val monday = GymWidgetLogic.parse(GymWidgetLogic.toJson("2026-09-21", "Push day", 2, 5, null, workoutSince = "2026-09-25T10:00:00Z"))!!
+        assertTrue(GymWidgetLogic.isCurrent(monday, "2026-09-25", since + 60_000))
+        assertTrue(GymWidgetLogic.isCurrent(monday, "2026-09-25", since + GymWidgetLogic.STALE_WORKOUT_MS - 1))
+        assertFalse(GymWidgetLogic.isCurrent(monday, "2026-09-25", since + GymWidgetLogic.STALE_WORKOUT_MS))
+        assertFalse(GymWidgetLogic.isCurrent(monday, "2026-09-25", since - 60_000))
     }
 
     @Test
     fun displayShowsTheSessionAndProgressForToday() {
-        val d = GymWidgetLogic.display(GymWidgetLogic.parse(json), "2026-09-25")
+        val d = GymWidgetLogic.display(GymWidgetLogic.parse(json), "2026-09-25", 0L)
         assertEquals("Push day", d.title)
         assertEquals("2/5 lifts", d.subtitle)
+    }
+
+    @Test
+    fun aWorkoutStartedBeforeMidnightKeepsItsSessionProgressAndClockUntilLeftBehind() {
+        // Tuesday's Pull, started at 23:40 with a lift done, and the widget drawn again at 00:30 on Wednesday.
+        val since = java.time.Instant.parse("2026-09-22T23:40:00Z").toEpochMilli()
+        val late = java.time.Instant.parse("2026-09-23T00:30:00Z").toEpochMilli()
+        val pull = GymWidgetLogic.parse(GymWidgetLogic.toJson("2026-09-22", "Pull", 1, 6, null, workoutSince = "2026-09-22T23:40:00Z"))
+        assertEquals(GymWidgetLogic.Display("Pull", "1/6 lifts"), GymWidgetLogic.display(pull, "2026-09-23", late))
+        assertEquals(GymWidgetLogic.Clock(rest = false, atMs = since), GymWidgetLogic.clock(pull, "2026-09-23", late))
+        val leftBehind = since + GymWidgetLogic.STALE_WORKOUT_MS
+        assertEquals(leftBehind, GymWidgetLogic.nextChangeMs(pull, "2026-09-23", late))
+        // A rest in it counts down, and the widget is drawn again when it's over, or when the workout would be left
+        // behind if that comes first.
+        fun resting(endsMs: Long) = GymWidgetLogic.parse(GymWidgetLogic.toJson("2026-09-22", "Pull", 1, 6, java.time.Instant.ofEpochMilli(endsMs).toString(), workoutSince = "2026-09-22T23:40:00Z"))
+        val ends = late + 90_000
+        assertEquals(GymWidgetLogic.Clock(rest = true, atMs = ends), GymWidgetLogic.clock(resting(ends), "2026-09-23", late))
+        assertEquals(ends, GymWidgetLogic.nextChangeMs(resting(ends), "2026-09-23", late))
+        val restingPast = resting(leftBehind + 30_000)
+        assertEquals(leftBehind, GymWidgetLogic.nextChangeMs(restingPast, "2026-09-23", leftBehind - 60_000))
+        // Drawn again then, with or without the app running, it's a day that has passed: nothing of it shows.
+        for (s in listOf(pull, restingPast)) {
+            assertEquals(GymWidgetLogic.Display("Gym Log", "Open Gym Log"), GymWidgetLogic.display(s, "2026-09-23", leftBehind))
+            assertNull(GymWidgetLogic.clock(s, "2026-09-23", leftBehind))
+            assertNull(GymWidgetLogic.nextChangeMs(s, "2026-09-23", leftBehind))
+        }
     }
 
     @Test
@@ -80,7 +114,7 @@ class GymWidgetLogicTest {
         assertEquals(GymWidgetLogic.Clock(rest = false, atMs = start), GymWidgetLogic.clock(s, "2026-09-25", ends))
         assertEquals(start + GymWidgetLogic.STALE_WORKOUT_MS, GymWidgetLogic.nextChangeMs(s, "2026-09-25", ends))
         // The progress beside it is just the progress.
-        assertEquals("2/5 lifts", GymWidgetLogic.display(s, "2026-09-25").subtitle)
+        assertEquals("2/5 lifts", GymWidgetLogic.display(s, "2026-09-25", ends).subtitle)
     }
 
     @Test
@@ -89,7 +123,9 @@ class GymWidgetLogicTest {
         val working = GymWidgetLogic.parse(GymWidgetLogic.toJson("2026-09-25", "Push day", 2, 5, null, workoutSince = "2026-09-25T10:00:00Z"))
         assertNull(GymWidgetLogic.clock(working, "2026-09-25", since + GymWidgetLogic.STALE_WORKOUT_MS))
         assertNull(GymWidgetLogic.nextChangeMs(working, "2026-09-25", since + GymWidgetLogic.STALE_WORKOUT_MS))
-        assertNull(GymWidgetLogic.clock(working, "2026-09-26", since + 60_000))
+        // From a day that has passed with no workout under way: not even a rest that's still running.
+        val resting = GymWidgetLogic.parse(GymWidgetLogic.toJson("2026-09-25", "Push day", 2, 5, "2026-09-26T00:02:00Z"))
+        assertNull(GymWidgetLogic.clock(resting, "2026-09-26", java.time.Instant.parse("2026-09-26T00:01:00Z").toEpochMilli()))
         val odd = GymWidgetLogic.parse("""{"date":"2026-09-25","session":"Push day","done":2,"planned":5,"restEndsAt":"soon","workoutSince":"earlier"}""")
         assertNull(GymWidgetLogic.clock(odd, "2026-09-25", 0L))
         // A snapshot from before the clock was added has none.
@@ -100,7 +136,7 @@ class GymWidgetLogicTest {
     @Test
     fun displayShowsARestDayWithNothingPlanned() {
         val rest = GymWidgetLogic.parse("""{"date":"2026-09-25","session":"Rest","done":0,"planned":0,"restEndsAt":null}""")
-        val d = GymWidgetLogic.display(rest, "2026-09-25")
+        val d = GymWidgetLogic.display(rest, "2026-09-25", 0L)
         assertEquals("Rest", d.title)
         assertEquals("Rest day", d.subtitle)
     }
@@ -109,7 +145,7 @@ class GymWidgetLogicTest {
     fun displaySaysSkippedForASkippedWorkout() {
         val skipped = GymWidgetLogic.parse(GymWidgetLogic.toJson("2026-09-25", "Upper", 0, 6, null, skipped = true))
         assertTrue(skipped?.skipped == true)
-        val d = GymWidgetLogic.display(skipped, "2026-09-25")
+        val d = GymWidgetLogic.display(skipped, "2026-09-25", 0L)
         assertEquals("Upper", d.title)
         assertEquals("Skipped", d.subtitle)
         // A snapshot written before skipping existed doesn't say, and isn't skipped.
@@ -118,14 +154,14 @@ class GymWidgetLogicTest {
 
     @Test
     fun displayIsNeutralOnceTheDayHasPassed() {
-        val d = GymWidgetLogic.display(GymWidgetLogic.parse(json), "2026-09-26")
+        val d = GymWidgetLogic.display(GymWidgetLogic.parse(json), "2026-09-26", 0L)
         assertEquals("Gym Log", d.title)
         assertEquals("Open Gym Log", d.subtitle)
     }
 
     @Test
     fun displayIsNeutralWithNoDataAtAll() {
-        val d = GymWidgetLogic.display(null, "2026-09-25")
+        val d = GymWidgetLogic.display(null, "2026-09-25", 0L)
         assertEquals("Gym Log", d.title)
         assertEquals("Open Gym Log", d.subtitle)
     }

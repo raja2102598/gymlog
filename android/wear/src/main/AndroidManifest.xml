@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- A watch app: Wear OS only offers it to watches. -->
+    <uses-feature android:name="android.hardware.type.watch" />
+
+    <!-- The rest timer's buzz at zero (RestAlarm.kt), and a light tick per bezel click (LiftScreen). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- "Rest over" and the workout under way, as notifications (Wear OS 4 and later ask for this once). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The rest timer's alarm lands on the second, screen off or app closed (RestAlarm.kt). A rest timer is the
+         kind of timer USE_EXACT_ALARM is for, and this app isn't on Google Play, whose rules keep it for alarm and
+         timer apps, so it's granted on install from Wear OS 4 (API 33) on. On Wear OS 3 (API 30 to 32)
+         SCHEDULE_EXACT_ALARM does the same: API 31 and 32 grant it on install, and API 30 needs nothing. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- The workout under way on the watch face (WorkoutService.kt): a foreground service, of the "special use" kind,
+         since it only keeps a clock and reads no sensors. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Heart rate during the workout (HeartMonitor.kt), asked for the first time a workout is started on the watch:
+         the body sensors up to Wear OS 5 (API 35), and Health Connect's heart-rate permission, which replaced it, from
+         Wear OS 6 (API 36). The workout service reads them in the background, which from Android 14 on makes it a
+         health service too. Refused, the workout goes on without heart rate. -->
+    <uses-permission
+        android:name="android.permission.BODY_SENSORS"
+        android:maxSdkVersion="35" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <!-- No device backup: the data lives on the phone, and what's here is only a copy of it. -->
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.DeviceDefault">
+
+        <!-- The phone app is needed: it's where the workout comes from and goes back to (docs/watch.md). -->
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.DeviceDefault">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The phone's state arriving (/gymlog/state) while Gym Log isn't open on the watch: kept for when it is,
+             and the rest timer's alarm follows it. Only Google Play services delivers these, for this path. -->
+        <service
+            android:name=".StateListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:host="*"
+                    android:path="/gymlog/state"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+
+        <!-- The rest timer's alarm (RestAlarm.kt): fires with the app closed, so it's named here. Only this app's own
+             PendingIntent triggers it. -->
+        <receiver
+            android:name=".RestOverReceiver"
+            android:exported="false" />
+
+        <!-- The workout under way, kept on the watch face while its clock runs (WorkoutService.kt), measuring the
+             heart rate when it may. -->
+        <service
+            android:name=".WorkoutService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|health">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="The workout under way: its clock and rest timer on the watch face, one tap from the app." />
+        </service>
+
+        <!-- The tile (GymTileService.kt): the workout's clock or rest and the next set, or today's session and Start.
+             Only the system binds to it. -->
+        <service
+            android:name=".GymTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_rest_timer"
+            android:label="@string/app_name"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview" />
+        </service>
+    </application>
+</manifest>

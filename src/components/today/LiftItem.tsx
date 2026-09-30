@@ -13,23 +13,10 @@ import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
 import { mmss, num, setsSummary } from "@/lib/format";
 import { hashOf } from "@/lib/route";
+import { liftModel, type LiftModel } from "@/lib/lift";
 import { isWorkingSet, type RecordKind } from "@/lib/stats";
-import {
-  minSets,
-  performed,
-  prTitle,
-  progWords,
-  restSecFor,
-  setsComplete,
-  setsOf,
-  targetOf,
-  topKg,
-  type GymStore,
-  type LastDone,
-  type LiftItem as Item,
-  type NextWeight,
-} from "@/lib/store";
-import type { DayKey, DayLog, LiftLog, PlanExercise, SetLog } from "@/lib/types";
+import { prTitle, progWords, restSecFor, setsOf, topKg, type GymStore, type LastDone, type LiftItem as Item, type NextWeight } from "@/lib/store";
+import type { DayKey, DayLog, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
 import { PlatesInfo } from "./PlateCalc";
 import { SetMenu, SetNumber } from "./SetMenu";
@@ -65,191 +52,8 @@ interface Props {
   onRemove?: () => void;
 }
 
-/** One lift on one day, as a card shows it, and the changes a card makes to it: shared by a lift's own card and a
- *  superset's (SupersetItem.tsx), and plain values and functions rather than hooks, so a superset has one for each
- *  of its lifts. */
-export interface LiftModel {
-  item: Item;
-  i: number;
-  day: DayKey;
-  name: string;
-  x: PlanExercise;
-  r: Partial<LiftLog>;
-  /** What was done: the planned name, or what it was swapped for. */
-  did: string;
-  last: LastDone | null;
-  next: NextWeight | null;
-  target: { sets: string; reps: string };
-  warmSets: SetLog[];
-  /** Working sets, numbered as on the card. */
-  sets: SetLog[];
-  /** The planned number of sets, and how many rows the card shows. */
-  min: number;
-  rows: number;
-  /** The warm-up calculator's working weight to start from: the progression hint, or last time's top set. */
-  defaultWorkingKg: number | null;
-  /** The bar what was done goes on, for its plates and warm-up sets (null: it takes no plates), and what its
-   *  warm-up sets round to: My gym's weights for what it's loaded with. */
-  bar: number | null;
-  inc: number;
-  /** How to do the lift, when there's anything to say and it's done as planned. */
-  cue: string;
-  /** The working set whose box has the cursor, or null: it's being typed in (see logged). */
-  typing: number | null;
-  /** The cursor going into set j's boxes, and out of them. */
-  typeIn: (j: number) => void;
-  typeOut: (j: number) => void;
-  /** The weight set `j` of `sets` takes when it gets its reps without one, typed or from Complete set N alike: the
-   *  set before it's, or else the suggestion in its box (the next weight, or last time's). */
-  kgFor: (sets: Partial<SetLog>[], j: number) => number | null;
-  edit: (fn: (r: LiftLog) => void, immediate: boolean) => void;
-  setField: (j: number, f: "reps" | "kg", value: string) => void;
-  setInfo: (j: number, patch: Partial<SetLog>) => void;
-  /** Adds a set: one more than it has, or up to `upTo` sets. */
-  addSet: (upTo?: number) => void;
-  /** Removes the last working set, without asking. */
-  dropSet: () => void;
-  /** Whether the lift's working sets are still the ones this was made from: a question asked from it (− Set) may
-   *  have waited while voice logged another. */
-  sameSets: () => boolean;
-  /** Whether the lift is still all as `r` has it, warm-ups and swap too: removing it acts only if so. */
-  sameLift: () => boolean;
-  logWarmups: (steps: { reps: number; kg: number }[]) => void;
-  removeWarmups: () => void;
-  skipToday: () => void;
-}
-
-/** A tick that came from logging the planned working sets (autoDone, saved with the day) follows them: on once
- *  they're all logged, and off again when one is cleared, taken off or made a drop set. Warm-ups never count, and a
- *  tick given by hand, with the box or "done", stays. */
-function tickFollows(r: LiftLog, work: SetLog[], min: number) {
-  if (r.done && r.autoDone && !setsComplete(work, min)) {
-    r.done = false;
-    delete r.autoDone;
-  } else if (!r.done && !r.skipped && setsComplete(work, min)) {
-    r.done = true;
-    r.autoDone = true;
-  }
-}
-
-/** A lift's model on a day. `onReps` hears of a set just given its first reps with no later set of the lift logged:
- *  when a rest can start. A lift's own card starts it then; a superset waits for the round. */
-export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, entry: DayLog, onReps: (m: LiftModel, j: number) => void): LiftModel {
-  const { x, name, extra } = item, r: Partial<LiftLog> = entry.exercises[name] || {};
-  const did = performed(name, r as LiftLog), last = store.lastDone(did, sel), next = r.skipped ? null : store.nextWeight(x, did, sel);
-  const load = store.loadDone(x, did);
-  // What this lift was actually asked for on this day: its own stored target once logged, so its row count and
-  // "sets done" reading don't drift under it if the plan's sets or reps change later; today's plan otherwise.
-  const target = targetOf(r, x);
-  // Warm-up sets (WU-marked) are kept apart from the numbered grid: they never count toward the planned sets, a
-  // record or the heaviest set, whatever position they hold in the stored array.
-  const allSets = setsOf(r as LiftLog), warmSets = allSets.filter((s) => !isWorkingSet(s));
-  const sets = allSets.filter(isWorkingSet), min = extra ? 1 : minSets(target);
-  const edit = (fn: (r: LiftLog) => void, immediate: boolean) => void store.editLift(sel, name, fn, immediate);
-  const t = store.typing;
-  const m: LiftModel = {
-    item,
-    i,
-    day: sel,
-    name,
-    x,
-    r,
-    did,
-    last,
-    next,
-    target,
-    warmSets,
-    sets,
-    min,
-    rows: Math.max(min, sets.length),
-    defaultWorkingKg: next && !next.held ? next.to : last ? topKg(setsOf(last.r)) : null,
-    bar: store.barFor(load),
-    inc: store.gridFor(load)?.inc ?? 2.5,
-    // How to do the lift: folded, since it's the same every week. Warnings (e.g. a KNEE NOTE) always show.
-    cue: r.skipped || r.swap ? "" : x.cue,
-    typing: t && t.day === sel && t.lift === name ? t.set : null,
-    typeIn: (j) => store.typeIn({ day: sel, lift: name, set: j }),
-    typeOut: (j) => store.typeOut({ day: sel, lift: name, set: j }),
-    kgFor: (sets, j) => (j > 0 ? sets[j - 1]?.kg : null) ?? num(store.placeholders(x, last, j, next)[1]),
-    edit,
-    setField(j, f, value) {
-      // Whether these reps can start a rest: set once inside edit(), against the state just before this change.
-      let first = false;
-      edit((r) => {
-        const warm = setsOf(r).filter((s) => !isWorkingSet(s));
-        const work = setsOf(r).filter(isWorkingSet).map((s): SetLog => ({ ...s, reps: s.reps ?? null, kg: s.kg ?? null }));
-        while (work.length <= j) work.push({ reps: null, kg: null });
-        const v = num(value), hadReps = work[j].reps != null;
-        work[j][f] = v == null ? null : f === "kg" ? Math.round(v * 2) / 2 : Math.max(0, Math.round(v));
-        // A new set usually uses the same weight as the one before it, and the first the suggested one: reps typed
-        // without a weight give it the one Complete set N would, rather than log none under a suggestion that looks
-        // like one.
-        if (f === "reps" && v != null && work[j].kg == null) work[j].kg = m.kgFor(work, j);
-        // When a set gets its reps, whether its kg came first or not: not again as more digits go in ("1", then
-        // "12"), and not for a correction to a set with a later one already logged.
-        if (f === "reps" && v != null && !hadReps && !work.slice(j + 1).some((s) => s.reps != null)) first = true;
-        r.sets = [...warm, ...work];
-        r.kg = topKg(r.sets);
-        tickFollows(r, work, min);
-      }, false);
-      if (first) onReps(m, j);
-    },
-    // A set's kind or effort, from its menu. Making a set a drop set, or a working set again, changes how many
-    // count toward the planned sets.
-    setInfo(j, patch) {
-      edit((r) => {
-        const warm = setsOf(r).filter((s) => !isWorkingSet(s));
-        const work = setsOf(r).filter(isWorkingSet).map((s) => ({ ...s }));
-        while (work.length <= j) work.push({ reps: null, kg: null });
-        const next: SetLog = { ...work[j], ...patch };
-        for (const k of ["type", "rpe", "rir"] as const) if (next[k] == null) delete next[k];
-        work[j] = next;
-        r.sets = [...warm, ...work];
-        tickFollows(r, work, min);
-      }, true);
-    },
-    addSet(upTo) {
-      edit((r) => {
-        const warm = setsOf(r).filter((s) => !isWorkingSet(s));
-        const work = setsOf(r).filter(isWorkingSet).map((s) => ({ ...s }));
-        const want = upTo ?? Math.max(min, work.length) + 1;
-        while (work.length < want) work.push({ reps: null, kg: null });
-        r.sets = [...warm, ...work];
-      }, true);
-    },
-    dropSet() {
-      edit((r) => {
-        const warm = setsOf(r).filter((s) => !isWorkingSet(s)), work = setsOf(r).filter(isWorkingSet).slice(0, -1);
-        r.sets = [...warm, ...work];
-        r.kg = topKg(r.sets);
-        tickFollows(r, work, min);
-      }, true);
-    },
-    sameSets: () => JSON.stringify(setsOf((store.entry(sel).exercises[name] || {}) as LiftLog).filter(isWorkingSet)) === JSON.stringify(sets),
-    sameLift: () => JSON.stringify(store.entry(sel).exercises[name] || {}) === JSON.stringify(r),
-    logWarmups(steps) {
-      edit((r) => {
-        const work = setsOf(r).filter(isWorkingSet);
-        r.sets = [...steps.map((s) => ({ reps: s.reps, kg: s.kg, type: "warmup" as const })), ...work];
-        r.kg = topKg(r.sets);
-      }, true);
-    },
-    removeWarmups() {
-      edit((r) => {
-        r.sets = setsOf(r).filter(isWorkingSet);
-        r.kg = topKg(r.sets);
-      }, true);
-    },
-    skipToday() {
-      edit((r) => {
-        r.skipped = true;
-        r.done = false;
-        delete r.autoDone;
-      }, true);
-    },
-  };
-  return m;
-}
+/** A lift's model on a day, shared with the watch: lib/lift.ts. */
+export { liftModel, type LiftModel };
 
 /** Voice (Settings, Log sets by voice): a phrase heard for this lift, done through the same changes as typing, + Set,
  *  the tick and Skip today, so the carried-over weight, PR badge, tick, rest timer and sync all follow as they
@@ -312,11 +116,11 @@ function lastSet(last: LastDone | null, j: number): string {
   return s.kg != null && s.reps != null ? `${s.kg} × ${s.reps}` : s.reps != null ? `${s.reps} reps` : s.kg != null ? `${s.kg} kg` : "–";
 }
 
-/** Logs set `j` as it stands: whatever is typed, and for what isn't, the weight of the set before it today or else
- *  the suggestion in its box (the next weight), and the target reps. The reps go in last, so the rest timer starts
+/** Logs set `j` as it stands: whatever is typed, and for what isn't, the suggestion in its box (LiftModel.sugFor: the
+ *  set logged before it today, or else the next weight and the target reps). The reps go in last, so the rest timer starts
  *  on the finished set. With no reps to suggest, the reps box takes focus instead. */
 export function logSet(store: GymStore, m: LiftModel, j: number) {
-  const s: Partial<SetLog> = m.sets[j] || {}, [phR] = store.placeholders(m.x, m.last, j, m.next);
+  const s: Partial<SetLog> = m.sets[j] || {}, [phR] = m.sugFor(m.sets, j);
   const reps = num(s.reps ?? "") || num(phR);
   if (!reps || reps <= 0) {
     document.getElementById(`s${m.i}_${j}_r`)?.focus();
@@ -335,8 +139,8 @@ export function logSet(store: GymStore, m: LiftModel, j: number) {
 export const logged = (m: LiftModel, j: number) => (m.sets[j]?.reps ?? 0) > 0 && m.typing !== j;
 
 /** Completes set `j`, from its check or Complete set N: the keyboard goes, and the set is logged as it stands
- *  (logSet). The cursor leaves first, so the boxes show what's saved: a box with the cursor keeps what's typed in it
- *  (SyncedInput), and would go on showing the suggestion for reps filled in from it. */
+ *  (logSet). The cursor leaves first, so the set is no longer being typed in (see logged), and the box it was in
+ *  shows what's saved, tidied ("5." as 5), as a box does once its typing is over (SyncedInput). */
 export function completeSet(store: GymStore, m: LiftModel, j: number) {
   const at = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null);
   if (at?.dataset?.set) at.blur();
@@ -612,8 +416,15 @@ export function LiftHead({
       <div className="ex-head">
         <div className="ex-t">
           {step ? <div className="ex-step">{step}</div> : null}
+          {/* In a superset, the lift's place (A1) is its first line, beside the buttons, so its name runs the card's
+              width under them as a lift's own card's does. The heading says it too, for a screen reader. */}
+          {tag ? (
+            <div className="ex-tag" aria-hidden="true">
+              <span className="sstag">{tag}</span>
+            </div>
+          ) : null}
           <h2 className="ex-name">
-            {tag ? <span className="sstag">{tag}</span> : null}
+            {tag ? <span className="sr-only">{tag} </span> : null}
             <span className="nm">{did}</span>
           </h2>
           {r.swap ? <div className="ex-was">instead of {name}</div> : null}
@@ -697,8 +508,8 @@ export function SetRow({
   onMenu: () => void;
 }) {
   const store = useGym();
-  const { i, did, x, last, next, day, name } = m;
-  const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = store.placeholders(x, last, j, next), pr = marks.get(`${did}|${j}`);
+  const { i, did, last, day, name } = m;
+  const s: Partial<SetLog> = m.sets[j] || {}, [phR, phK] = m.sugFor(m.sets, j), pr = marks.get(`${did}|${j}`);
   const menuId = `sm${i}_${j}`, done = logged(m, j);
   // A row taken away with the cursor in it (− Set, going on to the next exercise) never hears the cursor leave.
   useEffect(() => () => store.typeOut({ day, lift: name, set: j }), [store, day, name, j]);

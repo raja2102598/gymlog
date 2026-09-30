@@ -17,7 +17,7 @@ import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { keepRunsInMemory } from "./workout";
-import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights } from "./types";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights, type WorkoutHeart } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -62,6 +62,10 @@ export interface RestTimer {
   /** Seconds it was started with, for the rest card's ring and "of M:SS". Missing on timers saved before it was
    *  kept: the card then works it out from the plan. */
   sec?: number;
+  /** Epoch ms it was started, which tells this rest from the next: the watch's rest buttons name the rest they were
+   *  pressed for by it (lib/watch.ts). Pausing, resuming and +15 s keep it; only a new rest has another. Missing on
+   *  timers saved before it was kept. */
+  startedAt?: number;
 }
 /** One working set of a lift on a day: `lift` is the day's name for it (as planned, whatever it was swapped for), and
  *  `set` its place among the lift's working sets. */
@@ -81,6 +85,12 @@ const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number)
 const freeOf = (d?: Partial<DayLog> | null): FreeWorkout | null => {
   const f = d?.free as Partial<FreeWorkout> | undefined;
   return f && typeof f === "object" && typeof f.name === "string" && Array.isArray(f.lifts) && f.lifts.every((n) => typeof n === "string") ? (f as FreeWorkout) : null;
+};
+/** A day's heart rate from the watch, when it reads right: two numbers, and how many readings they're over. */
+const heartOf = (d?: Partial<DayLog> | null): WorkoutHeart | null => {
+  const h = d?.hr as Partial<WorkoutHeart> | undefined;
+  if (!h || typeof h !== "object" || !Number.isFinite(h.avg) || !Number.isFinite(h.max)) return null;
+  return { avg: h.avg as number, max: h.max as number, ...(Number.isFinite(h.samples) ? { samples: h.samples } : {}) };
 };
 /** What a free-form workout is called when it isn't given a name. */
 export const FREE_NAME = "Free workout";
@@ -167,6 +177,8 @@ function fullDay(d?: Partial<DayLog> | null): DayLog {
   if (Array.isArray(e.order) && e.order.every((n) => typeof n === "string")) out.order = e.order;
   const free = freeOf(e);
   if (free) out.free = free;
+  const hr = heartOf(e);
+  if (hr) out.hr = hr;
   for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
   return out;
 }
@@ -234,6 +246,10 @@ export class GymStore {
   healthLink: HealthLink = { state: "web", msg: "" };
   /** The rest timer. Null when none is running, paused or waiting to be dismissed. */
   rest: RestTimer | null = null;
+  /** When the rest timer was last changed, ms since the epoch: a rest started, paused, resumed, made longer, skipped
+   *  or ended by Finish, here or on the watch (as of when it was done there). A rest button or a set from the watch
+   *  done before then, arriving late, leaves the rest as it is (lib/watch.ts). Null for no change known. */
+  restChangedAt: number | null = null;
   /** The workout's set whose kg or reps box has the cursor: it's being typed in (LiftItem.tsx). Only on this screen,
    *  never saved. */
   typing: SetAt | null = null;
@@ -468,7 +484,7 @@ export class GymStore {
     const pend = lsGet<{ user?: string; pending?: Record<DayKey, DayLog> } | null>(PENDING_KEY, null);
     const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean; base?: string | null } | null>(PLAN_KEY, null);
     const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null; lastShared?: StepsShared | null } | null>(HEALTH_KEY, null);
-    const rc = lsGet<{ user?: string; rest?: RestTimer | null } | null>(REST_KEY, null);
+    const rc = lsGet<{ user?: string; rest?: RestTimer | null; changedAt?: number | null } | null>(REST_KEY, null);
     this.logs = cache && cache.user === u.id ? cache.logs || {} : {};
     this.bases = cache && cache.user === u.id ? cache.bases || {} : {};
     this.health = hc && hc.user === u.id ? hc.health || {} : {};
@@ -477,6 +493,7 @@ export class GymStore {
     this.stepsShared = hc && hc.user === u.id ? hc.lastShared ?? null : null;
     // A reload or a tab switch keeps the rest timer (this phone only: it never came from Supabase or another device).
     this.rest = rc && rc.user === u.id ? liveRest(rc.rest) : null;
+    this.restChangedAt = rc && rc.user === u.id && Number.isFinite(rc.changedAt) ? (rc.changedAt as number) : null;
     this.armRest();
     this.checkRest();
     this.authMsg = "";
@@ -525,6 +542,7 @@ export class GymStore {
     // Taken off this phone too, so signing back in doesn't bring back a timer the sign-out put away. (Removed rather
     // than saved as none, so leaving the demo, which ends here too, leaves nothing behind.)
     this.rest = null;
+    this.restChangedAt = null;
     lsDel(REST_KEY);
     this.logsChanged();
     this.syncTrouble = false;
@@ -1271,44 +1289,69 @@ export class GymStore {
     const r = this.rest;
     return r ? Math.max(0, Math.round((r.endAt - (r.pausedAt ?? Date.now())) / 1000)) : 0;
   }
-  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx). */
-  startRest(day: DayKey, lift: string, sec: number) {
-    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false, sec };
+  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx), or logged on the
+   *  watch at `from` (lib/watch.ts), which can reach the phone a while later: its rest counts from then, as it did on
+   *  the watch, and one that would be over by now isn't started at all. `from` is also its startedAt, as the watch
+   *  gave it, so the rest the watch started itself for that set is known to be this one (never later than now is for
+   *  the countdown only: were the watch's clock a little ahead, the two would otherwise differ). A rest changed after
+   *  `from` (started by a set logged here or said since, paused, made longer or skipped, while the watch's was on its
+   *  way) is the newer, and stays: only a set logged now, with no `from`, always starts its own. */
+  startRest(day: DayKey, lift: string, sec: number, from?: number) {
+    const now = Date.now(), at = Math.min(from ?? now, now);
+    if (at + sec * 1000 < now) return;
+    if (from != null && ((this.rest?.startedAt ?? -Infinity) > from || (this.restChangedAt ?? -Infinity) > at)) return;
+    this.rest = { day, lift, endAt: at + sec * 1000, pausedAt: null, ended: false, sec, startedAt: from ?? now };
+    this.restChangedAt = at;
     this.armRest();
     this.persistRest();
     this.changed();
   }
-  pauseRest() {
+  /* The rest card's buttons act as of `at`: now, or when they were pressed on the watch (lib/watch.ts), which can reach
+   * the phone a while later. The watch works each out the same way (TimerLogic.kt), so both read the same. */
+  /** Stops it where it was at `at`: what was left then is what's left while it's paused, so a pause pressed before it
+   *  reached zero, arriving after, takes it back from "Rest over". */
+  pauseRest(at = Date.now()) {
     const r = this.rest;
     if (!r || r.pausedAt != null) return;
-    r.pausedAt = Date.now();
+    r.pausedAt = at;
+    if (r.endAt > at) r.ended = false;
+    this.restChangedAt = at;
     this.disarmRest(); // nothing to notify while it isn't counting
     this.persistRest();
     this.changed();
   }
-  resumeRest() {
+  /** What was left when it paused, counting down from `at`: one resumed a while before it arrived may be over. */
+  resumeRest(at = Date.now()) {
     const r = this.rest;
     if (!r || r.pausedAt == null) return;
-    r.endAt = Date.now() + (r.endAt - r.pausedAt); // what was left, from now
+    r.endAt = at + (r.endAt - r.pausedAt);
     r.pausedAt = null;
+    this.restChangedAt = at;
     this.armRest();
     this.persistRest();
     this.changed();
   }
   /** +30 s (or any amount): pushes the end time out, whether running or paused, and un-ends a timer that had
-   *  already reached zero, so tapping it after "Rest over" counts that much down again, from now. */
-  addRestTime(sec: number) {
+   *  already reached zero, so tapping it after "Rest over" counts that much down again, from `at`. Says whether it
+   *  did: +15 s pressed on the watch that arrives once even the longer rest would be over changes nothing. */
+  addRestTime(sec: number, at = Date.now()): boolean {
     const r = this.rest;
-    if (!r) return;
-    r.endAt = (r.pausedAt == null ? Math.max(r.endAt, Date.now()) : r.endAt) + sec * 1000;
+    if (!r) return false;
+    const endAt = (r.pausedAt == null ? Math.max(r.endAt, at) : r.endAt) + sec * 1000;
+    if (r.pausedAt == null && endAt <= Date.now()) return false;
+    r.endAt = endAt;
     r.ended = false;
+    this.restChangedAt = at;
     if (r.pausedAt == null) this.armRest();
     this.persistRest();
     this.changed();
+    return true;
   }
-  /** Dismisses the timer without announcing it, as if it had never been needed. */
-  skipRest() {
-    if (!this.rest) return;
+  /** Dismisses the timer without announcing it, as if it had never been needed, as of `at` (Finish's, from the watch,
+   *  may be earlier). With none, it still notes the rest as over then: a set from the watch done before it starts no
+   *  rest after it. */
+  skipRest(at = Date.now()) {
+    this.restChangedAt = Math.max(this.restChangedAt ?? -Infinity, at);
     this.disarmRest();
     this.rest = null;
     this.persistRest();
@@ -1363,7 +1406,7 @@ export class GymStore {
     this.saveLocal(PLAN_KEY, { user: this.user?.id, plan: this.plan, dirty: this.planDirty, base: this.planBase });
   }
   private persistRest() {
-    this.saveLocal(REST_KEY, { user: this.user?.id, rest: this.rest });
+    this.saveLocal(REST_KEY, { user: this.user?.id, rest: this.rest, changedAt: this.restChangedAt });
   }
 
   /** Days waiting to be saved, leaving out those waiting for you to choose a version. */

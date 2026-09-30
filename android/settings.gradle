@@ -1,4 +1,7 @@
 include ':app'
+// The Wear OS app (docs/watch.md): native Kotlin, nothing to do with Capacitor, so it's named here rather than in
+// capacitor.settings.gradle, which Capacitor writes over.
+include ':wear'
 include ':capacitor-cordova-android-plugins'
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 

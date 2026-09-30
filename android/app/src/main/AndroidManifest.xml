@@ -69,6 +69,20 @@
         <receiver
             android:name=".RestTimerReceiver"
             android:exported="false" />
+        <!-- The watch's commands (WatchListenerService.kt, docs/watch.md): Google Play services starts it for a changed
+             /gymlog/cmd/... data item, even with Gym Log closed. Exported for Play services to bind to it, which the
+             service checks is who's calling (WearableListenerService does, for every call). -->
+        <service
+            android:name=".WatchListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/gymlog/cmd" />
+            </intent-filter>
+        </service>
     </application>
 
     <!-- Permissions -->

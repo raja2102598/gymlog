@@ -77,12 +77,15 @@ export default async function workout({ browser, base, check }) {
   // A whole workout with the big button, from Home's Start to Workout complete. Complete set N logs what's typed and,
   // for what isn't, the suggestion in its boxes; the planned sets tick the lift off and Next exercise moves on; ✕ leaves
   // the clock running and Continue carries on; a reload keeps the lift on screen; the cycling is the last step; and
-  // Finish adds the session up, asks after the knee, and shares it. The clock runs here, and the test moves it on.
+  // Finish adds the session up, with the heart rate the watch measured, asks after the knee, and shares it. The clock
+  // runs here, and the test moves it on.
   {
     // Last Wednesday: Hack Squat topped its 8-10 (so it goes up today), the rest didn't (the same again).
     const last = { "Hack Squat": [10, 20], "Leg Press": [10, 45], "Leg Extension": [12, 27], "Hamstring Curl": [10, 30], "Calf Raise": [12, 40] };
     const lastWeek = Object.fromEntries(Object.entries(last).map(([n, [reps, kg]]) => [n, { done: true, kg, sets: [0, 1, 2].map(() => ({ reps, kg })) }]));
-    const db = { logs: { [K(21)]: day(lastWeek), [K(28)]: { ...day(), steps: 7000 } }, plan: {} };
+    // Today's heart rate so far, as the watch sends it (docs/watch.md): kept on the day through every set logged.
+    const hr = { avg: 128, max: 165 };
+    const db = { logs: { [K(21)]: day(lastWeek), [K(28)]: { ...day(), steps: 7000, hr } }, plan: {} };
     const { ctx, page } = await open(browser, base, { auth, db, clock: "running", url: null });
     // The phone's share sheet, recorded rather than shown.
     await ctx.addInitScript(() => void (navigator.share = (d) => ((window.__shared = d), Promise.resolve())));
@@ -137,15 +140,20 @@ export default async function workout({ browser, base, check }) {
       saved("Hack Squat") === JSON.stringify([{ reps: null, kg: k0 }]) && (await big()) === "Complete set 1" && (await page.getAttribute('[data-check="0:0"]', "aria-pressed")) === "false",
       `${saved("Hack Squat")} / ${await big()}`,
     );
-    const typed = k0 + 2.5;
+    const typed = k0 + 2.5, reps = r0 + 2;
     await page.fill("#s0_0_k", String(typed));
+    await page.fill("#s0_0_r", String(reps));
     await tap();
-    const [r1, k1] = await suggested(0, 1), [r2] = await suggested(0, 2);
+    const [r1, k1] = await suggested(0, 1), [r2, k2] = await suggested(0, 2);
     await tap();
     await tap();
-    const hack = JSON.stringify([{ reps: r0, kg: typed }, { reps: r1, kg: typed }, { reps: r2, kg: typed }]);
+    const hack = JSON.stringify(Array(3).fill({ reps, kg: typed }));
     await until(() => saved("Hack Squat") === hack && today().exercises["Hack Squat"].done);
-    check("a weight typed stays, and the sets after it take it rather than the suggestion", k1 === k0 && saved("Hack Squat") === hack, `${saved("Hack Squat")} (suggested ${k1} kg)`);
+    check(
+      "what's typed stays, and the sets after it repeat it, greyed in their boxes and logged, rather than the suggestion",
+      r1 === reps && k1 === typed && r2 === reps && k2 === typed && saved("Hack Squat") === hack,
+      `${saved("Hack Squat")} (set 2 greyed ${r1} × ${k1} kg, set 3 ${r2} × ${k2} kg)`,
+    );
     check(
       "the planned sets tick the lift off, fill its step, and the big button moves on, naming what's next",
       today()?.exercises?.["Hack Squat"]?.done === true && (await page.locator("ol.wprog li").first().getAttribute("class")) === "done" && (await big()) === "Next exercise" && (await next()) === "Next: Leg Press",
@@ -203,8 +211,8 @@ export default async function workout({ browser, base, check }) {
       await tap();
     }
     check(
-      "the cycling is the workout's last step, done with the big button",
-      (await shown()) === "Cycling - 15-20 min" && (await flat(page.locator("#workoutView .ex-step"))) === "Exercise 6 of 6" && (await big()) === "Done with cycling - 15-20 min" && (await next()) === "",
+      "the cycling is the workout's last step, its name in full on the card, done with the big button",
+      (await shown()) === "Cycling - 15-20 min" && (await flat(page.locator("#workoutView .ex-step"))) === "Exercise 6 of 6" && (await big()) === "Done with cardio" && (await next()) === "",
       `${await shown()} / ${await big()} / ${await next()}`,
     );
     await tap();
@@ -223,8 +231,14 @@ export default async function workout({ browser, base, check }) {
         /^10:\d\d$/.test(stats[0]) && stats[1] === kg.toLocaleString("en-IN") && stats[2].replace(/\s/g, "") === "15/15" && all.length === 15,
       `${await flat(page.locator(".done-top .sub"))} / ${stats.join(" | ")} / ${kg} kg in ${all.length} sets`,
     );
+    const heart = (await page.locator("#doneHr").count()) ? await flat(page.locator("#doneHr")) : "no heart rate";
+    check(
+      "under them, the heart rate the watch measured, still on the day after every set logged",
+      heart === "Avg 128 bpm · max 165" && JSON.stringify(today().hr) === JSON.stringify(hr),
+      `${heart} / ${JSON.stringify(today().hr)}`,
+    );
     const pbs = (await page.locator("#doneBests").count()) ? await flat(page.locator("#doneBests")) : "no personal bests";
-    check("its personal best: Hack Squat at the weight typed", new RegExp(`^1 personal best ?Hack Squat ?${typed} kg × ${r0} heaviest yet`).test(pbs), pbs);
+    check("its personal best: Hack Squat at what was typed", new RegExp(`^1 personal best ?Hack Squat ?${typed} kg × ${reps} heaviest yet`).test(pbs), pbs);
     check("where the day's rings stand, and the steps left", /3,000 steps left for today\./.test(await flat(page.locator("#doneRings"))), await flat(page.locator("#doneRings")));
     await page.click('#doneKnee button[data-knee="kneeAfter:3"]');
     await until(() => today()?.kneeAfter === 3);
@@ -247,15 +261,25 @@ export default async function workout({ browser, base, check }) {
   }
 
   // The workout clock: a tap pauses and resumes it, ↺ restarts it; one left running for hours starts again by itself.
+  // On a 360px phone, the smallest, where the header has the least room.
   {
     const uid = "00000000-0000-4000-8000-00000000e0e0", now = Date.parse("2026-09-23T12:00:00");
-    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: {} } });
+    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: {} }, width: 360, height: 800 });
     await ready(page);
     const seed = (startedAt) => page.evaluate((r) => localStorage.setItem("gymlog.workout.v1", JSON.stringify(r)), { day: K(28), startedAt, user: uid });
     const shown = async () => (await flat(page.locator("#wclock"))).replace(/\s/g, "");
     await seed(now - 60 * 60_000);
     await openWorkout(page);
     check("an hour into the workout, the clock says so", /^1:00:\d\d$/.test(await shown()), await shown());
+    // In the middle of the screen, however wide × and Finish are: the session's name, and the clock under it, here at
+    // its widest (an hour in). Paused, ↺ comes beside it, clear of it, × and Finish.
+    const header = () => page.evaluate(() => Object.fromEntries(["#closeWorkout", "#wclockRestart", "#wclock", "#finishBtn", "#screenTitle"].flatMap((s) => (document.querySelector(s) ? [[s, document.querySelector(s).getBoundingClientRect().toJSON()]] : []))));
+    const mid = (r) => Math.round((r.left + r.width / 2) * 10) / 10;
+    const centred = (h) => Math.abs(mid(h["#screenTitle"]) - 180) < 1 && Math.abs(mid(h["#wclock"]) - 180) < 1;
+    const clear = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+    const where = (h) => JSON.stringify(Object.fromEntries(Object.entries(h).map(([s, r]) => [s, `${Math.round(r.left)}–${Math.round(r.right)}`])));
+    const running = await header();
+    check("the name and the clock sit in the middle of the screen", centred(running), where(running));
     // One pill: a tap pauses it where it is, and another resumes it. Paused, ↺ beside it starts it again from 0:00.
     const clockState = async () => `${await page.getAttribute("#wclock", "aria-label")} / ${await page.getAttribute("#wclock", "class")} / ${await page.locator("#wclockRestart").count()}`;
     check("it says a tap pauses it", (await page.getAttribute("#wclock", "aria-label")) === "Pause the clock, 60 minutes in", await clockState());
@@ -266,6 +290,12 @@ export default async function workout({ browser, base, check }) {
       "a tap pauses it where it is, straight away, and ↺ appears beside it",
       paused.pausedAt === now && /^1:00:\d\d$/.test(await shown()) && (await page.getAttribute("#wclock", "aria-label")) === "Resume the clock, paused at 60 minutes" && (await page.getAttribute("#wclockRestart", "aria-label")) === "Restart the clock from 0:00" && (await page.locator("#askDialog[open]").count()) === 0,
       `${JSON.stringify(paused)} / ${await clockState()}`,
+    );
+    const stopped = await header();
+    check(
+      "paused, the name and the clock stay in the middle, and ↺ beside it is clear of the pill, × and Finish",
+      centred(stopped) && ["#wclock", "#closeWorkout", "#finishBtn"].every((s) => clear(stopped["#wclockRestart"], stopped[s])),
+      where(stopped),
     );
     await page.click("#wclock");
     await until(async () => !(await page.getAttribute("#wclock", "class")).includes("paused"));
@@ -291,13 +321,6 @@ export default async function workout({ browser, base, check }) {
     await page.waitForSelector("#workoutView #wclock", { timeout: 15000 });
     await until(async () => /^0:0\d$/.test(await shown()));
     check("and when the app reloads on the workout", /^0:0\d$/.test(await shown()), await shown());
-    // In the middle of the screen, however wide × and Finish are: the session's name, and the clock under it.
-    const middle = page.viewportSize().width / 2;
-    const centre = async (sel) => {
-      const b = await page.locator(sel).boundingBox();
-      return b.x + b.width / 2;
-    };
-    check("the name and the clock sit in the middle of the screen", Math.abs((await centre("#screenTitle")) - middle) < 1 && Math.abs((await centre("#wclock")) - middle) < 1, `${await centre("#screenTitle")} / ${await centre("#wclock")} / ${middle}`);
     await ctx.close();
   }
 

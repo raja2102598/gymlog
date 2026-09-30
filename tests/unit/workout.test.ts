@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { liftModel, logSet, nextSet } from "@/components/today/LiftItem";
 import { wdIndex } from "@/lib/dates";
-import { dayBests, dayTotals, liveWorkout, sessionDone, workoutUnderWay } from "@/lib/session";
+import { dayBests, dayTotals, heartWords, liveWorkout, sessionDone, workoutUnderWay } from "@/lib/session";
 import type { GymStore } from "@/lib/store";
 import type { LiftLog } from "@/lib/types";
 import { clearRun, dropStaleRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runOf, runSeconds, runsFor, STALE_RUN_MS, startRun } from "@/lib/workout";
@@ -46,6 +46,8 @@ describe("workout runs", () => {
     expect(resumeRun(d, 25 * 60_000)).toMatchObject({ pausedMs: 15 * 60_000 });
     expect(runOf(d)?.pausedAt).toBeUndefined();
     expect(runSeconds(runOf(d)!, 30 * 60_000)).toBe(15 * 60); // 10 before, 5 since
+    // Each pause is kept too, from and to, for the watch to leave its heart rate readings out.
+    expect(runOf(d)?.pauses).toEqual([[10 * 60_000, 25 * 60_000]]);
     pauseRun(d, 40 * 60_000);
     expect(runSeconds(endRun(d, 50 * 60_000)!)).toBe(25 * 60); // finished while paused: 25:00, not 35:00
     expect(pauseRun(d, 60 * 60_000)?.pausedAt).toBe(40 * 60_000); // a finished run doesn't pause again
@@ -131,15 +133,29 @@ describe("Complete set N", () => {
     expect(nextSet(card(s, "Hamstring Curl"))).toBe(1); // on to set 2
   });
 
-  it("keeps a weight typed first, and a later set takes the weight of the one before it today over the suggestion", () => {
+  it("keeps what's typed, and the sets after a logged one repeat it over the suggestion", () => {
     const s = lastWeek();
     card(s, "Leg Press").setField(0, "kg", "50");
     for (let j = 0; j < 3; j++) logSet(s, card(s, "Leg Press"), j);
-    // Last week's reps, set by set (10, 10, 8), at today's 50 kg rather than the suggested 45.
-    expect(saved(s, "Leg Press")).toEqual([{ reps: 10, kg: 50 }, { reps: 10, kg: 50 }, { reps: 8, kg: 50 }]);
+    // Set 1 takes last week's reps (10) at today's 50 kg rather than the suggested 45; sets 2 and 3 repeat it, not
+    // last week's 10 and 8.
+    expect(saved(s, "Leg Press")).toEqual([{ reps: 10, kg: 50 }, { reps: 10, kg: 50 }, { reps: 10, kg: 50 }]);
     // The planned sets are in: the lift is ticked off, and the button moves on.
     expect(s.entry(WED).exercises["Leg Press"]).toMatchObject({ done: true, autoDone: true });
     expect(nextSet(card(s, "Leg Press"))).toBe(-1);
+  });
+
+  it("repeats the last set logged, reps and weight, and passes over a drop set", () => {
+    const s = lastWeek(), m = () => card(s, "Leg Press");
+    m().setField(0, "kg", "55");
+    m().setField(0, "reps", "12");
+    expect(m().sugFor(m().sets, 1)).toEqual(["12", "55"]); // what set 2's boxes show greyed
+    m().setInfo(0, { type: "drop" }); // set 1 a drop set after all: lighter on purpose, so not repeated
+    expect(m().sugFor(m().sets, 1)).toEqual(["10", "55"]); // last week's reps; the weight typed just before it
+    m().setInfo(0, { type: undefined });
+    logSet(s, m(), 1);
+    logSet(s, m(), 2);
+    expect(saved(s, "Leg Press")).toEqual([{ reps: 12, kg: 55 }, { reps: 12, kg: 55 }, { reps: 12, kg: 55 }]);
   });
 
   it("logs the reps alone for a lift never done, which has no weight to suggest", () => {
@@ -164,8 +180,8 @@ describe("Complete set N", () => {
   });
 });
 
-// Workout complete (CompleteView.tsx): the day's numbers, and whether the day's workout is done at all (Train's
-// Review, and no clock started when it's opened again).
+// Workout complete (CompleteView.tsx): the day's numbers, the heart rate the watch measured, and whether the day's
+// workout is done at all (Train's Review, and no clock started when it's opened again).
 describe("what a session adds up to", () => {
   it("counts the working sets logged against the planned ones, and the kg lifted in every one of them, drop sets too, never a warm-up", () => {
     const s = storeWith({
@@ -207,6 +223,12 @@ describe("what a session adds up to", () => {
       { lift: "Hack Squat", kg: 40, reps: 12, kinds: ["e1rm", "reps"] },
       { lift: "Smith Squat", kg: 25, reps: 10, kinds: ["weight", "e1rm"] },
     ]);
+  });
+
+  it("gives the workout's heart rate from the watch as its average and highest, and nothing without one", () => {
+    const s = storeWith({ [WED]: day({ hr: { avg: 128, max: 165 } }), [LAST]: day() });
+    expect(heartWords(s.entry(WED))).toBe("Avg 128 bpm · max 165");
+    expect(heartWords(s.entry(LAST))).toBeNull();
   });
 
   it("says the day's workout is done once every lift in it is done or skipped, and never for a day with none", () => {

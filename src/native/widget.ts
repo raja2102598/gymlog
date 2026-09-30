@@ -1,17 +1,21 @@
-/* The home-screen widget (android/.../GymWidgetProvider.kt): a small JSON of today's session and lift progress,
- * written through this plugin whenever they change, so the widget can show them without opening the app. Taps on
- * it open the app the same way a sign-in link does (native.ts's NATIVE_GO, app.ts's appUrlOpen listener).
- * restEndsAt is when a running rest timer ends (store.ts's rest), and workoutSince when the workout under way would
- * have started with no pauses (lib/session.ts's liveWorkout), or null: the widget's clock ticks from them on its own,
- * counting the rest down, or else the workout up. */
+/* The home-screen widget (android/.../GymWidgetProvider.kt): a small JSON of today's session and lift progress, or
+ * while a workout is under way that workout's, whatever day it's for, written through this plugin whenever they
+ * change, so the widget can show them without opening the app. Taps on it open the app the same way a sign-in link
+ * does (native.ts's NATIVE_GO, app.ts's appUrlOpen listener). restEndsAt is when a running rest timer ends
+ * (store.ts's rest), and workoutSince when the workout under way would have started with no pauses (lib/session.ts's
+ * workoutUnderWay), or null: the widget's clock ticks from them on its own, counting the rest down, or else the
+ * workout up. */
 import { registerPlugin } from "@capacitor/core";
 import { todayKey } from "@/lib/dates";
-import { liveWorkout } from "@/lib/session";
+import { workoutUnderWay } from "@/lib/session";
 import type { GymStore } from "@/lib/store";
-import { onRunChange } from "@/lib/workout";
+import { currentRun, onRunChange } from "@/lib/workout";
 import { onAppResume } from "./update";
 
 interface WidgetSnapshot {
+  /** The day it's of: today, or the workout under way's, which can be a day gone by. The widget shows another day's
+   *  only while workoutSince says its workout is still counting, and "Open Gym Log" after (GymWidgetLogic.isCurrent),
+   *  so it never takes a day that's passed for today, even with the app no longer running to write today's. */
   date: string;
   session: string;
   done: number;
@@ -33,13 +37,17 @@ const Widget = registerPlugin<WidgetPlugin>("GymWidget");
  *  run, or after a call to the plugin failed, so the next change, resume or tick tries again). */
 let lastWritten: string | null = null;
 
-// Today's session and lift progress, counted the way Today counts a lift done (SessionCard.tsx's LiftPill).
+// A day's session and lift progress, counted the way Today counts a lift done (SessionCard.tsx's LiftPill): the
+// workout under way's day, whichever it is, as the lock screen follows it (native/rest.ts), so one started at 23:40
+// keeps its session, progress and clock past midnight, as does one opened for a day gone by. Otherwise today's: a
+// clock paused, finished or left behind isn't under way (liveWorkout has the rules).
 function snapshotOf(store: GymStore): WidgetSnapshot {
-  const date = todayKey(), p = store.planFor(date), e = store.entry(date);
+  const w = workoutUnderWay(store), run = currentRun(), date = w && run ? run.day : todayKey();
+  const p = store.planFor(date), e = store.entry(date);
   const done = p.exercises.filter((x) => e.exercises[x.name]?.done).length;
   // A running rest timer's end, and a workout under way's start: the widget's clock counts down to the one, or up
   // from the other. Not a paused clock of either kind, which isn't counting.
-  const r = store.rest, resting = r && r.pausedAt == null && !r.ended, w = liveWorkout(store, date);
+  const r = store.rest, resting = r && r.pausedAt == null && !r.ended;
   return {
     date,
     session: p.name,
@@ -51,8 +59,8 @@ function snapshotOf(store: GymStore): WidgetSnapshot {
   };
 }
 
-/** Writes today's session and progress, if they've changed since the last write. Signed out, however that came
- *  about (Sign out, or a session that expired or was revoked), it clears the widget instead. */
+/** Writes the day's session and progress (snapshotOf), if they've changed since the last write. Signed out, however
+ *  that came about (Sign out, or a session that expired or was revoked), it clears the widget instead. */
 function writeWidget(store: GymStore): void {
   if (store.auth === "signedOut") {
     if (lastWritten !== "") clearWidget();
@@ -69,8 +77,8 @@ function writeWidget(store: GymStore): void {
 }
 
 /** Keeps the widget current: right away, on every change to the store (a set logged, a lift ticked, health data
- *  arriving, signing out) or to the workout's clock, coming back to the app, and every few minutes so a new day
- *  shows up even with the app merely open. */
+ *  arriving, signing out) or to the workout's clock, coming back to the app, and every few minutes so a new day, or
+ *  today's session once a workout from another day is left behind, shows up even with the app merely open. */
 export function startWidget(store: GymStore): void {
   writeWidget(store);
   store.subscribe(() => writeWidget(store));

@@ -2,6 +2,7 @@
  * the time elapsed and Workout complete its duration. Kept on this device only, like the theme: it's the screen's
  * state, not part of the day's log. */
 import { lsDel, lsGet, lsSet } from "./storage";
+import type { GymStore } from "./store";
 import type { DayKey } from "./types";
 
 export const WORKOUT_KEY = "gymlog.workout.v1";
@@ -16,6 +17,9 @@ export interface WorkoutRun {
   pausedAt?: number;
   /** How long it was paused before, ms: none of it counts. */
   pausedMs?: number;
+  /** Each pause resumed so far, [from, to] in ms since the epoch: the watch leaves the heart rate's readings in them
+   *  out, however late Health Services hands them over (docs/watch.md). pausedMs is their total. */
+  pauses?: [number, number][];
   /** Who started it: another account signed in on this phone never picks it up. */
   user?: string | null;
 }
@@ -63,7 +67,7 @@ export function runOf(day: DayKey): WorkoutRun | null {
 }
 
 /** The phone's run, whichever day it's for: a workout started before midnight, or one for a day gone by, is still
- *  the one under way (the lock screen's, native/rest.ts). */
+ *  the one under way (the lock screen's and the widget's, native/rest.ts and native/widget.ts). */
 export const currentRun = (): WorkoutRun | null => {
   const r = read();
   return r && typeof r.startedAt === "number" ? r : null;
@@ -99,8 +103,8 @@ export function pauseRun(day: DayKey, now = Date.now()): WorkoutRun | null {
 export function resumeRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);
   if (!r || r.endedAt || r.pausedAt == null) return r;
-  const { pausedAt, ...rest } = r;
-  return write({ ...rest, pausedMs: (r.pausedMs ?? 0) + Math.max(0, now - pausedAt) });
+  const { pausedAt, ...rest } = r, to = Math.max(pausedAt, now);
+  return write({ ...rest, pausedMs: (r.pausedMs ?? 0) + (to - pausedAt), pauses: [...(r.pauses ?? []), [pausedAt, to]] });
 }
 
 /** Drops the day's clock if it was left behind: a finished workout opened to review it shows no abandoned clock, and
@@ -115,11 +119,26 @@ export function endRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   return write({ ...r, endedAt: r.endedAt ?? now });
 }
 
+/** Finish workout, from the workout's Finish (GymLog.tsx) or the watch's (lib/watch.ts): the day's clock stops, and the
+ *  rest after its last set goes with it, since there's no next set to rest for, on Home or in a notification; so does
+ *  one a set logged before it would start, arriving late from the watch. Not a rest changed after `now`, a Finish
+ *  from the watch arriving late: that one's newer (a set logged on the phone since, say). */
+export function finishWorkout(store: Pick<GymStore, "demo" | "rest" | "restChangedAt" | "skipRest">, day: DayKey, now = Date.now()) {
+  keepRunsInMemory(store.demo);
+  endRun(day, now);
+  if ((store.restChangedAt ?? -Infinity) <= now && (!store.rest || store.rest.day === day)) store.skipRest(now);
+}
+
 /** Forgets the run, or with `day`, only a run for that day: a finished workout reviewed later leaves another
  *  day's running clock alone. */
 export function clearRun(day?: DayKey) {
   if (day === undefined || read()?.day === day) write(null);
 }
+
+/** When a run last changed, ms since the epoch: started, paused, resumed or finished. A command from the watch older
+ *  than that, delivered late, leaves it as it is (lib/watch.ts). */
+export const runChangedAt = (r: WorkoutRun): number =>
+  Math.max(r.startedAt, r.pausedAt ?? -Infinity, r.endedAt ?? -Infinity, ...(r.pauses ?? []).map((p) => p[1]));
 
 /** How long a run has lasted, ms, to its end or to now, less the time it was paused (still paused: up to then). */
 export function runMs(r: WorkoutRun, now: number): number {

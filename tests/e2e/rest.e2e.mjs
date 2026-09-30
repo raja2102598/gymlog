@@ -1,9 +1,16 @@
 // The rest timer (RAJ-35): it starts when a set gets its reps, counts down in the workout's rest card with pause,
 // +15 s and skip, buzzes and says "Rest over" at zero, takes the plan's default from Settings and a lift's own length
-// from the plan editor, and survives a reload. The clock runs here, and the test moves it on.
+// from the plan editor, and survives a reload. The clock runs here, and the test moves it on. Then, in the Android
+// app, what Settings says Android allows its alerts, and Settings' Samsung timer card.
 import { flat, open, openSetting, openTab, openWorkout, planDone, ready, session, until, TAB_VIEWS, onDefaultPlan } from "./harness.mjs";
 
-export default async function rest({ browser, base, check }) {
+export default async function rest(t) {
+  await timer(t);
+  await alarmRows(t);
+  await samsungCard(t);
+}
+
+async function timer({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000035", "2026-08-26T05:00:00Z", "t@example.com");
   const db = onDefaultPlan();
   const { ctx, page } = await open(browser, base, { auth, db, clock: "running", url: null });
@@ -137,4 +144,146 @@ export default async function rest({ browser, base, check }) {
   check("only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("no console errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();
+}
+
+/**
+ * In the page, before it loads: the Android app, as far as the page can tell. Capacitor takes the page for Android's,
+ * and the app's own plugins (RestTimer, GymSync, Watch and the rest) answer from `window.__native.answers` ({ plugin: {
+ * method: answer } }; anything else gets `{}`), each call kept in `window.__native.calls` as "Plugin.method".
+ * Capacitor's own plugins (App, Health) answer as they do in a browser. `__away()` and `__back()` leave the app and
+ * come back to it, as for Android's settings: Capacitor's App says "resume" as the page shows again.
+ */
+function androidApp(answers) {
+  window.__native = { answers, calls: [] };
+  window.CapacitorCustomPlatform = { name: "android" };
+  const anyMethod = { find: () => ({ rtype: "promise" }) };
+  window.Capacitor = {
+    isNativePlatform: () => true,
+    PluginHeaders: ["RestTimer", "GymSync", "GymWidget", "Speech", "AppUpdate", "GoogleSignIn", "Watch"].map((name) => ({ name, methods: anyMethod })),
+    nativePromise: async (plugin, method) => {
+      window.__native.calls.push(`${plugin}.${method}`);
+      return window.__native.answers[plugin]?.[method] ?? {};
+    },
+  };
+  let hidden = false;
+  Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+  const show = (h) => {
+    hidden = h;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  window.__away = () => show(true);
+  window.__back = () => show(false);
+}
+
+/** Settings → Rest timer & effort, opened in the Android app whose plugins answer with `answers` (androidApp), signed
+ *  in as the account `id`. */
+async function inSettings(browser, base, id, answers) {
+  const auth = session(id, "2026-08-26T05:00:00Z", "t@example.com");
+  const { ctx, page, db } = await open(browser, base, { auth, db: onDefaultPlan(), url: null });
+  await ctx.addInitScript(androidApp, answers);
+  await page.goto(base);
+  await ready(page);
+  await openTab(page, "settings");
+  await openSetting(page, "setTraining");
+  return { ctx, page, db };
+}
+
+// Settings → Rest timer & effort in the Android app, on a Pixel on Android 16, notifications on: under them, "Rest
+// over" isn't allowed to be on time yet and Live Updates are off, each with a way to Android's page for it, and coming
+// back from there reads it again. (A Samsung's Now Bar row is in samsungCard, below.)
+async function alarmRows({ browser, base, check }) {
+  const { ctx, page, db } = await inSettings(browser, base, "00000000-0000-4000-8000-000000000036", {
+    RestTimer: { checkPermissions: { notifications: "granted" }, checkAlarms: { exact: false, liveUpdates: false }, isSamsung: { samsung: false } },
+  });
+  // A row's title and what it says, as one line.
+  const row = async (id) => `${await flat(page.locator(`#${id}T`))}: ${await flat(page.locator(`#${id}Status`))}`;
+  const called = (name) => page.evaluate((n) => window.__native.calls.includes(n), name);
+  // A row's button, or "" when there's none, without waiting for one.
+  const button = async (id) => (await page.locator(id).allTextContents()).join(" | ");
+  // Taps it if it's there: if not, the check after says what was called instead.
+  const tap = async (id) => {
+    if (await page.locator(id).count()) await page.click(id);
+  };
+  await page.locator("#restExactStatus").waitFor();
+  check(
+    "Android app: under notifications, Alarms & reminders says Rest over can be late, with Open settings",
+    (await row("restExact")) === "Alarms & reminders: Off, so “Rest over” can come a few minutes late while your phone is idle. Turn it on to get it on time." &&
+      (await button("#restExactOpen")) === "Open settings",
+    `${await row("restExact")} [${await button("#restExactOpen")}]`,
+  );
+  check(
+    "Android app: Live Updates are off, with Open settings",
+    (await row("restLive")) === "Live Updates: Off. Turn them on to keep your workout’s clock and rest countdown at the top of the lock screen." && (await button("#restLiveOpen")) === "Open settings",
+    `${await row("restLive")} [${await button("#restLiveOpen")}]`,
+  );
+  await tap("#restExactOpen");
+  await until(() => called("RestTimer.openExactAlarmSettings"));
+  check("its Open settings opens Android's Alarms & reminders page for Gym Log", await called("RestTimer.openExactAlarmSettings"), (await page.evaluate(() => window.__native.calls)).join(", "));
+  // Allowed there, then back to the app.
+  await page.evaluate(() => {
+    window.__native.answers.RestTimer.checkAlarms = { exact: true, liveUpdates: false };
+    window.__away();
+    window.__back();
+  });
+  await until(async () => (await row("restExact")).includes("On."));
+  check(
+    "back from Android's settings, it reads it again: Rest over comes on time, and there's nothing to open",
+    (await row("restExact")) === "Alarms & reminders: On. “Rest over” comes the moment your rest ends." && (await button("#restExactOpen")) === "",
+    `${await row("restExact")} [${await button("#restExactOpen")}]`,
+  );
+  await tap("#restLiveOpen");
+  await until(() => called("RestTimer.openLiveUpdateSettings"));
+  check("Live Updates' Open settings opens Android's Live Updates page for Gym Log", await called("RestTimer.openLiveUpdateSettings"), (await page.evaluate(() => window.__native.calls)).join(", "));
+  check("Android app: no console errors", page.errors.length === 0 && db.unexpected.length === 0, [...page.errors, ...db.unexpected].join(" | "));
+  await ctx.close();
+}
+
+// Settings → Rest timer & effort in the Android app: on a Samsung, the Samsung timer card, an experiment that says
+// so, off until switched on and then kept on this phone, and under notifications, the Now Bar in place of Live
+// Updates; on any other phone, neither.
+async function samsungCard({ browser, base, check }) {
+  const phone = async (samsung) => {
+    // Android 16 saying Live Updates aren't allowed, as One UI does even while the Now Bar shows Gym Log.
+    const opened = await inSettings(browser, base, "00000000-0000-4000-8000-000000000037", {
+      RestTimer: { checkPermissions: { notifications: "granted" }, isSamsung: { samsung }, checkAlarms: samsung ? { exact: true, liveUpdates: false } : {} },
+    });
+    // Asked once Settings opens; the row, if any, shows once the answer's in.
+    await until(() => opened.page.evaluate(() => window.__native.calls.includes("RestTimer.isSamsung")));
+    return opened;
+  };
+  const { ctx, page, db } = await phone(true);
+  const sw = page.locator("#samsungCard");
+  await sw.waitFor();
+  check(
+    "a Samsung: Samsung timer card, an experiment Samsung may ignore, off",
+    (await flat(page.locator("#samsungT"))) === "Samsung timer card (experimental)" &&
+      (await flat(page.locator("#samsungD"))).startsWith("An experiment:") &&
+      (await flat(page.locator("#samsungD"))).includes("Samsung may ignore it") &&
+      (await sw.getAttribute("aria-checked")) === "false",
+    `${await flat(sw)} [${await sw.getAttribute("aria-checked")}]`,
+  );
+  await page.locator("#restLiveStatus").waitFor();
+  const nowBar = async () => `${await flat(page.locator("#restLiveT"))}: ${await flat(page.locator("#restLiveStatus"))} [${(await page.locator("#restLiveOpen").allTextContents()).join(" | ")}]`;
+  check(
+    "a Samsung: under notifications, the Now Bar and what shows Gym Log there, with Open settings, not Live Updates off",
+    (await nowBar()) === "Now Bar: Samsung shows your workout’s clock and rest countdown in the Now Bar with Developer options → Live notifications for all apps on. [Open settings]",
+    await nowBar(),
+  );
+  await sw.click();
+  await until(async () => (await sw.getAttribute("aria-checked")) === "true");
+  check("switched on, and kept on this phone", (await page.evaluate(() => localStorage.getItem("gymlog.samsungCard.v1"))) === "true", await page.evaluate(() => localStorage.getItem("gymlog.samsungCard.v1")));
+  // A reload opens where it was, in Settings.
+  await page.reload();
+  await page.waitForSelector("#settingsView", { timeout: 15000 });
+  await openSetting(page, "setTraining");
+  await sw.waitFor();
+  check("still on after a reload", (await sw.getAttribute("aria-checked")) === "true", await sw.getAttribute("aria-checked"));
+  check("a Samsung: no console errors", page.errors.length === 0 && db.unexpected.length === 0, [...page.errors, ...db.unexpected].join(" | "));
+  await ctx.close();
+
+  const other = await phone(false);
+  const training = await flat(other.page.locator("#setTraining"));
+  check("another phone: no Samsung timer card in Rest timer & effort", training.length > 0 && !training.includes("Samsung"), training);
+  await other.ctx.close();
 }

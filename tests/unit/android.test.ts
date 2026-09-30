@@ -9,7 +9,7 @@ import { todayKey, wdIndex } from "@/lib/dates";
 import { NATIVE_SIGN_IN } from "@/lib/native";
 import { speechSupported } from "@/lib/speech";
 import { GymStore } from "@/lib/store";
-import { atWednesdayNoon, flush, memoryStorage } from "./helpers";
+import { atWednesdayNoon, day, flush, lift, memoryStorage } from "./helpers";
 import { app, health, speech, widget } from "./nativeMocks";
 import { phoneHas, signedIn } from "./phone";
 
@@ -118,15 +118,16 @@ describe("home-screen widget", () => {
     expect(widget.update).not.toHaveBeenCalled();
   });
 
-  it("gives it a workout under way's start, for its clock, and follows the clock paused, resumed and finished", async () => {
+  it("gives it the workout under way, whichever day it's for, with its start for the clock, and follows the clock paused, resumed, finished and left behind", async () => {
     const { startWidget } = await import("@/native/widget");
-    const { endRun, pauseRun, resumeRun, runsFor, startRun } = await import("@/lib/workout");
+    const { endRun, pauseRun, resumeRun, runsFor, startRun, STALE_RUN_MS } = await import("@/lib/workout");
     const s = new GymStore(), today = todayKey();
     s.user = { id: "u" } as GymStore["user"];
     s.auth = "signedIn";
     runsFor("u");
     startWidget(s);
-    const since = () => (widget.update.mock.lastCall as unknown as [{ workoutSince: string | null }] | undefined)?.[0].workoutSince;
+    const last = () => (widget.update.mock.lastCall as unknown as [Record<string, unknown>] | undefined)?.[0];
+    const since = () => last()?.workoutSince;
     expect(since()).toBeNull();
     const started = new Date(2026, 8, 23, 11, 40).getTime();
     startRun(today, started); // opening the workout: no store change, but the clock's own
@@ -137,6 +138,34 @@ describe("home-screen widget", () => {
     expect(since()).toBe(new Date(started + 5 * 60_000).toISOString()); // the five minutes paused don't count
     endRun(today, started + 30 * 60_000);
     expect(since()).toBeNull();
+
+    // Tuesday's Pull, started at 23:40 with a lift done, is still the workout under way at 00:30: the widget keeps
+    // its session, progress and clock, and a rest in it, rather than turning to Wednesday's Legs with no clock. (So
+    // does a workout opened for a day gone by: it's the same rule.)
+    const TUE = "2026-09-22", pull = new Date(2026, 8, 22, 23, 40).getTime(), late = new Date(2026, 8, 23, 0, 30).getTime();
+    s.logs[TUE] = day({ exercises: { "Lat Pulldown": lift([[8, 50]]) } });
+    vi.setSystemTime(late);
+    startRun(TUE, pull);
+    const tuesday = { date: TUE, session: "Pull", done: 1, planned: 6, restEndsAt: null, workoutSince: new Date(pull).toISOString(), skipped: false };
+    expect(last()).toEqual(tuesday);
+    s.startRest(TUE, "Lat Pulldown", 90);
+    expect(last()).toEqual({ ...tuesday, restEndsAt: new Date(late + 90_000).toISOString() });
+    s.skipRest();
+    // Paused or finished, it isn't under way: today's session instead, with no clock.
+    pauseRun(TUE, late);
+    const wednesday = { date: today, session: "Legs", done: 0, planned: 5, restEndsAt: null, workoutSince: null, skipped: false };
+    expect(last()).toEqual(wednesday);
+    resumeRun(TUE, late);
+    expect(last()).toEqual(tuesday);
+    endRun(TUE, late);
+    expect(last()).toEqual(wednesday);
+    // Left behind, once three hours of it have counted: today's again, from the next change on (the widget itself
+    // stops showing it at that moment, GymWidgetLogic.isCurrent).
+    startRun(TUE, pull);
+    expect(last()).toEqual(tuesday);
+    vi.setSystemTime(pull + STALE_RUN_MS);
+    s.setHealthLink({ state: "ok", msg: "" }); // any store change tells listeners
+    expect(last()).toEqual(wednesday);
   });
 
   it("tries a write that failed again on the next change, rather than taking it as shown", async () => {

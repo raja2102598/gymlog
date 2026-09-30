@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The rest timer (RAJ-35): its length, its countdown, pausing, more time, skipping, reaching zero, what a reload brings
-// back, and, in the Android app, its alarm while the app is in the background and its end on the widget. The top bar
-// and the plan editor's field are in tests/e2e/rest.e2e.mjs.
+// back, and, in the Android app, its alarm while the app is in the background, its end on the widget, and what Settings
+// says Android allows it. The top bar, the plan editor's field and Settings' rows are in tests/e2e/rest.e2e.mjs.
 vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitorCore);
 vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).app }));
 
+import type { PermissionState } from "@capacitor/core";
+import { alarmRows, watchRestNotifs, type RestNotifs } from "@/components/settings/restNotifications";
 import { todayKey, wdIndex } from "@/lib/dates";
 import { mmss } from "@/lib/format";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import { afterRest } from "@/lib/session";
 import { GymStore, liveRest, restSecFor, type RestTimer } from "@/lib/store";
 import type { LiftLog, SetLog } from "@/lib/types";
+import type { AlarmChecks } from "@/native/rest";
 import { atWednesdayNoon, day, LEGS, lift, memoryStorage, sets, storeWith, WED } from "./helpers";
 import { app, restTimer, widget } from "./nativeMocks";
 
@@ -29,7 +32,7 @@ function store() {
   s.auth = "signedIn";
   return s;
 }
-const saved = () => JSON.parse(localStorage.getItem("gymlog.rest.v1")!) as { user: string; rest: RestTimer | null };
+const saved = () => JSON.parse(localStorage.getItem("gymlog.rest.v1")!) as { user: string; rest: RestTimer | null; changedAt: number | null };
 
 describe("rest length", () => {
   it("is the plan's default, 90 s unless changed, kept within 5 s and 10 minutes", () => {
@@ -119,6 +122,9 @@ describe("rest timer", () => {
     expect(s.rest).toBeNull();
     expect(navigator.vibrate).not.toHaveBeenCalled();
     expect(saved().rest).toBeNull();
+    // When it was, kept with it: a set from the watch done before then, arriving later, even after a reload, starts no
+    // rest (lib/watch.ts).
+    expect(saved().changedAt).toBe(new Date("2026-09-23T12:00:00").getTime());
   });
 
   it("goes on signing out, here and on this phone, so signing back in doesn't bring it back", () => {
@@ -127,6 +133,7 @@ describe("rest timer", () => {
     expect(saved().rest).not.toBeNull();
     (s as unknown as { onSignedOut(): void }).onSignedOut();
     expect(s.rest).toBeNull();
+    expect(s.restChangedAt).toBeNull();
     expect(localStorage.getItem("gymlog.rest.v1")).toBeNull();
   });
 });
@@ -224,7 +231,7 @@ describe("in the background, in the Android app", () => {
     const endAt = NOON + 90_000;
     expect(restTimer.schedule).not.toHaveBeenCalled(); // in front, the page says "Rest over" itself
     appIs(false);
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt, next: "Next: set 1 of 3" });
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt, next: "Next: set 1 of 3", samsungCard: false });
     s.setHealthLink({ state: "ok", msg: "" }); // an unrelated change: nothing sent again
     expect(restTimer.schedule).toHaveBeenCalledTimes(1);
     appIs(true);
@@ -275,12 +282,12 @@ describe("in the background, in the Android app", () => {
     startRun(todayKey(), NOON - 10 * MIN);
     await sync(s);
     appIs(false);
-    expect(restTimer.workout).toHaveBeenLastCalledWith({ title: "Legs", text: "0 of 5 exercises done", chip: "0/5 done", since: NOON - 10 * MIN, forMs: 3 * 60 * MIN - 10 * MIN });
+    expect(restTimer.workout).toHaveBeenLastCalledWith({ title: "Legs", text: "0 of 5 exercises done", chip: "0/5 done", since: NOON - 10 * MIN, forMs: 3 * 60 * MIN - 10 * MIN, samsungCard: false });
     appIs(true);
     s.startRest(todayKey(), "Leg Press", 90);
     appIs(false); // resting: the countdown too, sent after the clock, so Android puts the newer first
     expect(restTimer.workout).toHaveBeenCalledTimes(2);
-    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: NOON + 90_000, next: "Next: set 1 of 3" });
+    expect(restTimer.schedule).toHaveBeenLastCalledWith({ lift: "Leg Press", endAt: NOON + 90_000, next: "Next: set 1 of 3", samsungCard: false });
     expect(restTimer.workout.mock.invocationCallOrder[1]).toBeLessThan(restTimer.schedule.mock.invocationCallOrder[0]);
     vi.advanceTimersByTime(91_000); // over out of sight: the clock was never taken down, so nothing to send again
     expect(restTimer.workout).toHaveBeenCalledTimes(2);
@@ -331,6 +338,40 @@ describe("in the background, in the Android app", () => {
     expect(restTimer.workout).not.toHaveBeenCalled();
   });
 
+  it("sends Settings' Samsung timer card with both, off until it's switched on, and kept on this phone", async () => {
+    const { runsFor, startRun } = await import("@/lib/workout");
+    const { isSamsungPhone, samsungCardPref, setSamsungCard, SAMSUNG_CARD_KEY } = await import("@/native/rest");
+    expect(await isSamsungPhone()).toBe(true);
+    restTimer.isSamsung.mockResolvedValueOnce({ samsung: false });
+    expect(await isSamsungPhone()).toBe(false);
+    // Only a stored true is on: never set, off, or anything else kept there.
+    expect(samsungCardPref()).toBe(false);
+    for (const kept of ["false", '"yes"', "1", "not json"]) {
+      localStorage.setItem(SAMSUNG_CARD_KEY, kept);
+      expect(samsungCardPref()).toBe(false);
+    }
+    localStorage.removeItem(SAMSUNG_CARD_KEY);
+    const s = store();
+    runsFor("u");
+    startRun(todayKey(), NOON - 10 * MIN);
+    s.startRest(todayKey(), "Leg Press", 90);
+    await sync(s);
+    appIs(false);
+    expect(restTimer.workout).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Legs", samsungCard: false }));
+    expect(restTimer.schedule).toHaveBeenLastCalledWith(expect.objectContaining({ lift: "Leg Press", samsungCard: false }));
+    appIs(true);
+    setSamsungCard(true); // in Settings, with the app in front
+    expect(localStorage.getItem(SAMSUNG_CARD_KEY)).toBe("true");
+    appIs(false);
+    expect(restTimer.workout).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Legs", samsungCard: true }));
+    expect(restTimer.schedule).toHaveBeenLastCalledWith(expect.objectContaining({ lift: "Leg Press", samsungCard: true }));
+    appIs(true);
+    setSamsungCard(false);
+    appIs(false);
+    expect(restTimer.workout).toHaveBeenLastCalledWith(expect.objectContaining({ samsungCard: false }));
+    expect(restTimer.schedule).toHaveBeenLastCalledWith(expect.objectContaining({ samsungCard: false }));
+  });
+
   it("puts a running timer's end on the widget, and takes it off when paused", async () => {
     const { startWidget } = await import("@/native/widget");
     const s = store();
@@ -339,5 +380,100 @@ describe("in the background, in the Android app", () => {
     expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: new Date(2026, 8, 23, 12, 1, 30).toISOString() }));
     s.pauseRest();
     expect(widget.update).toHaveBeenLastCalledWith(expect.objectContaining({ restEndsAt: null }));
+  });
+});
+
+describe("Settings' notification rows, in the Android app", () => {
+  const rows = (permission: PermissionState, alarms: AlarmChecks | null, samsung = false) => alarmRows({ permission, alarms, samsung });
+  const says = (exact: boolean | null, liveUpdates: boolean | null): AlarmChecks => ({ exact, liveUpdates });
+  const exactRow = (on: boolean) => ({
+    title: "Alarms & reminders",
+    text: on ? "On. “Rest over” comes the moment your rest ends." : "Off, so “Rest over” can come a few minutes late while your phone is idle. Turn it on to get it on time.",
+    open: !on,
+  });
+  const liveRow = (on: boolean) => ({
+    title: "Live Updates",
+    text: on ? "On. Your workout’s clock and rest countdown stay at the top of the lock screen." : "Off. Turn them on to keep your workout’s clock and rest countdown at the top of the lock screen.",
+    open: !on,
+  });
+  const nowBarRow = {
+    title: "Now Bar",
+    text: "Samsung shows your workout’s clock and rest countdown in the Now Bar with Developer options → Live notifications for all apps on.",
+    open: true,
+  };
+
+  it("say whether ‘Rest over’ will be on time and whether Live Updates are on, each only where the phone's Android has it", () => {
+    // Android 16: both, and a way to Android's page (open) for each that's off.
+    expect(rows("granted", says(true, true))).toEqual({ exact: exactRow(true), live: liveRow(true) });
+    expect(rows("granted", says(false, false))).toEqual({ exact: exactRow(false), live: liveRow(false) });
+    expect(rows("granted", says(true, false))).toEqual({ exact: exactRow(true), live: liveRow(false) });
+    // Android 12 to 15 have no Live Updates; before 12, exact alarms need no allowing, so there's nothing to show.
+    expect(rows("granted", says(false, null))).toEqual({ exact: exactRow(false), live: null });
+    expect(rows("granted", says(null, null))).toEqual({ exact: null, live: null });
+  });
+
+  it("on a Samsung, say how the Now Bar shows Gym Log instead of Live Updates, whatever Android answers, always with a way to Developer options", () => {
+    // One UI answers "not allowed" even while the Now Bar shows Gym Log, so its answer changes nothing here.
+    expect(rows("granted", says(false, false), true)).toEqual({ exact: exactRow(false), live: nowBarRow });
+    expect(rows("granted", says(true, true), true)).toEqual({ exact: exactRow(true), live: nowBarRow });
+    // Before Android 16 there are no Live Updates to speak of, on a Samsung too.
+    expect(rows("granted", says(true, null), true)).toEqual({ exact: exactRow(true), live: null });
+  });
+
+  it("show neither while notifications are off, which the row above asks for first, or when the phone couldn't say", () => {
+    for (const p of ["prompt", "prompt-with-rationale", "denied"] as const) {
+      expect(rows(p, says(false, false))).toEqual({ exact: null, live: null });
+      expect(rows(p, says(false, false), true)).toEqual({ exact: null, live: null });
+    }
+    expect(rows("granted", null)).toEqual({ exact: null, live: null });
+  });
+
+  it("reads what Android allows as Settings opens, and again each time the app comes back from Android's settings, the newest answer winning", async () => {
+    app.forget();
+    restTimer.isSamsung.mockClear();
+    restTimer.checkAlarms.mockClear();
+    restTimer.checkPermissions.mockResolvedValue({ notifications: "prompt" });
+    restTimer.checkAlarms.mockResolvedValue(says(false, false));
+    // The real wrappers over the plugin, and the real onAppResume over Android's resume.
+    const load = async () => ({ ...(await import("@/native/rest")), ...(await import("@/native/update")) });
+    const seen: RestNotifs[] = [];
+    const stop = watchRestNotifs((s) => seen.push(s), load);
+    // nativeMocks' phone is a Samsung.
+    await vi.waitFor(() => expect(seen).toEqual([{ permission: "prompt", alarms: says(false, false), samsung: true }]));
+    // Notifications allowed, and Alarms & reminders, in Android's settings: back in the app, both are read again.
+    restTimer.checkPermissions.mockResolvedValue({ notifications: "granted" });
+    restTimer.checkAlarms.mockResolvedValue(says(true, false));
+    app.fire("resume");
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]).toEqual({ permission: "granted", alarms: says(true, false), samsung: true });
+    // Back twice in quick succession: the first reading, answering last, doesn't put back what it read.
+    let late: (a: AlarmChecks) => void = () => {};
+    restTimer.checkAlarms.mockReturnValueOnce(new Promise((r) => (late = r)));
+    app.fire("resume");
+    restTimer.checkAlarms.mockResolvedValueOnce(says(true, true));
+    app.fire("resume");
+    await vi.waitFor(() => expect(seen).toHaveLength(3));
+    late(says(true, false));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toHaveLength(3);
+    expect(seen[2].alarms).toEqual(says(true, true));
+    // A phone that can't say: no rows under notifications, which are still read.
+    restTimer.checkAlarms.mockRejectedValueOnce(new Error("no answer"));
+    app.fire("resume");
+    await vi.waitFor(() => expect(seen).toHaveLength(4));
+    expect(seen[3]).toEqual({ permission: "granted", alarms: null, samsung: true });
+    // Being a Samsung never changes, so the phone was asked that once.
+    expect(restTimer.isSamsung).toHaveBeenCalledTimes(1);
+    // Settings closed with a reading on its way: it shows nothing when it answers, and nothing is read any more.
+    let closing: (a: AlarmChecks) => void = () => {};
+    restTimer.checkAlarms.mockReturnValueOnce(new Promise((r) => (closing = r)));
+    app.fire("resume");
+    await vi.waitFor(() => expect(restTimer.checkAlarms).toHaveBeenCalledTimes(6));
+    stop();
+    closing(says(false, false));
+    app.fire("resume");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(restTimer.checkAlarms).toHaveBeenCalledTimes(6);
+    expect(seen).toHaveLength(4);
   });
 });
