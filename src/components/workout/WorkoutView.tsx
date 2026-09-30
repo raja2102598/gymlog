@@ -159,7 +159,7 @@ export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLif
               focusNext={focusNext}
               onOpenLift={onOpenLift}
               moves={moves(idx)}
-              onRemove={free?.lifts.includes(indexed[idx][0].item.name) ? () => store.removeFreeLift(day, indexed[idx][0].item.name) : undefined}
+              onRemove={free?.lifts.includes(indexed[idx][0].item.name) ? () => store.removeFreeLift(day, indexed[idx][0].item.name) : indexed[idx][0].item.added ? () => store.removeExtraLift(day, indexed[idx][0].item.name) : undefined}
               step={`Exercise ${idx + 1} of ${steps}`}
             />
           )

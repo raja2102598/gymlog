@@ -17,9 +17,10 @@ only those (`npm run test:e2e -- health progress`), or `--changed` to run what t
 One file per page of the app, or per scenario that crosses pages. Before adding a test, find the file for its page or
 scenario, and look there for a test of the same thing: extend that one rather than adding a second.
 
-**Unit tests, by page:** `train` (the day log, missed and skipped days, records while typing), `progress` (Weight,
-Strength, Muscles, a lift's page), `healthView` (the Health tab's numbers), `gym` (My gym's equipment and weights),
-`plan` (the plan as saved, and Reset), `library`, `navigation` (addresses, Back, moving between screens).
+**Unit tests, by page:** `train` (the day log, missed and skipped days, records while typing, and what Add exercise
+suggests: lifts left on the days before, and muscles low this week), `progress` (Weight, Strength, Muscles, a lift's
+page), `healthView` (the Health tab's numbers), `gym` (My gym's equipment and weights), `plan` (the plan as saved, and
+Reset), `library`, `navigation` (addresses, Back, moving between screens).
 
 **Unit tests, by scenario:** `rename` (renaming a lift and its history), `sync` (saving over the version a phone had),
 `backup`, `auth` (signing in and out), `healthSync` (Health Connect from the Android app), `android` (the app

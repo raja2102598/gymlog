@@ -48,7 +48,8 @@ interface Props {
   /** Opens a lift's own page, under Progress. */
   onOpenLift: (name: string) => void;
   moves: Moves;
-  /** Takes the lift out of the day's free-form workout, for a lift that's in one. */
+  /** Takes the lift out of the day's free-form workout, for a lift that's in one, or out of the day, for one added to
+   *  that day only. */
   onRemove?: () => void;
 }
 
@@ -465,7 +466,7 @@ export function LiftHead({
           <InsightCallout kind="caution">{x.flag}</InsightCallout>
         </div>
       ) : null}
-      {m.item.extra ? <p className="note">Not in this workout</p> : null}
+      {m.item.extra ? <p className="note">Not in this workout</p> : m.item.added ? <p className="note">Added for this day only, not to the plan</p> : null}
       {actions}
     </>
   );

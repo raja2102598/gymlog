@@ -91,8 +91,10 @@ function LibraryTile({ sel, focusNext }: { sel: DayKey; focusNext: FocusNext }) 
 }
 
 /** Opens the library to add lifts to the day: to its free-form workout when it has one, otherwise to the plan's
- *  session for that weekday (as the plan editor's Add from library does). */
-function useAddLifts(sel: DayKey, focusNext: FocusNext) {
+ *  session for that weekday (as the plan editor's Add from library does). With `suggest` (Add exercise, not the
+ *  library's tile), what's suggested for the day comes first: lifts missed on the days before it, which go on that
+ *  day only, and lifts for muscles low this week (Suggested.tsx). */
+function useAddLifts(sel: DayKey, focusNext: FocusNext, suggest = false) {
   const store = useGym();
   const library = useLibrary();
   return () => {
@@ -101,6 +103,7 @@ function useAddLifts(sel: DayKey, focusNext: FocusNext) {
       library({
         title: `Add to ${free.name.trim() || "this workout"}`,
         many: true,
+        suggest: suggest ? sel : undefined,
         have: free.lifts.flatMap((n) => [n, store.exerciseOf(n)?.name ?? n]),
         onPick: (xs) => {
           store.addFreeLifts(sel, xs.map((x) => x.name));
@@ -113,6 +116,7 @@ function useAddLifts(sel: DayKey, focusNext: FocusNext) {
     library({
       title: `Add to ${d.name}`,
       many: true,
+      suggest: suggest ? sel : undefined,
       have: d.exercises.flatMap((x) => [x.name, store.exerciseOf(x.name, x)?.name ?? x.name]),
       onPick: (xs) => {
         store.addLibraryLifts(slot, xs);
@@ -134,7 +138,7 @@ function Session({ sel, onStart, focusNext }: { sel: DayKey; onStart: (at: numbe
   const rest = !p.exercises.length && !free;
   const missed = rest && sel >= t ? store.missedThisWeek(sel) : [];
   const sum = sessionSummary(store, sel);
-  const addLifts = useAddLifts(sel, focusNext);
+  const addLifts = useAddLifts(sel, focusNext, true);
   const items = blocks.flat();
   const done = sessionDone(store, sel);
   const skipped = e.skip != null;

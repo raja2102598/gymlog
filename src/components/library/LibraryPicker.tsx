@@ -1,6 +1,6 @@
 "use client";
 import { Bike, Check, ChevronLeft, Dumbbell, Plus, Search } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useGym } from "@/hooks/useGym";
 import { ExerciseThumb } from "@/components/exercise/ExerciseThumb";
 import { HowTo } from "@/components/exercise/HowTo";
@@ -9,6 +9,8 @@ import { tintOf } from "@/lib/session";
 import { plural } from "@/lib/format";
 import { Chip } from "@/components/ds/parts";
 import { customLift, EQUIPMENT, equipText, isEquip, isMuscle, muscleText, MUSCLES, searchLibrary, type Equip, type Exercise, type LibQuery, type Muscle } from "@/lib/library";
+import type { DayKey } from "@/lib/types";
+import { Suggested } from "./Suggested";
 
 /** What the library is opened for. */
 export interface LibraryAsk {
@@ -30,6 +32,9 @@ export interface LibraryAsk {
   create?: boolean;
   /** Names already there: shown as added, not picked again. */
   have?: string[];
+  /** Train's Add exercise for this day: what to suggest above the list until a search or filter (Suggested.tsx), the
+   *  lifts left on the days before it, added for the day only, and lifts for muscles low this week, picked here. */
+  suggest?: DayKey;
   onPick: (xs: Exercise[]) => void;
 }
 
@@ -100,6 +105,8 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
       />
     );
   const muscles = Object.keys(MUSCLES) as Muscle[];
+  // Train's suggestions show until a search or a filter narrows the list to what's asked for.
+  const suggesting = !!ask.suggest && !q.text?.trim() && !q.muscle && !q.equip;
   return (
     <div className="lib-in">
       <div className="lib-head">
@@ -154,78 +161,81 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
           {[q.muscle ? MUSCLES[q.muscle] : "", !every && gym ? "only what fits my gym" : "", found.length === pool.length ? plural(pool.length, "lift") : `${plural(found.length, "lift")} of ${pool.length}`].filter(Boolean).join(" · ")}
         </p>
       </div>
-      <ul className="lib-list list" id="libList">
-        {found.slice(0, shown).map((x) => {
-          const had = have.has(x.name.toLowerCase()), on = chosen.some((c) => c.id === x.id), away = every && gym && !store.canDo(x);
-          const added = had || on, cardio = /bike|cycl|rower|rowing machine|treadmill|elliptical/i.test(x.name);
-          return (
-            <li key={x.id} className={cx("lib-row", on && "on", had && "had", open === x.id && "open")}>
-              {/* A library lift's photo and name open how to do it, under the row; your own lifts have none to show. */}
-              <button
-                type="button"
-                className="lib-info"
-                data-info={x.id}
-                disabled={!!x.custom}
-                aria-expanded={x.custom ? undefined : open === x.id}
-                aria-controls={x.custom ? undefined : `libHow_${x.id}`}
-                onClick={() => setOpen(open === x.id ? null : x.id)}
-              >
-                <ExerciseThumb
-                  id={x.custom ? null : x.id}
-                  fallback={
-                    <span className={cx("ico-tile", cardio ? "t-steps" : tintOf(store, x.name, { lib: x.id }))} aria-hidden="true">
-                      {cardio ? <Bike size={20} /> : <Dumbbell size={20} />}
+      <ListArea scroll={!!ask.suggest}>
+        {suggesting ? <Suggested day={ask.suggest as DayKey} chosen={chosen} onToggle={toggle} /> : null}
+        <ul className="lib-list list" id="libList">
+          {found.slice(0, shown).map((x) => {
+            const had = have.has(x.name.toLowerCase()), on = chosen.some((c) => c.id === x.id), away = every && gym && !store.canDo(x);
+            const added = had || on, cardio = /bike|cycl|rower|rowing machine|treadmill|elliptical/i.test(x.name);
+            return (
+              <li key={x.id} className={cx("lib-row", on && "on", had && "had", open === x.id && "open")}>
+                {/* A library lift's photo and name open how to do it, under the row; your own lifts have none to show. */}
+                <button
+                  type="button"
+                  className="lib-info"
+                  data-info={x.id}
+                  disabled={!!x.custom}
+                  aria-expanded={x.custom ? undefined : open === x.id}
+                  aria-controls={x.custom ? undefined : `libHow_${x.id}`}
+                  onClick={() => setOpen(open === x.id ? null : x.id)}
+                >
+                  <ExerciseThumb
+                    id={x.custom ? null : x.id}
+                    fallback={
+                      <span className={cx("ico-tile", cardio ? "t-steps" : tintOf(store, x.name, { lib: x.id }))} aria-hidden="true">
+                        {cardio ? <Bike size={20} /> : <Dumbbell size={20} />}
+                      </span>
+                    }
+                  />
+                  <span className="lib-t">
+                    <span className="lib-n">
+                      {x.name}
+                      {x.custom ? <span className="pill">Yours</span> : null}
+                      {away ? <span className="pill warn">Not in my gym</span> : null}
                     </span>
-                  }
-                />
-                <span className="lib-t">
-                  <span className="lib-n">
-                    {x.name}
-                    {x.custom ? <span className="pill">Yours</span> : null}
-                    {away ? <span className="pill warn">Not in my gym</span> : null}
+                    <span className="row-d">
+                      {equipText(x)} · {muscleText(x)}
+                    </span>
+                    {x.custom ? null : <span className="lib-see">{open === x.id ? "Hide how to do it" : "See how to do it"}</span>}
                   </span>
-                  <span className="row-d">
-                    {equipText(x)} · {muscleText(x)}
-                  </span>
-                  {x.custom ? null : <span className="lib-see">{open === x.id ? "Hide how to do it" : "See how to do it"}</span>}
-                </span>
+                </button>
+                <button
+                  type="button"
+                  className={cx("lib-add", added && "on")}
+                  data-lib={x.id}
+                  aria-pressed={ask.many ? added : undefined}
+                  aria-label={had ? `${x.name}, already added` : ask.many ? (on ? `Remove ${x.name}` : `Add ${x.name}`) : `Pick ${x.name}`}
+                  disabled={had}
+                  onClick={() => (ask.many ? toggle(x) : pick([x]))}
+                >
+                  {added ? <Check size={22} strokeWidth={3} aria-hidden="true" /> : <Plus size={22} aria-hidden="true" />}
+                </button>
+                {open === x.id ? (
+                  <div className="lib-how" id={`libHow_${x.id}`}>
+                    <HowTo id={x.id} name={x.name} />
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+          {found.length > shown ? (
+            <li className="lib-more-li">
+              <button type="button" className="btn btn-sm lib-more" id="libMore" onClick={() => setShown(shown + SHOWN * 2)}>
+                Show {Math.min(SHOWN * 2, found.length - shown)} more
               </button>
-              <button
-                type="button"
-                className={cx("lib-add", added && "on")}
-                data-lib={x.id}
-                aria-pressed={ask.many ? added : undefined}
-                aria-label={had ? `${x.name}, already added` : ask.many ? (on ? `Remove ${x.name}` : `Add ${x.name}`) : `Pick ${x.name}`}
-                disabled={had}
-                onClick={() => (ask.many ? toggle(x) : pick([x]))}
-              >
-                {added ? <Check size={22} strokeWidth={3} aria-hidden="true" /> : <Plus size={22} aria-hidden="true" />}
-              </button>
-              {open === x.id ? (
-                <div className="lib-how" id={`libHow_${x.id}`}>
-                  <HowTo id={x.id} name={x.name} />
-                </div>
-              ) : null}
             </li>
-          );
-        })}
-        {found.length > shown ? (
-          <li className="lib-more-li">
-            <button type="button" className="btn btn-sm lib-more" id="libMore" onClick={() => setShown(shown + SHOWN * 2)}>
-              Show {Math.min(SHOWN * 2, found.length - shown)} more
-            </button>
-          </li>
-        ) : null}
-        {found.length ? null : (
-          <li className="empty lib-empty">
-            {elsewhere
-              ? `Nothing your gym can do matches: turn off My gym for ${plural(elsewhere, "lift")} that need${elsewhere === 1 ? "s" : ""} more.`
-              : ask.create === false
-                ? "Nothing matches."
-                : "Nothing matches. Create it as a lift of your own?"}
-          </li>
-        )}
-      </ul>
+          ) : null}
+          {found.length ? null : (
+            <li className="empty lib-empty">
+              {elsewhere
+                ? `Nothing your gym can do matches: turn off My gym for ${plural(elsewhere, "lift")} that need${elsewhere === 1 ? "s" : ""} more.`
+                : ask.create === false
+                  ? "Nothing matches."
+                  : "Nothing matches. Create it as a lift of your own?"}
+            </li>
+          )}
+        </ul>
+      </ListArea>
       <div className="lib-foot">
         {ask.create === false ? (
           <span />
@@ -242,6 +252,12 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
       </div>
     </div>
   );
+}
+
+/** Where the list goes: on its own, scrolling itself, or with Train's suggestions above it (Suggested.tsx), all of them
+ *  scrolling together. */
+function ListArea({ scroll, children }: { scroll: boolean; children: ReactNode }) {
+  return scroll ? <div className="lib-scroll">{children}</div> : <>{children}</>;
 }
 
 /** A lift of your own: its name, what it's done with and the muscles it works. `name` fixes the name, for a plan
