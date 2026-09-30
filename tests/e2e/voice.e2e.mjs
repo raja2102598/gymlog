@@ -28,8 +28,9 @@ function noSpeech() {
 }
 
 /** A recognizer that answers each start() after window.__wait ms with the next entry of window.__said: a list of
- *  guesses, or { error } to fail with that error; with nothing queued, "no-speech". Then onend. It records how it
- *  was set up in window.__setups, and each abort() in window.__aborts. */
+ *  guesses, or { error } to fail with that error; with nothing queued, "no-speech". Then onend. window.__answer()
+ *  answers the one listening at once, for a test that must do something first however slow the machine is. It
+ *  records how it was set up in window.__setups, and each abort() in window.__aborts. */
 function fakeSpeech() {
   window.__said = [];
   window.__setups = [];
@@ -46,17 +47,22 @@ function fakeSpeech() {
     onend = null;
     start() {
       window.__setups.push({ lang: this.lang, continuous: this.continuous, interimResults: this.interimResults, maxAlternatives: this.maxAlternatives });
-      this.timer = setTimeout(() => {
+      const answer = (this.answer = () => {
+        clearTimeout(this.timer);
+        if (window.__answer === answer) window.__answer = null;
         const next = window.__said.shift();
         if (!next) this.onerror?.({ error: "no-speech" });
         else if (next.error) this.onerror?.({ error: next.error });
         else this.onresult?.({ resultIndex: 0, results: [Object.assign(next.map((transcript) => ({ transcript, confidence: 0.9 })), { isFinal: true })] });
         this.onend?.();
-      }, window.__wait);
+      });
+      this.timer = setTimeout(answer, window.__wait);
+      window.__answer = answer;
     }
     stop() {}
     abort() {
       clearTimeout(this.timer);
+      if (window.__answer === this.answer) window.__answer = null;
       window.__aborts++;
       this.onerror?.({ error: "aborted" });
       this.onend?.();
@@ -458,10 +464,14 @@ export default async function voice({ browser, base, check }) {
   // the box, typing still owns it, and the set counts once the cursor leaves, as a typed one does
   await goTo(page, "Calf Raise");
   const crKg = cr.locator('input[data-set$=":0:kg"]'), crSet = () => JSON.stringify(db.logs[TODAY]?.exercises["Calf Raise"]?.sets?.[0]);
-  await page.evaluate(() => ((window.__wait = 800), window.__said.push(["10 at 42.5"])));
+  // It answers once 5. is in the box, not on a timer that a slow machine could beat.
+  await page.evaluate(() => ((window.__wait = 20000), window.__said.push(["10 at 42.5"])));
   await crMic.click();
+  await until(async () => (await crMic.getAttribute("aria-pressed")) === "true");
   await crKg.tap();
   await page.keyboard.type("5.");
+  await until(async () => (await crKg.inputValue()) === "5"); // as Chromium reports a box showing 5.
+  await page.evaluate(() => window.__answer());
   await until(async () => crSet() === JSON.stringify({ reps: 10, kg: 42.5 }) && /^Heard/.test(await heard(crLine)));
   const saidIn = { box: await crKg.inputValue(), cursor: await crKg.evaluate((e) => e === document.activeElement), row: (await rowOf(cr, 0)).cls, line: await heard(crLine) };
   check(
