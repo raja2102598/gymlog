@@ -99,16 +99,36 @@ object StepLogic {
 
     /** The weight the bezel starts at for set `j`: what's logged, else what the phone's Complete set would log (`sugKg`,
      *  which is already the set before's weight once that one's logged). Null for none: a lift done without weight. */
-    fun startKg(l: Lift, j: Int): Double? {
-        val row = l.rows.getOrNull(j) ?: return null
-        return row.kg ?: row.sugKg
-    }
+    fun startKg(l: Lift, j: Int): Double? = l.rows.getOrNull(j)?.let { kgFrom(it.kg, it.sugKg) }
 
     /** The reps it starts at: what's logged, else the suggestion. Null when the phone has none to suggest. */
-    fun startReps(l: Lift, j: Int): Int? {
-        val row = l.rows.getOrNull(j) ?: return null
-        return (row.reps ?: row.sugReps)?.takeIf { it > 0 }
+    fun startReps(l: Lift, j: Int): Int? = l.rows.getOrNull(j)?.let { repsFrom(it.reps, it.sugReps) }
+
+    private fun kgFrom(kg: Double?, sugKg: Double?): Double? = kg ?: sugKg
+
+    private fun repsFrom(reps: Int?, sugReps: Int?): Int? = (reps ?: sugReps)?.takeIf { it > 0 }
+
+    /** What the lift screen's numbers start from for set `set` of `lift` on `day`: which set it is, and that set as the
+     *  state has it now, what's logged in it and what's suggested for it. */
+    data class StartFrom(val day: String, val lift: String, val set: Int, val kg: Double?, val reps: Int?, val sugKg: Double?, val sugReps: Int?)
+
+    fun startFrom(day: Day, lift: Lift, set: Int): StartFrom {
+        val row = lift.rows.getOrNull(set)
+        return StartFrom(day.date, lift.key, set, row?.kg, row?.reps, row?.sugKg, row?.sugReps)
     }
+
+    /** The lift screen's weight and reps, as the bezel has left them, and what they started from. */
+    data class Numbers(val from: StartFrom, val kg: Double?, val reps: Int?)
+
+    /**
+     * The numbers the lift screen shows for `from`, given those it has (`kept`): kept, bezel changes and all, while they
+     * started from the same set as it stands now; else afresh from it (startKg, startReps). A sync from the phone that
+     * changes the plan, moves the block, or logs or changes this set, while the watch stays on the same screen, gives
+     * another lift or other numbers to start from, and what the bezel had was for the set as it was: Complete set
+     * would otherwise log it on the new one.
+     */
+    fun numbers(kept: Numbers?, from: StartFrom): Numbers =
+        kept?.takeIf { it.from == from } ?: Numbers(from, kgFrom(from.kg, from.sugKg), repsFrom(from.reps, from.sugReps))
 
     /** A set as the phone writes one (lib/format.ts, setsSummary): "12 × 100 kg", "12 reps" with no weight. */
     fun setText(reps: Int?, kg: Double?): String =

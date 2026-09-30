@@ -192,9 +192,13 @@ Wear OS, Material 3.
 - **A lift**: its name and "Set 3 of 4" (a superset's "A1 · round 2 of 3"), and two big numbers, weight and reps,
   starting at what's logged or else `sugKg` and `sugReps`. Tap one to pick it (weight is picked first); the bezel
   changes the picked one, weight by `inc` and reps by 1, never below 0, with a light tick of haptic per click (the
-  one Wear OS's own lists give). Complete set N, at the bottom edge, logs it (with no reps to log, it picks the reps
-  instead, as the phone puts the cursor there), buzzes lightly, and brings up the rest when it starts one. The step
-  then moves on: a lift to its next set, a superset round by round, as the phone's Complete set does.
+  one Wear OS's own lists give). What the bezel set stays while the set is as it started from (the day, the lift's
+  key, the row, and its `kg`, `reps`, `sugKg` and `sugReps`): a state from the phone that changes the plan, moves the
+  block or changes that set under the screen starts the numbers again from the new one (`StepLogic.numbers`), so
+  Complete set never logs one lift's numbers on another. Complete set N, at the bottom edge, logs it (with no reps to
+  log, it picks the reps instead, as the phone puts the cursor there), buzzes lightly, and brings up the rest when it
+  starts one. The step then moves on: a lift to its next set, a superset round by round, as the phone's Complete set
+  does.
 - **Sets**: tapping the lift's name lists every set of the step with its tick. A tick completes a set with what the
   lift screen would start at, and a done set's tick undoes it (`reps: null`); tapping a set opens it on the lift
   screen to change. Then Skip today for each lift (it asks first, since only the phone can undo it), Next, and

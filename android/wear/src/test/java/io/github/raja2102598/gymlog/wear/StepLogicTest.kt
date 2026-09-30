@@ -141,6 +141,30 @@ class StepLogicTest {
     }
 
     @Test
+    fun theBezelsNumbersStayUntilTheSetTheyStartedFromChanges() {
+        val d = day(listOf(lift("Squat", 12, null, null)), listOf(lift("Bench", null)))
+        fun on(d: Day, set: Int = 1) = StepLogic.startFrom(d, d.blocks[0][0], set)
+        fun shown(kept: StepLogic.Numbers?, d: Day, set: Int = 1) = StepLogic.numbers(kept, on(d, set)).let { it.kg to it.reps }
+        assertEquals(100.0 to 12, shown(null, d)) // Squat's set 2, as suggested
+        val turned = StepLogic.numbers(null, on(d)).copy(kg = 107.5, reps = 10) // then the bezel
+        assertEquals(107.5 to 10, shown(turned, d))
+        // The phone's next state, with something else changed (Bench logged there): the bezel's numbers stay.
+        val benchDone = d.copy(blocks = listOf(d.blocks[0], listOf(lift("Bench", 10))))
+        assertEquals(107.5 to 10, shown(turned, benchDone))
+        // This set changed on the phone, what's logged in it or suggested for it: they start again from it.
+        fun set2(f: (SetRow) -> SetRow) = d.copy(blocks = listOf(d.blocks[0].map { l -> l.copy(rows = l.rows.mapIndexed { i, r -> if (i == 1) f(r) else r }) }, d.blocks[1]))
+        assertEquals(100.0 to 8, shown(turned, set2 { it.copy(reps = 8) }))
+        assertEquals(95.0 to 12, shown(turned, set2 { it.copy(kg = 95.0) }))
+        assertEquals(110.0 to 12, shown(turned, set2 { it.copy(sugKg = 110.0) }))
+        assertEquals(100.0 to 15, shown(turned, set2 { it.copy(sugReps = 15) }))
+        // With the same numbers, another lift where Squat was (the plan changed, or the block moved), another day's, or
+        // another set: not what the bezel was turned for.
+        assertEquals(100.0 to 12, shown(turned, day(listOf(lift("Leg Press", 12, null, null)), listOf(lift("Bench", null)))))
+        assertEquals(100.0 to 12, shown(turned, d.copy(date = "2026-09-30")))
+        assertEquals(100.0 to 12, shown(turned, d, set = 2))
+    }
+
+    @Test
     fun setsReadAsThePhoneWritesThem() {
         assertEquals("12 × 100 kg", StepLogic.setText(12, 100.0))
         assertEquals("8 × 37.5 kg", StepLogic.setText(8, 37.5))

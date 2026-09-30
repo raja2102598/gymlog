@@ -96,8 +96,13 @@ fun StepScreen(
 @Composable
 private fun LiftPicker(ui: WatchUi, day: Day, at: Int, n: Int, j: Int, onSets: () -> Unit, onComplete: (Double?, Int) -> Unit) {
     val lift = day.blocks[at][n]
-    var kg by remember(at, n, j) { mutableStateOf(StepLogic.startKg(lift, j)) }
-    var reps by remember(at, n, j) { mutableStateOf(StepLogic.startReps(lift, j)) }
+    // The numbers the bezel changes, for this set of this lift on this day, and kept only while the set is as they
+    // started from it (StepLogic.numbers): a phone sync that changes the plan, moves the block or changes the set under
+    // this screen starts them again from the new one. The handlers below read them afresh, as events can come between
+    // two frames.
+    val from = StepLogic.startFrom(day, lift, j)
+    var kept by remember(from.day, from.lift, from.set) { mutableStateOf<StepLogic.Numbers?>(null) }
+    val numbers = StepLogic.numbers(kept, from)
     // Weight first, since it's what's set before a set; the pick stays as it was for the lift's next set.
     var onKg by remember(at, n) { mutableStateOf(true) }
     val ctx = LocalContext.current
@@ -111,13 +116,14 @@ private fun LiftPicker(ui: WatchUi, day: Day, at: Int, n: Int, j: Int, onSets: (
     EdgeScreen(
         button = StepLogic.keepTail(label),
         onButton = {
-            val r = reps
+            val now = StepLogic.numbers(kept, from)
+            val r = now.reps
             // No reps to log: the reps get picked instead, as the phone puts the cursor in their box.
             if (r == null || r <= 0) {
                 onKg = false
             } else {
                 view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                onComplete(kg, r)
+                onComplete(now.kg, r)
             }
         },
         modifier = Modifier
@@ -126,11 +132,15 @@ private fun LiftPicker(ui: WatchUi, day: Day, at: Int, n: Int, j: Int, onSets: (
                 val (clicks, left) = BezelLogic.clicks(carried, e.verticalScrollPixels, perClick, lowRes)
                 carried = left
                 if (clicks != 0) {
+                    val now = StepLogic.numbers(kept, from)
                     val changed = if (onKg) {
-                        BezelLogic.stepKg(kg, lift.inc, clicks).also { kg = it } != null
+                        val kg = BezelLogic.stepKg(now.kg, lift.inc, clicks)
+                        kept = now.copy(kg = kg)
+                        kg != null
                     } else {
-                        val was = reps
-                        BezelLogic.stepReps(reps, clicks).also { reps = it } != was
+                        val reps = BezelLogic.stepReps(now.reps, clicks)
+                        kept = now.copy(reps = reps)
+                        reps != now.reps
                     }
                     if (changed) haptics.tick(e.inputDeviceId)
                 }
@@ -172,8 +182,8 @@ private fun LiftPicker(ui: WatchUi, day: Day, at: Int, n: Int, j: Int, onSets: (
             modifier = Modifier.fillMaxWidth(0.84f).padding(top = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            NumberBox(BezelLogic.kgText(kg), "kg", "Weight", onKg, boxHeight, Modifier.weight(1f)) { onKg = true }
-            NumberBox(BezelLogic.repsText(reps), "reps", "Reps", !onKg, boxHeight, Modifier.weight(1f)) { onKg = false }
+            NumberBox(BezelLogic.kgText(numbers.kg), "kg", "Weight", onKg, boxHeight, Modifier.weight(1f)) { onKg = true }
+            NumberBox(BezelLogic.repsText(numbers.reps), "reps", "Reps", !onKg, boxHeight, Modifier.weight(1f)) { onKg = false }
         }
     }
 }
