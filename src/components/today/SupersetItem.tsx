@@ -11,6 +11,7 @@ import type { RecordKind } from "@/lib/stats";
 import type { LiftItem as Item } from "@/lib/store";
 import type { DayKey, DayLog } from "@/lib/types";
 import { LiftHead, ProgHint, SetHead, SetRow, voiceHandler, type LiftModel, type Moves } from "./LiftItem";
+import { StuckHint } from "./StuckHint";
 import type { LiftMenu } from "./types";
 import { WarmupCalc } from "./WarmupCalc";
 
@@ -60,6 +61,7 @@ function SupersetLift({ m, tag, sel, menu, setMenu, focusNext, onOpenLift, moves
       ) : (
         <>
           <ProgHint next={m.next} />
+          <StuckHint m={m} setMenu={setMenu} focusNext={focusNext} />
           <WarmupCalc id={`wset${m.i}`} barKg={m.bar ?? 0} inc={m.inc} defaultKg={m.defaultWorkingKg} warmSets={m.warmSets} onLog={m.logWarmups} onRemove={m.removeWarmups} />
         </>
       )}

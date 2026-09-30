@@ -84,6 +84,9 @@ export interface DayLog {
   /** The workout's heart rate, bpm, measured on the watch (docs/watch.md): the average and highest over its readings,
    *  the watch's latest replacing the one before. */
   hr?: WorkoutHeart;
+  /** Hold today, from the readiness note (lib/readiness.ts): the day's lifts suggest last time's weights rather than
+   *  going up, as a knee lift does after a sore session (GymStore.nextWeight). Left out while the day doesn't hold. */
+  hold?: true;
 }
 
 export interface WorkoutHeart {

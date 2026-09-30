@@ -14,6 +14,7 @@ import { hoursMin, workoutName } from "@/lib/health";
 import { dayNumbers } from "@/lib/healthView";
 import { sessionSummary, weekPosition } from "@/lib/session";
 import { firstName } from "@/components/ds/ProfileButton";
+import { ReadinessNote } from "./Readiness";
 import type { DayKey, KneeField } from "@/lib/types";
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }).toLowerCase();
@@ -121,7 +122,8 @@ function WorkoutCard({ t, onStart, onOpenDay, focusNext }: { t: DayKey; onStart:
               focusNext(`[data-knee="kneeBefore:${e.kneeBefore}"]`);
             }}
           >
-            {e.kneeBefore > lim ? `Knee ${e.kneeBefore}/10 today. Knee lifts hold their weight.` : `Knee ${e.kneeBefore}/10 today. Keep knee lifts light.`}
+            {/* Over the limit, the readiness note under it says what to do, and holds the day's weights if you say so. */}
+            {e.kneeBefore > lim ? `Knee ${e.kneeBefore}/10 today, over your limit.` : `Knee ${e.kneeBefore}/10 today. Keep knee lifts light.`}
           </InsightCallout>
         ) : (
           <PainScale
@@ -139,6 +141,8 @@ function WorkoutCard({ t, onStart, onOpenDay, focusNext }: { t: DayKey; onStart:
           />
         )
       ) : null}
+      {/* Not once the workout's done, skipped or a rest day: there's nothing left for it to hold. */}
+      {!rest && !skipped && !done ? <ReadinessNote day={t} id="readyNote" /> : null}
       {rest ? (
         <div className="btn-row">
           {missed.map((i) => (

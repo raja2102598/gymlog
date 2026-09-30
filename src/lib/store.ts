@@ -13,9 +13,10 @@ import { CATALOGUE, closeMatches, customLift, EQUIPMENT, exerciseFor, gymCan, gy
 import { DEFAULT_PLAN, DEFAULT_WEIGHTS, normalizeCustom, normalizeGym, normalizePlan, normalizeWeights, orderBlocks, planBlocks } from "./plan";
 import { sampleDays } from "./sampleData";
 import { canon, type StepsShared } from "./health";
+import { lighter, plateau, sessionE1rm, type SessionBest, type Stuck } from "./plateau";
 import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
-import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
+import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, NOT_NOW_KEY, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { keepRunsInMemory } from "./workout";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights, type WorkoutHeart } from "./types";
 
@@ -44,8 +45,10 @@ export interface LastDone {
 }
 export interface NextWeight extends S.NextStep {
   day: DayKey;
-  /** Held back because the knee was sore after that session. */
+  /** Held back because the knee was sore after that session, or because the day holds (Hold today, DayLog.hold). */
   held: boolean;
+  /** Why it's held, when it is: the knee (said first when both), or the day. */
+  heldFor?: "knee" | "day";
 }
 /** The rest timer, shown in the top bar: counts from `endAt` down to zero, not from ticks, so a throttled background
  *  tab or a reload can't make it drift. Kept on this device only (REST_KEY): a timer only means something where
@@ -134,6 +137,7 @@ export const prTitle = (kinds?: S.RecordKind[]) => (kinds ? "Personal record: " 
  *  for a knee hold, whose weight is in `lead`), and why. */
 export function progWords(n: NextWeight): { lead: string; kg: string; why: string } {
   const kg = String(n.to);
+  if (n.held && n.heldFor === "day") return { lead: `Hold ${n.from} kg: you’re holding today’s weights.`, kg: "", why: "" };
   if (n.held) return { lead: `Hold ${n.from}\u00a0kg: your knee was sore after ${dayMonth(n.day)}.`, kg: "", why: "" };
   if (n.rule === "linear") return { lead: "Go up to ", kg, why: `: linear, +${Math.round((n.to - (n.from ?? n.to)) * 100) / 100}\u00a0kg a session while every set hits ${n.top} reps.` };
   if (n.rule === "percent") return { lead: "Work at ", kg, why: `: ${n.pct}% of your ${n.oneRm}\u00a0kg 1RM.` };
@@ -184,6 +188,7 @@ function fullDay(d?: Partial<DayLog> | null): DayLog {
   if (free) out.free = free;
   const hr = heartOf(e);
   if (hr) out.hr = hr;
+  if (e.hold === true) out.hold = true;
   for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
   return out;
 }
@@ -255,6 +260,10 @@ export class GymStore {
    *  or ended by Finish, here or on the watch (as of when it was done there). A rest button or a set from the watch
    *  done before then, arriving late, leaves the rest as it is (lib/watch.ts). Null for no change known. */
   restChangedAt: number | null = null;
+  /** Stuck lifts put off with Not now (stuck), by name: each one's best estimated 1RM then, so its hint stays away
+   *  until a session beats that. Kept on this phone only (NOT_NOW_KEY), like the voice switch: it's about what this
+   *  screen shows, not the plan, so a tap mid-workout never waits on a plan save or its sync. */
+  notNow: Record<string, number> = {};
   /** The workout's set whose kg or reps box has the cursor: it's being typed in (LiftItem.tsx). Only on this screen,
    *  never saved. */
   typing: SetAt | null = null;
@@ -412,6 +421,7 @@ export class GymStore {
     this.healthSyncedAt = new Date().toISOString();
     this.pending = {};
     this.conflicts = {};
+    this.notNow = {};
     this.planConflict = null;
     this.planDirty = false;
     this.planSource = "server"; // acts as an account that already has its plan: no "choose a plan" first
@@ -490,6 +500,7 @@ export class GymStore {
     const pc = lsGet<{ user?: string; plan?: unknown; dirty?: boolean; base?: string | null } | null>(PLAN_KEY, null);
     const hc = lsGet<{ user?: string; health?: Record<DayKey, HealthDay>; at?: string | null; lastShared?: StepsShared | null } | null>(HEALTH_KEY, null);
     const rc = lsGet<{ user?: string; rest?: RestTimer | null; changedAt?: number | null } | null>(REST_KEY, null);
+    const nn = lsGet<{ user?: string; lifts?: Record<string, number> } | null>(NOT_NOW_KEY, null);
     this.logs = cache && cache.user === u.id ? cache.logs || {} : {};
     this.bases = cache && cache.user === u.id ? cache.bases || {} : {};
     this.health = hc && hc.user === u.id ? hc.health || {} : {};
@@ -499,6 +510,7 @@ export class GymStore {
     // A reload or a tab switch keeps the rest timer (this phone only: it never came from Supabase or another device).
     this.rest = rc && rc.user === u.id ? liveRest(rc.rest) : null;
     this.restChangedAt = rc && rc.user === u.id && Number.isFinite(rc.changedAt) ? (rc.changedAt as number) : null;
+    this.notNow = nn && nn.user === u.id && nn.lifts && typeof nn.lifts === "object" ? nn.lifts : {};
     this.armRest();
     this.checkRest();
     this.authMsg = "";
@@ -549,6 +561,8 @@ export class GymStore {
     this.rest = null;
     this.restChangedAt = null;
     lsDel(REST_KEY);
+    // Not now stays on the phone for this account, as a setting would; the next account signed in has its own.
+    this.notNow = {};
     this.logsChanged();
     this.syncTrouble = false;
     this.unsaved.clear();
@@ -811,6 +825,18 @@ export class GymStore {
   /** Takes day k's skip back: its workout is on again. */
   unskipDay(k: DayKey) {
     this.editDay(k, (n) => void delete n.skip, true);
+  }
+  /** Hold today (the readiness note): day k's lifts suggest last time's weights rather than going up (nextWeight), kept
+   *  with the day so it syncs and survives a reload; `on` false takes it back. */
+  holdDay(k: DayKey, on: boolean) {
+    this.editDay(
+      k,
+      (n) => {
+        if (on) n.hold = true;
+        else delete n.hold;
+      },
+      true,
+    );
   }
   /** Back to day k's planned session. What was logged in the free-form workout stays, as lifts outside the plan. */
   endFree(k: DayKey) {
@@ -1234,7 +1260,44 @@ export class GymStore {
     }
     if (!r) return null;
     r = fit(r);
-    return { ...r, day: L?.day ?? k, held: !!x.knee && !!L && this.kneeBad(L.day) && r.from != null && r.to > r.from };
+    // Held: an increase only, on a knee lift after a sore session, or on any lift the day that holds (Hold today).
+    const up = r.from != null && r.to > r.from, knee = up && !!x.knee && !!L && this.kneeBad(L.day), day = up && this.logs[k]?.hold === true;
+    if (!knee && !day) return { ...r, day: L?.day ?? k, held: false };
+    return { ...r, day: L?.day ?? k, held: true, heldFor: knee ? "knee" : "day" };
+  }
+  /** Lift `name`'s sessions before day k, oldest first, each with its best estimated 1RM and heaviest straight set:
+   *  every day it was done, as planned or swapped in, whichever day of the plan that was. */
+  sessionBests(name: string, before: DayKey): SessionBest[] {
+    const out: SessionBest[] = [];
+    for (const d of this.days()) {
+      if (d >= before) break;
+      const sets = this.liftSets(d)
+        .filter((l) => l.name === name)
+        .flatMap((l) => l.sets);
+      if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
+      out.push({ day: d, e1rm: sessionE1rm(sets), top: topKg(sets.filter(S.isStraightSet)) });
+    }
+    return out;
+  }
+  /** Lift x's stuck hint on day k (lib/plateau.ts), with what to try. None on a day it's skipped, done or swapped (the
+   *  swap is the variation it would suggest); none while its own rule has something to say (`next`: go up, a deload, a
+   *  hold, a percentage), which wins; and none once put off with Not now, until a session beats the best it had then.
+   *  The lighter weight is one its equipment makes, as a suggested next weight is, or else a whole step of its own. */
+  stuck(x: PlanExercise, name: string, k: DayKey, next: NextWeight | null): Stuck | null {
+    const r = this.entry(k).exercises[name];
+    if (next || r?.skipped || r?.done || r?.swap) return null;
+    const p = plateau(this.sessionBests(name, k));
+    if (!p || (this.notNow[name] != null && p.best <= this.notNow[name] + 1e-9)) return null;
+    const load = this.loadOf(name, x), grid = (parseFloat(x.step) > 0 ? null : this.gridFor(load)) ?? { base: 0, inc: this.stepFor(x, load) };
+    const t = targetOf(r, x);
+    return { ...p, sets: minSets(t), reps: S.repRange(t.reps)?.[1] ?? null, kg: lighter(p.top, grid) };
+  }
+  /** Not now, on a stuck lift's hint: it stays away, on this phone, until the lift beats `best`. */
+  putOffStuck(name: string, best: number) {
+    this.notNow = { ...this.notNow, [name]: best };
+    // A setting, not the log: storage refusing it needs no warning, and the demo keeps it in memory only.
+    if (!this.demo) lsSet(NOT_NOW_KEY, { user: this.user?.id, lifts: this.notNow });
+    this.changed();
   }
   // Working sets only: a warm-up never sets a record or counts toward volume.
   liftSets(d: DayKey) {

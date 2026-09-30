@@ -2,6 +2,7 @@
  * superset's (SupersetItem.tsx), the workout's Complete set N (WorkoutView.tsx), and the watch (lib/watch.ts), which
  * logs its sets through the same changes so a set done on the wrist counts exactly as one done on the phone. */
 import { num } from "./format";
+import type { Stuck } from "./plateau";
 import { isWorkingSet } from "./stats";
 import { minSets, performed, restSecFor, setsComplete, setsOf, targetOf, topKg, type GymStore, type LastDone, type LiftItem as Item, type NextWeight } from "./store";
 import type { DayKey, DayLog, LiftLog, PlanExercise, SetLog } from "./types";
@@ -20,6 +21,8 @@ export interface LiftModel {
   did: string;
   last: LastDone | null;
   next: NextWeight | null;
+  /** The stuck-lift hint (lib/plateau.ts, GymStore.stuck), or null: never beside a `next`, whose rule wins. */
+  stuck: Stuck | null;
   target: { sets: string; reps: string };
   warmSets: SetLog[];
   /** Working sets, numbered as on the card. */
@@ -107,6 +110,7 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
     did,
     last,
     next,
+    stuck: store.stuck(x, name, sel, next),
     target,
     warmSets,
     sets,

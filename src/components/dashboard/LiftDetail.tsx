@@ -7,6 +7,7 @@ import { useGym } from "@/hooks/useGym";
 import { liftModel, type LiftModel, type Planned } from "@/lib/dashboard";
 import { addDays, dm, parseKey, todayKey } from "@/lib/dates";
 import { fmt } from "@/lib/format";
+import { stuckLine } from "@/lib/plateau";
 import type { DayKey } from "@/lib/types";
 
 /** A point or bar on a lift's chart: its axis label, value, and the point in words. */
@@ -43,7 +44,7 @@ function denseDays(from: DayKey, to: DayKey): DayKey[] {
  * One lift's own page: heaviest set, estimated 1RM and volume over its sessions, and how often it's done,
  * drawn the way the Health tab draws a metric (same axes and interaction: tap a point or bar, or arrow
  * through them, for a readout above the chart and in a table for screen readers), with the plan's rep range
- * alongside. Reached from Strength or a lift's "···" menu on Today.
+ * alongside, and a line when it's stuck (lib/plateau.ts). Reached from Strength or a lift's "···" menu on Today.
  */
 export function LiftDetail({ name }: { name: string }) {
   const store = useGym();
@@ -55,6 +56,11 @@ export function LiftDetail({ name }: { name: string }) {
         {m.planned.length ? (
           <p className="sub" id="liftPlan">
             {planWords(m.planned)}
+          </p>
+        ) : null}
+        {m.stuck ? (
+          <p className="sub" id="liftStuck">
+            {stuckLine(m.stuck, dm(m.stuck.day))}
           </p>
         ) : null}
         {m.points.length ? (

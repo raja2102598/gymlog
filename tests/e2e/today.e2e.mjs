@@ -1,5 +1,6 @@
 // Today's training, across Home, Train and the workout: sets, skip and swap, the plan editor, switching a day's
-// workout, skipping the whole day, and history for a new account. Home shows today; Train lists the selected day's lifts, a row each; the
+// workout, skipping the whole day, history for a new account, a stuck lift's hint, and the readiness note with Hold
+// today. Home shows today; Train lists the selected day's lifts, a row each; the
 // workout shows one lift at a time, with its set table and its ··· menu (Done, skip, swap, its chart).
 import { K, clearAsked, flat, lastAsked, open, openTab, openWorkout, planDone, ready, session, shot, until, TAB_VIEWS } from "./harness.mjs";
 
@@ -392,6 +393,8 @@ export default async function today({ browser, base, check }) {
   }
 
   await leftLifts({ browser, base, check });
+  await stuckLift({ browser, base, check });
+  await readiness({ browser, base, check });
 }
 
 // Lifts left on an earlier day, offered in Add exercise, as in the report: Tuesday's Pull with 2 of its 6 lifts done.
@@ -490,5 +493,105 @@ async function leftLifts({ browser, base, check }) {
 
   check("left lifts: only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
   check("left lifts: no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
+}
+
+/** A day with only these lifts logged. */
+const liftDay = (exercises) => ({ exercises, warmup: [], cardio: false, steps: null, weight: null, note: "" });
+/** Three sets of `reps` at `kg`, done. */
+const threeOf = (reps, kg) => ({ done: true, kg, sets: [{ reps, kg }, { reps, kg }, { reps, kg }] });
+/** An element's text, or "(none)" when it isn't on the page: its check then fails saying so, rather than waiting. */
+const textOf = async (loc) => ((await loc.count()) ? flat(loc.first()) : "(none)");
+
+// A stuck lift (lib/plateau.ts): Hamstring Curl hasn't beaten its best estimated 1RM in its last four sessions, so its
+// card says what to try where the next-weight hint goes; Swap opens the swap, and Not now puts it off on this phone; its
+// page on Progress says the same. Every case of the rule is in tests/unit/progression.test.ts.
+async function stuckLift({ browser, base, check }) {
+  const logs = {};
+  // Five sessions, on Wednesdays and a Saturday: 3 × 10 at 30 kg each time, short of its 12s, so it doesn't go up.
+  for (const n of [3, 7, 14, 21, 24]) logs[K(n)] = liftDay({ "Hamstring Curl": threeOf(10, 30) });
+  const auth = session("00000000-0000-4000-8000-0000000057c1", "2026-08-26T05:00:00Z", "t@example.com");
+  const { ctx, page, db } = await open(browser, base, { auth, db: { logs, plan: null } });
+  await ready(page);
+  await openWorkout(page, "Hamstring Curl");
+  const card = page.locator("#workoutView section.ex-card"), hint = card.locator(".prog");
+  const said = await textOf(hint.locator("span"));
+  check("a stuck lift says so where the next weight goes, and what to try, at 90% on its machine's steps", said === "No progress in 4 sessions. Try 3 × 12 at 90% (27.5 kg), or swap it for a variation.", said);
+  const taps = await hint.locator("button").evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().height)));
+  check("its Swap and Not now are 44px to tap", taps.length === 2 && taps.every((h) => h >= 44), taps.join(", "));
+  await shot(page, "8-stuck-lift");
+
+  await hint.locator("button[data-stuckswap]").click();
+  const focused = await until(() => page.evaluate(() => !!document.activeElement?.matches("form[data-swapform] input")));
+  const opts = await page.locator("#swapList option").evaluateAll((os) => os.map((o) => o.value));
+  check("Swap opens the ··· menu's swap, ready to type, suggesting the library's lifts for the same muscles", focused && opts.includes("Glute Ham Raise") && !opts.includes("Hamstring Curl"), `focused: ${focused}, ${opts.length} suggestions`);
+  await card.locator("button[data-more]").click(); // ··· closes whatever it has open
+
+  await hint.locator("button[data-notnow]").click();
+  await until(async () => !/No progress/.test(await flat(card)));
+  const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("gymlog.notnow.v1") ?? "null"));
+  check("Not now puts it away, kept on this phone and not in the plan", !/No progress/.test(await flat(card)) && kept?.lifts?.["Hamstring Curl"] > 0 && !db.writes.plans, JSON.stringify({ kept, plans: db.writes.plans }));
+  // A reload comes back to the workout, on this lift: once its history is in (last time's sets), still no hint.
+  await page.reload();
+  await page.waitForSelector("#workoutView .ex-card", { timeout: 15000 });
+  await until(async () => /Last 10, 10, 10 × 30 kg/.test(await flat(card.locator(".ex-meta"))));
+  check("…still away after a reload", /Hamstring Curl/.test(await flat(card.locator(".ex-name"))) && /Last 10, 10, 10 × 30 kg/.test(await flat(card)) && !/No progress/.test(await flat(card)), await flat(card));
+
+  // Its page on Progress says so whatever the hint was put off with: it's the lift's record.
+  await card.locator("button[data-more]").click();
+  await card.locator("a[data-chart]").click();
+  await page.waitForSelector("#dashLift");
+  const line = await textOf(page.locator("#liftStuck"));
+  check("its page on Progress says it's stuck, since when", line === "No progress in 4 sessions: no new best estimated 1RM since 29 Aug.", line);
+  check("stuck lift: no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
+}
+
+// The readiness note (lib/readiness.ts): a short night, from Health Connect, says so on Home's workout card in one line,
+// with Hold today, which keeps the day's lifts at last time's weights, on the day's log, until Undo. Every case of the
+// signals is in tests/unit/readiness.test.ts, and what a hold does to each rule in tests/unit/progression.test.ts.
+async function readiness({ browser, base, check }) {
+  // Last Wednesday's Hamstring Curl hit its 12s, so it's due to go up; last night was 5 h 10 min.
+  const logs = { [K(21)]: liftDay({ "Hamstring Curl": threeOf(12, 30) }) }, health = { [K(28)]: { sleepMin: 310 } };
+  const auth = session("00000000-0000-4000-8000-0000000057c2", "2026-08-26T05:00:00Z", "t@example.com");
+  const { ctx, page, db } = await open(browser, base, { auth, db: { logs, plan: null, health } });
+  await ready(page);
+  const line = () => textOf(page.locator("#readyNote .ready-t > span"));
+  await until(async () => (await page.locator("#readyNote").count()) === 1);
+  check("Home's workout card: a short night says so, in a line, and what to do", (await line()) === "Slept 5 h 10 min. Keep today’s weights where they were last time.", await line());
+  const hold = page.locator("#readyNoteHold");
+  const tap = (await hold.count()) ? await hold.evaluate((b) => b.getBoundingClientRect().height) : 0;
+  check("its Hold today is 44px to tap", tap >= 44, String(tap));
+  await shot(page, "9-readiness");
+
+  await hold.click();
+  await until(async () => db.logs[K(28)]?.hold === true && (await textOf(hold)) === "Undo");
+  check(
+    "Hold today keeps it on the day's log, and the note says so, with Undo",
+    db.logs[K(28)]?.hold === true && (await line()) === "Slept 5 h 10 min. Today’s weights stay where they were last time." && (await textOf(hold)) === "Undo",
+    `${await line()} | ${JSON.stringify(db.logs[K(28)])}`,
+  );
+  // The workout's first step says so too, before a set is in.
+  await page.click("#startWorkout");
+  await page.waitForSelector("#workoutView .ex-card");
+  const first = await textOf(page.locator("#readyWorkout .ready-t > span"));
+  check("the workout's first step has the same note", first === "Slept 5 h 10 min. Today’s weights stay where they were last time.", first);
+  await shot(page, "10-readiness-workout");
+  await page.locator("ol.wprog li button").nth(3).click();
+  const card = page.locator("#workoutView section.ex-card");
+  await until(async () => (await flat(card.locator(".ex-name .nm"))) === "Hamstring Curl");
+  const held = await textOf(card.locator(".prog"));
+  check("held: a lift due to go up holds last time's weight, in its hint and its boxes", held === "Hold 30 kg: you’re holding today’s weights." && (await card.locator('input[data-set$=":0:kg"]').getAttribute("placeholder")) === "30", held);
+
+  await page.click("#closeWorkout");
+  await page.waitForSelector(TAB_VIEWS);
+  if (!(await page.locator("#homeView").count())) await openTab(page, "home");
+  await hold.click();
+  await until(async () => db.logs[K(28)] && !("hold" in db.logs[K(28)]) && (await textOf(hold)) === "Hold today");
+  check("Undo takes the hold off the day, and the note offers it again", !("hold" in db.logs[K(28)]) && (await textOf(hold)) === "Hold today", JSON.stringify(db.logs[K(28)]));
+  await openWorkout(page, "Hamstring Curl");
+  const up = await textOf(page.locator("#workoutView section.ex-card .prog"));
+  check("…and the lift goes up again", /^Go up to 32\.5 kg/.test(up), up);
+  check("readiness: no console errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();
 }
