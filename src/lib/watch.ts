@@ -163,20 +163,31 @@ function liftNamed(store: GymStore, day: DayKey, key: unknown, from?: number): L
 /** A set done on the watch: logged as Complete set N logs it, weight then reps, so the rest starts on the finished set
  *  as the phone's rule has it, counted from when it was done, `at`, which is also its startedAt, as the watch started
  *  it (store.startRest). With no weight, the reps take the one Complete set N would (kgFor). No reps is the check's
- *  undo: the set's reps go, and a tick they gave the lift with them. Not for a skipped lift, which shows no sets, or a
- *  set past the rows it shows. */
+ *  undo: the set's reps go, and a tick they gave the lift with them. Not for a skipped lift, which shows no sets, a
+ *  set past the rows it shows, or a row changed on the phone since the watch saw it. */
 function logWatchSet(store: GymStore, day: DayKey, c: WatchCommand, at: number): boolean {
   const m = liftNamed(store, day, c.lift, at), j = c.set, reps = c.reps, kg = c.kg;
+  const baseReps = c.baseReps ?? null, baseKg = c.baseKg ?? null;
   if (!m || m.r.skipped || typeof j !== "number" || !Number.isInteger(j) || j < 0 || j >= m.rows) return false;
+  if (!(kg === null || (isNumber(kg) && kg >= 0)) || (reps !== null && (!isNumber(reps) || reps <= 0))) return false;
+  if (!(baseReps === null || isNumber(baseReps)) || !(baseKg === null || isNumber(baseKg))) return false;
+  // The row as the watch had it when this was done, `baseReps` and `baseKg`: changed on the phone since (a correction
+  // typed or said there, or cleared), the phone's is the newer, and this is dropped. A row that already has what this
+  // logs needs nothing. The watch's own commands on a row follow one another: each one's base is the one before's.
+  const cur = m.sets[j], curReps = cur?.reps ?? null, curKg = cur?.kg ?? null;
+  if (reps === null ? curReps === null : curReps === reps && (kg === null || curKg === halfKg(kg))) return true;
+  if (curReps !== baseReps || curKg !== halfKg(baseKg)) return false;
   if (reps === null) {
-    if ((m.sets[j]?.reps ?? 0) > 0) m.setField(j, "reps", "");
+    if ((curReps ?? 0) > 0) m.setField(j, "reps", "");
     return true;
   }
-  if (!isNumber(reps) || reps <= 0 || !(kg === null || (isNumber(kg) && kg >= 0))) return false;
   if (kg != null) m.setField(j, "kg", String(kg));
   m.setField(j, "reps", String(reps));
   return true;
 }
+
+/** A weight as the phone keeps it, to the half kg (LiftModel.setField): the watch's are compared with it so. */
+const halfKg = (kg: number | null) => (kg == null ? null : Math.round(kg * 2) / 2);
 
 /** Whether a rest button pressed on the watch was pressed for the rest there is now. The command names the rest the
  *  watch showed, by its day, lift and startedAt (`restStartedAt`); a newer rest started since, by a set logged on the

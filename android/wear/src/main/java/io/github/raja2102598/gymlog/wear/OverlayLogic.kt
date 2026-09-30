@@ -4,9 +4,9 @@ import org.json.JSONObject
 
 /**
  * One thing done on the watch, sent to the phone as its own /gymlog/cmd/<id> data item (docs/watch.md). Only the
- * fields its `type` uses are set. A rest button's names the rest it was pressed for: its `day`, `lift` and
- * `restStartedAt`; the clock's pause, resume and Finish name the run, by `runStartedAt`. Every command carries the
- * `account` of the state it was made on, and is only ever applied to it.
+ * fields its `type` uses are set. A set carries the row as the watch had it (`baseReps`, `baseKg`), a rest button's the
+ * rest it was pressed for (its `day`, `lift` and `restStartedAt`), and the clock's pause, resume and Finish the run, by
+ * `runStartedAt`. Every command carries the `account` of the state it was made on, and is only ever applied to it.
  */
 data class Command(
     val id: String,
@@ -25,6 +25,8 @@ data class Command(
     val restStartedAt: Long? = null,
     val account: String? = null,
     val runStartedAt: Long? = null,
+    val baseReps: Int? = null,
+    val baseKg: Double? = null,
 )
 
 /**
@@ -57,9 +59,15 @@ object OverlayLogic {
     /** Whether an id is one the phone will read (see newId). */
     fun validId(id: String): Boolean = id.length in 1..128 && id.all { it.isLetterOrDigit() && it.code < 128 || it in "._:-" }
 
-    /** A set logged (reps null: cleared, the tick's undo), as Complete set N logs it. */
-    fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?) =
-        Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg)
+    /** A set logged (reps null: cleared, the tick's undo), as Complete set N logs it, over `base`, the row as the watch
+     *  has it now (null: none). The phone logs it only over that row, so a change made to it there since stays. */
+    fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?, base: SetRow?) =
+        Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg, baseReps = base?.reps, baseKg = base?.kg)
+
+    /** A weight as the phone keeps it, to the half kg (lib/lift.ts, setField): the rows' are compared so. */
+    private fun halfKg(kg: Double?): Double? = kg?.let { Math.round(it * 2) / 2.0 }
+
+    private fun sameKg(a: Double?, b: Double?): Boolean = halfKg(a) == halfKg(b)
 
     /** A command naming only its day: startRun. */
     fun ofDay(id: String, at: Long, type: String, day: String) = Command(id, at, type, day = day)
@@ -102,6 +110,8 @@ object OverlayLogic {
         if (c.type == SET) {
             o.put("reps", c.reps ?: JSONObject.NULL)
             o.put("kg", c.kg ?: JSONObject.NULL)
+            o.put("baseReps", c.baseReps ?: JSONObject.NULL)
+            o.put("baseKg", c.baseKg ?: JSONObject.NULL)
         }
         c.sec?.let { o.put("sec", it) }
         c.done?.let { o.put("done", it) }
@@ -137,6 +147,8 @@ object OverlayLogic {
                 restStartedAt = if (o.isNull("restStartedAt")) null else o.getLong("restStartedAt"),
                 account = str("account"),
                 runStartedAt = if (o.isNull("runStartedAt")) null else o.getLong("runStartedAt"),
+                baseReps = num("baseReps")?.toInt(),
+                baseKg = num("baseKg"),
             )
         } catch (e: Exception) {
             null
@@ -222,7 +234,9 @@ object OverlayLogic {
      * done at 12 × 105 has sets 2 and 3 suggest 12 × 105. A lift whose rows all have reps ticks itself done, and clearing
      * one unticks it, as the phone's tick follows the planned sets. The rest starts as the phone starts it: when a
      * set gets its first reps with no later one logged, for the lift's rest, or in a superset once the round is
-     * complete, for the longest rest of its lifts.
+     * complete, for the longest rest of its lifts. Only over the row as the watch had it (`baseReps`, `baseKg`), as the
+     * phone checks it: changed on the phone since, which the state has, the phone's stays and this isn't shown; one
+     * that has this set's numbers already needs nothing.
      */
     private fun logSet(s: WatchState, c: Command): WatchState {
         val day = s.days.firstOrNull { it.date == c.day } ?: return s
@@ -231,6 +245,9 @@ object OverlayLogic {
         val lift = day.blocks[b].first { it.key == c.lift }
         val j = c.set ?: return s
         if (j !in lift.rows.indices || lift.skipped) return s
+        val row = lift.rows[j]
+        val already = if (c.reps == null) row.reps == null else row.reps == c.reps && (c.kg == null || sameKg(row.kg, c.kg))
+        if (already || row.reps != c.baseReps || !sameKg(row.kg, c.baseKg)) return s
         val hadReps = lift.rows[j].reps != null
         val kg = if (c.reps != null) c.kg ?: lift.rows[j].sugKg else c.kg
         val set = lift.rows.mapIndexed { i, r -> if (i == j) r.copy(reps = c.reps, kg = kg) else r }

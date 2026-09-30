@@ -73,10 +73,10 @@ class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long,
         send { id, at -> OverlayLogic.ofDay(id, at, OverlayLogic.START_RUN, d.date) }
     }
 
-    /** Logs set `set` of `lift` as given, or clears it with no reps (the tick's undo). */
+    /** Logs set `set` of `lift` as given, or clears it with no reps (the tick's undo), over the row as it's shown. */
     fun logSet(lift: Lift, set: Int, reps: Int?, kg: Double?) {
         val d = day ?: return
-        send { id, at -> OverlayLogic.set(id, at, d.date, lift.key, set, reps, kg) }
+        send { id, at -> OverlayLogic.set(id, at, d.date, lift.key, set, reps, kg, lift.rows.getOrNull(set)) }
     }
 
     /** The clock, tapped: pauses it, or resumes it paused. Both, and Finish, name the run on screen, so one restarted

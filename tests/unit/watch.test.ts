@@ -9,7 +9,7 @@ vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).ap
 import { wdIndex } from "@/lib/dates";
 import type { GymStore, RestTimer } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
-import { watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
+import { applyWatchCommand, watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
 import { clearRun, currentRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runsFor, startRun } from "@/lib/workout";
 import { ACK_MS, APPLIED_KEPT, PUBLISH_MS, startWatch, WATCH_KEY } from "@/native/watch";
 import { atWednesdayNoon, day, LAST, lift, memoryStorage, storeWith, WED } from "./helpers";
@@ -299,9 +299,9 @@ describe("what the watch sends back", () => {
     watch.arrive(cmd("set", { day: WED, lift: "Hamstring Curl", set: 1, reps: 10, kg: null }));
     await vi.advanceTimersByTimeAsync(0);
     expect(sets(s, "Hamstring Curl")).toEqual([{ reps: 11, kg: 35 }, { reps: 10, kg: 35 }]);
-    // The check's undo: the reps go, and the rest isn't started again.
+    // The check's undo, for the set as the watch had it: the reps go, and the rest isn't started again.
     s.skipRest();
-    watch.arrive(cmd("set", { day: WED, lift: "Hamstring Curl", set: 1, reps: null, kg: null }));
+    watch.arrive(cmd("set", { day: WED, lift: "Hamstring Curl", set: 1, reps: null, kg: null, baseReps: 10, baseKg: 35 }));
     await vi.advanceTimersByTimeAsync(0);
     expect(sets(s, "Hamstring Curl")).toEqual([{ reps: 11, kg: 35 }, { reps: null, kg: 35 }]);
     expect(s.rest).toBeNull();
@@ -353,9 +353,9 @@ describe("what the watch sends back", () => {
 
   it("applies each command once, in the order it was done, then says so in applied and acks it", async () => {
     const { s, stop } = await running();
-    // Arrived out of order: set 1 logged, then taken back.
+    // Arrived out of order: set 1 logged, then taken back (from the set as the first left it).
     const logged = cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45 }, 30 * SEC);
-    const undone = cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: null, kg: null }, 10 * SEC);
+    const undone = cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: null, kg: null, baseReps: 10, baseKg: 45 }, 10 * SEC);
     watch.arrive(undone, logged);
     await vi.advanceTimersByTimeAsync(0);
     expect(sets(s, "Leg Press")).toEqual([{ reps: null, kg: 45 }]);
@@ -380,6 +380,39 @@ describe("what the watch sends back", () => {
     await vi.advanceTimersByTimeAsync(ACK_MS);
     expect(watch.queue).toEqual([]);
     again.stop();
+  });
+
+  it("logs a set only over the row as the watch had it: a change made on the phone since wins, and the watch's own follow one another", async () => {
+    const { s, stop } = await running();
+    watch.arrive(cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45, baseReps: null, baseKg: null }, 60 * SEC));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sets(s, "Leg Press")).toEqual([{ reps: 10, kg: 45 }]);
+    // Set 1 corrected on the phone to 12 × 50, while the watch, out of reach, corrected it to 11 and then undid it,
+    // each from the 10 × 45 it had: the phone's correction stays, and both are acked.
+    s.editLift(WED, "Leg Press", (r) => void (r.sets = [{ reps: 12, kg: 50 }]), true);
+    const fix = cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 11, kg: 45, baseReps: 10, baseKg: 45 }, 40 * SEC);
+    const undo = cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: null, kg: 45, baseReps: 10, baseKg: 45 }, 30 * SEC);
+    watch.arrive(fix, undo);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sets(s, "Leg Press")).toEqual([{ reps: 12, kg: 50 }]);
+    expect(watch.sent().applied).toEqual(expect.arrayContaining([fix.id, undo.id]));
+    // Set 2 logged on the watch and corrected there before either reached the phone: the correction's row is the
+    // first one's, so both apply, in the order they were done, however they arrive.
+    const logged = cmd("set", { day: WED, lift: "Leg Press", set: 1, reps: 10, kg: 50, baseReps: null, baseKg: null }, 20 * SEC);
+    const corrected = cmd("set", { day: WED, lift: "Leg Press", set: 1, reps: 9, kg: 47.5, baseReps: 10, baseKg: 50 }, 10 * SEC);
+    watch.arrive(corrected, logged);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sets(s, "Leg Press")).toEqual([{ reps: 12, kg: 50 }, { reps: 9, kg: 47.5 }]);
+    // One the row already has, typed on the phone too, is done, not dropped; weights are compared to the half kg, as
+    // the phone keeps them (a watch's 21.25 is the phone's 21.5).
+    s.editLift(WED, "Leg Press", (r) => void (r.sets = [...r.sets!, { reps: 8, kg: 21.5 }]), true);
+    const same = cmd("set", { day: WED, lift: "Leg Press", set: 2, reps: 8, kg: 21.25, baseReps: null, baseKg: null });
+    expect(applyWatchCommand(s, same)).toBe(true);
+    expect(applyWatchCommand(s, { ...same, reps: null, baseReps: null })).toBe(false); // an undo from an empty row
+    watch.arrive(cmd("set", { day: WED, lift: "Leg Press", set: 2, reps: 9, kg: 21.25, baseReps: 8, baseKg: 21.25 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sets(s, "Leg Press")?.[2]).toEqual({ reps: 9, kg: 21.5 });
+    stop();
   });
 
   it("drops what it can't apply, but still acks it and lists it as applied", async () => {
