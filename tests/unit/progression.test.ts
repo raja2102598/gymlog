@@ -145,6 +145,9 @@ describe("the next weight, by the lift's rule", () => {
     s.holdDay(WED, true);
     expect(s.logs[WED].hold).toBe(true);
     expect(s.pending[WED].hold).toBe(true); // saved with the day, so it syncs
+    // It stays through the day's other changes: a set logged, say.
+    s.editLift(WED, "Leg Press", (r) => void (r.sets = sets([[10, 45]])), false);
+    expect(s.entry(WED)).toMatchObject({ hold: true, exercises: { "Leg Press": { sets: [{ reps: 10, kg: 45 }] } } });
     const n = s.nextWeight(x, x.name, WED)!;
     expect(n).toMatchObject({ rule: "double", from: 30, to: 32.5, held: true, heldFor: "day" });
     expect(progWords(n)).toEqual({ lead: "Hold 30 kg: you’re holding today’s weights.", kg: "", why: "" });

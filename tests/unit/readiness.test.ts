@@ -16,8 +16,8 @@ const on = (health: Record<string, HealthDay>, kneeBefore?: number) => {
   s.health = health;
   return s;
 };
-/** Resting heart rate `bpm` on each of the `n` days before WED. */
-const usual = (bpm: number, n = RHR_DAYS): Record<string, HealthDay> => Object.fromEntries(Array.from({ length: n }, (_, i) => [addDays(WED, -1 - i), { restingHr: bpm }]));
+/** Resting heart rate `bpm` on each of the `n` days before WED: two weeks, unless said. */
+const usual = (bpm: number, n = 14): Record<string, HealthDay> => Object.fromEntries(Array.from({ length: n }, (_, i) => [addDays(WED, -1 - i), { restingHr: bpm }]));
 
 describe("today's signals", () => {
   it("a short night alone: under 6 h, not 6 h itself", () => {
@@ -38,8 +38,9 @@ describe("today's signals", () => {
     // The average, not the last reading: a week at 56 and a week at 60 is 58.
     const mixed = { ...usual(56), ...usual(60, 7), [WED]: { restingHr: 65 } };
     expect(readiness(on(mixed), WED)).toEqual({ rhr: { bpm: 65, over: 7 } });
-    // Over two weeks only: a day before them doesn't count.
-    expect(readiness(on({ ...usual(58), [addDays(WED, -RHR_DAYS - 1)]: { restingHr: 40 }, [WED]: { restingHr: 64 } }), WED)).toBeNull();
+    // Over two weeks only: the day before them doesn't count.
+    expect(RHR_DAYS).toBe(14);
+    expect(readiness(on({ ...usual(58), [addDays(WED, -15)]: { restingHr: 40 }, [WED]: { restingHr: 64 } }), WED)).toBeNull();
   });
 
   it("resting heart rate needs a week of readings to know what's usual, and one today", () => {
