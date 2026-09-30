@@ -57,7 +57,8 @@ class OverlayLogicTest {
     fun theFirstRepsOfASetStartItsLiftsRest() {
         val s = state(day(listOf(lift("Leg Press", 12, null, null, restSec = 90, name = "Hack Squat"))))
         val rest = apply(s, listOf(set("c-1", "Leg Press", 1, 12, at = t0))).rest
-        assertEquals(Rest(TODAY, "Hack Squat", t0 + 90_000L, null, 90), rest) // named as done, a swap's own name
+        // Named as done, a swap's own name, and started when the set was done, as the phone starts it.
+        assertEquals(Rest(TODAY, "Hack Squat", t0 + 90_000L, null, 90, startedAt = t0), rest)
         // A set that already had reps, or one before a set already logged, is a correction: no rest.
         assertNull(apply(s, listOf(set("c-1", "Leg Press", 0, 10))).rest)
         val later = state(day(listOf(lift("Leg Press", null, 12, null))))
@@ -72,7 +73,7 @@ class OverlayLogicTest {
         val first = set("c-1", "Leg Curl", 0, 12, at = t0)
         assertNull(apply(s, listOf(first)).rest) // A1 alone: on to A2
         val round = apply(s, listOf(first, set("c-2", "Calf Raise", 0, 15, at = t0 + 30_000L))).rest
-        assertEquals(Rest(TODAY, "Calf Raise", t0 + 30_000L + 60_000L, null, 60), round) // the longer of the two rests
+        assertEquals(Rest(TODAY, "Calf Raise", t0 + 30_000L + 60_000L, null, 60, t0 + 30_000L), round) // the longer of the two rests
         // With A2 skipped, A1's set completes the round by itself.
         val skipped = state(day(listOf(lift("Leg Curl", null, null, restSec = 60), lift("Calf Raise", null, null, restSec = 45, skipped = true))))
         assertEquals(60, apply(skipped, listOf(first)).rest?.sec)
@@ -143,13 +144,43 @@ class OverlayLogicTest {
 
     @Test
     fun theRestSkipsAddsPausesAndResumes() {
-        val s = state(day(listOf(lift("Squat", null))), rest = Rest(TODAY, "Squat", t0 + 90_000L, sec = 90))
-        fun rest(type: String, at: Long, sec: Int? = null) = apply(s, listOf(OverlayLogic.ofRest("c-1", at, type, sec))).rest
+        val shown = Rest(TODAY, "Squat", t0 + 90_000L, sec = 90, startedAt = t0)
+        val s = state(day(listOf(lift("Squat", null))), rest = shown)
+        fun rest(type: String, at: Long, sec: Int? = null) = apply(s, listOf(OverlayLogic.ofRest("c-1", at, type, shown, sec))).rest
         assertNull(rest(OverlayLogic.REST_SKIP, t0))
         assertEquals(t0 + 105_000L, rest(OverlayLogic.REST_ADD, t0 + 10_000L, 15)?.endAt)
         assertEquals(t0 + 30_000L, rest(OverlayLogic.REST_PAUSE, t0 + 30_000L)?.pausedAt)
-        val paused = s.copy(rest = s.rest?.copy(pausedAt = t0 + 30_000L))
-        assertEquals(Rest(TODAY, "Squat", t0 + 160_000L, null, 90), apply(paused, listOf(OverlayLogic.ofRest("c-2", t0 + 100_000L, OverlayLogic.REST_RESUME))).rest)
+        val paused = s.copy(rest = shown.copy(pausedAt = t0 + 30_000L))
+        // Paused, resumed or 15 s longer, it's still the rest it was.
+        assertEquals(Rest(TODAY, "Squat", t0 + 160_000L, null, 90, startedAt = t0), apply(paused, listOf(OverlayLogic.ofRest("c-2", t0 + 100_000L, OverlayLogic.REST_RESUME, shown))).rest)
+    }
+
+    @Test
+    fun aRestButtonActsOnlyOnTheRestItWasPressedFor() {
+        val first = Rest(TODAY, "Squat", t0 + 90_000L, sec = 90, startedAt = t0)
+        val skip = OverlayLogic.ofRest("c-1", t0 + 5_000L, OverlayLogic.REST_SKIP, first)
+        // Set 2 logged on the phone since started the lift's next rest: the skip pressed for set 1's isn't shown on it,
+        // as the phone drops it.
+        val next = Rest(TODAY, "Squat", t0 + 120_000L, sec = 90, startedAt = t0 + 30_000L)
+        val s = state(day(listOf(lift("Squat", 12, 12, null))), rest = next)
+        assertEquals(next, apply(s, listOf(skip)).rest)
+        assertNull(apply(s.copy(rest = first), listOf(skip)).rest)
+
+        // A rest the watch started itself, for a set done on it: its buttons are for that one, before the phone has
+        // either, and one pressed for the rest before it changes nothing.
+        val fresh = state(day(listOf(lift("Squat", null, null))), rest = first)
+        val done = set("c-2", "Squat", 0, 12, at = t0 + 100_000L)
+        val started = apply(fresh, listOf(done)).rest!!
+        assertEquals(t0 + 100_000L, started.startedAt)
+        val add = OverlayLogic.ofRest("c-3", t0 + 110_000L, OverlayLogic.REST_ADD, started, 15)
+        assertEquals(started.endAt + 15_000L, apply(fresh, listOf(done, add)).rest?.endAt)
+        assertEquals(started, apply(fresh, listOf(done, OverlayLogic.ofRest("c-4", t0 + 120_000L, OverlayLogic.REST_PAUSE, first))).rest)
+
+        // A timer the phone kept from before rests had a start: its day and lift are all there is to go by.
+        val kept = first.copy(startedAt = null)
+        assertNull(apply(s.copy(rest = kept), listOf(skip)).rest)
+        assertEquals(kept, apply(s.copy(rest = kept), listOf(OverlayLogic.ofRest("c-5", t0, OverlayLogic.REST_SKIP, first.copy(lift = "Row")))).rest)
+        assertEquals(kept, apply(s.copy(rest = kept), listOf(OverlayLogic.ofRest("c-6", t0, OverlayLogic.REST_SKIP, first.copy(day = "2026-09-28")))).rest)
     }
 
     @Test
@@ -174,8 +205,10 @@ class OverlayLogicTest {
         assertTrue(set.has("reps") && set.isNull("reps")) // null reps is the undo: it has to be there
         assertEquals(100.0, set.getDouble("kg"), 0.0)
 
-        val add = JSONObject(OverlayLogic.toJson(OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, 15)))
-        assertEquals(setOf("v", "id", "at", "type", "sec"), add.keys().asSequence().toSet())
+        val shown = Rest(TODAY, "Squat", 90_042L, sec = 90, startedAt = 42L)
+        val add = JSONObject(OverlayLogic.toJson(OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15)))
+        assertEquals(setOf("v", "id", "at", "type", "day", "lift", "sec", "restStartedAt"), add.keys().asSequence().toSet())
+        assertEquals(listOf(TODAY, "Squat", 42L), listOf(add.getString("day"), add.getString("lift"), add.getLong("restStartedAt")))
         val start = JSONObject(OverlayLogic.toJson(OverlayLogic.ofDay("c-11", 44L, OverlayLogic.START_RUN, TODAY)))
         assertEquals(setOf("v", "id", "at", "type", "day"), start.keys().asSequence().toSet())
         val cardio = JSONObject(OverlayLogic.toJson(OverlayLogic.cardioDone("c-12", 45L, TODAY, false)))
@@ -185,7 +218,7 @@ class OverlayLogicTest {
         assertEquals(listOf(128, 165, 240), listOf(hr.getInt("avg"), hr.getInt("max"), hr.getInt("samples")))
 
         // Kept on the watch as the same JSON, and read back the same.
-        for (c in listOf(set("c-9", "Squat", 1, null), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, 15), OverlayLogic.cardioDone("c-12", 45L, TODAY, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
+        for (c in listOf(set("c-9", "Squat", 1, null), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15), OverlayLogic.ofRest("c-14", 47L, OverlayLogic.REST_SKIP, shown.copy(startedAt = null)), OverlayLogic.cardioDone("c-12", 45L, TODAY, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
             assertEquals(c, OverlayLogic.fromJson(OverlayLogic.toJson(c)))
         }
         assertNull(OverlayLogic.fromJson("{}"))

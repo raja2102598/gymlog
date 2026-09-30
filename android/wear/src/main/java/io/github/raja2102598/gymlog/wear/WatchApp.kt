@@ -89,13 +89,20 @@ class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long,
         send { id, at -> OverlayLogic.ofDay(id, at, OverlayLogic.FINISH, d.date) }
     }
 
-    fun restAdd() = send { id, at -> OverlayLogic.ofRest(id, at, OverlayLogic.REST_ADD, 15) }
+    // The rest's buttons name the rest on screen, so a newer one started since on the phone isn't the one they change.
+    fun restAdd() {
+        val r = rest ?: return
+        send { id, at -> OverlayLogic.ofRest(id, at, OverlayLogic.REST_ADD, r, 15) }
+    }
 
-    fun restSkip() = send { id, at -> OverlayLogic.ofRest(id, at, OverlayLogic.REST_SKIP) }
+    fun restSkip() {
+        val r = rest ?: return
+        send { id, at -> OverlayLogic.ofRest(id, at, OverlayLogic.REST_SKIP, r) }
+    }
 
     fun toggleRest() {
         val r = rest ?: return
-        send { id, at -> OverlayLogic.ofRest(id, at, if (r.pausedAt != null) OverlayLogic.REST_RESUME else OverlayLogic.REST_PAUSE) }
+        send { id, at -> OverlayLogic.ofRest(id, at, if (r.pausedAt != null) OverlayLogic.REST_RESUME else OverlayLogic.REST_PAUSE, r) }
     }
 
     fun skipLift(lift: Lift) {

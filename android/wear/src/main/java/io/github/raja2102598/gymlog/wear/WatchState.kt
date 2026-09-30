@@ -48,13 +48,15 @@ data class Run(
     val endedAt: Long? = null,
 )
 
-/** The rest timer (the phone's store.rest). `sec` is its full length, when the phone knows it. */
+/** The rest timer (the phone's store.rest). `sec` is its full length, when the phone knows it. `startedAt` tells it
+ *  from the next rest, which the rest buttons' commands name it by (null for a timer the phone kept from before). */
 data class Rest(
     val day: String,
     val lift: String,
     val endAt: Long,
     val pausedAt: Long? = null,
     val sec: Int? = null,
+    val startedAt: Long? = null,
 )
 
 /** The whole of /gymlog/state. `applied` holds the ids of the watch's commands the phone has applied. */

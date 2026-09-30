@@ -16,7 +16,7 @@ class StateLogicTest {
         {
           "v": 1, "sentAt": 1790000000000, "signedIn": true, "applied": ["c-1", "c-2"],
           "run": { "day": "2026-09-29", "startedAt": 1789999000000, "pausedAt": null, "pausedMs": 60000, "endedAt": null },
-          "rest": { "day": "2026-09-29", "lift": "Leg Press", "endAt": 1790000090000, "pausedAt": null, "sec": 90 },
+          "rest": { "day": "2026-09-29", "lift": "Leg Press", "endAt": 1790000090000, "pausedAt": null, "sec": 90, "startedAt": 1790000000000 },
           "days": [
             {
               "date": "2026-09-29", "title": "Legs", "skipped": false,
@@ -47,7 +47,7 @@ class StateLogicTest {
         assertTrue(s.signedIn)
         assertEquals(setOf("c-1", "c-2"), s.applied)
         assertEquals(Run("2026-09-29", 1789999000000L, null, 60000L, null), s.run)
-        assertEquals(Rest("2026-09-29", "Leg Press", 1790000090000L, null, 90), s.rest)
+        assertEquals(Rest("2026-09-29", "Leg Press", 1790000090000L, null, 90, startedAt = 1790000000000L), s.rest)
         val d = s.days.single()
         assertEquals("Legs", d.title)
         assertEquals("Cycling - 15-20 min", d.cardio)

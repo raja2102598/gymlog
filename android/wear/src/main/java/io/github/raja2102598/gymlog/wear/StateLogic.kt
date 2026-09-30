@@ -56,7 +56,7 @@ object StateLogic {
 
     private fun rest(o: JSONObject): Rest? {
         val endAt = o.long("endAt") ?: return null
-        return Rest(o.str("day") ?: "", o.str("lift") ?: "", endAt, o.long("pausedAt"), o.int("sec"))
+        return Rest(o.str("day") ?: "", o.str("lift") ?: "", endAt, o.long("pausedAt"), o.int("sec"), o.long("startedAt"))
     }
 
     private fun day(o: JSONObject): Day? {

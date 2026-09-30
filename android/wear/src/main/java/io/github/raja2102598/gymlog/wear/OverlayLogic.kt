@@ -4,7 +4,8 @@ import org.json.JSONObject
 
 /**
  * One thing done on the watch, sent to the phone as its own /gymlog/cmd/<id> data item (docs/watch.md). Only the
- * fields its `type` uses are set.
+ * fields its `type` uses are set. A rest button's names the rest it was pressed for: its `day`, `lift` and
+ * `restStartedAt`.
  */
 data class Command(
     val id: String,
@@ -20,6 +21,7 @@ data class Command(
     val avg: Int? = null,
     val max: Int? = null,
     val samples: Int? = null,
+    val restStartedAt: Long? = null,
 )
 
 /**
@@ -59,8 +61,15 @@ object OverlayLogic {
     /** A command naming only its day: startRun, pauseRun, resumeRun or finish. */
     fun ofDay(id: String, at: Long, type: String, day: String) = Command(id, at, type, day = day)
 
-    /** A command about the rest: restSkip, restPause or restResume, or restAdd with `sec`. */
-    fun ofRest(id: String, at: Long, type: String, sec: Int? = null) = Command(id, at, type, sec = sec)
+    /** A command about the rest shown, `rest`: restSkip, restPause or restResume, or restAdd with `sec`. It names that
+     *  rest, so neither the phone nor the watch applies it to a newer one started since. */
+    fun ofRest(id: String, at: Long, type: String, rest: Rest, sec: Int? = null) =
+        Command(id, at, type, day = rest.day, lift = rest.lift, sec = sec, restStartedAt = rest.startedAt)
+
+    /** Whether a rest command was made for `r`, the rest there is now, as the phone checks it (lib/watch.ts, sameRest):
+     *  the same day and lift, and the same start, unless either doesn't know it (a timer the phone kept from before). */
+    fun sameRest(r: Rest?, c: Command): Boolean =
+        r != null && r.day == c.day && r.lift == c.lift && (r.startedAt == null || c.restStartedAt == null || r.startedAt == c.restStartedAt)
 
     fun skipLift(id: String, at: Long, day: String, lift: String) = Command(id, at, SKIP_LIFT, day = day, lift = lift)
 
@@ -87,6 +96,7 @@ object OverlayLogic {
         c.avg?.let { o.put("avg", it) }
         c.max?.let { o.put("max", it) }
         c.samples?.let { o.put("samples", it) }
+        c.restStartedAt?.let { o.put("restStartedAt", it) }
         return o.toString()
     }
 
@@ -110,6 +120,7 @@ object OverlayLogic {
                 avg = num("avg")?.toInt(),
                 max = num("max")?.toInt(),
                 samples = num("samples")?.toInt(),
+                restStartedAt = if (o.isNull("restStartedAt")) null else o.getLong("restStartedAt"),
             )
         } catch (e: Exception) {
             null
@@ -146,10 +157,18 @@ object OverlayLogic {
                 run = s.run?.let { if (it.day == c.day) TimerLogic.endRun(it, c.at) else it },
                 rest = s.rest?.takeIf { it.day != c.day },
             )
-            REST_SKIP -> s.copy(rest = null)
-            REST_ADD -> s.copy(rest = s.rest?.let { TimerLogic.addRest(it, c.sec ?: 15, c.at) })
-            REST_PAUSE -> s.copy(rest = s.rest?.let { TimerLogic.pauseRest(it, c.at) })
-            REST_RESUME -> s.copy(rest = s.rest?.let { TimerLogic.resumeRest(it, c.at) })
+            // The rest's buttons act on the rest they were pressed for, and never on one that's replaced it since (a
+            // set logged on the phone, say), as the phone drops them then.
+            REST_SKIP, REST_ADD, REST_PAUSE, REST_RESUME -> s.rest?.takeIf { sameRest(it, c) }?.let { r ->
+                s.copy(
+                    rest = when (c.type) {
+                        REST_SKIP -> null
+                        REST_ADD -> TimerLogic.addRest(r, c.sec ?: 15, c.at)
+                        REST_PAUSE -> TimerLogic.pauseRest(r, c.at)
+                        else -> TimerLogic.resumeRest(r, c.at)
+                    },
+                )
+            } ?: s
             SKIP_LIFT -> editLift(s, c.day, c.lift) { _, l -> l.copy(skipped = true, done = false) }
             CARDIO_DONE -> s.copy(days = s.days.map { if (it.date == c.day) it.copy(cardioDone = c.done ?: true) else it })
             // The phone keeps the day's heart rate for Workout complete; the watch shows its own readings, not the state's.
@@ -200,7 +219,8 @@ object OverlayLogic {
         if (c.reps == null || hadReps || rows.drop(j + 1).any { it.reps != null }) return out
         val block = out.days.first { it.date == day.date }.blocks[b]
         val sec = restAfter(block, j) ?: return out
-        return if (sec > 0) out.copy(rest = Rest(day.date, edited.name, c.at + sec * 1000L, null, sec)) else out
+        // Started at `at`, as the phone starts it (store.startRest's `from`), so it's the same rest there.
+        return if (sec > 0) out.copy(rest = Rest(day.date, edited.name, c.at + sec * 1000L, null, sec, startedAt = c.at)) else out
     }
 
     /** The rest set `j` of a block starts, in seconds, or null for none yet: a superset waits for its round, with

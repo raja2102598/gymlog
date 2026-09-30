@@ -7,7 +7,7 @@ vi.mock("@capacitor/core", async () => (await import("./nativeMocks")).capacitor
 vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).app }));
 
 import { wdIndex } from "@/lib/dates";
-import type { GymStore } from "@/lib/store";
+import type { GymStore, RestTimer } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
 import { watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
 import { currentRun, endRun, keepRunsInMemory, pauseRun, resumeRun, runsFor, startRun } from "@/lib/workout";
@@ -156,8 +156,11 @@ describe("what the watch is sent", () => {
     s.startRest(WED, "Leg Press", 90);
     expect(watchState(s, [])).toMatchObject({
       run: { day: WED, startedAt: NOON - 30 * MIN, pausedAt: NOON - 10 * MIN, pausedMs: 0, endedAt: null },
-      rest: { day: WED, lift: "Leg Press", endAt: NOON + 90 * SEC, pausedAt: null, sec: 90 },
+      rest: { day: WED, lift: "Leg Press", endAt: NOON + 90 * SEC, pausedAt: null, sec: 90, startedAt: NOON },
     });
+    // A timer kept from before rests had a start: sent as not known.
+    s.rest = { day: WED, lift: "Leg Press", endAt: NOON + 90 * SEC, pausedAt: null, ended: false, sec: 90 };
+    expect(watchState(s, []).rest?.startedAt).toBeNull();
   });
 
   it("puts a workout for another day first: one started before midnight stays the one it's on, paused too, until finished or left behind", () => {
@@ -275,6 +278,9 @@ describe("what the watch sends back", () => {
   /** A command from the watch, done `ago` ms before now. */
   let n = 0;
   const cmd = (type: string, fields: Record<string, unknown> = {}, ago = 0): WatchCommand => ({ v: 1, id: `c-${++n}`, at: Date.now() - ago, type, ...fields });
+  /** A rest button pressed on the watch for rest `r`, the one it showed: named by its day, lift and start. */
+  const restCmd = (type: string, r: Pick<RestTimer, "day" | "lift" | "startedAt"> | null, fields: Record<string, unknown> = {}, ago = 0) =>
+    cmd(type, { day: r?.day, lift: r?.lift, restStartedAt: r?.startedAt ?? null, ...fields }, ago);
   const sets = (s: GymStore, name: string) => s.entry(WED).exercises[name]?.sets;
   /** The watch app running with the phone's: a real account, its days loaded, taking commands as they arrive. */
   async function running(s = signedIn()) {
@@ -413,14 +419,18 @@ describe("what the watch sends back", () => {
   it("pauses, resumes, adds to and skips the rest, skips a lift and ticks the cardio", async () => {
     const { s, stop } = await running();
     s.startRest(WED, "Leg Press", 90);
-    watch.arrive(cmd("restPause"));
+    const shown = { ...s.rest! };
+    await vi.advanceTimersByTimeAsync(5 * SEC);
+    watch.arrive(restCmd("restPause", shown));
     await vi.advanceTimersByTimeAsync(10 * SEC);
-    expect(s.restRemaining()).toBe(90);
-    watch.arrive(cmd("restResume"), cmd("restAdd", { sec: 15 }));
+    expect(s.restRemaining()).toBe(85);
+    watch.arrive(restCmd("restResume", shown), restCmd("restAdd", shown, { sec: 15 }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.rest).toMatchObject({ pausedAt: null });
-    expect(s.restRemaining()).toBe(105);
-    watch.arrive(cmd("restSkip"));
+    expect(s.restRemaining()).toBe(100);
+    // Still the rest it was, paused, resumed and 15 s longer: the watch's next button is for it too.
+    expect(s.rest?.startedAt).toBe(NOON);
+    watch.arrive(restCmd("restSkip", shown));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.rest).toBeNull();
 
@@ -433,6 +443,52 @@ describe("what the watch sends back", () => {
     watch.arrive(cmd("cardioDone", { day: "2026-09-24", done: true }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.entry("2026-09-24").cardio).toBe(false);
+    stop();
+  });
+
+  it("drops a rest button pressed for a rest that's been replaced since, however late it arrives, but not for the same rest 15 s longer", async () => {
+    const { s, stop } = await running();
+    s.startRest(WED, "Leg Press", 90);
+    // Skip and +15s pressed on the watch out of the phone's reach, for set 1's rest...
+    const first = { ...s.rest! }, skip = restCmd("restSkip", first), add = restCmd("restAdd", first, { sec: 15 });
+    // ...while set 2, logged on the phone, started the lift's next rest: the same day and lift, started later.
+    await vi.advanceTimersByTimeAsync(30 * SEC);
+    s.startRest(WED, "Leg Press", 90);
+    watch.arrive(skip, add);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toMatchObject({ lift: "Leg Press", startedAt: NOON + 30 * SEC, endAt: NOON + 120 * SEC, pausedAt: null });
+    expect(watch.sent().applied).toEqual([skip.id, add.id]); // dropped, and acked all the same
+    // The watch's pause for that newer rest, late too, after +15s on the phone: still the same rest, so paused.
+    const pause = restCmd("restPause", s.rest);
+    s.addRestTime(15);
+    watch.arrive(pause);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toMatchObject({ startedAt: NOON + 30 * SEC, pausedAt: NOON + 30 * SEC });
+    expect(s.restRemaining()).toBe(105);
+
+    // A rest the watch started itself, for a set done there, has the watch's time as its start, even with the
+    // watch's clock a little ahead of the phone's: the watch's own Skip for it is for this rest.
+    const done = cmd("set", { day: WED, lift: "Hamstring Curl", set: 0, reps: 10, kg: 32.5 }, -2 * SEC);
+    watch.arrive(done);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toMatchObject({ lift: "Hamstring Curl", startedAt: done.at, endAt: NOON + 120 * SEC });
+    watch.arrive(restCmd("restSkip", { day: WED, lift: "Hamstring Curl", startedAt: done.at as number }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toBeNull();
+
+    // A timer kept from before rests had a start is known by its day and lift alone, as is one named by a command
+    // without it.
+    s.rest = { day: WED, lift: "Leg Press", endAt: NOON + 60 * SEC, pausedAt: null, ended: false, sec: 90 };
+    watch.arrive(restCmd("restAdd", { day: WED, lift: "Calf Raise", startedAt: NOON }, { sec: 15 }), restCmd("restAdd", { day: "2026-09-22", lift: "Leg Press", startedAt: NOON }, { sec: 15 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest?.endAt).toBe(NOON + 60 * SEC);
+    watch.arrive(restCmd("restAdd", { day: WED, lift: "Leg Press", startedAt: NOON }, { sec: 15 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest?.endAt).toBe(NOON + 75 * SEC);
+    s.startRest(WED, "Leg Press", 90);
+    watch.arrive(restCmd("restSkip", { day: WED, lift: "Leg Press" }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toBeNull();
     stop();
   });
 

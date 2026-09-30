@@ -62,6 +62,10 @@ export interface RestTimer {
   /** Seconds it was started with, for the rest card's ring and "of M:SS". Missing on timers saved before it was
    *  kept: the card then works it out from the plan. */
   sec?: number;
+  /** Epoch ms it was started, which tells this rest from the next: the watch's rest buttons name the rest they were
+   *  pressed for by it (lib/watch.ts). Pausing, resuming and +15 s keep it; only a new rest has another. Missing on
+   *  timers saved before it was kept. */
+  startedAt?: number;
 }
 /** One working set of a lift on a day: `lift` is the day's name for it (as planned, whatever it was swapped for), and
  *  `set` its place among the lift's working sets. */
@@ -1280,11 +1284,13 @@ export class GymStore {
   }
   /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx), or logged on the
    *  watch at `from` (lib/watch.ts), which can reach the phone a while later: its rest counts from then, as it did on
-   *  the watch, and one that would be over by now isn't started at all. */
+   *  the watch, and one that would be over by now isn't started at all. `from` is also its startedAt, as the watch
+   *  gave it, so the rest the watch started itself for that set is known to be this one (never later than now is for
+   *  the countdown only: were the watch's clock a little ahead, the two would otherwise differ). */
   startRest(day: DayKey, lift: string, sec: number, from = Date.now()) {
     const now = Date.now(), at = Math.min(from, now);
     if (at + sec * 1000 < now) return;
-    this.rest = { day, lift, endAt: at + sec * 1000, pausedAt: null, ended: false, sec };
+    this.rest = { day, lift, endAt: at + sec * 1000, pausedAt: null, ended: false, sec, startedAt: from };
     this.armRest();
     this.persistRest();
     this.changed();

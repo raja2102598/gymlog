@@ -63,8 +63,8 @@ export interface WatchState {
   applied: string[];
   /** The workout under way (lib/workout.ts's WorkoutRun), or null. */
   run: { day: DayKey; startedAt: number; pausedAt: number | null; pausedMs: number; endedAt: number | null } | null;
-  /** store.rest, or null. */
-  rest: { day: DayKey; lift: string; endAt: number; pausedAt: number | null; sec: number } | null;
+  /** store.rest, or null. `startedAt` tells it from the next rest (null for a timer saved before it was kept). */
+  rest: { day: DayKey; lift: string; endAt: number; pausedAt: number | null; sec: number; startedAt: number | null } | null;
   /** Today and the next six days, and first, when it's another day, the one whose workout is under way. */
   days: WatchDay[];
 }
@@ -140,7 +140,7 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
     applied,
     run: r && { day: r.day, startedAt: r.startedAt, pausedAt: r.pausedAt ?? null, pausedMs: r.pausedMs ?? 0, endedAt: r.endedAt ?? null },
     // (A timer saved before its length was kept counts as the plan's.)
-    rest: rest && { day: rest.day, lift: rest.lift, endAt: rest.endAt, pausedAt: rest.pausedAt, sec: rest.sec ?? store.plan.restSec },
+    rest: rest && { day: rest.day, lift: rest.lift, endAt: rest.endAt, pausedAt: rest.pausedAt, sec: rest.sec ?? store.plan.restSec, startedAt: rest.startedAt ?? null },
     days: dates.map((d) => dayOf(store, d)),
   };
 }
@@ -157,9 +157,10 @@ function liftNamed(store: GymStore, day: DayKey, key: unknown, from?: number): L
 }
 
 /** A set done on the watch: logged as Complete set N logs it, weight then reps, so the rest starts on the finished set
- *  as the phone's rule has it, counted from when it was done (store.startRest). With no weight, the reps take the one
- *  Complete set N would (kgFor). No reps is the check's undo: the set's reps go, and a tick they gave the lift with
- *  them. Not for a skipped lift, which shows no sets, or a set past the rows it shows. */
+ *  as the phone's rule has it, counted from when it was done, `at`, which is also its startedAt, as the watch started
+ *  it (store.startRest). With no weight, the reps take the one Complete set N would (kgFor). No reps is the check's
+ *  undo: the set's reps go, and a tick they gave the lift with them. Not for a skipped lift, which shows no sets, or a
+ *  set past the rows it shows. */
 function logWatchSet(store: GymStore, day: DayKey, c: WatchCommand, at: number): boolean {
   const m = liftNamed(store, day, c.lift, at), j = c.set, reps = c.reps, kg = c.kg;
   if (!m || m.r.skipped || typeof j !== "number" || !Number.isInteger(j) || j < 0 || j >= m.rows) return false;
@@ -173,16 +174,28 @@ function logWatchSet(store: GymStore, day: DayKey, c: WatchCommand, at: number):
   return true;
 }
 
+/** Whether a rest button pressed on the watch was pressed for the rest there is now. The command names the rest the
+ *  watch showed, by its day, lift and startedAt (`restStartedAt`); a newer rest started since, by a set logged on the
+ *  phone or said to it, has another startedAt. A timer saved before rests had one, or a command about one, is known by
+ *  its day and lift alone. */
+function sameRest(store: GymStore, day: DayKey | null, c: WatchCommand): boolean {
+  const r = store.rest, from = c.restStartedAt;
+  if (!r || !day || r.day !== day || r.lift !== c.lift || !(from == null || isNumber(from))) return false;
+  return r.startedAt == null || from == null || r.startedAt === from;
+}
+
 /** Does what a command from the watch stands for, through the same change as the phone's own tap, and says whether it
- *  could: false for one it can't apply (a day or lift it doesn't have, a set past the rows, a type or version it
- *  doesn't know), which is dropped. The clock counts from when it was done on the watch (never later than now, should
- *  the watch's clock be ahead); the rest timer's buttons act on the rest as it is now. */
+ *  could: false for one it can't apply (a day or lift it doesn't have, a set past the rows, a rest since replaced, a
+ *  type or version it doesn't know), which is dropped. The clock counts from when it was done on the watch (never
+ *  later than now, should the watch's clock be ahead); the rest timer's buttons act on the rest they were pressed for,
+ *  as it is now, and never on a newer one. */
 export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.now()): boolean {
   if (c.v !== WATCH_V) return false;
   const at = Math.min(isNumber(c.at) ? c.at : now, now), day = isDay(c.day) ? c.day : null;
   switch (c.type) {
     case "set":
-      return !!day && logWatchSet(store, day, c, at);
+      // The rest it starts takes the watch's own `at` as its startedAt (startRest counts down from no later than now).
+      return !!day && logWatchSet(store, day, c, isNumber(c.at) ? c.at : now);
     case "startRun":
       if (day) startRun(day, at);
       return !!day;
@@ -196,16 +209,19 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
       if (day) finishWorkout(store, day, at);
       return !!day;
     case "restSkip":
+      if (!sameRest(store, day, c)) return false;
       store.skipRest();
       return true;
     case "restAdd":
-      if (!isNumber(c.sec) || c.sec <= 0) return false;
+      if (!isNumber(c.sec) || c.sec <= 0 || !sameRest(store, day, c)) return false;
       store.addRestTime(c.sec);
       return true;
     case "restPause":
+      if (!sameRest(store, day, c)) return false;
       store.pauseRest();
       return true;
     case "restResume":
+      if (!sameRest(store, day, c)) return false;
       store.resumeRest();
       return true;
     case "skipLift": {
