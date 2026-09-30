@@ -31,6 +31,7 @@ class TimerLogicTest {
         val resumed = TimerLogic.resumeRun(paused, t0 + 8 * min)
         assertEquals(null, resumed.pausedAt)
         assertEquals(3 * min, resumed.pausedMs)
+        assertEquals(listOf(Pause(t0 + 5 * min, t0 + 8 * min)), resumed.pauses) // kept, as the phone keeps it
         assertEquals(7 * min, TimerLogic.runMs(resumed, t0 + 10 * min))
         assertEquals(r, TimerLogic.resumeRun(r, t0 + 9 * min)) // running: nothing to resume
         val ended = TimerLogic.endRun(r, t0 + 20 * min)

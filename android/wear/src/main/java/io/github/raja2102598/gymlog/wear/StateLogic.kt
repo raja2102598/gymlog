@@ -52,7 +52,12 @@ object StateLogic {
     private fun run(o: JSONObject): Run? {
         val day = o.str("day") ?: return null
         val startedAt = o.long("startedAt") ?: return null
-        return Run(day, startedAt, o.long("pausedAt"), o.long("pausedMs") ?: 0L, o.long("endedAt"))
+        val pauses = arrays(o.optJSONArray("pauses")).mapNotNull { p ->
+            val from = p.opt(0) as? Number
+            val to = p.opt(1) as? Number
+            if (from == null || to == null) null else Pause(Math.round(from.toDouble()), Math.round(to.toDouble()))
+        }
+        return Run(day, startedAt, o.long("pausedAt"), o.long("pausedMs") ?: 0L, o.long("endedAt"), pauses)
     }
 
     private fun rest(o: JSONObject): Rest? {

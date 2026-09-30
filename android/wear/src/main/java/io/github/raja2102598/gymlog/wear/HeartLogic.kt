@@ -46,11 +46,12 @@ object HeartLogic {
     /** The days kept on the watch, the latest: a week of workouts. */
     const val KEEP_DAYS = 7
 
-    /** Whether a reading taken at `at` belongs to the workout: from its start, until it finished, and not once its clock
-     *  was paused. (A pause resumed since is only known as a total, so readings from it that arrive late still count;
-     *  the sensor's readings come within seconds while the screen is on.) */
+    /** Whether a reading taken at `at` belongs to the workout: from its start, until it finished, and not while its clock
+     *  was paused: since the pause under way, or in one resumed since (the run's `pauses`, kept by the phone and by the
+     *  watch alike), for readings Health Services hands over late, after the app was stopped mid-pause, say. */
     fun counts(run: Run, at: Long): Boolean =
-        at >= run.startedAt && (run.pausedAt == null || at < run.pausedAt) && (run.endedAt == null || at <= run.endedAt)
+        at >= run.startedAt && (run.pausedAt == null || at < run.pausedAt) && (run.endedAt == null || at <= run.endedAt) &&
+            run.pauses.none { at >= it.from && at < it.to }
 
     /** The day's heart rate with `beats` added: those in range, taken during `run`, and after the latest counted
      *  (Health Services hands its last readings over again when the app sets its callback anew, after Android stopped

@@ -17,6 +17,9 @@ export interface WorkoutRun {
   pausedAt?: number;
   /** How long it was paused before, ms: none of it counts. */
   pausedMs?: number;
+  /** Each pause resumed so far, [from, to] in ms since the epoch: the watch leaves the heart rate's readings in them
+   *  out, however late Health Services hands them over (docs/watch.md). pausedMs is their total. */
+  pauses?: [number, number][];
   /** Who started it: another account signed in on this phone never picks it up. */
   user?: string | null;
 }
@@ -100,8 +103,8 @@ export function pauseRun(day: DayKey, now = Date.now()): WorkoutRun | null {
 export function resumeRun(day: DayKey, now = Date.now()): WorkoutRun | null {
   const r = runOf(day);
   if (!r || r.endedAt || r.pausedAt == null) return r;
-  const { pausedAt, ...rest } = r;
-  return write({ ...rest, pausedMs: (r.pausedMs ?? 0) + Math.max(0, now - pausedAt) });
+  const { pausedAt, ...rest } = r, to = Math.max(pausedAt, now);
+  return write({ ...rest, pausedMs: (r.pausedMs ?? 0) + (to - pausedAt), pauses: [...(r.pauses ?? []), [pausedAt, to]] });
 }
 
 /** Drops the day's clock if it was left behind: a finished workout opened to review it shows no abandoned clock, and

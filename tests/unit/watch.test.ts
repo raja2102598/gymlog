@@ -158,6 +158,10 @@ describe("what the watch is sent", () => {
       run: { day: WED, startedAt: NOON - 30 * MIN, pausedAt: NOON - 10 * MIN, pausedMs: 0, endedAt: null },
       rest: { day: WED, lift: "Leg Press", endAt: NOON + 90 * SEC, pausedAt: null, sec: 90, startedAt: NOON },
     });
+    // Once resumed, the pause goes with the run, from and to: the watch leaves its heart rate readings in it out.
+    expect(watchState(s, []).run?.pauses).toEqual([]);
+    resumeRun(WED, NOON - 5 * MIN);
+    expect(watchState(s, []).run).toMatchObject({ pausedAt: null, pausedMs: 5 * MIN, pauses: [[NOON - 10 * MIN, NOON - 5 * MIN]] });
     // A timer kept from before rests had a start: sent as not known.
     s.rest = { day: WED, lift: "Leg Press", endAt: NOON + 90 * SEC, pausedAt: null, ended: false, sec: 90 };
     expect(watchState(s, []).rest?.startedAt).toBeNull();

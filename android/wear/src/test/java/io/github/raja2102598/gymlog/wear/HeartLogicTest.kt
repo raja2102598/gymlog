@@ -46,6 +46,16 @@ class HeartLogicTest {
         val paused = HeartLogic.add(null, run.copy(pausedAt = t0 + min + 1_500L), beats(100.0, 110.0, 190.0), now = t0 + 2 * min)
         assertEquals(2, paused.samples)
         assertEquals(110, paused.max)
+        // Paused at 1:00 and resumed at 2:00, on the phone or here, with the app stopped in between: the readings Health
+        // Services hands over after, from that pause, don't count, the ones either side of it do.
+        val resumed = run.copy(pausedMs = min, pauses = listOf(Pause(t0 + min, t0 + 2 * min)))
+        assertTrue(HeartLogic.counts(resumed, t0 + min - 1))
+        assertFalse(HeartLogic.counts(resumed, t0 + min))
+        assertFalse(HeartLogic.counts(resumed, t0 + 2 * min - 1))
+        assertTrue(HeartLogic.counts(resumed, t0 + 2 * min))
+        val late = HeartLogic.add(null, resumed, beats(100.0, 190.0, 180.0, from = t0 + 2 * min - 2_000L), now = t0 + 3 * min)
+        assertEquals(1, late.samples) // 100 and 190 were in the pause
+        assertEquals(180, late.max)
         // The sensor's noise, off the wrist: out of range, never counted.
         val noise = HeartLogic.add(null, run, beats(0.0, 29.9, 30.0, 240.0, 240.1), now = t0 + min)
         assertEquals(2, noise.samples)

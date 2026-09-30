@@ -64,8 +64,8 @@ export interface WatchState {
   account: string | null;
   /** The ids of the watch's commands applied so far, the latest last. */
   applied: string[];
-  /** The workout under way (lib/workout.ts's WorkoutRun), or null. */
-  run: { day: DayKey; startedAt: number; pausedAt: number | null; pausedMs: number; endedAt: number | null } | null;
+  /** The workout under way (lib/workout.ts's WorkoutRun), or null. `pauses` are those resumed, [from, to]. */
+  run: { day: DayKey; startedAt: number; pausedAt: number | null; pausedMs: number; endedAt: number | null; pauses: [number, number][] } | null;
   /** store.rest, or null. `startedAt` tells it from the next rest (null for a timer saved before it was kept). */
   rest: { day: DayKey; lift: string; endAt: number; pausedAt: number | null; sec: number; startedAt: number | null } | null;
   /** Today and the next six days, and first, when it's another day, the one whose workout is under way. */
@@ -142,7 +142,7 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
     signedIn,
     account,
     applied,
-    run: r && { day: r.day, startedAt: r.startedAt, pausedAt: r.pausedAt ?? null, pausedMs: r.pausedMs ?? 0, endedAt: r.endedAt ?? null },
+    run: r && { day: r.day, startedAt: r.startedAt, pausedAt: r.pausedAt ?? null, pausedMs: r.pausedMs ?? 0, endedAt: r.endedAt ?? null, pauses: r.pauses ?? [] },
     // (A timer saved before its length was kept counts as the plan's.)
     rest: rest && { day: rest.day, lift: rest.lift, endAt: rest.endAt, pausedAt: rest.pausedAt, sec: rest.sec ?? store.plan.restSec, startedAt: rest.startedAt ?? null },
     days: dates.map((d) => dayOf(store, d)),

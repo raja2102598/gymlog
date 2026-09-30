@@ -60,7 +60,9 @@ the watch has nothing to work out for itself beyond moving through it:
   "account": "0b6f2a4e-…",          // the account signed in (its Supabase user id), or null: see the commands' own
   "applied": ["c-…", "c-…"],        // ids of the watch's commands applied so far (the last 200)
   "run": {                          // the workout under way (lib/workout.ts's WorkoutRun), or null
-    "day": "2026-09-29", "startedAt": 0, "pausedAt": null, "pausedMs": 0, "endedAt": null
+    "day": "2026-09-29", "startedAt": 0, "pausedAt": null, "pausedMs": 0, "endedAt": null,
+    "pauses": [[0, 0]]              // each pause resumed so far, [from, to] (pausedMs is their total): the heart
+                                    // rate's readings in them never count
   },
   "rest": {                         // store.rest, or null
     "day": "2026-09-29", "lift": "Leg Press", "endAt": 0, "pausedAt": null, "sec": 90,
@@ -236,10 +238,15 @@ Wear OS, Material 3.
   health kind as well as special use once the permission is there, which Android asks of a service reading the
   body's sensors in the background.
 - **When**: from the workout clock's start (the service starts with it, while the app is on screen) to Finish, on the
-  watch or the phone, or the workout left running for three hours. A reading counts when it's in range (30 to 240)
-  and taken while the clock ran: from its start, to its end, and not after it was paused; and once, since Health
-  Services hands its last readings over again when the app sets its callback anew. The screens show the latest
-  reading, paused or not.
+  watch or the phone, or the workout left running for three hours. While the clock is paused, on either, so is the
+  exercise (Health Services' `pauseExercise`), so it takes no readings then. A reading counts when it's in range (30 to
+  240) and taken while the clock ran: from its start, to its end, not in the pause under way, and not in one resumed
+  since (the run's `pauses`, which the phone and the watch's own commands both keep), so readings Health Services
+  hands over late, after Android stopped the app mid-pause and the phone resumed the clock, stay out; and once, since
+  Health Services hands its last readings over again when the app sets its callback anew. The screens show the latest
+  reading while it's fresh. What's left uncovered: a pause started and resumed on the phone while the watch was out of
+  reach, with the watch measuring all the while. The watch didn't know it was paused, and counted those readings as
+  they came; it keeps the day's sums, not each reading, so they can't be taken out once the pause arrives.
 - **Another app's workout** (Samsung Health's, say): Gym Log doesn't start its own, which would end that one, and goes
   without heart rate. After Android stopped Gym Log mid-workout, it picks up its own exercise again (Health Services
   ends one left five minutes with no app to hand it to).

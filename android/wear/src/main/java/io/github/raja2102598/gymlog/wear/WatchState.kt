@@ -39,14 +39,19 @@ data class Day(
     val blocks: List<List<Lift>>,
 )
 
-/** The workout clock (the phone's lib/workout.ts WorkoutRun). Times are epoch ms. */
+/** The workout clock (the phone's lib/workout.ts WorkoutRun). Times are epoch ms. `pauses` are those resumed so far,
+ *  which the heart rate's readings are kept out of (HeartLogic.counts). */
 data class Run(
     val day: String,
     val startedAt: Long,
     val pausedAt: Long? = null,
     val pausedMs: Long = 0,
     val endedAt: Long? = null,
+    val pauses: List<Pause> = emptyList(),
 )
+
+/** A pause of the workout clock, resumed: from when to when, epoch ms. */
+data class Pause(val from: Long, val to: Long)
 
 /** The rest timer (the phone's store.rest). `sec` is its full length, when the phone knows it. `startedAt` tells it
  *  from the next rest, which the rest buttons' commands name it by (null for a timer the phone kept from before). */

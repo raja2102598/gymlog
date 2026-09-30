@@ -32,11 +32,13 @@ object TimerLogic {
     /** Stops the clock where it is. Nothing for a finished or already paused one. */
     fun pauseRun(r: Run, at: Long): Run = if (r.endedAt != null || r.pausedAt != null) r else r.copy(pausedAt = at)
 
-    /** Starts a paused clock again from where it stopped: the time it was paused doesn't count. */
+    /** Starts a paused clock again from where it stopped: the time it was paused doesn't count, and the pause is kept,
+     *  as the phone keeps it, for the heart rate's readings to stay out of. */
     fun resumeRun(r: Run, at: Long): Run {
         val p = r.pausedAt ?: return r
         if (r.endedAt != null) return r
-        return r.copy(pausedAt = null, pausedMs = r.pausedMs + max(0L, at - p))
+        val to = max(p, at)
+        return r.copy(pausedAt = null, pausedMs = r.pausedMs + (to - p), pauses = r.pauses + Pause(p, to))
     }
 
     /** Finish: the duration stops there, and stays put if it had already. */

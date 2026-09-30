@@ -21,6 +21,8 @@ import androidx.health.services.client.data.HeartRateAccuracy
 import androidx.health.services.client.endExercise
 import androidx.health.services.client.getCapabilities
 import androidx.health.services.client.getCurrentExerciseInfo
+import androidx.health.services.client.pauseExercise
+import androidx.health.services.client.resumeExercise
 import androidx.health.services.client.startExercise
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,23 +89,52 @@ object HeartMonitor {
         }
     }
 
+    /** Whether the exercise running is ours: started here, or found running after Android stopped the app. */
+    private var ours = false
+
+    /** Whether it was last asked to be paused, or null when that isn't known (just started, or found running), so the
+     *  next `follow` asks either way. */
+    private var exercisePaused: Boolean? = null
+
     /**
-     * Follows the workout: measuring while one is under way (a paused one too, whose readings don't count) and the
-     * permission is there, and ending with it, when the last of the day's heart rate goes to the phone.
+     * Follows the workout: measuring while one is under way and the permission is there, and ending with it, when the
+     * last of the day's heart rate goes to the phone. While its clock is paused, so is the exercise: Health Services
+     * takes no readings then, to hand over later (and those it had are kept out all the same, HeartLogic.counts).
      */
     fun follow(ctx: Context, state: WatchState?, now: Long) {
         val app = ctx.applicationContext
-        val want = StepLogic.live(state, now)?.run?.day?.takeIf { granted(app) }
-        if (want == measuring) return
-        val was = measuring
-        // Set first: sending the day's heart rate below changes the state, which calls back in here.
-        measuring = want
-        if (was != null) stop(app, was)
-        if (want != null) start(app, want)
+        val run = StepLogic.live(state, now)?.run
+        val want = run?.day?.takeIf { granted(app) }
+        if (want != measuring) {
+            val was = measuring
+            // Set first: sending the day's heart rate below changes the state, which calls back in here.
+            measuring = want
+            if (was != null) stop(app, was)
+            if (want != null) start(app, want)
+        }
+        if (want != null) pauseWith(app, run.pausedAt != null)
+    }
+
+    /** Pauses or resumes our exercise with the workout's clock, once per change. */
+    private fun pauseWith(app: Context, paused: Boolean) {
+        if (paused == exercisePaused) return
+        exercisePaused = paused
+        val client = client(app)
+        queue {
+            if (!ours) return@queue
+            try {
+                if (paused) client.pauseExercise() else client.resumeExercise()
+            } catch (e: Exception) {
+                // Already so (found running after Android stopped the app), or Health Services ended it.
+                Log.i(TAG, "Health Services wouldn't ${if (paused) "pause" else "resume"} the exercise", e)
+            }
+        }
     }
 
     private fun start(app: Context, day: String) {
         last = day
+        ours = false
+        exercisePaused = null
         val client = client(app)
         val cb = callback ?: updates(app).also { callback = it }
         // Set before starting, and again after Android stopped the app mid-workout: Health Services then hands over
@@ -113,7 +144,10 @@ object HeartMonitor {
             try {
                 when (client.getCurrentExerciseInfo().exerciseTrackedStatus) {
                     // Ours already, from before the app was stopped: it carries on.
-                    ExerciseTrackedStatus.OWNED_EXERCISE_IN_PROGRESS -> return@queue
+                    ExerciseTrackedStatus.OWNED_EXERCISE_IN_PROGRESS -> {
+                        ours = true
+                        return@queue
+                    }
                     // Another app's workout (Samsung Health's, say): starting ours would end it, so it goes on without
                     // heart rate here.
                     ExerciseTrackedStatus.OTHER_APP_IN_PROGRESS -> {
@@ -134,6 +168,7 @@ object HeartMonitor {
                         .setIsGpsEnabled(false)
                         .build(),
                 )
+                ours = true
             } catch (e: Exception) {
                 Log.w(TAG, "Couldn't start measuring heart rate", e)
             }
@@ -142,6 +177,7 @@ object HeartMonitor {
 
     private fun stop(app: Context, day: String) {
         latest.value = null
+        exercisePaused = null
         sendIfDue(app, day, ending = true)
         queue {
             try {
@@ -149,6 +185,7 @@ object HeartMonitor {
             } catch (e: Exception) {
                 // None of ours was running: the start above never got that far, or Health Services ended it.
             }
+            ours = false
         }
     }
 

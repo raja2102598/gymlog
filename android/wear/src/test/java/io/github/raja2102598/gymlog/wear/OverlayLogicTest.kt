@@ -190,7 +190,7 @@ class OverlayLogicTest {
         val paused = apply(started, listOf(clock(OverlayLogic.PAUSE_RUN, t0 + 60_000L, started)))
         assertEquals(t0 + 60_000L, paused.run?.pausedAt)
         val resumed = apply(paused, listOf(clock(OverlayLogic.RESUME_RUN, t0 + 90_000L, paused)))
-        assertEquals(Run(TODAY, t0, null, 30_000L), resumed.run)
+        assertEquals(Run(TODAY, t0, null, 30_000L, pauses = listOf(Pause(t0 + 60_000L, t0 + 90_000L))), resumed.run)
         assertEquals(paused, apply(paused, listOf(clock(OverlayLogic.RESUME_RUN, t0 + 90_000L, paused, day = "2026-09-28")))) // another day's
 
         val finished = apply(resumed, listOf(clock(OverlayLogic.FINISH, t0 + 600_000L, resumed)))

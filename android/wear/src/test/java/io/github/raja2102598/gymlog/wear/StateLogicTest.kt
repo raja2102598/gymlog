@@ -15,7 +15,8 @@ class StateLogicTest {
     private val example = """
         {
           "v": 1, "sentAt": 1790000000000, "signedIn": true, "account": "0b6f2a4e-5c1d-4f7a-9e3b-2d8c1a7f6e50", "applied": ["c-1", "c-2"],
-          "run": { "day": "2026-09-29", "startedAt": 1789999000000, "pausedAt": null, "pausedMs": 60000, "endedAt": null },
+          "run": { "day": "2026-09-29", "startedAt": 1789999000000, "pausedAt": null, "pausedMs": 60000, "endedAt": null,
+                   "pauses": [[1789999300000, 1789999360000], ["not", "one"]] },
           "rest": { "day": "2026-09-29", "lift": "Leg Press", "endAt": 1790000090000, "pausedAt": null, "sec": 90, "startedAt": 1790000000000 },
           "days": [
             {
@@ -47,7 +48,8 @@ class StateLogicTest {
         assertTrue(s.signedIn)
         assertEquals("0b6f2a4e-5c1d-4f7a-9e3b-2d8c1a7f6e50", s.account)
         assertEquals(setOf("c-1", "c-2"), s.applied)
-        assertEquals(Run("2026-09-29", 1789999000000L, null, 60000L, null), s.run)
+        // Its pauses resumed so far, for the heart rate (one that can't be read is left out).
+        assertEquals(Run("2026-09-29", 1789999000000L, null, 60000L, null, listOf(Pause(1789999300000L, 1789999360000L))), s.run)
         assertEquals(Rest("2026-09-29", "Leg Press", 1790000090000L, null, 90, startedAt = 1790000000000L), s.rest)
         val d = s.days.single()
         assertEquals("Legs", d.title)

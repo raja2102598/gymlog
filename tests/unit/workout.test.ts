@@ -46,6 +46,8 @@ describe("workout runs", () => {
     expect(resumeRun(d, 25 * 60_000)).toMatchObject({ pausedMs: 15 * 60_000 });
     expect(runOf(d)?.pausedAt).toBeUndefined();
     expect(runSeconds(runOf(d)!, 30 * 60_000)).toBe(15 * 60); // 10 before, 5 since
+    // Each pause is kept too, from and to, for the watch to leave its heart rate readings out.
+    expect(runOf(d)?.pauses).toEqual([[10 * 60_000, 25 * 60_000]]);
     pauseRun(d, 40 * 60_000);
     expect(runSeconds(endRun(d, 50 * 60_000)!)).toBe(25 * 60); // finished while paused: 25:00, not 35:00
     expect(pauseRun(d, 60 * 60_000)?.pausedAt).toBe(40 * 60_000); // a finished run doesn't pause again
