@@ -46,7 +46,7 @@ class StepLogicTest {
         assertEquals(Primary.LogSet(0, 1), StepLogic.primary(legs, 1))
         assertEquals("Complete A1 · set 2", StepLogic.label(legs, 1, StepLogic.primary(legs, 1)))
         assertEquals("Complete B1 · set 1", StepLogic.label(legs, 2, StepLogic.primary(legs, 2))) // the day's second superset
-        assertEquals("Done with cycling - 15-20 min", StepLogic.label(legs, 3, StepLogic.primary(legs, 3)))
+        assertEquals("Done with cardio", StepLogic.label(legs, 3, StepLogic.primary(legs, 3)))
         assertEquals("Finish workout", StepLogic.label(legs, 3, StepLogic.primary(legs.copy(cardioDone = true), 3)))
     }
 

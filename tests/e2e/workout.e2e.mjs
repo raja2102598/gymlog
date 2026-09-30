@@ -211,8 +211,8 @@ export default async function workout({ browser, base, check }) {
       await tap();
     }
     check(
-      "the cycling is the workout's last step, done with the big button",
-      (await shown()) === "Cycling - 15-20 min" && (await flat(page.locator("#workoutView .ex-step"))) === "Exercise 6 of 6" && (await big()) === "Done with cycling - 15-20 min" && (await next()) === "",
+      "the cycling is the workout's last step, its name in full on the card, done with the big button",
+      (await shown()) === "Cycling - 15-20 min" && (await flat(page.locator("#workoutView .ex-step"))) === "Exercise 6 of 6" && (await big()) === "Done with cardio" && (await next()) === "",
       `${await shown()} / ${await big()} / ${await next()}`,
     );
     await tap();
@@ -261,15 +261,25 @@ export default async function workout({ browser, base, check }) {
   }
 
   // The workout clock: a tap pauses and resumes it, ↺ restarts it; one left running for hours starts again by itself.
+  // On a 360px phone, the smallest, where the header has the least room.
   {
     const uid = "00000000-0000-4000-8000-00000000e0e0", now = Date.parse("2026-09-23T12:00:00");
-    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: {} } });
+    const { ctx, page } = await open(browser, base, { auth, db: { logs: {}, plan: {} }, width: 360, height: 800 });
     await ready(page);
     const seed = (startedAt) => page.evaluate((r) => localStorage.setItem("gymlog.workout.v1", JSON.stringify(r)), { day: K(28), startedAt, user: uid });
     const shown = async () => (await flat(page.locator("#wclock"))).replace(/\s/g, "");
     await seed(now - 60 * 60_000);
     await openWorkout(page);
     check("an hour into the workout, the clock says so", /^1:00:\d\d$/.test(await shown()), await shown());
+    // In the middle of the screen, however wide × and Finish are: the session's name, and the clock under it, here at
+    // its widest (an hour in). Paused, ↺ comes beside it, clear of it, × and Finish.
+    const header = () => page.evaluate(() => Object.fromEntries(["#closeWorkout", "#wclockRestart", "#wclock", "#finishBtn", "#screenTitle"].flatMap((s) => (document.querySelector(s) ? [[s, document.querySelector(s).getBoundingClientRect().toJSON()]] : []))));
+    const mid = (r) => Math.round((r.left + r.width / 2) * 10) / 10;
+    const centred = (h) => Math.abs(mid(h["#screenTitle"]) - 180) < 1 && Math.abs(mid(h["#wclock"]) - 180) < 1;
+    const clear = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+    const where = (h) => JSON.stringify(Object.fromEntries(Object.entries(h).map(([s, r]) => [s, `${Math.round(r.left)}–${Math.round(r.right)}`])));
+    const running = await header();
+    check("the name and the clock sit in the middle of the screen", centred(running), where(running));
     // One pill: a tap pauses it where it is, and another resumes it. Paused, ↺ beside it starts it again from 0:00.
     const clockState = async () => `${await page.getAttribute("#wclock", "aria-label")} / ${await page.getAttribute("#wclock", "class")} / ${await page.locator("#wclockRestart").count()}`;
     check("it says a tap pauses it", (await page.getAttribute("#wclock", "aria-label")) === "Pause the clock, 60 minutes in", await clockState());
@@ -280,6 +290,12 @@ export default async function workout({ browser, base, check }) {
       "a tap pauses it where it is, straight away, and ↺ appears beside it",
       paused.pausedAt === now && /^1:00:\d\d$/.test(await shown()) && (await page.getAttribute("#wclock", "aria-label")) === "Resume the clock, paused at 60 minutes" && (await page.getAttribute("#wclockRestart", "aria-label")) === "Restart the clock from 0:00" && (await page.locator("#askDialog[open]").count()) === 0,
       `${JSON.stringify(paused)} / ${await clockState()}`,
+    );
+    const stopped = await header();
+    check(
+      "paused, the name and the clock stay in the middle, and ↺ beside it is clear of the pill, × and Finish",
+      centred(stopped) && ["#wclock", "#closeWorkout", "#finishBtn"].every((s) => clear(stopped["#wclockRestart"], stopped[s])),
+      where(stopped),
     );
     await page.click("#wclock");
     await until(async () => !(await page.getAttribute("#wclock", "class")).includes("paused"));
@@ -305,13 +321,6 @@ export default async function workout({ browser, base, check }) {
     await page.waitForSelector("#workoutView #wclock", { timeout: 15000 });
     await until(async () => /^0:0\d$/.test(await shown()));
     check("and when the app reloads on the workout", /^0:0\d$/.test(await shown()), await shown());
-    // In the middle of the screen, however wide × and Finish are: the session's name, and the clock under it.
-    const middle = page.viewportSize().width / 2;
-    const centre = async (sel) => {
-      const b = await page.locator(sel).boundingBox();
-      return b.x + b.width / 2;
-    };
-    check("the name and the clock sit in the middle of the screen", Math.abs((await centre("#screenTitle")) - middle) < 1 && Math.abs((await centre("#wclock")) - middle) < 1, `${await centre("#screenTitle")} / ${await centre("#wclock")} / ${middle}`);
     await ctx.close();
   }
 

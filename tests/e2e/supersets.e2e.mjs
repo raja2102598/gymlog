@@ -75,8 +75,9 @@ export default async function supersets({ browser, base, check }) {
   await openWorkout(page, "Hamstring Curl + Leg Extension");
   const card = page.locator("#workoutView section[data-superset]");
   check("the superset is one card", (await card.count()) === 1 && (await card.getAttribute("data-superset")) === "A" && (await flat(card.locator(".ss-h"))) === "Superset A · 2 lifts in rounds");
-  const heads = await card.locator(".ex-name").evaluateAll((hs) => hs.map((h) => `${h.querySelector(".sstag")?.textContent} ${h.querySelector(".nm")?.textContent}`));
-  check("its lifts are A1 and A2", heads.join("|") === "A1 Hamstring Curl|A2 Leg Extension", heads.join("|"));
+  // Its tag above each name, and in the name's heading for a screen reader.
+  const heads = await card.locator(".ss-lift").evaluateAll((ls) => ls.map((l) => `${l.querySelector(".ex-tag")?.textContent} / ${l.querySelector(".ex-name")?.textContent}`));
+  check("its lifts are A1 and A2", heads.join("|") === "A1 / A1 Hamstring Curl|A2 / A2 Leg Extension", heads.join("|"));
   const order = await card.locator("input[data-set]").evaluateAll((els) => els.map((e) => e.dataset.set));
   check(
     "its rows go round by round: A1's set 1, A2's set 1, then round 2",
