@@ -304,4 +304,19 @@ describe("a stuck lift", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("stays put off when the lift is renamed with its history", async () => {
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("navigator", { onLine: true });
+    try {
+      const s = curls([FLAT, FLAT, FLAT, FLAT, FLAT]);
+      s.putOffStuck("Hamstring Curl", stuckOn(s)!.best);
+      expect((await s.renameLift("Hamstring Curl", "Lying Leg Curl")).days).toBe(5);
+      expect(curl(s).name).toBe("Lying Leg Curl");
+      expect(stuckOn(s)).toBeNull();
+      expect(JSON.parse(localStorage.getItem("gymlog.notnow.v1")!).lifts).toEqual({ "Lying Leg Curl": 40 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

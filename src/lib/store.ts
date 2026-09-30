@@ -1189,6 +1189,12 @@ export class GymStore {
             if (known) delete x.lib;
           }
     });
+    // Not now goes with its history: the same plateau under the new name stays put off.
+    if (this.notNow[from] != null) {
+      const { [from]: best, ...others } = this.notNow;
+      this.notNow = others;
+      this.putOffStuck(to, best);
+    }
     for (const k of days) {
       const n = this.clone(k);
       if (from in n.exercises) {
