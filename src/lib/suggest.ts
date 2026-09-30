@@ -36,12 +36,13 @@ const didLift = (r?: LiftLog | null) => !!r && !r.skipped && (r.done || setsOf(r
  *  plan's order, at most MISSED_MAX: each planned on a day in the week before `sel` whose planned session was trained
  *  (some lift done: store.worked), and not done there, left or skipped on purpose. A day skipped as a whole, never
  *  started or done as a free-form workout has none (Train offers a missed session itself: missedThisWeek), nor does
- *  today until it's over. A lift done on any later day isn't left any more, and one the selected day has already,
- *  planned, added or swapped in, isn't offered again; a lift left on two days is offered once, from the later. */
+ *  today until it's over. A lift done that day in another's place, or on any later day, isn't left any more, and one
+ *  the selected day has already, planned, added or swapped in, isn't offered again; a lift left on two days is offered
+ *  once, from the later. */
 export function missedLifts(store: GymStore, sel: DayKey, t: DayKey = todayKey()): MissedLift[] {
   const from = addDays(sel, -MISSED_DAYS), before = sel < t ? sel : t, days = store.days();
   const e = store.entry(sel), here = new Set(store.liftsFor(sel).flatMap((it) => [it.name, performed(it.name, e.exercises[it.name])]));
-  const doneAfter = (name: string, k: DayKey) => days.some((d) => d > k && Object.entries(store.logs[d].exercises || {}).some(([key, r]) => performed(key, r) === name && didLift(r)));
+  const doneAfter = (name: string, k: DayKey) => days.some((d) => d >= k && Object.entries(store.logs[d].exercises || {}).some(([key, r]) => performed(key, r) === name && didLift(r)));
   const out: MissedLift[] = [], seen = new Set<string>();
   for (let i = days.length - 1; i >= 0 && out.length < MISSED_MAX; i--) {
     const k = days[i];

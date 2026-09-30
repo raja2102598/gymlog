@@ -361,15 +361,18 @@ describe("lifts left on the days before, for Add exercise", () => {
     expect(names(missedLifts(s, WED))).toEqual(["Lat Pulldown", "Chest-Supported Row"]);
   });
 
-  it("leaves out a lift done on a later day, as planned or swapped in for another", () => {
+  it("leaves out a lift done on a later day, or that day in another's place, as planned or swapped in for another", () => {
     const s = storeWith({
       [MON]: worked(["Incline Machine Press"]),
-      // Monday's Chest Press Machine done on Tuesday, and its Machine Shoulder Press in place of Seated Row.
-      [TUE]: worked(["Chest-Supported Row", "Dumbbell Curls"], { "Chest Press Machine": lift([[10, 40]]), "Seated Row": lift([[10, 30]], { swap: "Machine Shoulder Press" }) }),
+      // Monday's Chest Press Machine done on Tuesday, and its Machine Shoulder Press in place of Seated Row; and
+      // Tuesday's own Lat Pulldown in place of Rear Delt Fly.
+      [TUE]: worked(["Chest-Supported Row", "Dumbbell Curls"], {
+        "Chest Press Machine": lift([[10, 40]]),
+        "Seated Row": lift([[10, 30]], { swap: "Machine Shoulder Press" }),
+        "Rear Delt Fly": lift([[10, 40]], { swap: "Lat Pulldown" }),
+      }),
     });
     expect(missedLifts(s, WED).map((x) => [x.name, x.day])).toEqual([
-      ["Lat Pulldown", TUE],
-      ["Rear Delt Fly", TUE],
       ["Cable Curls", TUE],
       ["DB Lateral Raises", MON],
       ["Cable Triceps Pushdown", MON],
