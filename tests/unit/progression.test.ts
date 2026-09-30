@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { lighter, plateau, STUCK_AFTER, stuckWords } from "@/lib/plateau";
 import { deloadStep, fellShort, linearStep, percentOf, readyToAdd } from "@/lib/stats";
 import { GymStore, progWords } from "@/lib/store";
-import type { PlanExercise } from "@/lib/types";
-import { atWednesdayNoon, day, LAST, lift, sets, storeWith, WED } from "./helpers";
+import type { DayLog, PlanExercise } from "@/lib/types";
+import { atWednesdayNoon, day, LAST, lift, memoryStorage, sets, storeWith, WED } from "./helpers";
 
-// Progression per lift (RAJ-41): the rules, and the next weight each gives. Legs on Wednesdays, with Hamstring Curl at
-// 3 × 10-12 and Leg Press, knee-sensitive, at 3 × 10-12. Strength on Progress is in progress.test.ts.
+// Progression per lift (RAJ-41): the rules, and the next weight each gives, held for a sore knee or a day that holds;
+// and a stuck lift's hint. Legs on Wednesdays, with Hamstring Curl at 3 × 10-12 and Leg Press, knee-sensitive, at
+// 3 × 10-12. Strength and a lift's page on Progress are in progress.test.ts; the readiness note, in readiness.test.ts.
 atWednesdayNoon();
 
 const BEFORE = "2026-09-09";
@@ -135,5 +137,186 @@ describe("the next weight, by the lift's rule", () => {
     const t = storeWith({ [LAST]: day({ exercises: { "Leg Press": lift(SHORT) }, ...sore }) });
     const y = Object.assign(t.plan.days[2].exercises[1], { deloadAfter: "1" });
     expect(t.nextWeight(y, y.name, WED)).toMatchObject({ rule: "deload", to: 45, held: false });
+  });
+
+  it("holds every lift's increase on a day that holds (Hold today), kept on the day, and lets go again on Undo", () => {
+    const s = storeWith({ [LAST]: day({ exercises: { "Hamstring Curl": lift([[12, 30], [12, 30], [12, 30]]), "Leg Press": lift(SHORT) } }) });
+    const x = curl(s), last = s.lastDone(x.name, WED);
+    s.holdDay(WED, true);
+    expect(s.logs[WED].hold).toBe(true);
+    expect(s.pending[WED].hold).toBe(true); // saved with the day, so it syncs
+    // It stays through the day's other changes: a set logged, say.
+    s.editLift(WED, "Leg Press", (r) => void (r.sets = sets([[10, 45]])), false);
+    expect(s.entry(WED)).toMatchObject({ hold: true, exercises: { "Leg Press": { sets: [{ reps: 10, kg: 45 }] } } });
+    const n = s.nextWeight(x, x.name, WED)!;
+    expect(n).toMatchObject({ rule: "double", from: 30, to: 32.5, held: true, heldFor: "day" });
+    expect(progWords(n)).toEqual({ lead: "Hold 30 kg: you’re holding today’s weights.", kg: "", why: "" });
+    // The boxes suggest last time's weight and reps, not the new weight.
+    expect(s.placeholders(x, last, 0, n)).toEqual(["12", "30"]);
+    // A deload still shows, as with the knee, and so does a percentage that isn't more than last time.
+    const lp = Object.assign(s.plan.days[2].exercises[1], { deloadAfter: "1" });
+    expect(s.nextWeight(lp, lp.name, WED)).toMatchObject({ rule: "deload", held: false });
+    expect(s.nextWeight(curl(s, { prog: "percent", oneRm: "40", pct: "75" }), x.name, WED)).toMatchObject({ rule: "percent", to: 30, held: false });
+    delete curl(s).prog;
+    // Only that day: the next one goes up as usual.
+    expect(s.nextWeight(x, x.name, "2026-09-30")).toMatchObject({ to: 32.5, held: false });
+    // A sore knee as well: the knee says why.
+    const knee = storeWith({ [LAST]: day({ exercises: { "Leg Press": lift([[12, 50], [12, 50], [12, 50]]) }, kneeAfter: 7 }) });
+    knee.holdDay(WED, true);
+    expect(knee.nextWeight(knee.plan.days[2].exercises[1], "Leg Press", WED)).toMatchObject({ held: true, heldFor: "knee" });
+    // Undo: back to going up, and nothing left on the day.
+    s.holdDay(WED, false);
+    expect("hold" in s.logs[WED]).toBe(false);
+    expect(s.nextWeight(x, x.name, WED)).toMatchObject({ to: 32.5, held: false });
+    expect(s.placeholders(x, last, 0, s.nextWeight(x, x.name, WED))).toEqual(["10", "32.5"]);
+    // A day saved with anything else there reads as not holding.
+    expect(storeWith({ [WED]: { ...day(), hold: "yes" } as unknown as DayLog }).entry(WED).hold).toBeUndefined();
+  });
+});
+
+// A stuck lift (lib/plateau.ts): no new best estimated 1RM in its last four sessions, its card's hint and what it
+// suggests, and Not now. The same on the lift's page on Progress is in progress.test.ts.
+describe("a stuck lift", () => {
+  /** Five Wednesdays before WED, the last one LAST. */
+  const WEEKS = ["2026-08-19", "2026-08-26", "2026-09-02", "2026-09-09", LAST];
+  /** 3 × 10 at 30 kg: an estimated 1RM of 40 kg (Brzycki), short of Hamstring Curl's 12s, so it doesn't go up. */
+  const FLAT: [number, number][] = [[10, 30], [10, 30], [10, 30]];
+  const at = (day: string, e1rm: number | null, top: number | null = 30) => ({ day, e1rm, top });
+  /** Hamstring Curl done on WEEKS, one session each, with these sets. */
+  const curls = (xs: [number, number][][]) => storeWith(Object.fromEntries(xs.map((a, i) => [WEEKS[i], day({ exercises: { "Hamstring Curl": lift(a) } })])));
+  /** Adds a day to a store as the app does, so its list of days takes it in. */
+  const add = (s: GymStore, k: string, d: DayLog) => s.save(k, d, true);
+  const stuckOn = (s: GymStore, k = WED) => {
+    const x = curl(s);
+    return s.stuck(x, x.name, k, s.nextWeight(x, x.name, k));
+  };
+
+  it("is four sessions in a row without beating the best before them: equal isn't beaten", () => {
+    expect(STUCK_AFTER).toBe(4);
+    expect(plateau(WEEKS.map((d, i) => at(d, i ? 40 : 41)))).toEqual({ sessions: 4, best: 41, day: WEEKS[0], top: 30 });
+    expect(plateau(WEEKS.map((d) => at(d, 40)))).toMatchObject({ sessions: 4, best: 40, day: WEEKS[0] });
+    expect(plateau([...WEEKS, WED].map((d, i) => at(d, i ? 39 : 40)))?.sessions).toBe(5); // and on, past four
+    // A new best in the last four starts it over.
+    expect(plateau(WEEKS.map((d, i) => at(d, i === 4 ? 40.5 : 40)))).toBeNull();
+    expect(plateau(WEEKS.map((d, i) => at(d, i === 1 ? 40.5 : 40)))).toBeNull();
+  });
+
+  it("needs five sessions: four to judge and one before them to beat", () => {
+    expect(plateau([])).toBeNull();
+    expect(plateau(WEEKS.slice(1).map((d) => at(d, 40)))).toBeNull();
+    // A session with no estimate (reps only, or more than 12) isn't judged, so it doesn't make up the five.
+    expect(plateau(WEEKS.map((d, i) => at(d, i === 2 ? null : 40)))).toBeNull();
+    expect(plateau([...WEEKS.map((d, i) => at(d, i === 2 ? null : 40)), at(WED, 40)])).toMatchObject({ sessions: 4, day: WEEKS[0] });
+  });
+
+  it("counts sessions of the lift, not days: days without it don't count, and one it was swapped in for does", () => {
+    const s = curls([FLAT, FLAT, FLAT, FLAT]);
+    expect(stuckOn(s)).toBeNull(); // four sessions
+    add(s, "2026-09-12", day({ exercises: { "Leg Press": lift([[10, 50]]) } })); // another lift that day
+    add(s, "2026-09-14", day({ exercises: { "Hamstring Curl": lift(FLAT, { skipped: true }) } })); // skipped
+    expect(stuckOn(s)).toBeNull();
+    add(s, "2026-09-19", day({ exercises: { "Leg Curl": lift(FLAT, { swap: "Hamstring Curl" }) } })); // done in its place
+    expect(stuckOn(s)).toMatchObject({ sessions: 4, best: 40, day: WEEKS[0] });
+    // Today's own sets don't count yet: it's the session to come.
+    add(s, WED, day({ exercises: { "Hamstring Curl": { done: false, kg: 30, sets: sets([[11, 30]]) } } }));
+    expect(stuckOn(s)?.sessions).toBe(4);
+  });
+
+  it("suggests the planned sets at the top of the range, at 90% of last time, and says so", () => {
+    const s = curls([FLAT, FLAT, [[10, 30], [9, 30], [9, 30]], FLAT, FLAT]);
+    const t = stuckOn(s)!;
+    expect(t).toMatchObject({ sessions: 4, best: 40, sets: 3, reps: 12, kg: 27.5 });
+    expect(stuckWords(t)).toBe("No progress in 4 sessions. Try 3 × 12 at 90% (27.5 kg), or swap it for a variation.");
+    // Asked for other sets and reps that day: those.
+    add(s, WED, day({ exercises: { "Hamstring Curl": { done: false, kg: null, target: { sets: "4", reps: "8-10" } } } }));
+    expect(stuckOn(s)).toMatchObject({ sets: 4, reps: 10 });
+    expect(stuckWords({ ...t, reps: null })).toBe("No progress in 4 sessions. Try 90% (27.5 kg), or swap it for a variation.");
+    expect(stuckWords({ ...t, kg: null })).toBe("No progress in 4 sessions. Try swapping it for a variation.");
+  });
+
+  it("rounds the lighter weight to what the equipment makes", () => {
+    const machine = { base: 0, inc: 2.5 }, dumbbells = { base: 0, inc: 2 }, barbell = { base: 20, inc: 2.5 };
+    expect(lighter(30, machine)).toBe(27.5); // 27: nearest 27.5
+    expect(lighter(60, barbell)).toBe(55); // 54: nearest 55
+    expect(lighter(10, dumbbells)).toBe(8); // 9 is nearest 10, which isn't lighter: the pair below
+    expect(lighter(20, barbell)).toBeNull(); // the empty bar: nothing lighter
+    expect(lighter(null, machine)).toBeNull();
+    // Through the store: what the lift's equipment goes up by (My gym's weights), or its own step.
+    const s = curls([FLAT, FLAT, FLAT, FLAT, FLAT]);
+    expect(s.loadOf("Hamstring Curl")).toBe("machine");
+    s.plan.weights = { ...s.weights(), machine: 5 };
+    expect(stuckOn(s)?.kg).toBe(25); // 27, in 5 kg steps
+    curl(s, { step: "1" });
+    expect(stuckOn(s)?.kg).toBe(27);
+  });
+
+  it("gives way to the lift's own rule: go up or a deload", () => {
+    // Stuck under a heavier best, but every set hit 12 last time: going up wins.
+    const up = curls([[[10, 35], [10, 35], [10, 35]], FLAT, FLAT, FLAT, [[12, 30], [12, 30], [12, 30]]]);
+    expect(up.sessionBests("Hamstring Curl", WED).map((b) => Math.round(b.e1rm!))).toEqual([47, 40, 40, 40, 43]);
+    expect(plateau(up.sessionBests("Hamstring Curl", WED))).not.toBeNull();
+    expect(up.nextWeight(curl(up), "Hamstring Curl", WED)?.rule).toBe("double");
+    expect(stuckOn(up)).toBeNull();
+    // Short last time, with a deload after one: the deload wins.
+    const down = curls([FLAT, FLAT, FLAT, FLAT, [[10, 30], [8, 30], [7, 30]]]);
+    expect(stuckOn(down)).not.toBeNull();
+    curl(down, { deloadAfter: "1" });
+    expect(stuckOn(down)).toBeNull();
+  });
+
+  it("shows nothing on a day the lift is skipped, done or swapped for another", () => {
+    const s = curls([FLAT, FLAT, FLAT, FLAT, FLAT]);
+    expect(stuckOn(s)).not.toBeNull();
+    for (const r of [{ done: false, kg: null, skipped: true }, lift(FLAT), { done: false, kg: null, swap: "Nordic Curl" }]) {
+      add(s, WED, day({ exercises: { "Hamstring Curl": r } }));
+      expect(stuckOn(s)).toBeNull();
+    }
+  });
+
+  it("stays away after Not now, kept on this phone and not in the plan, until the lift beats its best and sticks again", async () => {
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("navigator", { onLine: true });
+    try {
+      const s = curls([FLAT, FLAT, FLAT, FLAT, FLAT]);
+      s.putOffStuck("Hamstring Curl", stuckOn(s)!.best);
+      expect(stuckOn(s)).toBeNull();
+      expect(JSON.parse(localStorage.getItem("gymlog.notnow.v1")!)).toEqual({ user: "u", lifts: { "Hamstring Curl": 40 } });
+      expect(s.planDirty || localStorage.getItem("gymlog.plan.v1") != null).toBe(false);
+      // Another session no better: still put off.
+      add(s, "2026-09-19", day({ exercises: { "Hamstring Curl": lift(FLAT) } }));
+      expect(stuckOn(s)).toBeNull();
+      // A new best, then four more without one: stuck again, on a best it hadn't when put off.
+      const later = ["2026-09-24", "2026-09-26", "2026-09-28", "2026-09-30", "2026-10-02"];
+      add(s, later[0], day({ exercises: { "Hamstring Curl": lift([[11, 30], [10, 30], [10, 30]]) } }));
+      for (const d of later.slice(1)) add(s, d, day({ exercises: { "Hamstring Curl": lift(FLAT) } }));
+      expect(stuckOn(s, "2026-10-05")).toMatchObject({ sessions: 4, day: later[0] });
+      // Signed in again on this phone (a reload), it's still put off; another account on it has its own.
+      const signIn = async (id: string) => {
+        const again = new GymStore(), user = { id, created_at: "2026-08-26T05:00:00Z" };
+        await (again as unknown as { onSignedIn(u: unknown, s: unknown): Promise<void> }).onSignedIn(user, { user, access_token: "" });
+        return again;
+      };
+      const again = await signIn("u");
+      expect(again.notNow).toEqual({ "Hamstring Curl": 40 });
+      expect(stuckOn(again)).toBeNull();
+      expect((await signIn("v")).notNow).toEqual({});
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stays put off when the lift is renamed with its history", async () => {
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.stubGlobal("navigator", { onLine: true });
+    try {
+      const s = curls([FLAT, FLAT, FLAT, FLAT, FLAT]);
+      s.putOffStuck("Hamstring Curl", stuckOn(s)!.best);
+      expect((await s.renameLift("Hamstring Curl", "Lying Leg Curl")).days).toBe(5);
+      expect(curl(s).name).toBe("Lying Leg Curl");
+      expect(stuckOn(s)).toBeNull();
+      expect(JSON.parse(localStorage.getItem("gymlog.notnow.v1")!).lifts).toEqual({ "Lying Leg Curl": 40 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

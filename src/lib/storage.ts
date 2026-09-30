@@ -6,6 +6,8 @@ export const PLAN_KEY = "gymlog.plan.v1";
 export const HEALTH_KEY = "gymlog.health.v1";
 /** The rest timer: this phone only, never synced (a timer only means something where you're lifting). */
 export const REST_KEY = "gymlog.rest.v1";
+/** Stuck lifts put off with Not now: this phone only, like the voice switch (GymStore.notNow). */
+export const NOT_NOW_KEY = "gymlog.notnow.v1";
 
 export function lsGet<T>(key: string, fallback: T): T {
   try {

@@ -3,6 +3,7 @@ import { Check, ChevronRight, Pause, Play, RotateCcw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ask } from "@/components/ds/Ask";
 import { Button } from "@/components/ds/parts";
+import { ReadinessNote } from "@/components/home/Readiness";
 import { CardioFinisher } from "@/components/today/CardioFinisher";
 import { completeSet, keepCursor, LiftItem, nextSet, type Moves } from "@/components/today/LiftItem";
 import { nextInRounds, SupersetItem, supersetModels } from "@/components/today/SupersetItem";
@@ -10,7 +11,7 @@ import type { LiftMenu } from "@/components/today/types";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
-import { wdIndex } from "@/lib/dates";
+import { todayKey, wdIndex } from "@/lib/dates";
 import { mmss, num } from "@/lib/format";
 import { performed, restSecFor } from "@/lib/store";
 import type { DayKey, NumField } from "@/lib/types";
@@ -125,6 +126,8 @@ export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLif
         </ol>
       ) : null}
       <div className="screen wbody">
+        {/* Today's readiness note on the first step, until a set is in: by then the day's weights are chosen. */}
+        {idx === 0 && day === todayKey() && !store.worked(day) ? <ReadinessNote day={day} id="readyWorkout" /> : null}
         {!steps ? (
           <section className="card">
             <h2 className="title-sm">No lifts yet</h2>
@@ -159,7 +162,7 @@ export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLif
               focusNext={focusNext}
               onOpenLift={onOpenLift}
               moves={moves(idx)}
-              onRemove={free?.lifts.includes(indexed[idx][0].item.name) ? () => store.removeFreeLift(day, indexed[idx][0].item.name) : undefined}
+              onRemove={free?.lifts.includes(indexed[idx][0].item.name) ? () => store.removeFreeLift(day, indexed[idx][0].item.name) : indexed[idx][0].item.added ? () => store.removeExtraLift(day, indexed[idx][0].item.name) : undefined}
               step={`Exercise ${idx + 1} of ${steps}`}
             />
           )

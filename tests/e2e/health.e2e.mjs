@@ -62,6 +62,9 @@ async function healthConnect({ browser, base, check }) {
   // Home: last night's sleep and the morning's workout on the day's timeline
   const tl = await flat(page.locator("#timeline"));
   check("Home's timeline: last night's sleep and the workout Health Connect recorded", /7 h 12 min sleep/.test(tl) && /7:10\s?am ?Strength training · 52 min/i.test(tl), tl);
+  // A good night and a usual resting heart rate (61 bpm against 64): no readiness note (today.e2e.mjs has one).
+  const today = await flat(page.locator("#todayCard"));
+  check("a good day: nothing on the workout card says to take it easier", /Start workout/.test(today) && !/Keep today’s weights|Hold today/.test(today), today);
 
   // Train: Health Connect's numbers in grey until you type your own, and one line under the boxes says so
   await openTab(page, "train");

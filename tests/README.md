@@ -17,15 +17,17 @@ only those (`npm run test:e2e -- health progress`), or `--changed` to run what t
 One file per page of the app, or per scenario that crosses pages. Before adding a test, find the file for its page or
 scenario, and look there for a test of the same thing: extend that one rather than adding a second.
 
-**Unit tests, by page:** `train` (the day log, missed and skipped days, records while typing), `progress` (Weight,
-Strength, Muscles, a lift's page), `healthView` (the Health tab's numbers), `gym` (My gym's equipment and weights),
-`plan` (the plan as saved, and Reset), `library`, `navigation` (addresses, Back, moving between screens).
+**Unit tests, by page:** `train` (the day log, missed and skipped days, records while typing, and what Add exercise
+suggests: lifts left on the days before, and muscles low this week), `progress` (Weight, Strength, Muscles, a lift's
+page), `healthView` (the Health tab's numbers), `gym` (My gym's equipment and weights), `plan` (the plan as saved, and
+Reset), `library`, `navigation` (addresses, Back, moving between screens).
 
 **Unit tests, by scenario:** `rename` (renaming a lift and its history), `sync` (saving over the version a phone had),
 `backup`, `auth` (signing in and out), `healthSync` (Health Connect from the Android app), `android` (the app
 starting, the widget), `watch` (what the Wear OS app is sent, and what's done on it), `update`, `rest` (the rest
 timer), `workout` (its clock, Complete set N, and what Workout complete adds up), `freeform`, `supersets`, `settypes`,
-`progression` (the rules and the next weight), `templates` (and the first run), `demo`, `voice` and `speech`. And for
+`progression` (the rules, the next weight and what holds it, and a stuck lift), `readiness` (today's signals and the
+note on Home's workout card), `templates` (and the first run), `demo`, `voice` and `speech`. And for
 the library code underneath: `stats`, `format`, `health` (Health Connect's readings into days), `heart`, `videos`
 (finding a lift's YouTube videos), `tokens`, `config`.
 

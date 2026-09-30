@@ -48,9 +48,14 @@
 @media (hover:hover){.tab:not([aria-current]):hover .tab-pill{background:var(--surface-sunken)}}
 @media (prefers-reduced-motion:no-preference){.tab-pill{transition:background-color var(--press) var(--ease)}}
 
-/* a rest counting down while you're on another screen: a pill above the tabs, back to the workout */
-.restpill{position:fixed;z-index:11;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar) + 10px);display:inline-flex;align-items:center;gap:8px;min-height:var(--touch-min);padding:0 18px;border-radius:var(--radius-pill);background:var(--brand);color:var(--on-brand);font:var(--type-body-strong);text-decoration:none}
-.wrap:not([data-tabs]) .restpill{bottom:calc(max(20px,var(--sab)) + 10px)}
+/* a rest counting down while you're on another screen: a pill above the tabs (--pill-at from the bottom), back to the
+   workout. While it shows, the page keeps room for it at the bottom, so a screen's last button (Train's Add exercise)
+   scrolls clear of it, and what's scrolled into view (a field focused, Add exercise given focus back) stops above it. */
+:root{--pill-at:calc(max(20px,var(--sab)) + 10px)}
+:root:has(.wrap[data-tabs]){--pill-at:calc(var(--tabbar) + 10px)}
+.restpill{position:fixed;z-index:11;left:50%;transform:translateX(-50%);bottom:var(--pill-at);display:inline-flex;align-items:center;gap:8px;min-height:var(--touch-min);padding:0 18px;border-radius:var(--radius-pill);background:var(--brand);color:var(--on-brand);font:var(--type-body-strong);text-decoration:none}
+.wrap:has(>.restpill){padding-bottom:calc(var(--pill-at) + var(--touch-min))}
+:root:has(.restpill){scroll-padding-bottom:calc(var(--pill-at) + var(--touch-min) + var(--space-3))}
 
 /* sync trouble and notices: one sticky stack under the top of the screen */
 .bars{position:sticky;top:calc(var(--sat) + 8px);z-index:9;display:grid;gap:8px;padding:0 var(--gut-r) 0 var(--gut-l);margin-bottom:12px}

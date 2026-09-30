@@ -4,6 +4,7 @@ import { addDays, DOW, dm, mondayOf } from "./dates";
 import { avg, signed, sum } from "./format";
 import { hoursMin } from "./health";
 import { MUSCLES, type Muscle } from "./library";
+import { plateau, type Plateau } from "./plateau";
 import * as S from "./stats";
 import { setsOf, topKg, type GymStore } from "./store";
 import type { DayKey, PlanExercise, SetLog } from "./types";
@@ -323,6 +324,13 @@ export interface MusclesModel {
   untagged: { name: string; sets: number }[];
 }
 
+/** Sets a week a muscle wants, as most advice has it: under this it's short (and over 20, too many). */
+export const WEEKLY_SETS = 10;
+
+/** Whether a muscle's sets are judged yet (under or over the range): once the account has a full week behind it,
+ *  last week, from its Monday on. */
+export const musclesJudged = (store: GymStore, t: DayKey) => store.firstDay() <= addDays(mondayOf(t), -7);
+
 export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
   const mon = mondayOf(t), weeks = [-21, -14, -7, 0].map((n) => addDays(mon, n));
   const days = store.days().filter((k) => k >= weeks[0] && k <= t).map((k) => ({ day: k, lifts: store.liftSets(k) }));
@@ -330,8 +338,8 @@ export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
     const x = store.exerciseOf(name);
     return x?.primary.length ? x : null;
   });
-  const judged = store.firstDay() <= weeks[2];
-  const note = (m: string, n: number): MuscleRow["note"] => (!judged ? null : n > 20 ? "over" : n < 10 && w.main.has(m) ? "under" : null);
+  const judged = musclesJudged(store, t);
+  const note = (m: string, n: number): MuscleRow["note"] => (!judged ? null : n > 20 ? "over" : n < WEEKLY_SETS && w.main.has(m) ? "under" : null);
   return {
     weeks,
     rows: [...w.muscles]
@@ -357,6 +365,9 @@ export interface LiftModel {
   volume: number;
   /** Sessions a week, from the first one logged to `t`; null until at least a week separates two sessions. */
   perWeek: number | null;
+  /** Stuck: no new best estimated 1RM in its last four sessions or more (lib/plateau.ts), as the workout's hint says,
+   *  whatever the lift's rule says next and whether or not the hint was put off with Not now: this page is its record. */
+  stuck: Plateau | null;
 }
 
 export function liftModel(store: GymStore, t: DayKey, name: string): LiftModel {
@@ -376,6 +387,7 @@ export function liftModel(store: GymStore, t: DayKey, name: string): LiftModel {
     bestE1rm: best((p) => p.e1rm),
     volume: sum(points.map((p) => p.volume)),
     perWeek: span >= 7 ? (points.length / span) * 7 : null,
+    stuck: plateau(points.map((p) => ({ day: p.day, e1rm: p.e1rm, top: p.top }))),
   };
 }
 

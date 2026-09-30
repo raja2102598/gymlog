@@ -40,6 +40,10 @@ export interface LiftLog {
    *  targets change. Unset on older entries, and on a lift no longer in the plan when first logged: both fall
    *  back to today's plan, as every entry did before this. */
   target?: { sets: string; reps: string };
+  /** Added to this day only, not to the plan (GymStore.addExtraLift: Train's Add exercise, for a lift missed on an
+   *  earlier day): it shows with the day's lifts, after the planned ones, before anything is logged, and asks for
+   *  its `target`. Left out on every other entry. */
+  added?: boolean;
 }
 
 export interface DayLog {
@@ -80,6 +84,9 @@ export interface DayLog {
   /** The workout's heart rate, bpm, measured on the watch (docs/watch.md): the average and highest over its readings,
    *  the watch's latest replacing the one before. */
   hr?: WorkoutHeart;
+  /** Hold today, from the readiness note (lib/readiness.ts): the day's lifts suggest last time's weights rather than
+   *  going up, as a knee lift does after a sore session (GymStore.nextWeight). Left out while the day doesn't hold. */
+  hold?: true;
 }
 
 export interface WorkoutHeart {

@@ -20,6 +20,7 @@ import type { DayKey, DayLog, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
 import { PlatesInfo } from "./PlateCalc";
 import { SetMenu, SetNumber } from "./SetMenu";
+import { StuckHint } from "./StuckHint";
 import { InsightCallout } from "@/components/ds/parts";
 import { targetWords } from "@/lib/session";
 import type { LiftMenu } from "./types";
@@ -48,7 +49,8 @@ interface Props {
   /** Opens a lift's own page, under Progress. */
   onOpenLift: (name: string) => void;
   moves: Moves;
-  /** Takes the lift out of the day's free-form workout, for a lift that's in one. */
+  /** Takes the lift out of the day's free-form workout, for a lift that's in one, or out of the day, for one added to
+   *  that day only. */
   onRemove?: () => void;
 }
 
@@ -465,7 +467,7 @@ export function LiftHead({
           <InsightCallout kind="caution">{x.flag}</InsightCallout>
         </div>
       ) : null}
-      {m.item.extra ? <p className="note">Not in this workout</p> : null}
+      {m.item.extra ? <p className="note">Not in this workout</p> : m.item.added ? <p className="note">Added for this day only, not to the plan</p> : null}
       {actions}
     </>
   );
@@ -589,6 +591,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   ) : (
     <>
       <ProgHint next={m.next} />
+      <StuckHint m={m} setMenu={setMenu} focusNext={focusNext} />
       <div className="sets" role="group" aria-label={`${m.did}, sets`}>
         <SetHead />
         {Array.from({ length: rows }, (_, j) => (
