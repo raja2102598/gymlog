@@ -5,7 +5,8 @@ import org.json.JSONObject
 /**
  * One thing done on the watch, sent to the phone as its own /gymlog/cmd/<id> data item (docs/watch.md). Only the
  * fields its `type` uses are set. A rest button's names the rest it was pressed for: its `day`, `lift` and
- * `restStartedAt`. Every command carries the `account` of the state it was made on, and is only ever applied to it.
+ * `restStartedAt`; the clock's pause, resume and Finish name the run, by `runStartedAt`. Every command carries the
+ * `account` of the state it was made on, and is only ever applied to it.
  */
 data class Command(
     val id: String,
@@ -23,6 +24,7 @@ data class Command(
     val samples: Int? = null,
     val restStartedAt: Long? = null,
     val account: String? = null,
+    val runStartedAt: Long? = null,
 )
 
 /**
@@ -59,8 +61,17 @@ object OverlayLogic {
     fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?) =
         Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg)
 
-    /** A command naming only its day: startRun, pauseRun, resumeRun or finish. */
+    /** A command naming only its day: startRun. */
     fun ofDay(id: String, at: Long, type: String, day: String) = Command(id, at, type, day = day)
+
+    /** The clock's pauseRun, resumeRun or finish, for the day's run shown, `run` (null: none yet). It names that run,
+     *  so neither the phone nor the watch applies it to one restarted (↺) or started again since. */
+    fun ofRun(id: String, at: Long, type: String, day: String, run: Run?) =
+        Command(id, at, type, day = day, runStartedAt = run?.takeIf { it.day == day }?.startedAt)
+
+    /** Whether a clock command was made for the day's run there is now, `r`, as the phone checks it (lib/watch.ts,
+     *  sameRun): the one it showed, by its start, or none when it showed none. */
+    fun sameRun(r: Run?, c: Command): Boolean = r?.takeIf { it.day == c.day }?.startedAt == c.runStartedAt
 
     /** A command about the rest shown, `rest`: restSkip, restPause or restResume, or restAdd with `sec`. It names that
      *  rest, so neither the phone nor the watch applies it to a newer one started since. */
@@ -99,6 +110,7 @@ object OverlayLogic {
         c.samples?.let { o.put("samples", it) }
         c.restStartedAt?.let { o.put("restStartedAt", it) }
         c.account?.let { o.put("account", it) }
+        c.runStartedAt?.let { o.put("runStartedAt", it) }
         return o.toString()
     }
 
@@ -124,6 +136,7 @@ object OverlayLogic {
                 samples = num("samples")?.toInt(),
                 restStartedAt = if (o.isNull("restStartedAt")) null else o.getLong("restStartedAt"),
                 account = str("account"),
+                runStartedAt = if (o.isNull("runStartedAt")) null else o.getLong("runStartedAt"),
             )
         } catch (e: Exception) {
             null
@@ -162,13 +175,19 @@ object OverlayLogic {
                 val day = c.day
                 if (day == null || (s.run?.day == day && TimerLogic.underWay(s.run, c.at))) s else s.copy(run = Run(day, c.at))
             }
-            PAUSE_RUN -> s.run?.takeIf { it.day == c.day }?.let { s.copy(run = TimerLogic.pauseRun(it, c.at)) } ?: s
-            RESUME_RUN -> s.run?.takeIf { it.day == c.day }?.let { s.copy(run = TimerLogic.resumeRun(it, c.at)) } ?: s
+            // The clock's pause, resume and Finish act on the run they were pressed for, and never on one restarted (↺)
+            // on the phone since, as the phone drops them then.
+            PAUSE_RUN -> s.run?.takeIf { it.day == c.day && sameRun(it, c) }?.let { s.copy(run = TimerLogic.pauseRun(it, c.at)) } ?: s
+            RESUME_RUN -> s.run?.takeIf { it.day == c.day && sameRun(it, c) }?.let { s.copy(run = TimerLogic.resumeRun(it, c.at)) } ?: s
             // Finish ends the clock, and the rest after the last set with it: there's no next set to rest for.
-            FINISH -> s.copy(
-                run = s.run?.let { if (it.day == c.day) TimerLogic.endRun(it, c.at) else it },
-                rest = s.rest?.takeIf { it.day != c.day },
-            )
+            FINISH -> if (!sameRun(s.run, c)) {
+                s
+            } else {
+                s.copy(
+                    run = s.run?.let { if (it.day == c.day) TimerLogic.endRun(it, c.at) else it },
+                    rest = s.rest?.takeIf { it.day != c.day },
+                )
+            }
             // The rest's buttons act on the rest they were pressed for, and never on one that's replaced it since (a
             // set logged on the phone, say), as the phone drops them then.
             REST_SKIP, REST_ADD, REST_PAUSE, REST_RESUME -> s.rest?.takeIf { sameRest(it, c) }?.let { r ->

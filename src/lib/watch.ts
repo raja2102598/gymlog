@@ -11,7 +11,7 @@ import { num } from "./format";
 import { blockRest, supersetModels, type LiftModel } from "./lift";
 import type { GymStore } from "./store";
 import type { DayKey, SetType } from "./types";
-import { currentRun, finishWorkout, pauseRun, resumeRun, runMs, STALE_RUN_MS, startRun } from "./workout";
+import { currentRun, finishWorkout, pauseRun, resumeRun, runMs, runOf, STALE_RUN_MS, startRun } from "./workout";
 
 /** The version of these shapes, `v` in each: either side ignores one it doesn't know. */
 export const WATCH_V = 1;
@@ -188,11 +188,19 @@ function sameRest(store: GymStore, day: DayKey | null, c: WatchCommand): boolean
   return r.startedAt == null || from == null || r.startedAt === from;
 }
 
+/** Whether the clock's pause, resume or Finish pressed on the watch was pressed for the day's run there is now: the
+ *  command names the run the watch showed by its startedAt (`runStartedAt`, or none for a day with no clock yet), and
+ *  one restarted (↺) or started again on the phone since has another. */
+function sameRun(day: DayKey, c: WatchCommand): boolean {
+  const from = c.runStartedAt;
+  return (from == null || isNumber(from)) && (runOf(day)?.startedAt ?? null) === (from ?? null);
+}
+
 /** Does what a command from the watch stands for, through the same change as the phone's own tap, and says whether it
  *  could: false for one it can't apply (made under another account than the one signed in, or under none; a day or
- *  lift it doesn't have, a set past the rows, a rest since replaced, a type or version it doesn't know), which is
- *  dropped. The clock and the rest timer's buttons act as of when they were done on the watch (never later than now,
- *  should the watch's clock be ahead), and the rest's only on the rest they were pressed for, never on a newer one. */
+ *  lift it doesn't have, a set past the rows, a rest or a run since replaced, a type or version it doesn't know),
+ *  which is dropped. The clock and the rest timer's buttons act as of when they were done on the watch (never later
+ *  than now, should the watch's clock be ahead), and only on the run or rest they were pressed for. */
 export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.now()): boolean {
   // Made while the watch showed another account's workout: signed out and into this one since, with the watch out of
   // reach. Its day and lift are that account's, never this one's.
@@ -205,15 +213,19 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
     case "startRun":
       if (day) startRun(day, at);
       return !!day;
+    // Only for the run they were pressed for: a pause queued away from the phone never stops a clock restarted since.
     case "pauseRun":
-      if (day) pauseRun(day, at);
-      return !!day;
+      if (!day || !sameRun(day, c)) return false;
+      pauseRun(day, at);
+      return true;
     case "resumeRun":
-      if (day) resumeRun(day, at);
-      return !!day;
+      if (!day || !sameRun(day, c)) return false;
+      resumeRun(day, at);
+      return true;
     case "finish":
-      if (day) finishWorkout(store, day, at);
-      return !!day;
+      if (!day || !sameRun(day, c)) return false;
+      finishWorkout(store, day, at);
+      return true;
     case "restSkip":
       if (!sameRest(store, day, c)) return false;
       store.skipRest();

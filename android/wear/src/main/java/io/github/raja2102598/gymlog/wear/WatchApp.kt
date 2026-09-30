@@ -79,16 +79,17 @@ class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long,
         send { id, at -> OverlayLogic.set(id, at, d.date, lift.key, set, reps, kg) }
     }
 
-    /** The clock, tapped: pauses it, or resumes it paused. */
+    /** The clock, tapped: pauses it, or resumes it paused. Both, and Finish, name the run on screen, so one restarted
+     *  on the phone since isn't the one they change. */
     fun toggleRun() {
         val r = run ?: return
         if (r.endedAt != null) return
-        send { id, at -> OverlayLogic.ofDay(id, at, if (r.pausedAt != null) OverlayLogic.RESUME_RUN else OverlayLogic.PAUSE_RUN, r.day) }
+        send { id, at -> OverlayLogic.ofRun(id, at, if (r.pausedAt != null) OverlayLogic.RESUME_RUN else OverlayLogic.PAUSE_RUN, r.day, r) }
     }
 
     fun finish() {
         val d = day ?: return
-        send { id, at -> OverlayLogic.ofDay(id, at, OverlayLogic.FINISH, d.date) }
+        send { id, at -> OverlayLogic.ofRun(id, at, OverlayLogic.FINISH, d.date, run) }
     }
 
     // The rest's buttons name the rest on screen, so a newer one started since on the phone isn't the one they change.

@@ -144,6 +144,9 @@ class OverlayLogicTest {
     fun theClockStartsPausesResumesAndFinishes() {
         val s = state(day(listOf(lift("Squat", null))), rest = Rest(TODAY, "Squat", t0 + 60_000L))
         fun cmd(type: String, at: Long, day: String = TODAY) = OverlayLogic.ofDay("c-$type-$at", at, type, day)
+
+        /** Pause, resume or Finish, pressed for the run `shown` had. */
+        fun clock(type: String, at: Long, shown: WatchState, day: String = TODAY) = OverlayLogic.ofRun("c-$type-$at", at, type, day, shown.run)
         val started = apply(s, listOf(cmd(OverlayLogic.START_RUN, t0)))
         assertEquals(Run(TODAY, t0), started.run)
         // Already running for the day: the second Start leaves it be.
@@ -153,17 +156,28 @@ class OverlayLogicTest {
         assertEquals(Run(TODAY, t0), apply(s.copy(run = Run(TODAY, t0 - 10, endedAt = t0 - 5)), listOf(cmd(OverlayLogic.START_RUN, t0))).run)
         assertEquals(Run(TODAY, t0), apply(s.copy(run = Run(TODAY, t0 - TimerLogic.LEFT_BEHIND_MS)), listOf(cmd(OverlayLogic.START_RUN, t0))).run)
 
-        val paused = apply(started, listOf(cmd(OverlayLogic.PAUSE_RUN, t0 + 60_000L)))
+        val paused = apply(started, listOf(clock(OverlayLogic.PAUSE_RUN, t0 + 60_000L, started)))
         assertEquals(t0 + 60_000L, paused.run?.pausedAt)
-        val resumed = apply(paused, listOf(cmd(OverlayLogic.RESUME_RUN, t0 + 90_000L)))
+        val resumed = apply(paused, listOf(clock(OverlayLogic.RESUME_RUN, t0 + 90_000L, paused)))
         assertEquals(Run(TODAY, t0, null, 30_000L), resumed.run)
-        assertEquals(paused, apply(paused, listOf(cmd(OverlayLogic.RESUME_RUN, t0 + 90_000L, day = "2026-09-28")))) // another day's
+        assertEquals(paused, apply(paused, listOf(clock(OverlayLogic.RESUME_RUN, t0 + 90_000L, paused, day = "2026-09-28")))) // another day's
 
-        val finished = apply(resumed, listOf(cmd(OverlayLogic.FINISH, t0 + 600_000L)))
+        val finished = apply(resumed, listOf(clock(OverlayLogic.FINISH, t0 + 600_000L, resumed)))
         assertEquals(t0 + 600_000L, finished.run?.endedAt)
         assertNull(finished.rest) // the day's rest goes with it
         val otherRest = resumed.copy(rest = Rest("2026-09-28", "Row", t0 + 60_000L))
-        assertEquals(otherRest.rest, apply(otherRest, listOf(cmd(OverlayLogic.FINISH, t0 + 600_000L))).rest)
+        assertEquals(otherRest.rest, apply(otherRest, listOf(clock(OverlayLogic.FINISH, t0 + 600_000L, otherRest))).rest)
+
+        // Pressed for the run before one restarted (↺) on the phone since, which the state now has: the new run isn't
+        // paused or finished, nor its day's rest ended.
+        val restarted = started.copy(run = Run(TODAY, t0 + 120_000L))
+        assertEquals(restarted, apply(restarted, listOf(clock(OverlayLogic.PAUSE_RUN, t0 + 100_000L, started))))
+        val restartedPaused = restarted.copy(run = restarted.run?.copy(pausedAt = t0 + 130_000L))
+        assertEquals(restartedPaused, apply(restartedPaused, listOf(clock(OverlayLogic.RESUME_RUN, t0 + 140_000L, paused))))
+        assertEquals(restarted, apply(restarted, listOf(clock(OverlayLogic.FINISH, t0 + 100_000L, started))))
+        // Finish pressed with no clock on screen: the day's rest goes, unless a clock has been started since.
+        assertNull(apply(s, listOf(clock(OverlayLogic.FINISH, t0, s))).rest)
+        assertEquals(started, apply(started, listOf(clock(OverlayLogic.FINISH, t0 + 5_000L, s))))
     }
 
     @Test
@@ -239,6 +253,10 @@ class OverlayLogicTest {
         assertEquals(listOf(TODAY, "Squat", 42L), listOf(add.getString("day"), add.getString("lift"), add.getLong("restStartedAt")))
         val start = JSONObject(OverlayLogic.toJson(OverlayLogic.ofDay("c-11", 44L, OverlayLogic.START_RUN, TODAY)))
         assertEquals(setOf("v", "id", "at", "type", "day"), start.keys().asSequence().toSet())
+        val pause = JSONObject(OverlayLogic.toJson(OverlayLogic.ofRun("c-16", 48L, OverlayLogic.PAUSE_RUN, TODAY, Run(TODAY, 40L))))
+        assertEquals(setOf("v", "id", "at", "type", "day", "runStartedAt"), pause.keys().asSequence().toSet())
+        assertEquals(40L, pause.getLong("runStartedAt"))
+        assertEquals(OverlayLogic.ofRun("c-16", 48L, OverlayLogic.PAUSE_RUN, TODAY, Run(TODAY, 40L)), OverlayLogic.fromJson(pause.toString()))
         val cardio = JSONObject(OverlayLogic.toJson(OverlayLogic.cardioDone("c-12", 45L, TODAY, false)))
         assertEquals(false, cardio.getBoolean("done"))
 

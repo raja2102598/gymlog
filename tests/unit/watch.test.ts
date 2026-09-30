@@ -10,7 +10,7 @@ import { wdIndex } from "@/lib/dates";
 import type { GymStore, RestTimer } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
 import { watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
-import { currentRun, endRun, keepRunsInMemory, pauseRun, resumeRun, runsFor, startRun } from "@/lib/workout";
+import { clearRun, currentRun, endRun, keepRunsInMemory, pauseRun, restartRun, resumeRun, runsFor, startRun } from "@/lib/workout";
 import { ACK_MS, APPLIED_KEPT, PUBLISH_MS, startWatch, WATCH_KEY } from "@/native/watch";
 import { atWednesdayNoon, day, LAST, lift, memoryStorage, storeWith, WED } from "./helpers";
 import { app, watch } from "./nativeMocks";
@@ -422,22 +422,44 @@ describe("what the watch sends back", () => {
 
   it("runs the workout's clock from when it was started, paused and resumed on the watch, and Finish ends it and the day's rest", async () => {
     const { s, stop } = await running();
-    watch.arrive(cmd("startRun", { day: WED }, 20 * MIN), cmd("pauseRun", { day: WED }, 10 * MIN));
+    // Pause, resume and Finish name the run the watch showed, by its start.
+    const run = { day: WED, runStartedAt: NOON - 20 * MIN };
+    watch.arrive(cmd("startRun", { day: WED }, 20 * MIN), cmd("pauseRun", run, 10 * MIN));
     await vi.advanceTimersByTimeAsync(0);
     expect(currentRun()).toMatchObject({ day: WED, startedAt: NOON - 20 * MIN, pausedAt: NOON - 10 * MIN });
-    watch.arrive(cmd("resumeRun", { day: WED }, 5 * MIN), cmd("startRun", { day: WED }));
+    watch.arrive(cmd("resumeRun", run, 5 * MIN), cmd("startRun", { day: WED }));
     await vi.advanceTimersByTimeAsync(0);
     expect(currentRun()).toMatchObject({ startedAt: NOON - 20 * MIN, pausedMs: 5 * MIN }); // already running: carries on
     expect(currentRun()?.pausedAt).toBeUndefined();
 
+    // Paused on the watch out of reach at 11:57, while on the phone the clock was paused and started again from 0:00
+    // (↺) at 11:58: that pause, finish too, was for the run before, and the new one runs on.
+    const pause = cmd("pauseRun", run, 3 * MIN), finish = cmd("finish", run, 3 * MIN);
+    restartRun(WED, NOON - 2 * MIN);
+    watch.arrive(pause, finish);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()).toEqual({ day: WED, startedAt: NOON - 2 * MIN, user: "u" });
+    expect(watch.sent().applied).toEqual(expect.arrayContaining([pause.id, finish.id])); // dropped, and acked
+    // A day with no clock yet: Finish from the watch, which showed none, still ends the day's rest; with a clock
+    // started on the phone since, it's dropped.
+    clearRun();
     s.startRest(WED, "Calf Raise", 90);
-    watch.arrive(cmd("finish", { day: WED }, 30 * SEC));
+    watch.arrive(cmd("finish", { day: WED }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toBeNull();
+    startRun(WED, NOON - MIN);
+    watch.arrive(cmd("finish", { day: WED }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(currentRun()?.endedAt).toBeUndefined();
+
+    s.startRest(WED, "Calf Raise", 90);
+    watch.arrive(cmd("finish", { day: WED, runStartedAt: NOON - MIN }, 30 * SEC));
     await vi.advanceTimersByTimeAsync(0);
     expect(currentRun()).toMatchObject({ endedAt: NOON - 30 * SEC });
     expect(s.rest).toBeNull();
     // Another day's rest isn't this workout's.
     s.startRest("2026-09-22", "Lat Pulldown", 90);
-    watch.arrive(cmd("finish", { day: WED }));
+    watch.arrive(cmd("finish", { day: WED, runStartedAt: NOON - MIN }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.rest).not.toBeNull();
     stop();

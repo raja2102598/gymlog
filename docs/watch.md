@@ -139,8 +139,8 @@ app's own Data Layer items.
 |---|---|---|
 | `set` | `day`, `lift` (key), `set` (row index), `reps`, `kg` | Logs that working set as Complete set N does, weight then reps (`kg: null` takes the weight Complete set N would; `reps: null` clears it: the tick's undo). The rest it starts is the phone's own rule, counted from `at`, and started at `at` (its `startedAt`, as the watch gave it, so it's the rest the watch started itself); one for a set logged longer ago than its rest isn't started, and neither is one over a rest started after `at` (a set logged or said on the phone while this one was on its way), which stays: the set itself is still logged. |
 | `startRun` | `day` | Starts the day's workout clock from `at`, or does nothing if it's running. |
-| `pauseRun` / `resumeRun` | `day` | Pauses or resumes it, as of `at`. |
-| `finish` | `day` | Finish: ends the clock (at `at`) and the day's rest, as the phone's Finish workout does. |
+| `pauseRun` / `resumeRun` | `day`, `runStartedAt` | Pauses or resumes it, as of `at`, if it's the run named (below). |
+| `finish` | `day`, `runStartedAt` | Finish: ends the clock (at `at`) and the day's rest, as the phone's Finish workout does, if it's the run named: with no `runStartedAt` (the watch showed no clock), only while the day has none. |
 | `restSkip` | `day`, `lift`, `restStartedAt` | Skips the rest, if it's the one named (below). |
 | `restAdd` | `day`, `lift`, `restStartedAt`, `sec` | Adds to the rest (+15 s), if it's the one named, as of `at`: `sec` more from its end, or from `at` if it was over by then. One that arrives when even that end has passed changes nothing. |
 | `restPause` / `restResume` | `day`, `lift`, `restStartedAt` | Pauses or resumes the rest, if it's the one named, as of `at`: a pause keeps what was left at `at` (taking a rest that's since reached zero back from "Rest over"), and a resume counts that down from `at`. |
@@ -160,6 +160,12 @@ phone meanwhile, by a set logged or said there, which a command delayed out of r
 out. It drops the others. A rest with no `startedAt` (a timer the phone kept from before it had one), or a command
 with none, is matched by its `day` and `lift` alone. The watch shows its own rest commands by the same rule, so a skip
 of a rest the phone has since replaced isn't shown on the newer one.
+
+The clock's pause, resume and Finish name the run they were pressed for the same way: `runStartedAt`, the `startedAt`
+of the day's `run` the watch showed (none when it showed no clock). The phone applies one only while its run for that
+day has the same `startedAt`: a pause queued out of reach, while the clock was started again from 0:00 (↺) on the
+phone, would otherwise pause the new run, even from before it started. It drops the others, and the watch shows its
+own by the same rule. `startRun` names no run: it does nothing to a clock already going.
 
 The watch sends `hr` every five minutes during the workout (with new readings since the last), so little is lost if it's
 reset or lost before the end, and at the end. A newer `hr` for a day replaces that day's older ones still waiting to
