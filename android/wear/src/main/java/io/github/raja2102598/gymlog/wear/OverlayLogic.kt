@@ -231,6 +231,9 @@ object OverlayLogic {
         if (c.reps == null || hadReps || rows.drop(j + 1).any { it.reps != null }) return out
         val block = out.days.first { it.date == day.date }.blocks[b]
         val sec = restAfter(block, j) ?: return out
+        // A rest started after this set was done (on the phone, for a set logged or said there, which the state has
+        // already) is the newer one, and stays, as the phone keeps it.
+        if ((out.rest?.startedAt ?: Long.MIN_VALUE) > c.at) return out
         // Started at `at`, as the phone starts it (store.startRest's `from`), so it's the same rest there.
         return if (sec > 0) out.copy(rest = Rest(day.date, edited.name, c.at + sec * 1000L, null, sec, startedAt = c.at)) else out
     }

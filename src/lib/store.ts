@@ -1287,11 +1287,14 @@ export class GymStore {
    *  watch at `from` (lib/watch.ts), which can reach the phone a while later: its rest counts from then, as it did on
    *  the watch, and one that would be over by now isn't started at all. `from` is also its startedAt, as the watch
    *  gave it, so the rest the watch started itself for that set is known to be this one (never later than now is for
-   *  the countdown only: were the watch's clock a little ahead, the two would otherwise differ). */
-  startRest(day: DayKey, lift: string, sec: number, from = Date.now()) {
-    const now = Date.now(), at = Math.min(from, now);
+   *  the countdown only: were the watch's clock a little ahead, the two would otherwise differ). A rest started after
+   *  `from` (a set logged here or said since, while the watch's was on its way) is the newer one, and stays: only a set
+   *  logged now, with no `from`, always starts its own. */
+  startRest(day: DayKey, lift: string, sec: number, from?: number) {
+    const now = Date.now(), at = Math.min(from ?? now, now);
     if (at + sec * 1000 < now) return;
-    this.rest = { day, lift, endAt: at + sec * 1000, pausedAt: null, ended: false, sec, startedAt: from };
+    if (from != null && (this.rest?.startedAt ?? -Infinity) > from) return;
+    this.rest = { day, lift, endAt: at + sec * 1000, pausedAt: null, ended: false, sec, startedAt: from ?? now };
     this.armRest();
     this.persistRest();
     this.changed();

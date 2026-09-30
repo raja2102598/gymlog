@@ -308,7 +308,7 @@ describe("what the watch sends back", () => {
     stop();
   });
 
-  it("starts no rest for a set done longer ago than its rest, and in a superset only once the round is complete", async () => {
+  it("starts no rest for a set done longer ago than its rest, or before a rest started since, and in a superset only once the round is complete", async () => {
     const { s, stop } = await running();
     watch.arrive(cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45 }, 91 * SEC));
     await vi.advanceTimersByTimeAsync(0);
@@ -326,6 +326,28 @@ describe("what the watch sends back", () => {
     watch.arrive(cmd("set", { day: WED, lift: "Hamstring Curl", set: 0, reps: 10, kg: 32.5 }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.rest).toMatchObject({ lift: "Hamstring Curl", endAt: NOON + 90 * SEC });
+
+    // Set 3 done on the watch at 12:00:10, arriving after Calf Raise's rest was started on the phone at 12:00:20: the
+    // set is logged, and the newer rest stays.
+    s.skipRest();
+    await vi.advanceTimersByTimeAsync(20 * SEC);
+    s.startRest(WED, "Calf Raise", 60);
+    watch.arrive(cmd("set", { day: WED, lift: "Leg Press", set: 2, reps: 8, kg: 45 }, 10 * SEC));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sets(s, "Leg Press")).toEqual([{ reps: 10, kg: 45 }, { reps: 10, kg: 45 }, { reps: 8, kg: 45 }]);
+    expect(s.rest).toMatchObject({ lift: "Calf Raise", startedAt: NOON + 20 * SEC, endAt: NOON + 80 * SEC });
+    // One done after that rest started replaces it, as ever.
+    await vi.advanceTimersByTimeAsync(10 * SEC);
+    watch.arrive(cmd("set", { day: WED, lift: "Hack Squat", set: 0, reps: 10, kg: 40 }, 5 * SEC));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toMatchObject({ lift: "Hack Squat", startedAt: NOON + 25 * SEC, endAt: NOON + 115 * SEC });
+    // A set logged on the phone now starts its own, even over a rest the watch started "later" by its clock, a little
+    // ahead of the phone's.
+    watch.arrive(cmd("set", { day: WED, lift: "Hack Squat", set: 1, reps: 10, kg: 40 }, -5 * SEC));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.rest).toMatchObject({ lift: "Hack Squat", startedAt: NOON + 35 * SEC });
+    s.startRest(WED, "Calf Raise", 60);
+    expect(s.rest).toMatchObject({ lift: "Calf Raise", startedAt: NOON + 30 * SEC });
     stop();
   });
 

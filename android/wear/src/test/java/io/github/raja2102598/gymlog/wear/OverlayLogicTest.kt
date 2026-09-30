@@ -83,6 +83,12 @@ class OverlayLogicTest {
         assertNull(apply(later, listOf(set("c-1", "Leg Press", 0, 12))).rest)
         // Clearing a set starts none either.
         assertNull(apply(s, listOf(set("c-1", "Leg Press", 0, null))).rest)
+        // A rest the phone started after the set was done (another lift logged there while it was on its way) is the
+        // newer one, and stays; one started before it is replaced.
+        val newer = Rest(TODAY, "Calf Raise", t0 + 70_000L, sec = 60, startedAt = t0 + 10_000L)
+        assertEquals(newer, apply(s.copy(rest = newer), listOf(set("c-1", "Leg Press", 1, 12, at = t0))).rest)
+        val older = newer.copy(startedAt = t0 - 10_000L)
+        assertEquals(t0, apply(s.copy(rest = older), listOf(set("c-1", "Leg Press", 1, 12, at = t0))).rest?.startedAt)
     }
 
     @Test
