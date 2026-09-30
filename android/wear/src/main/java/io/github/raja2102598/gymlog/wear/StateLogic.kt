@@ -44,6 +44,7 @@ object StateLogic {
                 run = o.optJSONObject("run")?.let(::run),
                 rest = o.optJSONObject("rest")?.let(::rest),
                 days = objects(o.optJSONArray("days")).mapNotNull(::day),
+                account = o.str("account")?.takeIf { it.isNotEmpty() },
             ),
         )
     }

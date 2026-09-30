@@ -59,7 +59,8 @@ data class Rest(
     val startedAt: Long? = null,
 )
 
-/** The whole of /gymlog/state. `applied` holds the ids of the watch's commands the phone has applied. */
+/** The whole of /gymlog/state. `applied` holds the ids of the watch's commands the phone has applied. `account` is the
+ *  account signed in on the phone (null: none), which every command made on it carries. */
 data class WatchState(
     val sentAt: Long,
     val signedIn: Boolean,
@@ -67,4 +68,5 @@ data class WatchState(
     val run: Run?,
     val rest: Rest?,
     val days: List<Day>,
+    val account: String? = null,
 )

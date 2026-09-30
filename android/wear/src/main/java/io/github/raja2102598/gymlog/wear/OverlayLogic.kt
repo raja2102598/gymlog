@@ -5,7 +5,7 @@ import org.json.JSONObject
 /**
  * One thing done on the watch, sent to the phone as its own /gymlog/cmd/<id> data item (docs/watch.md). Only the
  * fields its `type` uses are set. A rest button's names the rest it was pressed for: its `day`, `lift` and
- * `restStartedAt`.
+ * `restStartedAt`. Every command carries the `account` of the state it was made on, and is only ever applied to it.
  */
 data class Command(
     val id: String,
@@ -22,6 +22,7 @@ data class Command(
     val max: Int? = null,
     val samples: Int? = null,
     val restStartedAt: Long? = null,
+    val account: String? = null,
 )
 
 /**
@@ -97,6 +98,7 @@ object OverlayLogic {
         c.max?.let { o.put("max", it) }
         c.samples?.let { o.put("samples", it) }
         c.restStartedAt?.let { o.put("restStartedAt", it) }
+        c.account?.let { o.put("account", it) }
         return o.toString()
     }
 
@@ -121,6 +123,7 @@ object OverlayLogic {
                 max = num("max")?.toInt(),
                 samples = num("samples")?.toInt(),
                 restStartedAt = if (o.isNull("restStartedAt")) null else o.getLong("restStartedAt"),
+                account = str("account"),
             )
         } catch (e: Exception) {
             null
@@ -132,15 +135,24 @@ object OverlayLogic {
      * again later, after this one, would only take the phone back to less of the workout.
      */
     fun supersede(pending: List<Command>, unsent: Set<String>, cmd: Command): List<Command> =
-        if (cmd.type != HR) pending else pending.filter { !(it.type == HR && it.day == cmd.day && it.id in unsent) }
+        if (cmd.type != HR) pending else pending.filter { !(it.type == HR && it.day == cmd.day && it.account == cmd.account && it.id in unsent) }
 
-    /** The commands still to show: not yet in `applied`, and not so old the phone is never going to take them. */
-    fun prune(pending: List<Command>, applied: Set<String>, now: Long): List<Command> =
-        pending.filter { it.id !in applied && now - it.at < KEEP_MS }
+    /**
+     * The commands still to show over `state` and send again: not yet in its `applied`, not made under another account
+     * than its own, and not so old the phone is never going to take them. The phone signed out and into another
+     * account since they were made: they're that account's days, never this one's, so they go (the phone drops them
+     * too). Signed out, with no account yet, they wait for the one they were made under, as the phone's own queue does.
+     * A state the watch can't read (null) only ages them.
+     */
+    fun prune(pending: List<Command>, state: WatchState?, now: Long): List<Command> =
+        pending.filter { c ->
+            now - c.at < KEEP_MS && (state == null || (c.id !in state.applied && (state.account == null || c.account == state.account)))
+        }
 
-    /** The state with `pending` done on top of it, in the order they were done, as the phone will apply them. */
+    /** The state with `pending` done on top of it, in the order they were done, as the phone will apply them: those
+     *  made under its account only. */
     fun apply(state: WatchState, pending: List<Command>): WatchState =
-        pending.sortedBy { it.at }.fold(state) { s, c -> if (c.id in s.applied) s else one(s, c) }
+        pending.sortedBy { it.at }.fold(state) { s, c -> if (c.id in s.applied || c.account != s.account) s else one(s, c) }
 
     private fun one(s: WatchState, c: Command): WatchState =
         when (c.type) {

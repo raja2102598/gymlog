@@ -20,8 +20,8 @@ object Fixtures {
     fun day(vararg blocks: List<Lift>, date: String = TODAY, cardio: String? = null, cardioDone: Boolean = false) =
         Day(date = date, title = "Legs", skipped = false, cardio = cardio, cardioDone = cardioDone, blocks = blocks.toList())
 
-    fun state(vararg days: Day, run: Run? = null, rest: Rest? = null, applied: Set<String> = emptySet()) =
-        WatchState(sentAt = 1_000L, signedIn = true, applied = applied, run = run, rest = rest, days = days.toList())
+    fun state(vararg days: Day, run: Run? = null, rest: Rest? = null, applied: Set<String> = emptySet(), account: String? = null) =
+        WatchState(sentAt = 1_000L, signedIn = true, applied = applied, run = run, rest = rest, days = days.toList(), account = account)
 
     /** The one lift `key` on `date` in a state. */
     fun liftIn(s: WatchState, key: String, date: String = TODAY): Lift =

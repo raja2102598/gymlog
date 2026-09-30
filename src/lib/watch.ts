@@ -59,6 +59,9 @@ export interface WatchState {
   sentAt: number;
   /** False: the watch says to sign in on the phone, and shows nothing else. */
   signedIn: boolean;
+  /** The account signed in (its Supabase user id), or null when none is: each command the watch makes carries the
+   *  one it was made under, and is only ever applied to that account. */
+  account: string | null;
   /** The ids of the watch's commands applied so far, the latest last. */
   applied: string[];
   /** The workout under way (lib/workout.ts's WorkoutRun), or null. */
@@ -124,8 +127,8 @@ function dayOf(store: GymStore, date: DayKey): WatchDay {
 /** What the watch is sent: nothing but `signedIn: false` unless a real account is signed in (never the demo's sample
  *  data), and otherwise the workout's clock, the rest timer, and the days it may be asked about. */
 export function watchState(store: GymStore, applied: string[], now = Date.now()): WatchState {
-  const signedIn = store.auth === "signedIn" && !store.demo;
-  if (!signedIn) return { v: WATCH_V, sentAt: now, signedIn, applied, run: null, rest: null, days: [] };
+  const signedIn = store.auth === "signedIn" && !store.demo, account = (signedIn && store.user?.id) || null;
+  if (!signedIn || !account) return { v: WATCH_V, sentAt: now, signedIn: false, account: null, applied, run: null, rest: null, days: [] };
   const r = currentRun(), rest = store.rest, today = todayKey();
   const dates = Array.from({ length: 7 }, (_, n) => addDays(today, n));
   // A workout for another day, started before midnight or opened for a day gone by, stays the one the watch is on
@@ -137,6 +140,7 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
     v: WATCH_V,
     sentAt: now,
     signedIn,
+    account,
     applied,
     run: r && { day: r.day, startedAt: r.startedAt, pausedAt: r.pausedAt ?? null, pausedMs: r.pausedMs ?? 0, endedAt: r.endedAt ?? null },
     // (A timer saved before its length was kept counts as the plan's.)
@@ -185,12 +189,14 @@ function sameRest(store: GymStore, day: DayKey | null, c: WatchCommand): boolean
 }
 
 /** Does what a command from the watch stands for, through the same change as the phone's own tap, and says whether it
- *  could: false for one it can't apply (a day or lift it doesn't have, a set past the rows, a rest since replaced, a
- *  type or version it doesn't know), which is dropped. The clock counts from when it was done on the watch (never
- *  later than now, should the watch's clock be ahead); the rest timer's buttons act on the rest they were pressed for,
- *  as it is now, and never on a newer one. */
+ *  could: false for one it can't apply (made under another account than the one signed in, or under none; a day or
+ *  lift it doesn't have, a set past the rows, a rest since replaced, a type or version it doesn't know), which is
+ *  dropped. The clock counts from when it was done on the watch (never later than now, should the watch's clock be
+ *  ahead); the rest timer's buttons act on the rest they were pressed for, as it is now, and never on a newer one. */
 export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.now()): boolean {
-  if (c.v !== WATCH_V) return false;
+  // Made while the watch showed another account's workout: signed out and into this one since, with the watch out of
+  // reach. Its day and lift are that account's, never this one's.
+  if (c.v !== WATCH_V || typeof c.account !== "string" || c.account !== store.user?.id) return false;
   const at = Math.min(isNumber(c.at) ? c.at : now, now), day = isDay(c.day) ? c.day : null;
   switch (c.type) {
     case "set":

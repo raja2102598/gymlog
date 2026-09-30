@@ -59,7 +59,7 @@ describe("what the watch is sent", () => {
   it("is today and the next six days, each as the phone's workout has it: its session, cardio, and lifts in order", () => {
     const s = signedIn();
     const sent = watchState(s, ["c-1"]);
-    expect(sent).toMatchObject({ v: 1, sentAt: NOON, signedIn: true, applied: ["c-1"], run: null, rest: null });
+    expect(sent).toMatchObject({ v: 1, sentAt: NOON, signedIn: true, account: "u", applied: ["c-1"], run: null, rest: null });
     expect(sent.days.map((d) => d.date)).toEqual(["2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26", "2026-09-27", "2026-09-28", "2026-09-29"]);
     const [wed, thu] = sent.days;
     expect({ ...wed, blocks: wed.blocks.map((b) => b.map((l) => l.key)) }).toEqual({
@@ -183,7 +183,7 @@ describe("what the watch is sent", () => {
   it("says only that no one is signed in, signed out or trying the sample data", () => {
     const out = storeWith();
     out.auth = "signedOut";
-    const empty = { v: 1, sentAt: NOON, signedIn: false, applied: [], run: null, rest: null, days: [] };
+    const empty = { v: 1, sentAt: NOON, signedIn: false, account: null, applied: [], run: null, rest: null, days: [] };
     expect(watchState(out, [])).toEqual(empty);
     const demo = storeWith();
     demo.auth = "signedOut";
@@ -275,9 +275,9 @@ describe("sending it", () => {
 });
 
 describe("what the watch sends back", () => {
-  /** A command from the watch, done `ago` ms before now. */
+  /** A command from the watch, done `ago` ms before now, under the account signed in (storeWith's). */
   let n = 0;
-  const cmd = (type: string, fields: Record<string, unknown> = {}, ago = 0): WatchCommand => ({ v: 1, id: `c-${++n}`, at: Date.now() - ago, type, ...fields });
+  const cmd = (type: string, fields: Record<string, unknown> = {}, ago = 0): WatchCommand => ({ v: 1, id: `c-${++n}`, at: Date.now() - ago, type, account: "u", ...fields });
   /** A rest button pressed on the watch for rest `r`, the one it showed: named by its day, lift and start. */
   const restCmd = (type: string, r: Pick<RestTimer, "day" | "lift" | "startedAt"> | null, fields: Record<string, unknown> = {}, ago = 0) =>
     cmd(type, { day: r?.day, lift: r?.lift, restStartedAt: r?.startedAt ?? null, ...fields }, ago);
@@ -373,7 +373,12 @@ describe("what the watch sends back", () => {
       cmd("set", { day: "Wednesday", lift: "Leg Press", set: 0, reps: 10, kg: 45 }),
       cmd("skipLift", { day: WED, lift: "Bench Press" }),
       cmd("cardioDone", { day: "2026-09-24", done: "yes" }),
-      cmd("restAdd", { sec: -15 }),
+      restCmd("restAdd", s.rest, { sec: -15 }),
+      // Made under another account, before the phone signed out and into this one with the watch out of reach, and
+      // made under none: each would otherwise log Leg Press's set 1, or skip its rest.
+      cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45, account: "someone-else" }),
+      restCmd("restSkip", s.rest, { account: "someone-else" }),
+      cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45, account: undefined }),
       cmd("hr", { day: WED, avg: 128, max: 165, samples: 0 }), // nothing measured
       cmd("hr", { day: WED, avg: 170, max: 165, samples: 60 }), // an average over the highest
       cmd("hr", { day: WED, avg: 128, max: 300, samples: 60 }),

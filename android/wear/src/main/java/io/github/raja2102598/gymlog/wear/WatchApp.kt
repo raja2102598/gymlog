@@ -62,7 +62,9 @@ class WatchUi(private val ctx: Context, snap: WatchRepo.Snapshot, val now: Long,
     /** The heart rate now, while the workout is under way and the sensor has a fresh reading (HeartMonitor). */
     val bpm: Int? = if (TimerLogic.underWay(run, now)) HeartLogic.showing(beat, now) else null
 
-    private fun send(make: (id: String, at: Long) -> Command) = WatchRepo.send(ctx, make(OverlayLogic.newId(), System.currentTimeMillis()))
+    /** Each made under the account whose workout is on screen, which the phone checks before applying it. */
+    private fun send(make: (id: String, at: Long) -> Command) =
+        WatchRepo.send(ctx, make(OverlayLogic.newId(), System.currentTimeMillis()).copy(account = state?.account))
 
     /** Opening the workout starts its clock, as the phone's does, unless every lift is done or it's already going. */
     fun openWorkout() {

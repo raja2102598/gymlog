@@ -177,11 +177,13 @@ object HeartMonitor {
      *  measuring, and sent on when due. */
     private fun take(app: Context, beats: List<Beat>, ended: Boolean) {
         val day = measuring ?: last ?: return
-        val run = WatchRepo.snapshot.value.state?.run?.takeIf { it.day == day } ?: return
+        val state = WatchRepo.snapshot.value.state
+        val run = state?.run?.takeIf { it.day == day } ?: return
         val now = System.currentTimeMillis()
         val kept = load(app)
         val before = kept[day]
-        val after = HeartLogic.add(before, run, beats, now)
+        // Counted for the account whose workout it is, and sent to it only (HeartLogic.command).
+        val after = HeartLogic.add(before, run, beats, now, state.account)
         if (after != before) days = HeartLogic.keep(kept + (day to after))
         if (ended) latest.value = null else if (measuring == day) beats.maxByOrNull { it.at }?.let { latest.value = it }
         if (!sendIfDue(app, day, ending = ended || measuring != day) && after != before) save(app)

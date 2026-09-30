@@ -56,16 +56,21 @@ object WatchRepo {
         synchronized(lock) {
             if (!loaded) {
                 raw = read(ctx, STATE_FILE)
+                val parsed = raw?.let(StateLogic::parse)
                 val kept = read(ctx, PENDING_FILE)?.let(::pendingFrom) ?: (emptyList<Command>() to emptySet())
-                unsent += kept.second
-                flow.value = Snapshot(raw?.let(StateLogic::parse), kept.first)
+                // As when the state came (take): the two files are written one after the other, so a state of another
+                // account can be kept with the commands made under the one before.
+                val pending = OverlayLogic.prune(kept.first, (parsed as? StateLogic.Parsed.Ok)?.state, System.currentTimeMillis())
+                unsent += kept.second.filter { id -> pending.any { it.id == id } }
+                flow.value = Snapshot(parsed, pending)
                 loaded = true
             }
             return flow.value
         }
     }
 
-    /** A /gymlog/state payload from the phone: kept, and the commands it has applied stop being laid over it. */
+    /** A /gymlog/state payload from the phone: kept, and the commands it has applied stop being laid over it, as do
+     *  all those made under another account (OverlayLogic.prune): they're neither shown nor sent again. */
     fun onState(ctx: Context, json: String) = take(ctx, json, since = null)
 
     private fun take(ctx: Context, json: String, since: Int?) {
@@ -76,8 +81,7 @@ object WatchRepo {
             if (json == raw) return
             val parsed = StateLogic.parse(json)
             raw = json
-            val applied = (parsed as? StateLogic.Parsed.Ok)?.state?.applied.orEmpty()
-            val pending = OverlayLogic.prune(flow.value.pending, applied, System.currentTimeMillis())
+            val pending = OverlayLogic.prune(flow.value.pending, (parsed as? StateLogic.Parsed.Ok)?.state, System.currentTimeMillis())
             unsent.retainAll(pending.map { it.id }.toSet())
             flow.value = Snapshot(parsed, pending)
             save(ctx, STATE_FILE, json)

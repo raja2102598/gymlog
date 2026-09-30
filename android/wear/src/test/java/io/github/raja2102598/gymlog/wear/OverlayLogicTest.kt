@@ -29,7 +29,7 @@ class OverlayLogicTest {
         assertEquals(SetRow(10, 102.5, null, 12, 100.0), liftIn(apply(s, pending), "Squat").rows[1])
         // The phone's next state has it applied, with the set in it: the watch stops laying it on top.
         val fromPhone = s.copy(applied = setOf("c-1"))
-        val left = OverlayLogic.prune(pending, fromPhone.applied, now = t0 + 5_000L)
+        val left = OverlayLogic.prune(pending, fromPhone, now = t0 + 5_000L)
         assertEquals(emptyList<Command>(), left)
         assertSame(fromPhone, apply(fromPhone, left))
         // Even before it's pruned, an applied command is never laid on twice.
@@ -42,7 +42,25 @@ class OverlayLogicTest {
         val acked = set("c-acked", "Squat", 1, 12, at = t0 + 1)
         val fresh = set("c-fresh", "Squat", 2, 12, at = t0 + 2)
         val now = t0 + OverlayLogic.KEEP_MS + 1
-        assertEquals(listOf(fresh), OverlayLogic.prune(listOf(old, acked, fresh), setOf("c-acked"), now))
+        assertEquals(listOf(fresh), OverlayLogic.prune(listOf(old, acked, fresh), state(applied = setOf("c-acked")), now))
+        // A state the watch can't read says nothing of what's applied: only the old one goes.
+        assertEquals(listOf(acked, fresh), OverlayLogic.prune(listOf(old, acked, fresh), null, now - 1))
+    }
+
+    @Test
+    fun commandsMadeUnderAnotherAccountGoOnceThePhoneIsSignedIntoIt() {
+        val a = state(day(listOf(lift("Squat", null, null))), account = "a")
+        val logged = set("c-1", "Squat", 0, 12).copy(account = "a")
+        assertEquals(12, liftIn(apply(a, listOf(logged)), "Squat").rows[0].reps)
+        // Before it reached the phone, the phone signed out and into b, whose workout is the same: none of a's commands
+        // is shown over it, nor kept to be sent again.
+        val b = a.copy(account = "b")
+        assertNull(liftIn(apply(b, listOf(logged)), "Squat").rows[0].reps)
+        assertEquals(emptyList<Command>(), OverlayLogic.prune(listOf(logged), b, t0))
+        // Signed out, with no account: kept for a, should it be the one to sign in again, as the phone keeps it too.
+        val out = a.copy(signedIn = false, account = null, days = emptyList())
+        assertEquals(listOf(logged), OverlayLogic.prune(listOf(logged), out, t0))
+        assertEquals(listOf(logged), OverlayLogic.prune(listOf(logged), a, t0))
     }
 
     @Test
@@ -216,9 +234,11 @@ class OverlayLogicTest {
 
         val hr = JSONObject(OverlayLogic.toJson(OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240)))
         assertEquals(listOf(128, 165, 240), listOf(hr.getInt("avg"), hr.getInt("max"), hr.getInt("samples")))
+        // The account it was made under, for the phone to check.
+        assertEquals("8f14e45f", JSONObject(OverlayLogic.toJson(set("c-15", "Squat", 0, 12).copy(account = "8f14e45f"))).getString("account"))
 
         // Kept on the watch as the same JSON, and read back the same.
-        for (c in listOf(set("c-9", "Squat", 1, null), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15), OverlayLogic.ofRest("c-14", 47L, OverlayLogic.REST_SKIP, shown.copy(startedAt = null)), OverlayLogic.cardioDone("c-12", 45L, TODAY, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
+        for (c in listOf(set("c-9", "Squat", 1, null).copy(account = "8f14e45f"), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15), OverlayLogic.ofRest("c-14", 47L, OverlayLogic.REST_SKIP, shown.copy(startedAt = null)), OverlayLogic.cardioDone("c-12", 45L, TODAY, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
             assertEquals(c, OverlayLogic.fromJson(OverlayLogic.toJson(c)))
         }
         assertNull(OverlayLogic.fromJson("{}"))
@@ -237,6 +257,8 @@ class OverlayLogicTest {
         // less of the workout. One that reached it, another day's, and anything else stay.
         assertEquals(listOf(reached, otherDay, logged), OverlayLogic.supersede(pending, unsent, newer))
         assertEquals(pending, OverlayLogic.supersede(pending, unsent, set("c-4", "Squat", 1, 12)))
+        // Nor does another account's day, measured before the phone signed into this one.
+        assertEquals(pending, OverlayLogic.supersede(pending, unsent, newer.copy(account = "b")))
         // The watch shows its own readings: the phone's copy changes nothing on screen.
         val s = state(day(listOf(lift("Squat", null))))
         assertEquals(s, apply(s, listOf(newer)))

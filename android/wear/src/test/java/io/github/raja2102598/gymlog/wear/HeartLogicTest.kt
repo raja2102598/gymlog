@@ -63,10 +63,17 @@ class HeartLogicTest {
     }
 
     @Test
-    fun eachDayHasItsOwn() {
+    fun eachDayAndAccountHasItsOwn() {
         val today = HeartLogic.add(null, run, beats(120.0), now = t0 + min)
         val tomorrow = HeartLogic.add(today, Run("2026-09-30", startedAt = t0), beats(90.0), now = t0 + 2 * min)
         assertEquals(Heart("2026-09-30", 90.0, 1, 90, sentAt = t0 + 2 * min, lastAt = t0 + min), tomorrow)
+        // The phone signed out of a and into b since: b's workout that day starts its own count, and each day's `hr`
+        // goes to the account it was measured in.
+        val a = HeartLogic.add(null, run, beats(120.0, 130.0), now = t0 + min, account = "a")
+        assertEquals(3, HeartLogic.add(a, run, beats(125.0, from = t0 + 2 * min), now = t0 + 2 * min, account = "a").samples) // a's own adds to it
+        val b = HeartLogic.add(a, run, beats(90.0, from = t0 + 2 * min), now = t0 + 2 * min, account = "b")
+        assertEquals(Heart(TODAY, 90.0, 1, 90, sentAt = t0 + 2 * min, lastAt = t0 + 2 * min, account = "b"), b)
+        assertEquals(listOf("a", "b"), listOf(a, b).map { HeartLogic.command("c-1", t0, it).account })
         // A week's kept, the latest.
         val days = (1..9).associate { d -> "2026-09-0$d" to Heart("2026-09-0$d", 100.0, 1, 100) }
         assertEquals((3..9).map { "2026-09-0$it" }.toSet(), HeartLogic.keep(days).keys)
@@ -113,7 +120,7 @@ class HeartLogicTest {
 
     @Test
     fun theDaysAreKeptAsTheyWere() {
-        val days = mapOf(TODAY to Heart(TODAY, 351.5, 3, 131, sentSamples = 2, sentAt = t0, lastAt = t0 + min))
+        val days = mapOf(TODAY to Heart(TODAY, 351.5, 3, 131, sentSamples = 2, sentAt = t0, lastAt = t0 + min, account = "a"), "2026-09-28" to Heart("2026-09-28", 100.0, 1, 100))
         assertEquals(days, HeartLogic.fromJson(HeartLogic.toJson(days)))
         assertEquals(emptyMap<String, Heart>(), HeartLogic.fromJson("not json"))
         assertEquals(emptyMap<String, Heart>(), HeartLogic.fromJson(null))

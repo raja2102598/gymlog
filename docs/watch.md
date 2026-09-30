@@ -57,6 +57,7 @@ the watch has nothing to work out for itself beyond moving through it:
   "v": 1,
   "sentAt": 1790000000000,          // epoch ms
   "signedIn": true,                 // false: the watch says to sign in on the phone, and shows nothing else
+  "account": "0b6f2a4e-…",          // the account signed in (its Supabase user id), or null: see the commands' own
   "applied": ["c-…", "c-…"],        // ids of the watch's commands applied so far (the last 200)
   "run": {                          // the workout under way (lib/workout.ts's WorkoutRun), or null
     "day": "2026-09-29", "startedAt": 0, "pausedAt": null, "pausedMs": 0, "endedAt": null
@@ -120,8 +121,19 @@ its id comes back in `applied`, the watch shows its own command as done on top o
 working away from the phone); once it's there, the state already includes it.
 
 ```jsonc
-{ "v": 1, "id": "c-…", "at": 1790000000000, "type": "…", /* the type's own fields */ }
+{ "v": 1, "id": "c-…", "at": 1790000000000, "account": "0b6f2a4e-…", "type": "…", /* the type's own fields */ }
 ```
+
+`account` is the state's `account` when the watch made the command: the account whose workout it was showing. The
+phone applies a command only to that account, signed in: one made under another (the watch out of reach while the
+phone signed out and into another account, say), or under none, is dropped, so one account's sets never land on
+another's days. The watch drops its own too, once a state of another account comes: they're no longer shown as done,
+nor sent again. A signed-out state keeps them, since the phone keeps them as well, for that account to sign in again.
+An `hr` carries the account whose workout it was measured in, even when sent after the switch.
+
+The account is the Supabase user id itself, rather than a hash of it: it isn't a secret (it opens nothing without the
+account's own sign-in), the phone keeps it already, and it only goes between the account's own phone and watch, in the
+app's own Data Layer items.
 
 | `type` | fields | the phone does |
 |---|---|---|
@@ -151,9 +163,9 @@ The watch sends `hr` every five minutes during the workout (with new readings si
 reset or lost before the end, and at the end. A newer `hr` for a day replaces that day's older ones still waiting to
 reach the Data Layer on the watch, so one sent again later never takes the phone back to less of the workout.
 
-A command the phone can't apply (a day or lift it doesn't have, a set past the rows or of a skipped lift, a rest that's
-no longer the one it was for, a `type` or `v` it doesn't know) is dropped: its id still goes into `applied`, so the
-watch stops showing it.
+A command the phone can't apply (another account's, or one with none; a day or lift it doesn't have, a set past the rows
+or of a skipped lift, a rest that's no longer the one it was for, a `type` or `v` it doesn't know) is dropped: its id
+still goes into `applied`, so the watch stops showing it.
 
 Commands are only ever applied by the phone app's JavaScript, where the store is. When the phone app isn't running,
 the phone's listener service (`WatchListenerService`) keeps the commands that arrive and the app applies them the
@@ -218,9 +230,10 @@ Wear OS, Material 3.
   6 (API 36), which replaced it. Asked once, the first time a workout is started on the watch; refused, nothing is
   measured and everything else works. Settings → Apps → Gym Log → Permissions can allow it later.
 - **Kept and sent**: each day's sum, count and highest (so the average and highest over every reading) in a file, a
-  week of days. The day's `hr` goes to the phone five minutes after its first readings, then every five minutes with
-  new ones, and at the end with whatever came since: at Finish, and again should Health Services' last readings
-  arrive after.
+  week of days, with the account whose workout it was (a workout that day under another account, after the phone
+  signed into it, starts its own count). The day's `hr` goes to the phone five minutes after its first readings, then
+  every five minutes with new ones, and at the end with whatever came since: at Finish, and again should Health
+  Services' last readings arrive after.
 
 ### The tile
 
@@ -243,7 +256,8 @@ storage, so the watch opens on the last workout from cold, away from the phone. 
 app is open (a `WearableListenerService` for `/gymlog/state`), and the app reads the Data Layer again each time it
 comes to the front. A command is shown as done at once, kept, and put as its urgent data item; one that never
 reached the Data Layer (the app killed that moment) is put again the next time the app opens. One the phone never
-takes stops being shown after two days. A third file keeps the heart rate's days.
+takes stops being shown after two days, and one made under another account than the state's, at once. A third file
+keeps the heart rate's days.
 
 ### The rest's buzz, and the workout in the background
 
