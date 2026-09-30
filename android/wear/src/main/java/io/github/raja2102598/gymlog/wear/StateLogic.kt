@@ -50,6 +50,34 @@ object StateLogic {
         )
     }
 
+    /** When a state was sent, its `sentAt` (the phone's clock; 0 if it didn't say), whatever its version: null for one
+     *  that isn't a state at all (parse's Broken). */
+    fun sentAt(json: String?): Long? {
+        if (json == null) return null
+        return try {
+            val o = JSONObject(json)
+            if (o.optInt("v", 0) < 1) null else o.long("sentAt") ?: 0L
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Whether a state that came, `json`, replaces the one the watch keeps, `kept` (null: none): only when it was sent
+     * no earlier. The Data Layer keeps one state per phone that ever sent one, each its latest, and hands them over in
+     * any order: another phone's, or one reinstalled, can come after the newest, and taking it would put the workout
+     * back, or another account's, and drop the commands of this one still waiting on the phone (OverlayLogic.prune).
+     * One that isn't a state never replaces one that is.
+     */
+    fun newer(json: String, kept: String?): Boolean {
+        val had = sentAt(kept) ?: return true
+        val came = sentAt(json) ?: return false
+        return came >= had
+    }
+
+    /** The newest of the states the Data Layer has, one per phone that ever sent one (null: none). */
+    fun newest(states: List<String>): String? = states.maxByOrNull { sentAt(it) ?: Long.MIN_VALUE }
+
     private fun run(o: JSONObject): Run? {
         val day = o.str("day") ?: return null
         val startedAt = o.long("startedAt") ?: return null

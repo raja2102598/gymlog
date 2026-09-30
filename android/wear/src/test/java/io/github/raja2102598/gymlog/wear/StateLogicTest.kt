@@ -5,6 +5,7 @@ import io.github.raja2102598.gymlog.wear.Fixtures.lift
 import io.github.raja2102598.gymlog.wear.Fixtures.state
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -74,6 +75,27 @@ class StateLogicTest {
         val newer = StateLogic.parse("""{"v": 2, "whatever": true}""")
         assertEquals(StateLogic.Parsed.Newer, newer)
         assertEquals("Update Gym Log on your watch", StateLogic.blank(newer, null))
+    }
+
+    @Test
+    fun onlyAStateSentNoEarlierReplacesTheOneKept() {
+        // The Data Layer keeps each phone's latest: this phone's at 12:00, another's (or a reinstalled one's) at 11:00.
+        val noon = """{"v": 1, "sentAt": 1790000000000, "signedIn": true, "account": "a"}"""
+        val eleven = """{"v": 1, "sentAt": 1789996400000, "signedIn": true, "account": "b"}"""
+        val later = """{"v": 1, "sentAt": 1790000005000, "signedIn": true, "account": "a"}"""
+        assertTrue(StateLogic.newer(later, noon))
+        assertFalse(StateLogic.newer(eleven, noon)) // arriving after it: the workout and account stay noon's
+        assertTrue(StateLogic.newer(noon, null)) // none kept yet
+        assertTrue(StateLogic.newer(noon, "not json")) // nor one that's a state
+        assertFalse(StateLogic.newer("not json", noon))
+        // A newer phone app's, sent later, replaces it too: the watch then asks to be updated.
+        assertTrue(StateLogic.newer("""{"v": 2, "sentAt": 1790000009000}""", noon))
+        assertEquals(1790000009000L, StateLogic.sentAt("""{"v": 2, "sentAt": 1790000009000}"""))
+        assertNull(StateLogic.sentAt("""{"sentAt": 1}""")) // Broken, as parse has it
+        // Reading them all as the app opens: the newest of them, whatever order the Data Layer lists them in.
+        assertEquals(later, StateLogic.newest(listOf(noon, eleven, later, "not json")))
+        assertEquals(later, StateLogic.newest(listOf("not json", later, eleven)))
+        assertNull(StateLogic.newest(emptyList()))
     }
 
     @Test

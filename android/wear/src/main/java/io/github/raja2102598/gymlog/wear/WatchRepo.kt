@@ -68,15 +68,17 @@ object WatchRepo {
     }
 
     /** A /gymlog/state payload from the phone: kept, and the commands it has applied stop being laid over it, as do
-     *  all those made under another account (OverlayLogic.prune): they're neither shown nor sent again. */
+     *  all those made under another account (OverlayLogic.prune): they're neither shown nor sent again. Not one sent
+     *  before the state kept (StateLogic.newer): another phone's, or a reinstalled one's, that came after it. */
     fun onState(ctx: Context, json: String) = take(ctx, json, since = null)
 
     private fun take(ctx: Context, json: String, since: Int?) {
         synchronized(lock) {
             load(ctx)
             if (since != null && since != arrivals) return
+            // An older state than the one kept changes nothing: not the workout, the account, nor the commands waiting.
+            if (json == raw || !StateLogic.newer(json, raw)) return
             arrivals++
-            if (json == raw) return
             val parsed = StateLogic.parse(json)
             raw = json
             val pending = OverlayLogic.prune(flow.value.pending, (parsed as? StateLogic.Parsed.Ok)?.state, System.currentTimeMillis())
@@ -121,8 +123,8 @@ object WatchRepo {
             } finally {
                 items.release()
             }
-            // One per phone that ever sent one: the newest.
-            found.maxByOrNull { (StateLogic.parse(it) as? StateLogic.Parsed.Ok)?.state?.sentAt ?: -1L }?.let { take(app, it, since) }
+            // One per phone that ever sent one: the newest, and only if it's newer than the one kept (take).
+            StateLogic.newest(found)?.let { take(app, it, since) }
         } catch (e: Exception) {
             Log.w(TAG, "Couldn't read the phone's state from the Data Layer", e)
         }

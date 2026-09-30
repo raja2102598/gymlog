@@ -319,7 +319,11 @@ Wear OS, Material 3.
 The last `/gymlog/state` and the commands the phone hasn't applied yet are kept in two files in the app's own
 storage, so the watch opens on the last workout from cold, away from the phone. The state arrives whether or not the
 app is open (a `WearableListenerService` for `/gymlog/state`), and the app reads the Data Layer again each time it
-comes to the front. A command is shown as done at once, kept, and put as its urgent data item; one that never
+comes to the front. The Data Layer keeps one state per phone that ever sent one, each that phone's latest, and they
+can come in any order: the watch keeps the one with the latest `sentAt` (`StateLogic.newer`, and the newest of them all
+as the app opens), so another phone's, or a reinstalled one's, arriving after it never takes the workout or the account
+back, nor has the watch drop the commands still waiting on the phone. (A phone whose clock is set back, by hand, sends
+states the watch takes as older until its clock passes the one it kept.) A command is shown as done at once, kept, and put as its urgent data item; one that never
 reached the Data Layer (the app killed that moment) is put again the next time the app opens. One the phone never
 takes stops being shown after two days, and one made under another account than the state's, at once; and no more
 than the latest 1000 wait at a time, as many as the phone lists in `applied`. A third file keeps the heart rate's days.
