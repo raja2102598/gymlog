@@ -29,7 +29,7 @@ export const WATCH_KEY = "gymlog.watch.v1";
 /** How many ids `applied` keeps (docs/watch.md): as many as the plugin's queue holds (WatchLogic.kt, QUEUE_MAX) and the
  *  watch keeps waiting (OverlayLogic.kt, KEPT), so every command taken from it is listed until the watch has seen it,
  *  however many were taken before the watch next heard from the phone. The state stays well within a data item's
- *  100 KB with all of them (the watch's ids are 18 characters). */
+ *  100 KB with all of them (the watch's ids are 18 characters), and lib/watch.ts's fitState keeps it there. */
 export const APPLIED_KEPT = 1000;
 /** How long a change waits to be sent, so a burst of them (a set's digits going in, commands being applied) goes as one. */
 export const PUBLISH_MS = 1500;

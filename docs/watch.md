@@ -129,7 +129,11 @@ the watch keeps waiting on the phone (`OverlayLogic.KEPT`, the latest by `at`), 
 before the watch next hears from it, each is listed, and the watch stops showing it. The ids are short for that: the
 state with a week of full workouts (the default plan's, five sets a lift, and an eighth day under way) and all 1000
 comes to about 39 KB, and with eight sets a lift and six more lifts a day about 72 KB, within a data item's 100 KB (a
-unit test keeps the first under it).
+unit test keeps the first under it). A plan bigger than that (long cues, many lifts, sets added without end) would
+never be sent, so the phone keeps each state within 90 KB (`fitState` in `lib/watch.ts`), giving up what the watch
+needs least first: the days to come, the furthest first (the watch shows one only on its day, and the phone sends it
+again by then), then the cues, then every day but the one the watch is on (the workout's, or today's), then that one
+too. `applied`, the workout's clock and the rest go whole, always.
 
 ```jsonc
 { "v": 1, "id": "c-…", "at": 1790000000000, "account": "0b6f2a4e-…", "type": "…", /* the type's own fields */ }

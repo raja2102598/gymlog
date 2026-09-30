@@ -127,8 +127,35 @@ function dayOf(store: GymStore, date: DayKey): WatchDay {
   };
 }
 
+/** The most a state may take, as JSON in UTF-8: a Data Layer item holds 100 KB, with room left for its key and the
+ *  item's own bytes. One over it would never be sent, and the watch would stay on the last one until it fits. */
+export const STATE_MAX_BYTES = 90 * 1024;
+
+const bytesOf = (s: WatchState) => new TextEncoder().encode(JSON.stringify(s)).length;
+
+/**
+ * The state within `max` bytes, whatever the size of the plan, its cues and the sets added to it (docs/watch.md). It
+ * gives up what the watch needs least first: the days to come, the furthest first, since the watch only shows one on
+ * its day and the phone sends it again by then; then the cues; then every day but the one it's on (the workout's, or
+ * today's); then that one too. `applied` and the clocks always go whole: they keep the watch's commands straight.
+ */
+export function fitState(state: WatchState, max = STATE_MAX_BYTES): WatchState {
+  if (bytesOf(state) <= max) return state;
+  const today = todayKey();
+  // The days it shows now: the workout's, first when it's another day's, and today.
+  const shown = Math.max(1, state.days.findIndex((d) => d.date === today) + 1);
+  let s = state;
+  while (s.days.length > shown && bytesOf(s) > max) s = { ...s, days: s.days.slice(0, -1) };
+  if (bytesOf(s) <= max) return s;
+  s = { ...s, days: s.days.map((d) => ({ ...d, blocks: d.blocks.map((b) => b.map((l) => ({ ...l, cue: "" }))) })) };
+  if (bytesOf(s) <= max) return s;
+  s = { ...s, days: s.days.slice(0, 1) };
+  return bytesOf(s) <= max ? s : { ...s, days: [] };
+}
+
 /** What the watch is sent: nothing but `signedIn: false` unless a real account is signed in (never the demo's sample
- *  data), and otherwise the workout's clock, the rest timer, and the days it may be asked about. */
+ *  data), and otherwise the workout's clock, the rest timer, and the days it may be asked about, within a data item
+ *  (fitState). */
 export function watchState(store: GymStore, applied: string[], now = Date.now()): WatchState {
   const signedIn = store.auth === "signedIn" && !store.demo, account = (signedIn && store.user?.id) || null;
   if (!signedIn || !account) return { v: WATCH_V, sentAt: now, signedIn: false, account: null, applied, run: null, rest: null, restChangedAt: null, days: [] };
@@ -139,7 +166,7 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
   // the watch would otherwise jump to the next day's session in the middle of it. A paused clock is never left behind.
   const left = r != null && r.pausedAt == null && runMs(r, now) >= STALE_RUN_MS;
   if (r && !r.endedAt && !left && !dates.includes(r.day)) dates.unshift(r.day);
-  return {
+  return fitState({
     v: WATCH_V,
     sentAt: now,
     signedIn,
@@ -150,7 +177,7 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
     rest: rest && { day: rest.day, lift: rest.lift, endAt: rest.endAt, pausedAt: rest.pausedAt, sec: rest.sec ?? store.plan.restSec, startedAt: rest.startedAt ?? null },
     restChangedAt: store.restChangedAt,
     days: dates.map((d) => dayOf(store, d)),
-  };
+  });
 }
 
 const isDay = (v: unknown): v is DayKey => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);

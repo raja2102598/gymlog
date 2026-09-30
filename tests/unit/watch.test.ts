@@ -10,7 +10,7 @@ vi.mock("@capacitor/app", async () => ({ App: (await import("./nativeMocks")).ap
 import { addDays, wdIndex } from "@/lib/dates";
 import type { GymStore, RestTimer } from "@/lib/store";
 import type { DayLog, LiftLog } from "@/lib/types";
-import { applyWatchCommand, watchState, type WatchCommand, type WatchLift } from "@/lib/watch";
+import { applyWatchCommand, fitState, STATE_MAX_BYTES, watchState, type WatchCommand, type WatchLift, type WatchState } from "@/lib/watch";
 import { clearRun, currentRun, endRun, finishWorkout, keepRunsInMemory, pauseRun, restartRun, resumeRun, runsFor, startRun } from "@/lib/workout";
 import { ACK_MS, APPLIED_KEPT, PUBLISH_MS, startWatch, WATCH_KEY } from "@/native/watch";
 import { atWednesdayNoon, day, LAST, lift, memoryStorage, storeWith, WED } from "./helpers";
@@ -207,6 +207,48 @@ describe("what the watch is sent", () => {
     expect(state.days).toHaveLength(8);
     expect(state.days.every((d) => d.blocks.flat().every((l) => l.rows.length === 5 && l.rows.every((r) => r.reps === 10)))).toBe(true);
     expect(bytes).toBeLessThan(100 * 1024);
+  });
+
+  it("fits a plan too big for a data item by giving up the days to come, the furthest first, then cues, then the rest", () => {
+    const bytes = (x: WatchState) => new TextEncoder().encode(JSON.stringify(x)).length;
+    const cues = (x: WatchState) => x.days.flatMap((d) => d.blocks.flat().map((l) => l.cue));
+    const noCues = (x: WatchState): WatchState => ({ ...x, days: x.days.map((d) => ({ ...d, blocks: d.blocks.map((b) => b.map((l) => ({ ...l, cue: "" }))) })) });
+    const dates = (x: WatchState) => x.days.map((d) => d.date);
+    const s = signedIn();
+    startRun(addDays(WED, -1), NOON - 60 * MIN); // yesterday's workout, still under way: the day the watch is on
+    s.startRest(WED, "Leg Press", 90);
+    const ids = ["c-AAAAAAAAAAAAAAAA", "c-BBBBBBBBBBBBBBBB"];
+
+    // Every lift with a long cue: the week is well over a data item, so it goes without the days furthest off.
+    for (const d of s.plan.days) for (const x of d.exercises) x.cue = "Brace, and breathe out on the way up. ".repeat(100);
+    const big = watchState(s, ids);
+    expect(bytes(big)).toBeLessThanOrEqual(STATE_MAX_BYTES);
+    expect(big.days.length).toBeGreaterThanOrEqual(2);
+    expect(big.days.length).toBeLessThan(8);
+    expect(dates(big)).toEqual(Array.from({ length: big.days.length }, (_, n) => addDays(WED, n - 1)));
+    expect(cues(big).every((c) => c.length > 1000)).toBe(true);
+
+    // Each step, on a week that fits, against a smaller limit: nothing given up while it fits.
+    for (const d of s.plan.days) for (const x of d.exercises) x.cue = "Brace.";
+    const full = watchState(s, ids);
+    expect(dates(full)).toHaveLength(8);
+    expect(fitState(full, bytes(full))).toBe(full);
+    // The days to come, the furthest first, cues and all.
+    const three = { ...full, days: full.days.slice(0, 3) };
+    expect(fitState(full, bytes(three))).toEqual(three);
+    // Never the ones it shows now, the workout's and today: their cues go first.
+    const two = noCues({ ...full, days: full.days.slice(0, 2) });
+    expect(fitState(full, bytes(two))).toEqual(two);
+    // Then all but the workout's day, and then that too; the commands' ids and the clocks go whole.
+    const one = { ...two, days: two.days.slice(0, 1) };
+    expect(dates(fitState(full, bytes(one)))).toEqual([addDays(WED, -1)]);
+    const none = fitState(full, bytes(one) - 1);
+    expect(none).toEqual({ ...full, days: [] });
+    // With no workout under way, the day it shows is today's.
+    clearRun();
+    const week = watchState(s, ids), today = noCues({ ...week, days: week.days.slice(0, 1) });
+    expect(fitState(week, bytes(today))).toEqual(today);
+    expect(dates(today)).toEqual([WED]);
   });
 
   it("lists as many applied ids as the phone's queue holds and the watch keeps waiting", () => {
