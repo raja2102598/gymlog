@@ -17,8 +17,9 @@ import java.time.LocalDate
 private const val PREFS = "gymlog.widget"
 private const val KEY_JSON = "json"
 
-/** Where WidgetPlugin saves today's session, and GymWidgetProvider reads it back from. Just SharedPreferences;
- *  the parsing and the "is this still today?" decision are GymWidgetLogic, pure and unit-tested on their own. */
+/** Where WidgetPlugin saves today's session (or the workout under way's), and GymWidgetProvider reads it back from.
+ *  Just SharedPreferences; the parsing and the "is this still one to show?" decision are GymWidgetLogic, pure and
+ *  unit-tested on their own. */
 object GymWidgetStore {
     fun write(ctx: Context, json: String) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_JSON, json).apply()
@@ -32,12 +33,13 @@ object GymWidgetStore {
 }
 
 /**
- * The home-screen widget: today's session and lift progress (WidgetPlugin writes them, through GymWidgetStore), or
- * a neutral "Open Gym Log" once the day they were written for has passed, and beside the progress a clock that ticks
- * on its own: a rest counting down, or else the workout under way counting up (GymWidgetLogic.clock). A classic
- * AppWidgetProvider with RemoteViews, not Glance: two text views, a Chronometer and, space allowing, two small buttons
- * are well within what RemoteViews can do, and Glance would bring Jetpack Compose's compiler and runtime into a
- * project that has neither.
+ * The home-screen widget: today's session and lift progress, or while a workout is under way that workout's, whatever
+ * day it's for (WidgetPlugin writes them, through GymWidgetStore), or a neutral "Open Gym Log" once the day they were
+ * written for has passed and its workout, if any, is no longer counting (GymWidgetLogic.isCurrent). Beside the
+ * progress, a clock that ticks on its own: a rest counting down, or else the workout under way counting up
+ * (GymWidgetLogic.clock). A classic AppWidgetProvider with RemoteViews, not Glance: two text views, a Chronometer
+ * and, space allowing, two small buttons are well within what RemoteViews can do, and Glance would bring Jetpack
+ * Compose's compiler and runtime into a project that has neither.
  *
  * Taps open the app the same way the sign-in link does (see AndroidManifest.xml's "go" intent-filter and
  * src/native/app.ts): io.github.raja2102598.gymlog://go/today, .../go/weight or .../go/steps.
@@ -73,7 +75,8 @@ class GymWidgetProvider : AppWidgetProvider() {
         }
 
         /** A Chronometer never stops by itself, so the widget is drawn again when its clock should change
-         *  (GymWidgetLogic.nextChangeMs): the rest over, or the workout left behind. RTC, not a wakeup: only a
+         *  (GymWidgetLogic.nextChangeMs): the rest over, or the workout left behind, which is also when a workout from
+         *  another day gives way to "Open Gym Log", with no need for the app to be running. RTC, not a wakeup: only a
          *  screen that's on shows the widget, and the alarm is delivered as soon as it is. None once no widget is
          *  placed or the clock shows nothing. */
         private fun scheduleNext(context: Context, placed: Boolean) {
@@ -87,7 +90,8 @@ class GymWidgetProvider : AppWidgetProvider() {
         private fun updateOne(context: Context, mgr: AppWidgetManager, id: Int) {
             val snapshot = GymWidgetLogic.parse(GymWidgetStore.read(context))
             val today = LocalDate.now().toString()
-            val text = GymWidgetLogic.display(snapshot, today)
+            val now = System.currentTimeMillis()
+            val text = GymWidgetLogic.display(snapshot, today, now)
             // Its size in portrait, as a phone's home screen is: the launcher's narrowest width and tallest height
             // (in landscape it's the other way round).
             val size = mgr.getAppWidgetOptions(id)
@@ -97,7 +101,6 @@ class GymWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.widgetSubtitle, text.subtitle)
             // The clock: its base is on the phone's uptime clock, which Chronometer counts from (up for the workout,
             // down for a rest), so it ticks with nothing waking the app.
-            val now = System.currentTimeMillis()
             val clock = GymWidgetLogic.clock(snapshot, today, now)
             if (clock == null) {
                 views.setViewVisibility(R.id.widgetClock, View.GONE)

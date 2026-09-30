@@ -77,12 +77,15 @@ export default async function workout({ browser, base, check }) {
   // A whole workout with the big button, from Home's Start to Workout complete. Complete set N logs what's typed and,
   // for what isn't, the suggestion in its boxes; the planned sets tick the lift off and Next exercise moves on; ✕ leaves
   // the clock running and Continue carries on; a reload keeps the lift on screen; the cycling is the last step; and
-  // Finish adds the session up, asks after the knee, and shares it. The clock runs here, and the test moves it on.
+  // Finish adds the session up, with the heart rate the watch measured, asks after the knee, and shares it. The clock
+  // runs here, and the test moves it on.
   {
     // Last Wednesday: Hack Squat topped its 8-10 (so it goes up today), the rest didn't (the same again).
     const last = { "Hack Squat": [10, 20], "Leg Press": [10, 45], "Leg Extension": [12, 27], "Hamstring Curl": [10, 30], "Calf Raise": [12, 40] };
     const lastWeek = Object.fromEntries(Object.entries(last).map(([n, [reps, kg]]) => [n, { done: true, kg, sets: [0, 1, 2].map(() => ({ reps, kg })) }]));
-    const db = { logs: { [K(21)]: day(lastWeek), [K(28)]: { ...day(), steps: 7000 } }, plan: {} };
+    // Today's heart rate so far, as the watch sends it (docs/watch.md): kept on the day through every set logged.
+    const hr = { avg: 128, max: 165 };
+    const db = { logs: { [K(21)]: day(lastWeek), [K(28)]: { ...day(), steps: 7000, hr } }, plan: {} };
     const { ctx, page } = await open(browser, base, { auth, db, clock: "running", url: null });
     // The phone's share sheet, recorded rather than shown.
     await ctx.addInitScript(() => void (navigator.share = (d) => ((window.__shared = d), Promise.resolve())));
@@ -137,15 +140,20 @@ export default async function workout({ browser, base, check }) {
       saved("Hack Squat") === JSON.stringify([{ reps: null, kg: k0 }]) && (await big()) === "Complete set 1" && (await page.getAttribute('[data-check="0:0"]', "aria-pressed")) === "false",
       `${saved("Hack Squat")} / ${await big()}`,
     );
-    const typed = k0 + 2.5;
+    const typed = k0 + 2.5, reps = r0 + 2;
     await page.fill("#s0_0_k", String(typed));
+    await page.fill("#s0_0_r", String(reps));
     await tap();
-    const [r1, k1] = await suggested(0, 1), [r2] = await suggested(0, 2);
+    const [r1, k1] = await suggested(0, 1), [r2, k2] = await suggested(0, 2);
     await tap();
     await tap();
-    const hack = JSON.stringify([{ reps: r0, kg: typed }, { reps: r1, kg: typed }, { reps: r2, kg: typed }]);
+    const hack = JSON.stringify(Array(3).fill({ reps, kg: typed }));
     await until(() => saved("Hack Squat") === hack && today().exercises["Hack Squat"].done);
-    check("a weight typed stays, and the sets after it take it rather than the suggestion", k1 === k0 && saved("Hack Squat") === hack, `${saved("Hack Squat")} (suggested ${k1} kg)`);
+    check(
+      "what's typed stays, and the sets after it repeat it, greyed in their boxes and logged, rather than the suggestion",
+      r1 === reps && k1 === typed && r2 === reps && k2 === typed && saved("Hack Squat") === hack,
+      `${saved("Hack Squat")} (set 2 greyed ${r1} × ${k1} kg, set 3 ${r2} × ${k2} kg)`,
+    );
     check(
       "the planned sets tick the lift off, fill its step, and the big button moves on, naming what's next",
       today()?.exercises?.["Hack Squat"]?.done === true && (await page.locator("ol.wprog li").first().getAttribute("class")) === "done" && (await big()) === "Next exercise" && (await next()) === "Next: Leg Press",
@@ -223,8 +231,14 @@ export default async function workout({ browser, base, check }) {
         /^10:\d\d$/.test(stats[0]) && stats[1] === kg.toLocaleString("en-IN") && stats[2].replace(/\s/g, "") === "15/15" && all.length === 15,
       `${await flat(page.locator(".done-top .sub"))} / ${stats.join(" | ")} / ${kg} kg in ${all.length} sets`,
     );
+    const heart = (await page.locator("#doneHr").count()) ? await flat(page.locator("#doneHr")) : "no heart rate";
+    check(
+      "under them, the heart rate the watch measured, still on the day after every set logged",
+      heart === "Avg 128 bpm · max 165" && JSON.stringify(today().hr) === JSON.stringify(hr),
+      `${heart} / ${JSON.stringify(today().hr)}`,
+    );
     const pbs = (await page.locator("#doneBests").count()) ? await flat(page.locator("#doneBests")) : "no personal bests";
-    check("its personal best: Hack Squat at the weight typed", new RegExp(`^1 personal best ?Hack Squat ?${typed} kg × ${r0} heaviest yet`).test(pbs), pbs);
+    check("its personal best: Hack Squat at what was typed", new RegExp(`^1 personal best ?Hack Squat ?${typed} kg × ${reps} heaviest yet`).test(pbs), pbs);
     check("where the day's rings stand, and the steps left", /3,000 steps left for today\./.test(await flat(page.locator("#doneRings"))), await flat(page.locator("#doneRings")));
     await page.click('#doneKnee button[data-knee="kneeAfter:3"]');
     await until(() => today()?.kneeAfter === 3);

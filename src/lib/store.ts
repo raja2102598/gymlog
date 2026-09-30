@@ -17,7 +17,7 @@ import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { keepRunsInMemory } from "./workout";
-import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights } from "./types";
+import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights, type WorkoutHeart } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
 /** Where the plan comes from: the account's own, saved in Supabase or kept on this phone from before ("server"); the
@@ -81,6 +81,11 @@ const isSlot = (v: unknown): v is number => Number.isInteger(v) && (v as number)
 const freeOf = (d?: Partial<DayLog> | null): FreeWorkout | null => {
   const f = d?.free as Partial<FreeWorkout> | undefined;
   return f && typeof f === "object" && typeof f.name === "string" && Array.isArray(f.lifts) && f.lifts.every((n) => typeof n === "string") ? (f as FreeWorkout) : null;
+};
+/** A day's heart rate from the watch, when it reads right: two numbers. */
+const heartOf = (d?: Partial<DayLog> | null): WorkoutHeart | null => {
+  const h = d?.hr as Partial<WorkoutHeart> | undefined;
+  return h && typeof h === "object" && Number.isFinite(h.avg) && Number.isFinite(h.max) ? { avg: h.avg as number, max: h.max as number } : null;
 };
 /** What a free-form workout is called when it isn't given a name. */
 export const FREE_NAME = "Free workout";
@@ -167,6 +172,8 @@ function fullDay(d?: Partial<DayLog> | null): DayLog {
   if (Array.isArray(e.order) && e.order.every((n) => typeof n === "string")) out.order = e.order;
   const free = freeOf(e);
   if (free) out.free = free;
+  const hr = heartOf(e);
+  if (hr) out.hr = hr;
   for (const f of EXTRA_FIELDS) if (e[f] != null) out[f] = e[f];
   return out;
 }
@@ -1271,9 +1278,13 @@ export class GymStore {
     const r = this.rest;
     return r ? Math.max(0, Math.round((r.endAt - (r.pausedAt ?? Date.now())) / 1000)) : 0;
   }
-  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx). */
-  startRest(day: DayKey, lift: string, sec: number) {
-    this.rest = { day, lift, endAt: Date.now() + sec * 1000, pausedAt: null, ended: false, sec };
+  /** Starts (or restarts) the rest timer: a set's reps were just logged, typed or said (LiftItem.tsx), or logged on the
+   *  watch at `from` (lib/watch.ts), which can reach the phone a while later: its rest counts from then, as it did on
+   *  the watch, and one that would be over by now isn't started at all. */
+  startRest(day: DayKey, lift: string, sec: number, from = Date.now()) {
+    const now = Date.now(), at = Math.min(from, now);
+    if (at + sec * 1000 < now) return;
+    this.rest = { day, lift, endAt: at + sec * 1000, pausedAt: null, ended: false, sec };
     this.armRest();
     this.persistRest();
     this.changed();

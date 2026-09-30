@@ -1,10 +1,12 @@
 # The Android app (android/, built with Capacitor around the same static site): builds the APK for every
 # pull request and push to main, and on main publishes it as the "android-latest" release. A pushed tag such as
-# v1.2.0 also builds, and publishes a permanent release for that tag.
+# v1.2.0 also builds, and publishes a permanent release for that tag. The Wear OS app (android/wear, docs/watch.md)
+# is built and published with it, as gym-log-watch.apk.
 #
 # Signing: with the GYMLOG_KEYSTORE_BASE64 and GYMLOG_KEYSTORE_PASSWORD repository secrets, the APK is signed
 # with the app's own key, so each one installs over the last. Without them it's signed with a throwaway debug
-# key: fine for trying a build, but it won't install over the app on your phone, so nothing is published.
+# key: fine for trying a build, but it won't install over the app on your phone, so nothing is published. The watch
+# APK is signed with the same key: the watch only hears from a phone app signed as it is.
 name: Android app
 
 on:
@@ -50,6 +52,10 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('android/**', 'package-lock.json') }}
           restore-keys: gradle-${{ runner.os }}-
       - run: npm ci
+      # Android 17's platform, which the app compiles against (android/variables.gradle). The runner's image has it; this
+      # makes sure, since the Android Gradle plugin, finding it missing, installs it only for the build after.
+      - name: Install the Android 17 platform
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" > /dev/null
       # Next.js's build cache (its compiler's and TypeScript's work, in .next/cache), which Next.js asks CI to keep:
       # a run starts from the newest one for the same packages and only redoes what changed.
       - uses: actions/cache@v6
@@ -78,7 +84,8 @@ jobs:
           npm run android
       # The Kotlin tests include the background sync's check against tests/fixtures/health-days.json, which the
       # website's unit tests check too, so both turn Health Connect's readings into the same days. They run against
-      # the release build, which the APK needs anyway, so nothing is compiled twice.
+      # the release build, which the APK needs anyway, so nothing is compiled twice. Both apps' tests and APKs: the
+      # phone's (:app) and the watch's (:wear).
       - name: Test the Kotlin and build the APK
         id: apk
         working-directory: android
@@ -111,6 +118,7 @@ jobs:
           fi
           ./gradlew testReleaseUnitTest assembleRelease --no-daemon --console=plain
           mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/gym-log.apk"
+          mv wear/build/outputs/apk/release/wear-release.apk "$RUNNER_TEMP/gym-log-watch.apk"
           echo "version=${GYMLOG_VERSION_NAME:-1.0.$GYMLOG_VERSION_CODE}" >> "$GITHUB_OUTPUT"
           # version.json, next to the APK: what AppUpdatePlugin reads to tell a newer build from an older one and
           # verify a download, published alongside gym-log.apk by both release jobs below.
@@ -130,6 +138,13 @@ jobs:
             ${{ runner.temp }}/version.json
           if-no-files-found: error
           retention-days: 30
+      # The watch app, on its own, so a pull request's build can be put on a watch without the phone's.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gym-log-watch-apk
+          path: ${{ runner.temp }}/gym-log-watch.apk
+          if-no-files-found: error
+          retention-days: 30
 
   release:
     needs: build
@@ -142,6 +157,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: gym-log-apk
+      - uses: actions/download-artifact@v8
+        with:
+          name: gym-log-watch-apk
       # Updated in place: new files, then the tag moved on. Deleting the release and its tag and making both again
       # raced GitHub, which drafts the release a deleted tag belonged to and sometimes got there after the new one was
       # out: 1.0.70 ended up a draft nobody else can see, so the app found nothing to update to.
@@ -152,18 +170,20 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           title="Gym Log for Android $VERSION"
-          notes="Open this page on your phone, download gym-log.apk and open it to install or update, or use Settings → About → Check for updates in the app. Built from $GITHUB_SHA."
+          notes="Open this page on your phone, download gym-log.apk and open it to install or update, or use Settings → About → Check for updates in the app. gym-log-watch.apk is the app for a Wear OS watch, installed from a computer or the phone (see docs/watch.md in the repository). Built from $GITHUB_SHA."
           # A draft under the tag (as that race left) is invisible to the app, and gh would take it for the release.
           for id in $(gh api "repos/$GH_REPO/releases?per_page=100" --jq '.[] | select(.draft and .tag_name == "android-latest") | .id'); do
             gh api --method DELETE "repos/$GH_REPO/releases/$id"
           done
           if gh release view android-latest > /dev/null 2>&1; then
-            # The APK first, then version.json, so version.json never names an APK that isn't there yet.
+            # The APKs first, then version.json, so version.json never names an APK that isn't there yet, and the
+            # watch's APK of the same build is there by the time the app offers the update.
             gh release upload android-latest gym-log.apk --clobber
+            gh release upload android-latest gym-log-watch.apk --clobber
             gh release upload android-latest version.json --clobber
             gh release edit android-latest --title "$title" --notes "$notes" --latest
           else
-            gh release create android-latest gym-log.apk version.json --target "$GITHUB_SHA" --latest --title "$title" --notes "$notes"
+            gh release create android-latest gym-log.apk gym-log-watch.apk version.json --target "$GITHUB_SHA" --latest --title "$title" --notes "$notes"
           fi
           # The tag follows, for the release page's commit and source files; the app only reads the files above.
           gh api --method PATCH "repos/$GH_REPO/git/refs/tags/android-latest" -f sha="$GITHUB_SHA" -F force=true --silent ||
@@ -196,6 +216,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: gym-log-apk
+      - uses: actions/download-artifact@v8
+        with:
+          name: gym-log-watch-apk
       - name: Publish a release for the tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -204,9 +227,9 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" gym-log.apk version.json --clobber
+            gh release upload "$GITHUB_REF_NAME" gym-log.apk gym-log-watch.apk version.json --clobber
           else
-            gh release create "$GITHUB_REF_NAME" gym-log.apk version.json --verify-tag --latest=false \
+            gh release create "$GITHUB_REF_NAME" gym-log.apk gym-log-watch.apk version.json --verify-tag --latest=false \
               --title "Gym Log for Android $VERSION" \
-              --notes "Open this page on your phone, download gym-log.apk and open it to install or update. Built from $GITHUB_SHA. The build's summary lists the signing certificate's fingerprints: $RUN_URL"
+              --notes "Open this page on your phone, download gym-log.apk and open it to install or update. gym-log-watch.apk is the app for a Wear OS watch (see docs/watch.md in the repository). Built from $GITHUB_SHA. The build's summary lists the signing certificate's fingerprints: $RUN_URL"
           fi

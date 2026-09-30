@@ -3,7 +3,7 @@
 import { addDays, DOW, mondayOf, wdIndex } from "./dates";
 import { e1rm, isWorkingSet, repRange, type RecordKind } from "./stats";
 import { minSets, performed, restSecFor, setsOf, targetOf, topKg, type GymStore, type LiftItem, type RestTimer } from "./store";
-import type { DayKey, PlanExercise } from "./types";
+import type { DayKey, DayLog, PlanExercise } from "./types";
 import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
 
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
@@ -95,6 +95,9 @@ export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: 
   return { sets, planned, kg: Math.round(kg) };
 }
 
+/** The workout's heart rate from the watch, for Workout complete: "Avg 128 bpm · max 165", or null without one. */
+export const heartWords = (e: DayLog): string | null => (e.hr ? `Avg ${e.hr.avg} bpm · max ${e.hr.max}` : null);
+
 export interface Best {
   lift: string;
   kg: number | null;
@@ -137,8 +140,8 @@ export interface LiveWorkout {
   title: string;
   /** How far it's got, by the workout's own steps: a superset is one, and a skipped lift counts as done. */
   text: string;
-  /** The same in a few characters, "2/5 done", for Samsung's Now Bar, which shows a short text beside the app's icon
-   *  rather than the clock (RestAlarm.kt). Empty with no exercises yet. */
+  /** The same in a few characters, "2/5 done": the short text set for Samsung's Now Bar below Android 17, and from 17
+   *  the source of the exercises-done metric (RestAlarm.kt). Empty with no exercises yet. */
   chip: string;
   /** When its clock would have started with no pauses, ms: the phone counts up from here on its own. */
   since: number;
@@ -167,8 +170,9 @@ export function liveWorkout(store: GymStore, day: DayKey, now = Date.now()): Liv
   };
 }
 
-/** The workout under way on this phone, whichever day it's for: the lock screen follows the clock the workout shows,
- *  so one started at 23:40 stays there past midnight, as does one for a day gone by (liveWorkout has the rules). */
+/** The workout under way on this phone, whichever day it's for: the lock screen and the home-screen widget
+ *  (native/rest.ts, native/widget.ts) follow the clock the workout shows, so one started at 23:40 stays there past
+ *  midnight, as does one for a day gone by (liveWorkout has the rules). */
 export function workoutUnderWay(store: GymStore, now = Date.now()): LiveWorkout | null {
   const r = currentRun();
   return r ? liveWorkout(store, r.day, now) : null;
