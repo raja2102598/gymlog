@@ -156,11 +156,14 @@ export function watchState(store: GymStore, applied: string[], now = Date.now())
 const isDay = (v: unknown): v is DayKey => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
-/** The lift a command names by its key, as the day's workout has it, its rest counted from `from`: null when the day
- *  has no such lift. */
-function liftNamed(store: GymStore, day: DayKey, key: unknown, from?: number): LiftModel | null {
+/** The lift a command names by its key, as the day's workout has it, its rest counted from `from`, while it's still
+ *  done as the exercise the watch showed it as, `baseName` (the lift's `name`; none: its key, as planned). Swapped
+ *  since, on this phone or on another one synced in, it's another exercise: a set or a skip made for the one before
+ *  isn't for it. Null for those, and when the day has no such lift. */
+function liftShown(store: GymStore, day: DayKey, c: WatchCommand, from?: number): LiftModel | null {
+  const key = c.lift;
   if (typeof key !== "string") return null;
-  for (const ms of modelsOf(store, day, from)) for (const m of ms) if (m.name === key) return m;
+  for (const ms of modelsOf(store, day, from)) for (const m of ms) if (m.name === key) return m.did === (c.baseName ?? key) ? m : null;
   return null;
 }
 
@@ -168,9 +171,10 @@ function liftNamed(store: GymStore, day: DayKey, key: unknown, from?: number): L
  *  as the phone's rule has it, counted from when it was done, `at`, which is also its startedAt, as the watch started
  *  it (store.startRest). With no weight, the reps take the one Complete set N would (kgFor). No reps is the check's
  *  undo: the set's reps go, and a tick they gave the lift with them. Not for a skipped lift, which shows no sets, a
- *  set past the rows it shows, or a row changed on the phone since the watch saw it. */
+ *  set past the rows it shows, a lift swapped for another exercise since, or a row changed on the phone since the
+ *  watch saw it. */
 function logWatchSet(store: GymStore, day: DayKey, c: WatchCommand, at: number): boolean {
-  const m = liftNamed(store, day, c.lift, at), j = c.set, reps = c.reps, kg = c.kg;
+  const m = liftShown(store, day, c, at), j = c.set, reps = c.reps, kg = c.kg;
   const baseReps = c.baseReps ?? null, baseKg = c.baseKg ?? null;
   if (!m || m.r.skipped || typeof j !== "number" || !Number.isInteger(j) || j < 0 || j >= m.rows) return false;
   if (!(kg === null || (isNumber(kg) && kg >= 0)) || (reps !== null && (!isNumber(reps) || reps <= 0))) return false;
@@ -277,9 +281,10 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
       store.resumeRest(at);
       return true;
     case "skipLift": {
-      // ··· Skip today, with no reason: only for the lift as the watch showed it (`baseDone`, `baseSkipped`, and
-      // `baseLogged`, its sets with reps). One logged, cleared, ticked or unticked on the phone since is newer.
-      const m = day && liftNamed(store, day, c.lift);
+      // ··· Skip today, with no reason: only for the lift as the watch showed it (`baseName`, `baseDone`, `baseSkipped`
+      // and `baseLogged`, its sets with reps). One swapped, logged, cleared, ticked or unticked on the phone since is
+      // newer.
+      const m = day && liftShown(store, day, c);
       if (!m) return false;
       if (m.r.skipped) return true;
       const logged = m.sets.filter((s) => (s.reps ?? 0) > 0).length;

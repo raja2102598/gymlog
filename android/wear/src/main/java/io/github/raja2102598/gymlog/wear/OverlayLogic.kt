@@ -30,6 +30,7 @@ data class Command(
     val baseDone: Boolean? = null,
     val baseSkipped: Boolean? = null,
     val baseLogged: Int? = null,
+    val baseName: String? = null,
 )
 
 /**
@@ -77,9 +78,10 @@ object OverlayLogic {
     fun validId(id: String): Boolean = id.length in 1..128 && id.all { it.isLetterOrDigit() && it.code < 128 || it in "._:-" }
 
     /** A set logged (reps null: cleared, the tick's undo), as Complete set N logs it, over `base`, the row as the watch
-     *  has it now (null: none). The phone logs it only over that row, so a change made to it there since stays. */
-    fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?, base: SetRow?, baseDone: Boolean?) =
-        Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg, baseReps = base?.reps, baseKg = base?.kg, baseDone = baseDone)
+     *  has it now (null: none), with the lift's tick, `baseDone`, and the exercise it shows it done as, `baseName`. The
+     *  phone logs it only over that row of that exercise, so a change made to it there since, or a swap, stays. */
+    fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?, base: SetRow?, baseDone: Boolean?, baseName: String?) =
+        Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg, baseReps = base?.reps, baseKg = base?.kg, baseDone = baseDone, baseName = baseName)
 
     /** A weight as the phone keeps it, to the half kg (lib/lift.ts, setField): the rows' are compared so. */
     private fun halfKg(kg: Double?): Double? = kg?.let { Math.round(it * 2) / 2.0 }
@@ -112,10 +114,15 @@ object OverlayLogic {
     fun sameRest(r: Rest?, c: Command): Boolean =
         r != null && r.day == c.day && r.lift == c.lift && (r.startedAt == null || c.restStartedAt == null || r.startedAt == c.restStartedAt)
 
-    /** ··· Skip today for `lift` as the watch shows it: its tick, whether it's skipped, and how many of its sets have
-     *  reps, so neither the phone nor the watch skips one logged, cleared, ticked or unticked since. */
+    /** ··· Skip today for `lift` as the watch shows it: the exercise it's done as, its tick, whether it's skipped, and
+     *  how many of its sets have reps, so neither the phone nor the watch skips one swapped, logged, cleared, ticked or
+     *  unticked since. */
     fun skipLift(id: String, at: Long, day: String, lift: Lift) =
-        Command(id, at, SKIP_LIFT, day = day, lift = lift.key, baseDone = lift.done, baseSkipped = lift.skipped, baseLogged = lift.rows.count(StepLogic::logged))
+        Command(id, at, SKIP_LIFT, day = day, lift = lift.key, baseDone = lift.done, baseSkipped = lift.skipped, baseLogged = lift.rows.count(StepLogic::logged), baseName = lift.name)
+
+    /** Whether lift `l` is still done as the exercise `c` was made for, `baseName` (none: its key, as planned), as the
+     *  phone checks it (lib/watch.ts, liftShown): swapped since, a set or skip made for the one before isn't for it. */
+    private fun sameExercise(l: Lift, c: Command): Boolean = l.name == (c.baseName ?: c.lift)
 
     /** The day's cardio ticked or unticked, over the tick the watch shows for it, so neither the phone nor the watch
      *  undoes one changed on the phone since. */
@@ -150,6 +157,7 @@ object OverlayLogic {
         c.baseDone?.let { o.put("baseDone", it) }
         c.baseSkipped?.let { o.put("baseSkipped", it) }
         c.baseLogged?.let { o.put("baseLogged", it) }
+        c.baseName?.let { o.put("baseName", it) }
         return o.toString()
     }
 
@@ -181,6 +189,7 @@ object OverlayLogic {
                 baseDone = if (o.isNull("baseDone")) null else o.optBoolean("baseDone"),
                 baseSkipped = if (o.isNull("baseSkipped")) null else o.optBoolean("baseSkipped"),
                 baseLogged = num("baseLogged")?.toInt(),
+                baseName = str("baseName"),
             )
         } catch (e: Exception) {
             null
@@ -251,9 +260,10 @@ object OverlayLogic {
                     restChangedAt = c.at,
                 )
             } ?: s
-            // Only the lift as the watch showed it: one logged, cleared, ticked or unticked on the phone since stays so.
+            // Only the lift as the watch showed it: one swapped, logged, cleared, ticked or unticked on the phone since
+            // stays so.
             SKIP_LIFT -> editLift(s, c.day, c.lift) { _, l ->
-                val same = l.done == c.baseDone && c.baseSkipped == false && l.rows.count(StepLogic::logged) == c.baseLogged
+                val same = sameExercise(l, c) && l.done == c.baseDone && c.baseSkipped == false && l.rows.count(StepLogic::logged) == c.baseLogged
                 if (!l.skipped && same) l.copy(skipped = true, done = false) else l
             }
             // Only over the tick the watch showed: one ticked or unticked on the phone since stays so.
@@ -278,9 +288,9 @@ object OverlayLogic {
      * done at 12 × 105 has sets 2 and 3 suggest 12 × 105. A lift whose rows all have reps ticks itself done, and clearing
      * one unticks it, as the phone's tick follows the planned sets. The rest starts as the phone starts it: when a
      * set gets its first reps with no later one logged, for the lift's rest, or in a superset once the round is
-     * complete, for the longest rest of its lifts. Only over the row as the watch had it (`baseReps`, `baseKg`), as the
-     * phone checks it: changed on the phone since, which the state has, the phone's stays and this isn't shown; one
-     * that has this set's numbers already needs nothing.
+     * complete, for the longest rest of its lifts. Only over the row as the watch had it (`baseReps`, `baseKg`), of the
+     * exercise it showed (`baseName`), as the phone checks it: changed or swapped on the phone since, which the state
+     * has, the phone's stays and this isn't shown; one that has this set's numbers already needs nothing.
      */
     private fun logSet(s: WatchState, c: Command): WatchState {
         val day = s.days.firstOrNull { it.date == c.day } ?: return s
@@ -288,7 +298,7 @@ object OverlayLogic {
         if (b < 0) return s
         val lift = day.blocks[b].first { it.key == c.lift }
         val j = c.set ?: return s
-        if (j !in lift.rows.indices || lift.skipped) return s
+        if (j !in lift.rows.indices || lift.skipped || !sameExercise(lift, c)) return s
         val row = lift.rows[j]
         val already = if (c.reps == null) row.reps == null else row.reps == c.reps && (c.kg == null || sameKg(row.kg, c.kg))
         if (already || row.reps != c.baseReps || !sameKg(row.kg, c.baseKg)) return s

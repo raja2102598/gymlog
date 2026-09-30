@@ -553,7 +553,8 @@ describe("what the watch sends back", () => {
     /** The watch's command is done at 11:59:20 (`AGO` before noon), over a rest or run from 11:59:10 (`S`), and the
      *  phone changes what it acts on at 11:59:40 (`P`), before the command arrives. */
     const S = NOON - 50 * SEC, P = NOON - 20 * SEC, AGO = 40 * SEC;
-    const firstSet = () => cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45, baseReps: null, baseKg: null }, AGO);
+    const firstSet = () => cmd("set", { day: WED, lift: "Leg Press", set: 0, reps: 10, kg: 45, baseReps: null, baseKg: null, baseName: "Leg Press" }, AGO);
+    const swap = (s: GymStore) => s.editLift(WED, "Leg Press", (r) => void (r.swap = "Hack Squat"), true);
     const rows: { name: string; before?: (s: GymStore) => void; command: (s: GymStore) => WatchCommand; after: (s: GymStore) => void; left: (s: GymStore) => void }[] = [
       {
         name: "set: a row corrected on the phone keeps the correction",
@@ -582,6 +583,16 @@ describe("what the watch sends back", () => {
         },
       },
       {
+        name: "set: a lift swapped on the phone after it isn't given the set, nor its rest",
+        command: firstSet,
+        after: swap,
+        left: (s) => {
+          expect(s.entry(WED).exercises["Leg Press"]).toMatchObject({ swap: "Hack Squat" });
+          expect(sets(s, "Leg Press") ?? []).toEqual([]);
+          expect(s.rest).toBeNull();
+        },
+      },
+      {
         name: "set: a lift unticked on the phone after it stays unticked",
         before: (s) => s.editLift(WED, "Leg Press", (r) => void Object.assign(r, { sets: [{ reps: 10, kg: 45 }, { reps: 10, kg: 45 }, { reps: 10, kg: 45 }], done: true, autoDone: true }), true),
         command: () => cmd("set", { day: WED, lift: "Leg Press", set: 2, reps: 8, kg: 45, baseReps: 10, baseKg: 45, baseDone: true }, AGO),
@@ -597,6 +608,15 @@ describe("what the watch sends back", () => {
         after: (s) => s.editLift(WED, "Leg Press", (r) => void (r.sets = [{ reps: 10, kg: 45 }]), true),
         left: (s) => {
           expect(sets(s, "Leg Press")).toEqual([{ reps: 10, kg: 45 }]);
+          expect(s.entry(WED).exercises["Leg Press"].skipped).toBeFalsy();
+        },
+      },
+      {
+        name: "skipLift: a lift swapped on the phone after it isn't skipped",
+        command: () => cmd("skipLift", { day: WED, lift: "Leg Press", baseName: "Leg Press", baseDone: false, baseSkipped: false, baseLogged: 0 }, AGO),
+        after: swap,
+        left: (s) => {
+          expect(s.entry(WED).exercises["Leg Press"].swap).toBe("Hack Squat");
           expect(s.entry(WED).exercises["Leg Press"].skipped).toBeFalsy();
         },
       },

@@ -19,10 +19,11 @@ import org.junit.Test
 class OverlayLogicTest {
     private val t0 = 1_000_000L
 
-    /** Set `set` of `lift` logged on the watch over `base`, the row as it had it (null: empty), and `baseDone`, the
-     *  lift's tick (null: not said, so the tick follows the sets). */
-    private fun set(id: String, lift: String, set: Int, reps: Int?, kg: Double? = 100.0, at: Long = t0, base: SetRow? = null, baseDone: Boolean? = null) =
-        OverlayLogic.set(id, at, TODAY, lift, set, reps, kg, base, baseDone)
+    /** Set `set` of `lift` logged on the watch over `base`, the row as it had it (null: empty), `baseDone`, the lift's
+     *  tick (null: not said, so the tick follows the sets), and `name`, the exercise it showed it done as (its key, as
+     *  planned, unless said). */
+    private fun set(id: String, lift: String, set: Int, reps: Int?, kg: Double? = 100.0, at: Long = t0, base: SetRow? = null, baseDone: Boolean? = null, name: String = lift) =
+        OverlayLogic.set(id, at, TODAY, lift, set, reps, kg, base, baseDone, name)
 
     /** A set as the fixtures log one, 12 × 100 kg: the row a correction or undo is made over. */
     private val twelve = SetRow(12, 100.0)
@@ -105,26 +106,32 @@ class OverlayLogicTest {
         assertEquals(phone, apply(phone, listOf(set("c-6", "Squat", 0, 12, kg = null, at = t0 + 3, base = SetRow(12, 110.0)))))
         val quarter = set("c-5", "Squat", 0, 13, kg = 110.0, at = t0 + 4, base = SetRow(12, 109.75))
         assertEquals(13, liftIn(apply(phone, listOf(quarter)), "Squat").rows[0].reps)
+        // Squat swapped on the phone for Hack Squat since the set was done, its row still empty: the set was Squat's,
+        // and isn't shown on Hack Squat, nor does it start Hack Squat's rest, as the phone drops it. Made for Hack
+        // Squat, as the watch then shows it, it is.
+        val swapped = state(day(listOf(lift("Squat", null, null, name = "Hack Squat"))))
+        assertEquals(swapped, apply(swapped, listOf(logged)))
+        assertEquals(10, liftIn(apply(swapped, listOf(set("c-7", "Squat", 0, 10, name = "Hack Squat"))), "Squat").rows[0].reps)
     }
 
     @Test
     fun theFirstRepsOfASetStartItsLiftsRest() {
         val s = state(day(listOf(lift("Leg Press", 12, null, null, restSec = 90, name = "Hack Squat"))))
-        val rest = apply(s, listOf(set("c-1", "Leg Press", 1, 12, at = t0))).rest
+        val rest = apply(s, listOf(set("c-1", "Leg Press", 1, 12, at = t0, name = "Hack Squat"))).rest
         // Named as done, a swap's own name, and started when the set was done, as the phone starts it.
         assertEquals(Rest(TODAY, "Hack Squat", t0 + 90_000L, null, 90, startedAt = t0), rest)
         // A set that already had reps, or one before a set already logged, is a correction: no rest.
-        assertNull(apply(s, listOf(set("c-1", "Leg Press", 0, 10, base = twelve))).rest)
+        assertNull(apply(s, listOf(set("c-1", "Leg Press", 0, 10, base = twelve, name = "Hack Squat"))).rest)
         val later = state(day(listOf(lift("Leg Press", null, 12, null))))
         assertNull(apply(later, listOf(set("c-1", "Leg Press", 0, 12))).rest)
         // Clearing a set starts none either.
-        assertNull(apply(s, listOf(set("c-1", "Leg Press", 0, null, base = twelve))).rest)
+        assertNull(apply(s, listOf(set("c-1", "Leg Press", 0, null, base = twelve, name = "Hack Squat"))).rest)
         // A rest the phone started after the set was done (another lift logged there while it was on its way) is the
         // newer one, and stays; one started before it is replaced.
         val newer = Rest(TODAY, "Calf Raise", t0 + 70_000L, sec = 60, startedAt = t0 + 10_000L)
-        assertEquals(newer, apply(s.copy(rest = newer), listOf(set("c-1", "Leg Press", 1, 12, at = t0))).rest)
+        assertEquals(newer, apply(s.copy(rest = newer), listOf(set("c-1", "Leg Press", 1, 12, at = t0, name = "Hack Squat"))).rest)
         val older = newer.copy(startedAt = t0 - 10_000L)
-        assertEquals(t0, apply(s.copy(rest = older), listOf(set("c-1", "Leg Press", 1, 12, at = t0))).rest?.startedAt)
+        assertEquals(t0, apply(s.copy(rest = older), listOf(set("c-1", "Leg Press", 1, 12, at = t0, name = "Hack Squat"))).rest?.startedAt)
     }
 
     @Test
@@ -177,7 +184,7 @@ class OverlayLogicTest {
         assertEquals(s, apply(s, listOf(set("c-1", "Squat", 2, 12)))) // past its rows
         assertEquals(s, apply(s, listOf(set("c-1", "Row", 0, 12)))) // a skipped lift's
         assertEquals(s, apply(s, listOf(set("c-1", "Bench", 0, 12)))) // not today's
-        assertEquals(s, apply(s, listOf(OverlayLogic.set("c-1", t0, "2026-10-01", "Squat", 1, 12, 100.0, null, false)))) // not a day it has
+        assertEquals(s, apply(s, listOf(OverlayLogic.set("c-1", t0, "2026-10-01", "Squat", 1, 12, 100.0, null, false, "Squat")))) // not a day it has
         assertEquals(s, apply(s, listOf(Command("c-1", t0, "somethingNew"))))
     }
 
@@ -309,9 +316,12 @@ class OverlayLogicTest {
         val skipped = apply(s, listOf(skip))
         assertTrue(liftIn(skipped, "Squat").skipped)
         assertFalse(liftIn(skipped, "Squat").done)
-        // Only the lift as the watch showed it: one with another set logged, or unticked, on the phone since isn't.
+        // Only the lift as the watch showed it: one with another set logged, unticked, or swapped for another exercise
+        // on the phone since isn't.
         val logged = s.copy(days = listOf(day(listOf(lift("Squat", 12, 10, done = true)), cardio = "Walk")))
         assertFalse(liftIn(apply(logged, listOf(skip)), "Squat").skipped)
+        val swapped = s.copy(days = listOf(day(listOf(lift("Squat", 12, null, done = true, name = "Hack Squat")), cardio = "Walk")))
+        assertFalse(liftIn(apply(swapped, listOf(skip)), "Squat").skipped)
         val unticked = s.copy(days = listOf(day(listOf(lift("Squat", 12, null, done = false)), cardio = "Walk")))
         assertFalse(liftIn(apply(unticked, listOf(skip)), "Squat").skipped)
         val tick = OverlayLogic.cardioDone("c-2", t0, s.days[0], true)
@@ -323,9 +333,10 @@ class OverlayLogicTest {
 
     @Test
     fun commandsAreWrittenAsThePhoneReadsThem() {
-        val set = JSONObject(OverlayLogic.toJson(set("c-9", "Squat", 1, reps = null, kg = 100.0, at = 42L, base = twelve, baseDone = true)))
+        val set = JSONObject(OverlayLogic.toJson(set("c-9", "Squat", 1, reps = null, kg = 100.0, at = 42L, base = twelve, baseDone = true, name = "Hack Squat")))
         assertEquals(12 to 100.0, set.getInt("baseReps") to set.getDouble("baseKg")) // the row it's made over
         assertTrue(set.getBoolean("baseDone")) // and the lift's tick
+        assertEquals("Hack Squat", set.getString("baseName")) // and the exercise it's done as
         val first = JSONObject(OverlayLogic.toJson(set("c-17", "Squat", 0, reps = 12, at = 42L)))
         assertTrue(first.isNull("baseReps") && first.isNull("baseKg")) // an empty one: there, and null
         assertEquals(1, set.getInt("v"))
@@ -354,7 +365,8 @@ class OverlayLogicTest {
         // The lift as it was shown: its tick, not skipped, and one set with reps.
         val squat = lift("Squat", 12, null, done = false)
         val skip = JSONObject(OverlayLogic.toJson(OverlayLogic.skipLift("c-18", 49L, TODAY, squat)))
-        assertEquals(setOf("v", "id", "at", "type", "day", "lift", "baseDone", "baseSkipped", "baseLogged"), skip.keys().asSequence().toSet())
+        assertEquals(setOf("v", "id", "at", "type", "day", "lift", "baseDone", "baseSkipped", "baseLogged", "baseName"), skip.keys().asSequence().toSet())
+        assertEquals("Squat", skip.getString("baseName"))
         assertEquals(listOf(false, false, 1), listOf(skip.getBoolean("baseDone"), skip.getBoolean("baseSkipped"), skip.getInt("baseLogged")))
 
         val hr = JSONObject(OverlayLogic.toJson(OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240)))
@@ -363,7 +375,7 @@ class OverlayLogicTest {
         assertEquals("8f14e45f", JSONObject(OverlayLogic.toJson(set("c-15", "Squat", 0, 12).copy(account = "8f14e45f"))).getString("account"))
 
         // Kept on the watch as the same JSON, and read back the same.
-        for (c in listOf(set("c-9", "Squat", 1, null, base = twelve, baseDone = true).copy(account = "8f14e45f"), OverlayLogic.skipLift("c-18", 49L, TODAY, squat), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15), OverlayLogic.ofRest("c-14", 47L, OverlayLogic.REST_SKIP, shown.copy(startedAt = null)), OverlayLogic.cardioDone("c-12", 45L, walked, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
+        for (c in listOf(set("c-9", "Squat", 1, null, base = twelve, baseDone = true, name = "Hack Squat").copy(account = "8f14e45f"), OverlayLogic.skipLift("c-18", 49L, TODAY, squat), OverlayLogic.ofRest("c-10", 43L, OverlayLogic.REST_ADD, shown, 15), OverlayLogic.ofRest("c-14", 47L, OverlayLogic.REST_SKIP, shown.copy(startedAt = null)), OverlayLogic.cardioDone("c-12", 45L, walked, false), OverlayLogic.heart("c-13", 46L, TODAY, 128, 165, 240))) {
             assertEquals(c, OverlayLogic.fromJson(OverlayLogic.toJson(c)))
         }
         assertNull(OverlayLogic.fromJson("{}"))
