@@ -16,5 +16,8 @@ class StateListenerService : WearableListenerService() {
         val states = events.filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == WatchRepo.STATE_PATH }
             .mapNotNull { DataMapItem.fromDataItem(it.dataItem).dataMap.getString("json") }
         states.forEach { WatchRepo.onState(applicationContext, it) }
+        // Android may end the process once this returns: the state, and the commands it leaves waiting, reach the files
+        // first, for the rest alarm's receiver to read from cold. (This runs on a thread of its own, so it may wait.)
+        WatchRepo.flush()
     }
 }

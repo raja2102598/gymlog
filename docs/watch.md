@@ -276,6 +276,13 @@ reached the Data Layer (the app killed that moment) is put again the next time t
 takes stops being shown after two days, and one made under another account than the state's, at once. A third file
 keeps the heart rate's days.
 
+Each file is written whole (`Disk`): to a temporary file, to the disk, then renamed over the one before in one step, so
+one read after Android killed the app mid-write is the last whole one. Writes go in order, off the thread that made
+them. The listener service waits for them before it returns, since Android may end the process as soon as it has: the
+rest alarm's receiver, waking the app from cold, then reads the state that just came, rather than the one before it
+(and stays quiet for an alarm that state set), and the commands the state left waiting are there to send again. The
+app's own screens and the workout service stay running while their writes go through.
+
 ### The rest's buzz, and the workout in the background
 
 - The buzz is an exact alarm (`AlarmManager.setExactAndAllowWhileIdle`) at the rest's end, for whichever rest the

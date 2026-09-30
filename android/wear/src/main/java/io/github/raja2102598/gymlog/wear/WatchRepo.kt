@@ -3,14 +3,11 @@ package io.github.raja2102598.gymlog.wear
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.core.util.AtomicFile
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
-import java.io.File
-import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.tasks.await
@@ -45,8 +42,9 @@ object WatchRepo {
     /** Counts the states taken in, so a fetch that raced a newer arrival doesn't put the older one back. */
     private var arrivals = 0
 
-    /** Writes go to the files in order, off whichever thread changed them; memory is always ahead of the files. */
-    private val disk = Executors.newSingleThreadExecutor()
+    /** Writes go to the files whole and in order, off whichever thread changed them; memory is always ahead of the
+     *  files, until `flush`. */
+    private val disk = Disk({ what, e -> Log.w(TAG, "Couldn't keep $what", e) })
 
     private val flow = MutableStateFlow(Snapshot(null, emptyList()))
     val snapshot: StateFlow<Snapshot> = flow
@@ -172,31 +170,16 @@ object WatchRepo {
         }
 
     /** A file kept in the app's own storage, or null for none (HeartMonitor keeps its own this way too). */
-    internal fun read(ctx: Context, name: String): String? =
-        try {
-            AtomicFile(File(ctx.filesDir, name)).readFully().toString(Charsets.UTF_8)
-        } catch (e: Exception) {
-            null
-        }
+    internal fun read(ctx: Context, name: String): String? = Disk.read(ctx.filesDir, name)
 
     /** Writes a file whole, off the caller's thread, in the order asked. */
-    internal fun save(ctx: Context, name: String, text: String) {
-        val dir = ctx.applicationContext.filesDir
-        disk.execute {
-            val f = AtomicFile(File(dir, name))
-            val out = try {
-                f.startWrite()
-            } catch (e: Exception) {
-                Log.w(TAG, "Couldn't keep $name", e)
-                return@execute
-            }
-            try {
-                out.write(text.toByteArray(Charsets.UTF_8))
-                f.finishWrite(out)
-            } catch (e: Exception) {
-                f.failWrite(out)
-                Log.w(TAG, "Couldn't keep $name", e)
-            }
-        }
-    }
+    internal fun save(ctx: Context, name: String, text: String) = disk.save(ctx.applicationContext.filesDir, name, text)
+
+    /**
+     * Waits until every file written so far is on the disk: for a component that's done once it returns, after which
+     * Android may end the process before a queued write gets there (StateListenerService). A rest alarm's receiver
+     * waking the app from cold then reads the state that came, not the one before it, and the commands waiting on the
+     * phone are all there to send again.
+     */
+    fun flush() = disk.flush()
 }
