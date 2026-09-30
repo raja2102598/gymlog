@@ -582,6 +582,34 @@ describe("what the watch sends back", () => {
         },
       },
       {
+        name: "set: a lift unticked on the phone after it stays unticked",
+        before: (s) => s.editLift(WED, "Leg Press", (r) => void Object.assign(r, { sets: [{ reps: 10, kg: 45 }, { reps: 10, kg: 45 }, { reps: 10, kg: 45 }], done: true, autoDone: true }), true),
+        command: () => cmd("set", { day: WED, lift: "Leg Press", set: 2, reps: 8, kg: 45, baseReps: 10, baseKg: 45, baseDone: true }, AGO),
+        after: (s) => s.editLift(WED, "Leg Press", (r) => void Object.assign(r, { done: false, autoDone: undefined }), true),
+        left: (s) => {
+          expect(sets(s, "Leg Press")?.[2]).toEqual({ reps: 8, kg: 45 });
+          expect(s.entry(WED).exercises["Leg Press"].done).toBe(false);
+        },
+      },
+      {
+        name: "skipLift: a lift logged on the phone after it isn't skipped",
+        command: () => cmd("skipLift", { day: WED, lift: "Leg Press", baseDone: false, baseSkipped: false, baseLogged: 0 }, AGO),
+        after: (s) => s.editLift(WED, "Leg Press", (r) => void (r.sets = [{ reps: 10, kg: 45 }]), true),
+        left: (s) => {
+          expect(sets(s, "Leg Press")).toEqual([{ reps: 10, kg: 45 }]);
+          expect(s.entry(WED).exercises["Leg Press"].skipped).toBeFalsy();
+        },
+      },
+      {
+        name: "skipLift: a lift ticked done on the phone after it isn't skipped",
+        command: () => cmd("skipLift", { day: WED, lift: "Leg Press", baseDone: false, baseSkipped: false, baseLogged: 0 }, AGO),
+        after: (s) => s.editLift(WED, "Leg Press", (r) => void (r.done = true), true),
+        left: (s) => {
+          expect(s.entry(WED).exercises["Leg Press"].done).toBe(true);
+          expect(s.entry(WED).exercises["Leg Press"].skipped).toBeFalsy();
+        },
+      },
+      {
         name: "startRun: a run started before it and finished on the phone after it stays finished",
         before: () => startRun(WED, S),
         command: () => cmd("startRun", { day: WED }, AGO),
@@ -745,7 +773,7 @@ describe("what the watch sends back", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(s.rest).toBeNull();
 
-    watch.arrive(cmd("skipLift", { day: WED, lift: "Leg Extension" }), cmd("cardioDone", { day: WED, done: true }));
+    watch.arrive(cmd("skipLift", { day: WED, lift: "Leg Extension", baseDone: false, baseSkipped: false, baseLogged: 0 }), cmd("cardioDone", { day: WED, done: true }));
     await vi.advanceTimersByTimeAsync(0);
     expect(s.entry(WED).exercises["Leg Extension"]).toMatchObject({ skipped: true, done: false });
     expect(s.entry(WED).cardio).toBe(true);

@@ -27,6 +27,9 @@ data class Command(
     val runStartedAt: Long? = null,
     val baseReps: Int? = null,
     val baseKg: Double? = null,
+    val baseDone: Boolean? = null,
+    val baseSkipped: Boolean? = null,
+    val baseLogged: Int? = null,
 )
 
 /**
@@ -75,8 +78,8 @@ object OverlayLogic {
 
     /** A set logged (reps null: cleared, the tick's undo), as Complete set N logs it, over `base`, the row as the watch
      *  has it now (null: none). The phone logs it only over that row, so a change made to it there since stays. */
-    fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?, base: SetRow?) =
-        Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg, baseReps = base?.reps, baseKg = base?.kg)
+    fun set(id: String, at: Long, day: String, lift: String, set: Int, reps: Int?, kg: Double?, base: SetRow?, baseDone: Boolean?) =
+        Command(id, at, SET, day = day, lift = lift, set = set, reps = reps, kg = kg, baseReps = base?.reps, baseKg = base?.kg, baseDone = baseDone)
 
     /** A weight as the phone keeps it, to the half kg (lib/lift.ts, setField): the rows' are compared so. */
     private fun halfKg(kg: Double?): Double? = kg?.let { Math.round(it * 2) / 2.0 }
@@ -109,7 +112,10 @@ object OverlayLogic {
     fun sameRest(r: Rest?, c: Command): Boolean =
         r != null && r.day == c.day && r.lift == c.lift && (r.startedAt == null || c.restStartedAt == null || r.startedAt == c.restStartedAt)
 
-    fun skipLift(id: String, at: Long, day: String, lift: String) = Command(id, at, SKIP_LIFT, day = day, lift = lift)
+    /** ··· Skip today for `lift` as the watch shows it: its tick, whether it's skipped, and how many of its sets have
+     *  reps, so neither the phone nor the watch skips one logged, cleared, ticked or unticked since. */
+    fun skipLift(id: String, at: Long, day: String, lift: Lift) =
+        Command(id, at, SKIP_LIFT, day = day, lift = lift.key, baseDone = lift.done, baseSkipped = lift.skipped, baseLogged = lift.rows.count(StepLogic::logged))
 
     fun cardioDone(id: String, at: Long, day: String, done: Boolean) = Command(id, at, CARDIO_DONE, day = day, done = done)
 
@@ -139,6 +145,9 @@ object OverlayLogic {
         c.restStartedAt?.let { o.put("restStartedAt", it) }
         c.account?.let { o.put("account", it) }
         c.runStartedAt?.let { o.put("runStartedAt", it) }
+        c.baseDone?.let { o.put("baseDone", it) }
+        c.baseSkipped?.let { o.put("baseSkipped", it) }
+        c.baseLogged?.let { o.put("baseLogged", it) }
         return o.toString()
     }
 
@@ -167,6 +176,9 @@ object OverlayLogic {
                 runStartedAt = if (o.isNull("runStartedAt")) null else o.getLong("runStartedAt"),
                 baseReps = num("baseReps")?.toInt(),
                 baseKg = num("baseKg"),
+                baseDone = if (o.isNull("baseDone")) null else o.optBoolean("baseDone"),
+                baseSkipped = if (o.isNull("baseSkipped")) null else o.optBoolean("baseSkipped"),
+                baseLogged = num("baseLogged")?.toInt(),
             )
         } catch (e: Exception) {
             null
@@ -237,7 +249,11 @@ object OverlayLogic {
                     restChangedAt = c.at,
                 )
             } ?: s
-            SKIP_LIFT -> editLift(s, c.day, c.lift) { _, l -> l.copy(skipped = true, done = false) }
+            // Only the lift as the watch showed it: one logged, cleared, ticked or unticked on the phone since stays so.
+            SKIP_LIFT -> editLift(s, c.day, c.lift) { _, l ->
+                val same = l.done == c.baseDone && c.baseSkipped == false && l.rows.count(StepLogic::logged) == c.baseLogged
+                if (!l.skipped && same) l.copy(skipped = true, done = false) else l
+            }
             CARDIO_DONE -> s.copy(days = s.days.map { if (it.date == c.day) it.copy(cardioDone = c.done ?: true) else it })
             // The phone keeps the day's heart rate for Workout complete; the watch shows its own readings, not the state's.
             HR -> s
@@ -282,6 +298,8 @@ object OverlayLogic {
             if (before == null) r else r.copy(sugReps = before.reps, sugKg = before.kg ?: r.sugKg)
         }
         val done = when {
+            // Ticked or unticked on the phone since the watch saw it: that stays, as the phone keeps it.
+            c.baseDone != null && lift.done != c.baseDone -> lift.done
             lift.skipped -> false
             rows.all(StepLogic::logged) -> true
             c.reps == null -> false

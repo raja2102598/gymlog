@@ -181,12 +181,22 @@ function logWatchSet(store: GymStore, day: DayKey, c: WatchCommand, at: number):
   const cur = m.sets[j], curReps = cur?.reps ?? null, curKg = cur?.kg ?? null;
   if (reps === null ? curReps === null : curReps === reps && (kg === null || curKg === halfKg(kg))) return true;
   if (curReps !== baseReps || curKg !== halfKg(baseKg)) return false;
+  // The lift's tick follows its sets, as it does on the phone, unless it was ticked or unticked there since the watch
+  // saw it (`baseDone`): that's newer, and stays.
+  const tick = { done: !!m.r.done, auto: !!m.r.autoDone };
   if (reps === null) {
     if ((curReps ?? 0) > 0) m.setField(j, "reps", "");
-    return true;
+  } else {
+    if (kg != null) m.setField(j, "kg", String(kg));
+    m.setField(j, "reps", String(reps));
   }
-  if (kg != null) m.setField(j, "kg", String(kg));
-  m.setField(j, "reps", String(reps));
+  if (typeof c.baseDone === "boolean" && tick.done !== c.baseDone) {
+    m.edit((r) => {
+      r.done = tick.done;
+      if (tick.auto) r.autoDone = true;
+      else delete r.autoDone;
+    }, false);
+  }
   return true;
 }
 
@@ -267,10 +277,14 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
       store.resumeRest(at);
       return true;
     case "skipLift": {
-      // ··· Skip today, with no reason.
+      // ··· Skip today, with no reason: only for the lift as the watch showed it (`baseDone`, `baseSkipped`, and
+      // `baseLogged`, its sets with reps). One logged, cleared, ticked or unticked on the phone since is newer.
       const m = day && liftNamed(store, day, c.lift);
       if (!m) return false;
-      if (!m.r.skipped) m.skipToday();
+      if (m.r.skipped) return true;
+      const logged = m.sets.filter((s) => (s.reps ?? 0) > 0).length;
+      if (c.baseSkipped !== false || c.baseDone !== !!m.r.done || c.baseLogged !== logged) return false;
+      m.skipToday();
       return true;
     }
     case "cardioDone": {
