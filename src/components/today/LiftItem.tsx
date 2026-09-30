@@ -20,6 +20,7 @@ import type { DayKey, DayLog, SetLog } from "@/lib/types";
 import type { VoiceResult } from "@/lib/voice";
 import { PlatesInfo } from "./PlateCalc";
 import { SetMenu, SetNumber } from "./SetMenu";
+import { StuckHint } from "./StuckHint";
 import { InsightCallout } from "@/components/ds/parts";
 import { targetWords } from "@/lib/session";
 import type { LiftMenu } from "./types";
@@ -582,6 +583,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
   ) : (
     <>
       <ProgHint next={m.next} />
+      <StuckHint m={m} setMenu={setMenu} focusNext={focusNext} />
       <div className="sets" role="group" aria-label={`${m.did}, sets`}>
         <SetHead />
         {Array.from({ length: rows }, (_, j) => (

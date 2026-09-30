@@ -259,6 +259,18 @@ describe("a lift's own page", () => {
 
   it("has nothing to show for a lift that's never been logged and isn't in the plan", () => {
     const m = liftModel(storeWith({}), "2026-09-23", "Nonexistent Lift");
-    expect(m).toMatchObject({ points: [], bestTop: null, bestE1rm: null, volume: 0, perWeek: null, planned: [] });
+    expect(m).toMatchObject({ points: [], bestTop: null, bestE1rm: null, volume: 0, perWeek: null, planned: [], stuck: null });
+  });
+
+  it("says when it's stuck, as its card in the workout does, with today's session in, whatever it's put off with", () => {
+    const flat = lift([[10, 30], [10, 30], [10, 30]]); // an estimated 1RM of 40 kg
+    const weeks = ["2026-08-26", "2026-09-02", "2026-09-09", LAST];
+    const s = storeWith(Object.fromEntries(weeks.map((k) => [k, day({ exercises: { "Hamstring Curl": flat } })])));
+    expect(liftModel(s, WED, "Hamstring Curl").stuck).toBeNull(); // four sessions: nothing to beat yet
+    s.save(WED, day({ exercises: { "Hamstring Curl": flat } }), true); // today's, the fifth
+    expect(liftModel(s, WED, "Hamstring Curl").stuck).toMatchObject({ sessions: 4, best: 40, day: "2026-08-26" });
+    // Not now is for the workout's hint: the page still says so.
+    s.putOffStuck("Hamstring Curl", 40);
+    expect(liftModel(s, WED, "Hamstring Curl").stuck?.sessions).toBe(4);
   });
 });

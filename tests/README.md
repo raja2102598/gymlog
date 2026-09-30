@@ -25,7 +25,8 @@ Strength, Muscles, a lift's page), `healthView` (the Health tab's numbers), `gym
 `backup`, `auth` (signing in and out), `healthSync` (Health Connect from the Android app), `android` (the app
 starting, the widget), `watch` (what the Wear OS app is sent, and what's done on it), `update`, `rest` (the rest
 timer), `workout` (its clock, Complete set N, and what Workout complete adds up), `freeform`, `supersets`, `settypes`,
-`progression` (the rules and the next weight), `templates` (and the first run), `demo`, `voice` and `speech`. And for
+`progression` (the rules, the next weight and what holds it, and a stuck lift), `readiness` (today's signals and the
+note on Home's workout card), `templates` (and the first run), `demo`, `voice` and `speech`. And for
 the library code underneath: `stats`, `format`, `health` (Health Connect's readings into days), `heart`, `videos`
 (finding a lift's YouTube videos), `tokens`, `config`.
 

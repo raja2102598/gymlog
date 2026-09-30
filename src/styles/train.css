@@ -214,3 +214,7 @@
 .lrow .row-d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #nextEx{min-width:0;max-width:100%}
 #nextEx .nx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A stuck lift's hint (StuckHint): its line, then Swap and Not now on a row of their own under it. */
+.ex-card .prog.stuck{flex-wrap:wrap;row-gap:8px}
+.ex-card .prog.stuck>span{flex:1 1 auto;min-width:0}
+.ex-card .prog.stuck>.btn-row{flex-basis:100%}
