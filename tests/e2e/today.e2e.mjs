@@ -390,4 +390,105 @@ export default async function today({ browser, base, check }) {
     check("on the timeline too, and the knee question is back", /Up next ?Legs workout · 5 lifts/.test(back) && /After lifting ?Cycling/.test(back) && (await page.locator('[data-knee^="kneeBefore:"]').count()) === 11, back);
     await ctx.close();
   }
+
+  await leftLifts({ browser, base, check });
+}
+
+// Lifts left on an earlier day, offered in Add exercise, as in the report: Tuesday's Pull with 2 of its 6 lifts done.
+// Opening Add exercise on Wednesday offers the other four first ("Missed on Tuesday"); one added for today goes on
+// today's session and the workout like a planned lift, not into the plan, and leaves the list. Under them, the muscles
+// low this week, picked like any library lift. And the rest pill, over Train, keeps clear of Add exercise.
+async function leftLifts({ browser, base, check }) {
+  const day = (exercises) => ({ exercises, warmup: [], cardio: false, steps: 6000, weight: null, note: "" });
+  const done = (reps, kg, n) => ({ done: true, kg, sets: Array.from({ length: n }, () => ({ reps, kg })) });
+  const db = {
+    logs: {
+      [K(20)]: day({ "Lat Pulldown": done(8, 50, 3), "Rear Delt Fly": done(12, 20, 2) }), // last Tuesday: last time's sets
+      [K(27)]: day({ "Chest-Supported Row": done(10, 30, 3), "Dumbbell Curls": done(10, 12, 3) }),
+    },
+    plan: null,
+  };
+  const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-0000000000e1", "2026-09-01T00:00:00Z"), db });
+  await ready(page);
+  await openTab(page, "train");
+  const missed = () => page.locator("#libMissed .lib-n").allTextContents();
+  const rows = () => page.locator("#liftRows .lift-t").allTextContents();
+  const rowLine = (name) => flat(page.locator("#liftRows li", { has: page.locator(".lift-t", { hasText: name }) }).locator(".row-d"));
+  /** Where things sit on screen: Add exercise's and the page's last content's bottom edges, and the tops of the rest
+   *  pill and the tab bar. */
+  const rects = () =>
+    page.evaluate(() => {
+      const box = (el) => el?.getBoundingClientRect() ?? null;
+      return { add: box(document.querySelector("#addExercise"))?.bottom, last: box(document.querySelector("#trainView .screen").lastElementChild)?.bottom, pill: box(document.querySelector("#restPill"))?.top ?? null, tabs: box(document.querySelector(".tabbar")).top };
+    });
+
+  // No rest running: the page ends above the tabs, keeping no room for a pill that isn't there.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const bare = await rects();
+  check("with no rest pill, Train's last content scrolls clear of the tabs, with no room kept for the pill", bare.pill === null && bare.last <= bare.tabs && bare.tabs - bare.last < 44, JSON.stringify(bare));
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  await page.click("#addExercise");
+  await page.waitForSelector("#libDialog[open] #libList");
+  await until(async () => (await page.locator("#libMissed").count()) > 0);
+  const heading = (await page.locator("#libMissedH").count()) ? await flat(page.locator("#libMissedH")) : "";
+  check("Add exercise opens on what Tuesday left, first", heading === "Missed on Tuesday" && (await missed()).join("|") === "Lat Pulldown|Seated Row|Rear Delt Fly|Cable Curls", `${heading}: ${(await missed()).join("|")}`);
+  const line = await flat(page.locator("#libMissed li").first().locator(".row-d"));
+  check("each with its sets and reps as planned, both ranges with an en dash, and last time's top set", line === "3–4 × 8–10 · last 50 kg × 8", line);
+  check("its button adds it for today", (await flat(page.locator('[data-missed="Rear Delt Fly"]'))) === "Add for today" && (await page.getAttribute('[data-missed="Rear Delt Fly"]', "aria-label")) === "Add Rear Delt Fly for today");
+  const lows = await page.locator("#libLow [data-low-muscle]").count();
+  check("then the muscles low this week, each with lifts to pick", lows >= 1 && lows <= 3 && (await flat(page.locator("#libLowH"))) === "Low this week" && (await page.locator("#libLow [data-low]").count()) <= lows * 2, `${lows} muscles`);
+  await page.click('[data-missed="Rear Delt Fly"]');
+  await until(() => !!db.logs[K(28)]?.exercises?.["Rear Delt Fly"]);
+  const added = db.logs[K(28)]?.exercises?.["Rear Delt Fly"];
+  check("Add for today puts it on today only, asking what it was planned with", JSON.stringify(added) === '{"done":false,"kg":null,"target":{"sets":"3","reps":"12-15"},"added":true}', JSON.stringify(added));
+  check("and not in the plan", db.plan === null && db.writes.plans === 0, JSON.stringify(db.plan?.days?.[2]?.exercises?.map((x) => x.name)));
+  check("it leaves the list, and the next one's button has focus", (await missed()).join("|") === "Lat Pulldown|Seated Row|Cable Curls" && (await page.evaluate(() => document.activeElement?.dataset.missed)) === "Cable Curls", (await missed()).join("|"));
+
+  // A lift for a low muscle is picked as the library's are, and goes into the plan's Legs with them.
+  const low = page.locator("#libLow [data-low]").first(), lowId = await low.getAttribute("data-low");
+  await low.click();
+  check("a lift for a low muscle is picked with + like the library's", (await low.getAttribute("aria-pressed")) === "true" && (await flat(page.locator("#libAdd"))) === "Add 1");
+  await page.click("#libAdd");
+  await until(() => db.plan?.days?.[2]?.exercises?.some((x) => x.lib === lowId));
+  check("and Add puts it in the plan, for Legs", db.plan?.days?.[2]?.exercises?.some((x) => x.lib === lowId) && !db.plan.days[2].exercises.some((x) => x.name === "Rear Delt Fly"), JSON.stringify(db.plan?.days?.[2]?.exercises?.map((x) => x.name)));
+  await page.waitForSelector("#libDialog:not([open])", { state: "attached" });
+
+  // Today's session: the lift added for today after the planned ones, as one of them.
+  check("Train lists Rear Delt Fly last, with its sets and reps and weight", (await rows()).at(-1) === "Rear Delt Fly" && (await rowLine("Rear Delt Fly")) === "3 × 12–15 · 20 kg", `${(await rows()).join("|")} / ${await rowLine("Rear Delt Fly")}`);
+  check("and counts it", /^7 lifts/.test(await flat(page.locator("#liftPill"))), await flat(page.locator("#liftPill")));
+  await page.click("#addExercise");
+  await page.waitForSelector("#libMissed");
+  check("opened again, Add exercise doesn't offer it", (await missed()).join("|") === "Lat Pulldown|Seated Row|Cable Curls", (await missed()).join("|"));
+  await page.click("#libClose");
+  await page.waitForSelector("#libDialog:not([open])", { state: "attached" });
+
+  // In the workout it logs like a planned lift, says it's today's only, and a set starts the rest.
+  await openWorkout(page, "Rear Delt Fly");
+  const card = page.locator("#workoutView section.ex-card");
+  const meta = await flat(card.locator(".ex-meta .sr"));
+  check("in the workout: what it asks, its rest, a row per planned set, and that it's for today only", /^3 × 12–15 · rest 1:30/.test(meta) && (await card.locator(".srow.set").count()) === 3 && /Added for this day only, not to the plan/.test(await card.textContent()), meta);
+  await page.click("#completeSet");
+  await until(() => db.logs[K(28)]?.exercises?.["Rear Delt Fly"]?.sets?.length === 1);
+  await page.click("#closeWorkout");
+  await page.waitForSelector("#trainView");
+  await page.waitForSelector("#restPill");
+
+  // The rest pill: Add exercise scrolled to stops above it, as does the page's end.
+  await page.locator("#addExercise").evaluate((e) => e.scrollIntoView({ block: "end" }));
+  const at = await rects();
+  check("Add exercise, scrolled into view, stops above the rest pill", at.pill !== null && at.add <= at.pill, JSON.stringify(at));
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const end = await rects();
+  check("and Train's last content scrolls clear of it", end.last <= end.pill, JSON.stringify(end));
+
+  // Tuesday's session: a range of sets with an en dash, as its reps have.
+  await page.locator("#dayChips .dchip").nth(1).click();
+  await until(async () => (await flat(page.locator("#sessName"))) === "Pull");
+  const lines = [await rowLine("Lat Pulldown"), await rowLine("Cable Curls")];
+  check("Train prints a range of sets with an en dash: 3–4 × 8–10, 2–3 × 10–12", /^3–4 × 8–10\b/.test(lines[0]) && lines[1] === "2–3 × 10–12", lines.join(" / "));
+
+  check("left lifts: only logs/plans endpoints called", db.unexpected.length === 0 && db.external.length === 0, [...db.unexpected, ...db.external].join(", "));
+  check("left lifts: no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
 }

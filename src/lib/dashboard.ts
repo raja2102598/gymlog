@@ -323,6 +323,13 @@ export interface MusclesModel {
   untagged: { name: string; sets: number }[];
 }
 
+/** Sets a week a muscle wants, as most advice has it: under this it's short (and over 20, too many). */
+export const WEEKLY_SETS = 10;
+
+/** Whether a muscle's sets are judged yet (under or over the range): once the account has a full week behind it,
+ *  last week, from its Monday on. */
+export const musclesJudged = (store: GymStore, t: DayKey) => store.firstDay() <= addDays(mondayOf(t), -7);
+
 export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
   const mon = mondayOf(t), weeks = [-21, -14, -7, 0].map((n) => addDays(mon, n));
   const days = store.days().filter((k) => k >= weeks[0] && k <= t).map((k) => ({ day: k, lifts: store.liftSets(k) }));
@@ -330,8 +337,8 @@ export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
     const x = store.exerciseOf(name);
     return x?.primary.length ? x : null;
   });
-  const judged = store.firstDay() <= weeks[2];
-  const note = (m: string, n: number): MuscleRow["note"] => (!judged ? null : n > 20 ? "over" : n < 10 && w.main.has(m) ? "under" : null);
+  const judged = musclesJudged(store, t);
+  const note = (m: string, n: number): MuscleRow["note"] => (!judged ? null : n > 20 ? "over" : n < WEEKLY_SETS && w.main.has(m) ? "under" : null);
   return {
     weeks,
     rows: [...w.muscles]

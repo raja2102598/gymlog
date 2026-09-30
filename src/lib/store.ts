@@ -34,6 +34,9 @@ export interface LiftItem {
   name: string;
   /** Logged that day but no longer in the plan. */
   extra: boolean;
+  /** Added for that day only (LiftLog.added): not in the plan, but shown, logged and counted as one of the day's
+   *  lifts, and it can be taken out again (removeExtraLift). Left out on every other lift. */
+  added?: boolean;
 }
 export interface LastDone {
   day: DayKey;
@@ -89,6 +92,8 @@ const heartOf = (d?: Partial<DayLog> | null): WorkoutHeart | null => {
 };
 /** What a free-form workout is called when it isn't given a name. */
 export const FREE_NAME = "Free workout";
+/** A lift the plan has nothing on: no sets, reps or anything else. */
+const blankLift = (name: string): PlanExercise => ({ name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false });
 export const minSets = (x: { sets: string }) => {
   const n = parseInt(x.sets, 10);
   return n > 0 ? Math.min(n, 10) : 1;
@@ -658,8 +663,7 @@ export class GymStore {
   planFor(k: DayKey): PlanDay {
     const p = this.plan.days[this.slotFor(k)], f = freeOf(this.logs[k]);
     if (!f) return p;
-    const blank = (name: string): PlanExercise => ({ name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false });
-    return { weekday: p.weekday, name: f.name.trim() || FREE_NAME, focus: "", exercises: f.lifts.map((name) => this.planLift(name) ?? blank(name)), cardio: p.cardio };
+    return { weekday: p.weekday, name: f.name.trim() || FREE_NAME, focus: "", exercises: f.lifts.map((name) => this.planLift(name) ?? blankLift(name)), cardio: p.cardio };
   }
   /** Whether day k is a free-form workout rather than a planned session. */
   isFree(k: DayKey): boolean {
@@ -677,14 +681,19 @@ export class GymStore {
     return null;
   }
   /** The day's lifts as Today shows them, in blocks: a superset of the plan's is one block, its lifts in the plan's
-   *  order, and any other lift a block of its own, as is anything logged that day that's no longer in the plan.
-   *  Blocks follow the day's own order once a lift was moved (DayLog.order), else the plan's. */
+   *  order, and any other lift a block of its own, as is a lift added for that day only and anything logged that day
+   *  that's no longer in the plan. Blocks follow the day's own order once a lift was moved (DayLog.order), else the
+   *  plan's. */
   liftBlocks(k: DayKey, order: string[] | null = this.entry(k).order ?? null): LiftItem[][] {
     const p = this.planFor(k), e = this.entry(k);
     const blocks = planBlocks(p.exercises).map((b) => b.map((x): LiftItem => ({ x, name: x.name, extra: false })));
     const planned = new Set(p.exercises.map((x) => x.name));
     for (const [name, r] of Object.entries(e.exercises)) {
-      if (!planned.has(name) && liftHasData(r)) blocks.push([{ x: { name, sets: "", reps: "", cue: "", flag: "", step: "", knee: false }, name, extra: true }]);
+      if (planned.has(name)) continue;
+      // Added for the day (addExtraLift): there from the start, as the plan's lift of that name would be (its step,
+      // rest and how-to), asking for the sets and reps it was added with.
+      if (r?.added) blocks.push([{ x: { ...(this.planLift(name) ?? blankLift(name)), ...r.target }, name, extra: false, added: true }]);
+      else if (liftHasData(r)) blocks.push([{ x: blankLift(name), name, extra: true }]);
     }
     return order ? orderBlocks(blocks, order) : blocks;
   }
@@ -753,6 +762,31 @@ export class GymStore {
       k,
       (n) => {
         if (n.free) n.free.lifts = n.free.lifts.filter((x) => x !== name);
+        delete n.exercises[name];
+        if (n.order) n.order = n.order.filter((x) => x !== name);
+      },
+      true,
+    );
+  }
+  /** Adds lift `name` to day k only, not to the plan: Train's Add exercise, for a lift missed on an earlier day
+   *  (lib/suggest.ts). It asks for `target`, the sets and reps it was planned with there, and shows after the day's
+   *  planned lifts before anything is logged (liftBlocks). False when the day has a lift of that name already. */
+  addExtraLift(k: DayKey, name: string, target: { sets: string; reps: string }): boolean {
+    if (this.liftsFor(k).some((it) => it.name === name)) return false;
+    this.editDay(
+      k,
+      (n) => {
+        n.exercises[name] = { done: false, kg: null, target: { sets: target.sets, reps: target.reps }, added: true };
+      },
+      true,
+    );
+    return true;
+  }
+  /** Takes a lift added to day k only (addExtraLift) out of it again, with anything logged for it. */
+  removeExtraLift(k: DayKey, name: string) {
+    this.editDay(
+      k,
+      (n) => {
         delete n.exercises[name];
         if (n.order) n.order = n.order.filter((x) => x !== name);
       },
