@@ -708,12 +708,13 @@ export class GymStore {
   /** The day's lifts as Today shows them, in blocks: a superset of the plan's is one block, its lifts in the plan's
    *  order, and any other lift a block of its own, as is a lift added for that day only and anything logged that day
    *  that's no longer in the plan. Blocks follow the day's own order once a lift was moved (DayLog.order), else the
-   *  plan's. */
+   *  plan's, with the day's own lifts after it by name: a sync hands a day's lifts back in the server's order
+   *  (Supabase's jsonb sorts its keys), and the day's steps mustn't change places under an open workout. */
   liftBlocks(k: DayKey, order: string[] | null = this.entry(k).order ?? null): LiftItem[][] {
     const p = this.planFor(k), e = this.entry(k);
     const blocks = planBlocks(p.exercises).map((b) => b.map((x): LiftItem => ({ x, name: x.name, extra: false })));
     const planned = new Set(p.exercises.map((x) => x.name));
-    for (const [name, r] of Object.entries(e.exercises)) {
+    for (const [name, r] of Object.entries(e.exercises).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
       if (planned.has(name)) continue;
       // Added for the day (addExtraLift): there from the start, as the plan's lift of that name would be (its step,
       // rest and how-to), asking for the sets and reps it was added with.

@@ -464,6 +464,19 @@ describe("a lift added for the day only", () => {
     expect(setsOf(s.entry(WED).exercises["Rear Delt Fly"])).toEqual([{ reps: 12, kg: 22.5 }, { reps: 12, kg: 22.5 }, { reps: 12, kg: 22.5 }]);
   });
 
+  it("keeps the day's added lifts in one order, whatever order a sync hands the day's lifts back in", () => {
+    const s = storeWith(), t = { sets: "3", reps: "12-15" };
+    s.addExtraLift(WED, "Rear Delt Fly", t);
+    s.addExtraLift(WED, "Lat Pulldown", t);
+    s.editLift(WED, "Cable Curls", (r) => void (r.sets = [{ reps: 10, kg: 15 }]), true); // one that isn't in the plan
+    const shown = names(s.liftsFor(WED));
+    expect(shown).toEqual([...LEGS, "Cable Curls", "Lat Pulldown", "Rear Delt Fly"]);
+    // Supabase's jsonb gives a day's keys back in its own order (shortest first): the same day, pulled on coming back.
+    const e = s.logs[WED];
+    s.logs[WED] = { ...e, exercises: Object.fromEntries(Object.entries(e.exercises).reverse()) };
+    expect(names(s.liftsFor(WED))).toEqual(shown);
+  });
+
   it("isn't added twice, nor over one of the day's, and comes out again with its sets and its place in the day's order", () => {
     const s = storeWith(), t = { sets: "3", reps: "12-15" };
     expect([s.addExtraLift(WED, "Rear Delt Fly", t), s.addExtraLift(WED, "Rear Delt Fly", t), s.addExtraLift(WED, "Leg Press", t)]).toEqual([true, false, false]);
