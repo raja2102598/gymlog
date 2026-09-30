@@ -90,6 +90,8 @@ class HeartLogicTest {
         assertTrue(HeartLogic.due(h, t0 + 1, ending = true))
         val sent = HeartLogic.sent(h, t0 + 7 * min)
         assertEquals(2, sent.sentSamples)
+        // The day's count goes on from there: the phone keeps whichever `hr` has the most, so it never goes back.
+        assertEquals(h.samples, sent.samples)
         // Nothing new since: nothing to send, even at the end.
         assertFalse(HeartLogic.due(sent, t0 + 20 * min, ending = true))
         val more = HeartLogic.add(sent, run, beats(140.0, from = t0 + 8 * min), now = t0 + 8 * min)

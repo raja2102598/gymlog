@@ -146,7 +146,7 @@ app's own Data Layer items.
 | `restPause` / `restResume` | `day`, `lift`, `restStartedAt` | Pauses or resumes the rest, if it's the one named. |
 | `skipLift` | `day`, `lift` | Skips the lift (no reason). |
 | `cardioDone` | `day`, `done` | Ticks the day's cardio. |
-| `hr` | `day`, `avg`, `max`, `samples` | Keeps the day's heart rate from the watch (bpm, the average and highest over `samples` readings), rounded, as the day's `hr` (`{ avg, max }`, on its log, so it syncs with the day) for Workout complete. Each is the day's whole so far, so it replaces the one before. One over no readings, or with an average above its highest or a highest over 250, is dropped. |
+| `hr` | `day`, `avg`, `max`, `samples` | Keeps the day's heart rate from the watch (bpm, the average and highest over `samples` readings), rounded, as the day's `hr` (`{ avg, max, samples }`, on its log, so it syncs with the day) for Workout complete. Each is the day's whole so far, so it replaces the one before, unless it's over fewer readings than the day's `hr` already is: an older one that arrived after it, which is dropped (a day's `hr` kept before it had `samples` takes any). One over no readings, or with an average above its highest or a highest over 250, is dropped. |
 
 `at` is never taken as later than the phone's own clock (a rest's `startedAt` aside: it only names the rest).
 
@@ -161,7 +161,11 @@ of a rest the phone has since replaced isn't shown on the newer one.
 
 The watch sends `hr` every five minutes during the workout (with new readings since the last), so little is lost if it's
 reset or lost before the end, and at the end. A newer `hr` for a day replaces that day's older ones still waiting to
-reach the Data Layer on the watch, so one sent again later never takes the phone back to less of the workout.
+reach the Data Layer on the watch, so one sent again later never takes the phone back to less of the workout. Those
+already in the Data Layer are separate items, which can reach the phone in any order, one `pending()` apart: `samples`
+is the day's count of readings on the watch, which only ever grows through the day, so the phone keeps whichever `hr`
+has the most. (Should the watch lose its count mid-day, its data cleared, the phone keeps the fuller one it had until
+the new count passes it.)
 
 A command the phone can't apply (another account's, or one with none; a day or lift it doesn't have, a set past the rows
 or of a skipped lift, a rest that's no longer the one it was for, a `type` or `v` it doesn't know) is dropped: its id

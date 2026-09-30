@@ -86,10 +86,11 @@ const freeOf = (d?: Partial<DayLog> | null): FreeWorkout | null => {
   const f = d?.free as Partial<FreeWorkout> | undefined;
   return f && typeof f === "object" && typeof f.name === "string" && Array.isArray(f.lifts) && f.lifts.every((n) => typeof n === "string") ? (f as FreeWorkout) : null;
 };
-/** A day's heart rate from the watch, when it reads right: two numbers. */
+/** A day's heart rate from the watch, when it reads right: two numbers, and how many readings they're over. */
 const heartOf = (d?: Partial<DayLog> | null): WorkoutHeart | null => {
   const h = d?.hr as Partial<WorkoutHeart> | undefined;
-  return h && typeof h === "object" && Number.isFinite(h.avg) && Number.isFinite(h.max) ? { avg: h.avg as number, max: h.max as number } : null;
+  if (!h || typeof h !== "object" || !Number.isFinite(h.avg) || !Number.isFinite(h.max)) return null;
+  return { avg: h.avg as number, max: h.max as number, ...(Number.isFinite(h.samples) ? { samples: h.samples } : {}) };
 };
 /** What a free-form workout is called when it isn't given a name. */
 export const FREE_NAME = "Free workout";

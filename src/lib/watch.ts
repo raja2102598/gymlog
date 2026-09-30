@@ -252,13 +252,15 @@ export function applyWatchCommand(store: GymStore, c: WatchCommand, now = Date.n
     }
     case "hr": {
       // The day's heart rate so far, measured on the watch through its workout: each replaces the one before, since
-      // it's the whole of it. Kept on the day for Workout complete.
+      // it's the whole of it. Kept on the day for Workout complete. Each goes as its own item, and they can arrive
+      // in any order, a batch apart: one over fewer readings than the day has already is an older snapshot, dropped.
       const { avg, max, samples } = c;
       if (!day || !isNumber(avg) || !isNumber(max) || !isNumber(samples) || samples < 1 || avg < 20 || avg > max || max > 250) return false;
+      if (samples < (store.entry(day).hr?.samples ?? 0)) return false;
       store.editDay(
         day,
         (n) => {
-          n.hr = { avg: Math.round(avg), max: Math.round(max) };
+          n.hr = { avg: Math.round(avg), max: Math.round(max), samples };
         },
         true,
       );

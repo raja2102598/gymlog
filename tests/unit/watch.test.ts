@@ -501,19 +501,35 @@ describe("what the watch sends back", () => {
     const { s, stop } = await running();
     watch.arrive(cmd("hr", { day: WED, avg: 118.4, max: 151, samples: 60 }, 5 * MIN), cmd("hr", { day: WED, avg: 128, max: 165, samples: 240 }));
     await vi.advanceTimersByTimeAsync(0);
-    expect(s.entry(WED).hr).toEqual({ avg: 128, max: 165 });
-    expect(s.pending[WED].hr).toEqual({ avg: 128, max: 165 }); // on its way to Supabase with the day
+    expect(s.entry(WED).hr).toEqual({ avg: 128, max: 165, samples: 240 });
+    expect(s.pending[WED].hr).toEqual({ avg: 128, max: 165, samples: 240 }); // on its way to Supabase with the day
     expect(watch.sent().applied).toHaveLength(2);
-    // Everything else done to the day since keeps it, as does the day as it comes back from Supabase.
+    // Everything else done to the day since keeps it, as does the day as it comes back from Supabase (one kept before
+    // it had its count too).
     s.editDay(WED, (n) => void (n.kneeAfter = 3), true);
     s.editLift(WED, "Leg Press", (r) => void (r.sets = [{ reps: 10, kg: 45 }]), true);
-    expect(s.entry(WED).hr).toEqual({ avg: 128, max: 165 });
+    expect(s.entry(WED).hr).toEqual({ avg: 128, max: 165, samples: 240 });
+    expect(storeWith({ [WED]: { ...day(), hr: { avg: 131, max: 170, samples: 300 } } }).entry(WED).hr).toEqual({ avg: 131, max: 170, samples: 300 });
     expect(storeWith({ [WED]: { ...day(), hr: { avg: 131, max: 170 } } }).entry(WED).hr).toEqual({ avg: 131, max: 170 });
     expect(storeWith({ [WED]: { ...day(), hr: { avg: "fast" } } as unknown as DayLog }).entry(WED).hr).toBeUndefined();
+    // An older snapshot handed over after it, a batch later (each is its own item, in no set order): it covers fewer
+    // readings, so the day keeps the fuller one. One over as many replaces it.
+    watch.arrive(cmd("hr", { day: WED, avg: 121, max: 158, samples: 180 }, 2 * MIN));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.entry(WED).hr).toEqual({ avg: 128, max: 165, samples: 240 });
+    expect(watch.sent().applied).toHaveLength(3); // dropped, and acked all the same
+    watch.arrive(cmd("hr", { day: WED, avg: 127, max: 165, samples: 240 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.entry(WED).hr).toEqual({ avg: 127, max: 165, samples: 240 });
     // Rounded, as a whole beat, whatever the watch sends.
     watch.arrive(cmd("hr", { day: WED, avg: 130.6, max: 171.2, samples: 300 }));
     await vi.advanceTimersByTimeAsync(0);
-    expect(s.entry(WED).hr).toEqual({ avg: 131, max: 171 });
+    expect(s.entry(WED).hr).toEqual({ avg: 131, max: 171, samples: 300 });
+    // A day kept before it had a count takes the watch's next, whatever its count.
+    s.editDay(WED, (n) => void (n.hr = { avg: 140, max: 180 }), true);
+    watch.arrive(cmd("hr", { day: WED, avg: 125, max: 160, samples: 30 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.entry(WED).hr).toEqual({ avg: 125, max: 160, samples: 30 });
     stop();
   });
 

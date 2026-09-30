@@ -85,6 +85,9 @@ export interface DayLog {
 export interface WorkoutHeart {
   avg: number;
   max: number;
+  /** How many readings they're over: the watch's count for the day so far, only ever growing, so a snapshot that
+   *  arrives after a later one (covering fewer) never replaces it. Missing on days kept before it was. */
+  samples?: number;
 }
 
 export interface FreeWorkout {
