@@ -88,10 +88,11 @@ on. Gym Log can't read that switch, or turn it on, so the row always offers **Op
 options (or, on a phone where that won't open, Gym Log's notification settings, then its app info). With Developer
 options not yet shown, what that page does is for your phone to say.
 
-- **One UI 8.5 and later** also let a Live Update in without either when it carries two extras Samsung's own pipeline
-  reads, `android.ongoingActivityNoti.automation` (true) and `android.ongoingActivityNoti.automationPackage` (the app's
-  package), so on a Samsung both of Gym Log's carry them. That comes from One UI's own code, as another app found it
-  (tigerduck-app-android, pull request 126, tried on One UI 8.5 and 9); older One UI ignores them.
+- **Not through Gemini.** One UI 8.5 and later also let a Live Update in without either when it carries two extras,
+  `android.ongoingActivityNoti.automation` (true) and `android.ongoingActivityNoti.automationPackage`
+  (tigerduck-app-android, pull request 126). Gym Log sent them up to 1.0.146, but that's the lane for Gemini acting in
+  an app: on One UI 9 the pill showed Gym Log's clock under Gemini's name and logo, whatever package the extras named.
+  So Gym Log doesn't send them, and it's in the Now Bar as itself with **Live notifications for all apps** on.
 - **One UI 9 (Android 17):** they're the `MetricStyle` ones above, with no short text, so there's no fixed text to
   show in place of the ticking clock. Whether the Now Bar shows that clock is for your phone to say.
 - **One UI 8 (Android 16):** they're as they were, and also carry a short text meant for the Now Bar: when the rest
@@ -119,13 +120,13 @@ like Voice, tries it anyway. With it on, both notifications also carry the card'
 - `chronometerRemoteViewPosition` and `nowbarChronometerPosition`: 1. Samsung doesn't document what the positions
   mean; 1 is what the examples of it use (akexorcist.dev, *Live Notifications and Now Bar in Samsung One UI 7*).
 
-The card's `style` takes the notification down Samsung's own card lane, which cancels the automation pair above, so
-that goes while the switch is on, and Gym Log may drop out of the Now Bar altogether: if it does, switch it off.
-Android 17's `MetricStyle` stays, so it's a fair test of the card alone.
+The card's `style` takes the notification down Samsung's own card lane, so Gym Log may drop out of the Now Bar
+altogether while the switch is on: if it does, switch it off. Android 17's `MetricStyle` stays, so it's a fair test of
+the card alone.
 
 Samsung's partners also declare `<meta-data android:name="com.samsung.android.support.ongoing_activity"
 android:value="true"/>` in their manifest. Gym Log doesn't: a manifest entry can't be switched off, so it would apply
-with the switch off as well, and the automation pair is known to work without it.
+with the switch off as well.
 
 ## The watch
 

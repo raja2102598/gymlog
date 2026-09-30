@@ -36,8 +36,7 @@ import java.time.ZoneId
  * chip, and earlier versions as ordinary notifications. From Android 17 they also carry MetricStyle (post, below),
  * whose clock the system counts in the chip itself. Samsung's One UI puts other apps' Live Updates in its Now Bar
  * only if Samsung has approved the app, or with Developer options → Live notifications for all apps on
- * (docs/android.md), so on a Samsung both also carry the extras that let them in from One UI 8.5 (samsungExtras).
- * The pure decisions are RestTimerLogic.
+ * (docs/android.md). The pure decisions are RestTimerLogic.
  */
 object RestAlarm {
     // Three channels, so logging a set never makes a sound: the countdown and the workout's clock are quiet, and only
@@ -215,7 +214,7 @@ object RestAlarm {
      *  experiment, so if it can't be built the notification goes without it rather than not at all. */
     private fun samsungExtras(ctx: Context, b: NotificationCompat.Builder, card: RestTimerLogic.SamsungCard?, at: Long, countDown: Boolean) {
         try {
-            val extras = RestTimerLogic.samsungExtras(Build.MANUFACTURER, ctx.packageName, card)
+            val extras = RestTimerLogic.samsungExtras(Build.MANUFACTURER, card)
             if (extras.isEmpty()) return
             val bundle = Bundle()
             for ((key, value) in extras) {

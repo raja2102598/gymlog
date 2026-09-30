@@ -123,18 +123,14 @@ class RestTimerLogicTest {
     }
 
     @Test
-    fun aSamsungGetsTheNowBarsAutomationPairAndNothingElse() {
-        val pkg = "io.github.raja2102598.gymlog"
-        assertEquals(
-            mapOf("android.ongoingActivityNoti.automation" to true, "android.ongoingActivityNoti.automationPackage" to pkg),
-            RestTimerLogic.samsungExtras("samsung", pkg, card = null),
-        )
-        assertEquals(emptyMap<String, Any>(), RestTimerLogic.samsungExtras("Google", pkg, card = null))
+    fun withoutTheCardNoPhoneGetsSamsungsExtras() {
+        // Not the automation pair either: One UI shows a notification that carries it under Gemini's name and logo.
+        assertEquals(emptyMap<String, Any>(), RestTimerLogic.samsungExtras("samsung", card = null))
+        assertEquals(emptyMap<String, Any>(), RestTimerLogic.samsungExtras("Google", card = null))
     }
 
     @Test
-    fun withTheCardOnASamsungGetsTheCardsFieldsInstead() {
-        val pkg = "io.github.raja2102598.gymlog"
+    fun withTheCardOnASamsungGetsTheCardsFields() {
         val card = RestTimerLogic.SamsungCard("Resting · Leg Press", "Next: set 3 of 4", "Till 10:14")
         assertEquals(
             mapOf(
@@ -148,10 +144,10 @@ class RestTimerLogicTest {
                 "android.ongoingActivityNoti.chronometerRemoteViewTag" to "gymlog_clock",
                 "android.ongoingActivityNoti.nowbarChronometerPosition" to 1,
             ),
-            RestTimerLogic.samsungExtras("Samsung", pkg, card),
+            RestTimerLogic.samsungExtras("Samsung", card),
         )
-        // The card's style cancels the automation pair, so that doesn't come too; and other phones get neither.
-        assertEquals(emptyMap<String, Any>(), RestTimerLogic.samsungExtras("Google", pkg, card))
+        // Other phones don't read them.
+        assertEquals(emptyMap<String, Any>(), RestTimerLogic.samsungExtras("Google", card))
     }
 
     @Test
