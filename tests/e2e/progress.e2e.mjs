@@ -147,14 +147,6 @@ async function fourWeeks({ browser, base, check }) {
       (await page.locator("#dashPlan .cons .cell").count()) === 35 && (await page.locator("#dashPlan .cons .cell.now").count()) === 1 && (await page.getAttribute('#consRange [data-seg="month"]', "aria-selected")) === "true" && /\d+ of \d+ this week · .*in a row · \d+% of sessions/.test(p),
       p.slice(0, 200),
     );
-    await page.click('#consRange [data-seg="year"]');
-    await page.waitForSelector("#dashPlan .heat");
-    const year = await page.$eval("#dashPlan .heat", (e) => ({ cells: e.children.length, fits: e.scrollWidth <= e.clientWidth + 1, label: e.getAttribute("aria-label"), cols: getComputedStyle(e).gridTemplateColumns.split(" ").length }));
-    check("a year instead: 52 weeks as a heatmap, a column a week, on the phone's width", year.cells === 364 && year.cols === 52 && year.fits && /^Last year: \d+ full workouts, \d+ partial, \d+ missed\.$/.test(year.label), JSON.stringify(year));
-    await page.reload();
-    await page.waitForSelector("#dashPlan");
-    check("the range chosen stays on this phone", (await page.getAttribute('#consRange [data-seg="year"]', "aria-selected")) === "true" && (await page.locator("#dashPlan .heat .cell").count()) === 364);
-    await page.click('#consRange [data-seg="month"]');
     const s = await flat(page.locator("#dashSteps"));
     check("steps card: weekly bars against the goal", /Steps by week/.test(s) && (await page.locator("#dashSteps svg rect.bar").count()) >= 4 && (await page.locator("#dashSteps .bc-goal").count()) === 1, s.slice(0, 120));
     // Charts further down draw when they're scrolled to, not all at once as the screen opens.
@@ -165,6 +157,15 @@ async function fourWeeks({ browser, base, check }) {
     const pinned = await page.$$eval("#pinned a", (els) => els.map((e) => e.getAttribute("href")));
     check("pinned lifts link to their pages", pinned.length === 3 && pinned.every((h) => h.startsWith("#progress/lift/")), pinned.join(" "));
     await shot(page, "d2-dashboard", { fullPage: true });
+    // Consistency over a longer range: after the charts below it, which wait to be scrolled to, are checked.
+    await page.click('#consRange [data-seg="year"]');
+    await page.waitForSelector("#dashPlan .heat");
+    const year = await page.$eval("#dashPlan .heat", (e) => ({ cells: e.children.length, fits: e.scrollWidth <= e.clientWidth + 1, label: e.getAttribute("aria-label"), cols: getComputedStyle(e).gridTemplateColumns.split(" ").length }));
+    check("a year instead: 52 weeks as a heatmap, a column a week, on the phone's width", year.cells === 364 && year.cols === 52 && year.fits && /^Last year: \d+ full workouts, \d+ partial, \d+ missed\.$/.test(year.label), JSON.stringify(year));
+    await page.reload();
+    await page.waitForSelector("#dashPlan");
+    check("the range chosen stays on this phone", (await page.getAttribute('#consRange [data-seg="year"]', "aria-selected")) === "true" && (await page.locator("#dashPlan .heat .cell").count()) === 364);
+    await page.click('#consRange [data-seg="month"]');
 
     // --- Body: the weight trend and the knee
     await page.click('#progTabs [data-seg="body"]');
