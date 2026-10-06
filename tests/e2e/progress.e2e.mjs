@@ -142,7 +142,11 @@ async function fourWeeks({ browser, base, check }) {
     const stats = await flat(page.locator("#dashStats"));
     check("the week in three numbers: sessions, average steps, weight change", /\d+ ?of \d+ ?sessions/.test(stats) && /avg steps/.test(stats) && /kg this week/.test(stats), stats);
     const p = await flat(page.locator("#dashPlan"));
-    check("consistency: 14 days as squares, today marked, the week, streak and share", (await page.locator("#dashPlan .cons .cell").count()) === 14 && (await page.locator("#dashPlan .cons .cell.now").count()) === 1 && /\d+ of \d+ this week · .*in a row · \d+% of sessions/.test(p), p.slice(0, 200));
+    check(
+      "consistency: a month by default, five weeks as a calendar, today marked, the week, streak and share",
+      (await page.locator("#dashPlan .cons .cell").count()) === 35 && (await page.locator("#dashPlan .cons .cell.now").count()) === 1 && (await page.getAttribute('#consRange [data-seg="month"]', "aria-selected")) === "true" && /\d+ of \d+ this week · .*in a row · \d+% of sessions/.test(p),
+      p.slice(0, 200),
+    );
     const s = await flat(page.locator("#dashSteps"));
     check("steps card: weekly bars against the goal", /Steps by week/.test(s) && (await page.locator("#dashSteps svg rect.bar").count()) >= 4 && (await page.locator("#dashSteps .bc-goal").count()) === 1, s.slice(0, 120));
     // Charts further down draw when they're scrolled to, not all at once as the screen opens.
@@ -153,6 +157,15 @@ async function fourWeeks({ browser, base, check }) {
     const pinned = await page.$$eval("#pinned a", (els) => els.map((e) => e.getAttribute("href")));
     check("pinned lifts link to their pages", pinned.length === 3 && pinned.every((h) => h.startsWith("#progress/lift/")), pinned.join(" "));
     await shot(page, "d2-dashboard", { fullPage: true });
+    // Consistency over a longer range: after the charts below it, which wait to be scrolled to, are checked.
+    await page.click('#consRange [data-seg="year"]');
+    await page.waitForSelector("#dashPlan .heat");
+    const year = await page.$eval("#dashPlan .heat", (e) => ({ cells: e.children.length, fits: e.scrollWidth <= e.clientWidth + 1, label: e.getAttribute("aria-label"), cols: getComputedStyle(e).gridTemplateColumns.split(" ").length }));
+    check("a year instead: 52 weeks as a heatmap, a column a week, on the phone's width", year.cells === 364 && year.cols === 52 && year.fits && /^Last year: \d+ full workouts, \d+ partial, \d+ missed\.$/.test(year.label), JSON.stringify(year));
+    await page.reload();
+    await page.waitForSelector("#dashPlan");
+    check("the range chosen stays on this phone", (await page.getAttribute('#consRange [data-seg="year"]', "aria-selected")) === "true" && (await page.locator("#dashPlan .heat .cell").count()) === 364);
+    await page.click('#consRange [data-seg="month"]');
 
     // --- Body: the weight trend and the knee
     await page.click('#progTabs [data-seg="body"]');
@@ -330,6 +343,18 @@ async function muscles({ browser, base, check }) {
   check("but not for a muscle only worked on the side", (await row("glutes").locator(".musc-n").count()) === 0);
   const untagged = await flat(page.locator("#muscUntagged"));
   check("a lift with no muscles is listed apart, not guessed", untagged.startsWith("Untagged, so not counted: Mystery Press (2 sets)."), untagged);
+
+  // The body map above it: today's two sets of Leg Extension, the only ones in the last 7 days.
+  await page.waitForSelector('#bodyMap .bm-fig[data-side="back"]');
+  const quads = () => page.getAttribute('#bodyMap .bm-fig[data-side="front"] g[data-slug="quadriceps"]', "class");
+  const hams = () => page.getAttribute('#bodyMap .bm-fig[data-side="back"] g[data-slug="hamstring"]', "class");
+  const said = () => flat(page.locator("#bodyMapSaid"));
+  check("the body map: front and back, the quads lightly for 2 sets this week", (await quads()) === "bm-l1" && (await hams()) === "bm-l0" && (await said()) === "Sets in the last 7 days: Quads 2.", `${await quads()} ${await said()}`);
+  await page.click('#bodyMode [data-seg="recovery"]');
+  check("Recovering: the quads, trained today", (await quads()) === "bm-l3" && (await said()) === "Still recovering: Quads (today). Everything else is ready.", await said());
+  await page.click('#bodyMode [data-seg="untrained"]');
+  check("Not trained: the hamstrings, a week since", (await hams()) === "bm-l1" && (await quads()) === "bm-l0" && /Not in a week or more: Hamstrings \(7 days\)/.test(await said()), await said());
+  check("and a screen reader hears it", (await page.getAttribute("#bodyMap .bm-figs", "aria-label")) === (await said()));
   await page.locator("#dashMuscles").scrollIntoViewIfNeeded();
   await shot(page, "muscles");
   // It fits a small phone, with no sideways scroll.

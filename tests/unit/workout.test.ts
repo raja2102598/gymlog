@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { liftModel, logSet, nextSet } from "@/components/today/LiftItem";
 import { wdIndex } from "@/lib/dates";
+import { AWAKE_KEY, awakePref, keepScreenOn, setAwakePref } from "@/lib/awake";
 import { dayBests, dayTotals, heartWords, liveWorkout, sessionDone, workoutUnderWay } from "@/lib/session";
 import type { GymStore } from "@/lib/store";
 import type { LiftLog } from "@/lib/types";
@@ -145,13 +146,15 @@ describe("Complete set N", () => {
     expect(nextSet(card(s, "Leg Press"))).toBe(-1);
   });
 
-  it("repeats the last set logged, reps and weight, and passes over a drop set", () => {
+  it("repeats the last set logged, reps and weight, and passes over a drop set or a rest-pause burst", () => {
     const s = lastWeek(), m = () => card(s, "Leg Press");
     m().setField(0, "kg", "55");
     m().setField(0, "reps", "12");
     expect(m().sugFor(m().sets, 1)).toEqual(["12", "55"]); // what set 2's boxes show greyed
     m().setInfo(0, { type: "drop" }); // set 1 a drop set after all: lighter on purpose, so not repeated
     expect(m().sugFor(m().sets, 1)).toEqual(["10", "55"]); // last week's reps; the weight typed just before it
+    m().setInfo(0, { type: "restpause" }); // a few reps after a short rest: not what the next set repeats either
+    expect(m().sugFor(m().sets, 1)).toEqual(["10", "55"]);
     m().setInfo(0, { type: undefined });
     logSet(s, m(), 1);
     logSet(s, m(), 2);
@@ -183,7 +186,7 @@ describe("Complete set N", () => {
 // Workout complete (CompleteView.tsx): the day's numbers, the heart rate the watch measured, and whether the day's
 // workout is done at all (Train's Review, and no clock started when it's opened again).
 describe("what a session adds up to", () => {
-  it("counts the working sets logged against the planned ones, and the kg lifted in every one of them, drop sets too, never a warm-up", () => {
+  it("counts the working sets logged against the planned ones, and the kg lifted in every one of them, drop sets too, never a warm-up or a hold", () => {
     const s = storeWith({
       [WED]: day({
         exercises: {
@@ -201,6 +204,9 @@ describe("what a session adds up to", () => {
       planned: 3 + 4 + 3 + 3, // Hack Squat, Leg Extension (its own 4), Hamstring Curl, Calf Raise: not the skipped Leg Press
       kg: 1160 + 972 + 225 + 240,
     });
+    // Leg Extension held for time: its reps are seconds, so its sets count but add no kg lifted.
+    s.plan.days[2].exercises[2].timed = true;
+    expect(dayTotals(s, WED)).toMatchObject({ sets: 3 + 4 + 1, kg: 1160 + 240 });
   });
 
   it("names each lift's best record of the day, by what was done: of its record sets, the best estimated 1RM", () => {
@@ -311,5 +317,59 @@ describe("the workout on the lock screen", () => {
     expect(workoutUnderWay(s, LATE)).toMatchObject({ title: "Pull", text: "1 of 6 exercises done", since: LATE - 50 * MIN });
     pauseRun(TUE, LATE);
     expect(workoutUnderWay(s, LATE)).toBeNull();
+  });
+});
+
+describe("keeping the screen on", () => {
+  /** A browser's Screen Wake Lock and page visibility: what's held now, and how many times it was asked for. */
+  function screen() {
+    const shown = new Set<() => void>(), held: { released: boolean; release: () => Promise<void> }[] = [];
+    const doc = { hidden: false, addEventListener: (_: string, fn: () => void) => void shown.add(fn), removeEventListener: (_: string, fn: () => void) => void shown.delete(fn) };
+    const request = vi.fn(async () => {
+      const l = { released: false, release: async () => void (l.released = true) };
+      held.push(l);
+      return l;
+    });
+    vi.stubGlobal("document", doc);
+    vi.stubGlobal("navigator", { wakeLock: { request } });
+    const on = () => held.filter((l) => !l.released).length;
+    return { doc, request, on, held, show: () => shown.forEach((fn) => fn()) };
+  }
+  beforeEach(() => mem.clear());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("is on until switched off, and the switch is kept on the phone", () => {
+    expect(awakePref()).toBe(true);
+    setAwakePref(false);
+    expect(awakePref()).toBe(false);
+    expect(mem.get(AWAKE_KEY)).toBe("false");
+    setAwakePref(true);
+    expect(awakePref()).toBe(true);
+  });
+
+  it("holds the screen while the workout is open, takes it again when the page comes back, and lets go on leaving", async () => {
+    const s = screen();
+    const release = keepScreenOn();
+    await vi.waitFor(() => expect(s.on()).toBe(1));
+    // Hidden, the browser lets it go by itself; back on show, it's asked for again.
+    s.held[0].released = true;
+    s.doc.hidden = true;
+    s.show();
+    expect(s.request).toHaveBeenCalledTimes(1);
+    s.doc.hidden = false;
+    s.show();
+    await vi.waitFor(() => expect(s.on()).toBe(1));
+    expect(s.request).toHaveBeenCalledTimes(2);
+    release();
+    expect(s.on()).toBe(0);
+    s.show(); // gone: coming back no longer takes it
+    expect(s.request).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets go of a hold that arrives after the workout closed", async () => {
+    const s = screen();
+    keepScreenOn()();
+    await vi.waitFor(() => expect(s.held.length).toBe(1));
+    expect(s.on()).toBe(0);
   });
 });

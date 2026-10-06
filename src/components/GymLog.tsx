@@ -542,7 +542,7 @@ export default function GymLog() {
 
         {inApp && v === "progress" ? (
           <div id="dashView" className="view">
-            {route.lift ? <LiftDetail key={route.lift} name={route.lift} /> : <ProgressView onSetGoal={() => openPlan("#pe_goalw")} onOpenLift={openLift} onOpenTrain={() => openTrain(todayKey())} onOpenSettings={() => navigate({ view: "settings" })} />}
+            {route.lift ? <LiftDetail key={route.lift} name={route.lift} /> : <ProgressView onSetGoal={() => openPlan("#pe_goalw")} onOpenLift={openLift} onOpenTrain={(k) => openTrain(k ?? todayKey())} onOpenSettings={() => navigate({ view: "settings" })} />}
           </div>
         ) : null}
 

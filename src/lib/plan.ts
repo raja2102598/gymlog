@@ -1,7 +1,7 @@
 import planJson from "@/data/plan.json";
 import { DOW } from "./dates";
 import { EQUIPMENT, isEquip, isLoad, isMuscle, MUSCLES, type Equip, type Muscle } from "./library";
-import type { CustomExercise, Gym, Plan, Weights } from "./types";
+import type { CustomExercise, Gym, Plan, PlanExercise, Weights } from "./types";
 
 type Loose = Record<string, unknown> | null | undefined;
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -60,8 +60,10 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
             // Left out (not "") when the plan doesn't set one, so a plan with no overrides round-trips unchanged.
             ...(x?.rest != null ? { rest: str(x.rest) } : {}),
             ...(x?.superset === true ? { superset: true } : {}),
-            ...(x?.prog === "linear" || x?.prog === "percent" ? { prog: x.prog as "linear" | "percent" } : {}),
-            ...Object.fromEntries((["oneRm", "pct", "deloadAfter", "deloadPct"] as const).filter((k) => x?.[k] != null).map((k) => [k, str(x?.[k])])),
+            ...(x?.timed === true ? { timed: true as const } : {}),
+            ...(x?.perSide === true ? { perSide: true as const } : {}),
+            ...(x?.prog === "linear" || x?.prog === "percent" || x?.prog === "greyskull" || x?.prog === "time" ? { prog: x.prog as NonNullable<PlanExercise["prog"]> } : {}),
+            ...Object.fromEntries((["oneRm", "pct", "stepSec", "deloadAfter", "deloadPct"] as const).filter((k) => x?.[k] != null).map((k) => [k, str(x?.[k])])),
             ...(typeof x?.lib === "string" && x.lib ? { lib: x.lib } : {}),
             ...(isLoad(x?.load) ? { load: x.load } : {}),
           }))
@@ -72,6 +74,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
       };
     }),
     ...(Array.isArray(q.custom) ? { custom: normalizeCustom(q.custom) } : d?.custom ? { custom: normalizeCustom(d.custom) } : {}),
+    ...(Array.isArray(q.favs) ? { favs: [...new Set((q.favs as unknown[]).filter((v): v is string => typeof v === "string" && !!v))] } : d?.favs ? { favs: d.favs.slice() } : {}),
     ...(q.gym && typeof q.gym === "object" ? { gym: normalizeGym(q.gym) } : d?.gym ? { gym: normalizeGym(d.gym) } : {}),
     ...(q.weights && typeof q.weights === "object" ? { weights: normalizeWeights(q.weights) } : d?.weights ? { weights: normalizeWeights(d.weights) } : {}),
   };

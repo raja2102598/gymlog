@@ -98,6 +98,36 @@ export interface PlanModel {
   heat: { day: DayKey; cls: HeatClass }[][];
 }
 
+/** What day k was for the workout, as of today `t`: workout days only, since steps and weigh-ins have their own cards. */
+export function heatClass(store: GymStore, t: DayKey, k: DayKey, start = store.firstDay()): HeatClass {
+  if (k > t) return "fut";
+  if (k < start) return "pre";
+  const p = store.planFor(k), n = p.exercises.filter((x) => store.entry(k).exercises[x.name]?.done).length;
+  if (!p.exercises.length || store.entry(k).skip != null) return "rest";
+  return n === p.exercises.length ? "done" : n || store.worked(k) ? "part" : k < t ? "miss" : "todo";
+}
+
+/** How far back Consistency looks: about a month (the default), three or six months, or a year. */
+export type HeatRange = "month" | "3m" | "6m" | "year";
+export const HEAT_WEEKS: Record<HeatRange, number> = { month: 5, "3m": 13, "6m": 26, year: 52 };
+
+export interface HeatModel {
+  /** Whole weeks, Monday to Sunday, oldest first, ending with this one. */
+  weeks: { day: DayKey; cls: HeatClass }[][];
+  /** Days up to today with a full workout, some lifts, or a missed one. */
+  done: number;
+  part: number;
+  miss: number;
+}
+
+/** Consistency over `range`: whole weeks back from this one, each day's workout as Progress colours it. */
+export function heatModel(store: GymStore, t: DayKey, range: HeatRange): HeatModel {
+  const start = store.firstDay(), first = addDays(mondayOf(t), -7 * (HEAT_WEEKS[range] - 1));
+  const weeks = Array.from({ length: HEAT_WEEKS[range] }, (_, w) => DOW.map((_, i) => addDays(first, 7 * w + i)).map((day) => ({ day, cls: heatClass(store, t, day, start) })));
+  const all = weeks.flat(), n = (c: HeatClass) => all.filter((d) => d.cls === c).length;
+  return { weeks, done: n("done"), part: n("part"), miss: n("miss") };
+}
+
 export function planModel(store: GymStore, t: DayKey): PlanModel {
   const start = store.firstDay(), mon = mondayOf(t), weeks = [];
   for (let m = mondayOf(start); m <= mon; m = addDays(m, 7)) weeks.push({ mon: m, ...store.weekSessions(m) });
@@ -107,14 +137,7 @@ export function planModel(store: GymStore, t: DayKey): PlanModel {
     else if (weeks[i].mon !== mon) break;
   }
   const recent = weeks.slice(-12), tw = weeks[weeks.length - 1], wk = tw.days.filter((k) => k <= t && k >= start);
-  // Workout days only: steps and weigh-ins have their own cards.
-  const cls = (k: DayKey): HeatClass => {
-    if (k > t) return "fut";
-    if (k < start) return "pre";
-    const p = store.planFor(k), n = p.exercises.filter((x) => store.entry(k).exercises[x.name]?.done).length;
-    if (!p.exercises.length || store.entry(k).skip != null) return "rest";
-    return n === p.exercises.length ? "done" : n || store.worked(k) ? "part" : k < t ? "miss" : "todo";
-  };
+  const cls = (k: DayKey) => heatClass(store, t, k, start);
   return {
     week: { done: tw.done, planned: tw.planned, extra: tw.extra },
     streak,
@@ -194,16 +217,17 @@ const loaded = (sets: SetLog[]) => sets.filter((s): s is { reps: number; kg: num
 function liftPoints(store: GymStore, days: DayKey[], name: string): LiftPoint[] {
   const out: LiftPoint[] = [];
   for (const k of days) {
-    const sets = store.liftSets(k).filter((l) => l.name === name).flatMap((l) => l.sets);
+    const lifts = store.liftSets(k).filter((l) => l.name === name), sets = lifts.flatMap((l) => l.sets);
     if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
-    // A drop set adds to the volume but, as with records, never to the heaviest set or the 1RM.
-    const straight = sets.filter(S.isStraightSet), top = topKg(straight);
+    // A drop set adds to the volume but, as with records, never to the heaviest set or the 1RM. A hold, whose reps
+    // are seconds, has neither a 1RM nor a volume.
+    const straight = sets.filter(S.isStraightSet), top = topKg(straight), timed = lifts.some((l) => l.timed);
     out.push({
       day: k,
       top,
       topReps: Math.max(0, ...loaded(straight).filter((s) => s.kg === top).map((s) => s.reps)) || null,
-      e1rm: Math.max(0, ...straight.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
-      volume: sum(loaded(sets).map((s) => s.reps * s.kg)),
+      e1rm: timed ? null : Math.max(0, ...straight.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
+      volume: timed ? 0 : sum(loaded(sets).map((s) => s.reps * s.kg)),
     });
   }
   return out;
@@ -283,8 +307,10 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
   store.plan.days.forEach((d) =>
     d.exercises.forEach((x: PlanExercise) => {
       const nw = store.nextWeight(x, x.name, tomorrow);
-      if (!nw || nw.from == null) return;
-      const list = nw.rule === "deload" ? deload : nw.held ? held : nw.to > nw.from ? ready : null, key = `${x.name}|${nw.rule === "deload"}|${nw.held}|${nw.to}`;
+      // Adding time to a hold is no more weight, so it isn't listed; Greyskull's reset is a deload.
+      if (!nw || nw.from == null || nw.rule === "time") return;
+      const down = nw.rule === "deload" || !!nw.reset;
+      const list = down ? deload : nw.held ? held : nw.to > nw.from ? ready : null, key = `${x.name}|${down}|${nw.held}|${nw.to}`;
       if (!list || seen.has(key)) return;
       seen.add(key);
       list.push({ name: x.name, day: d.name, from: nw.from, to: nw.to });
@@ -347,6 +373,51 @@ export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
       .sort((a, b) => sum(b.sets) - sum(a.sets) || MUSCLES[a.muscle].localeCompare(MUSCLES[b.muscle])),
     untagged: [...w.untagged].map(([name, sets]) => ({ name, sets: sum(sets) })).sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name)),
   };
+}
+
+/* ---------- the body map: where the sets went, what's recovering, what's gone untrained ---------- */
+
+export type BodyMode = "volume" | "recovery" | "untrained";
+export interface BodyMuscle {
+  muscle: Muscle;
+  /** Sets in the last 7 days, today's included: 1 for a lift's main muscles, a half for its others. */
+  sets: number;
+  /** The last day it was one of a lift's main muscles, within the last four weeks, or null. */
+  last: DayKey | null;
+}
+/** How long a muscle trained as a main one takes to recover, days: 48 to 72 hours, as most advice has it. */
+export const RECOVERY_DAYS = 3;
+/** Not trained as a main muscle for this many days: untrained. */
+export const UNTRAINED_DAYS = 7;
+
+/** Each muscle's sets in the last 7 days and the last day it was trained as a main one, from the last four weeks. */
+export function bodyModel(store: GymStore, t: DayKey): BodyMuscle[] {
+  const from = addDays(t, -27), week = addDays(t, -6);
+  const out = new Map<Muscle, BodyMuscle>((Object.keys(MUSCLES) as Muscle[]).map((m) => [m, { muscle: m, sets: 0, last: null }]));
+  for (const k of store.days()) {
+    if (k < from || k > t) continue;
+    for (const { name, sets } of store.liftSets(k)) {
+      const x = store.exerciseOf(name), n = S.muscleSetCount(sets);
+      if (!x || !n) continue;
+      for (const m of x.primary) {
+        const b = out.get(m)!;
+        if (k >= week) b.sets += n;
+        if (!b.last || k > b.last) b.last = k;
+      }
+      if (k >= week) for (const m of x.secondary) out.get(m)!.sets += n / 2;
+    }
+  }
+  return [...out.values()];
+}
+
+/** How strongly a muscle shows in a mode, 0 (not at all) to 3, and its words. Volume: sets in the last 7 days, 10 to
+ *  20 a week being the usual advice. Recovery: trained as a main muscle today or yesterday, two days ago, or before.
+ *  Untrained: not a main muscle in a week, or in four. */
+export function bodyLevel(b: BodyMuscle, mode: BodyMode, t: DayKey): 0 | 1 | 2 | 3 {
+  const ago = b.last ? S.daysBetween(b.last, t) : null;
+  if (mode === "volume") return b.sets >= 10 ? 3 : b.sets >= 5 ? 2 : b.sets > 0 ? 1 : 0;
+  if (mode === "recovery") return ago == null || ago >= RECOVERY_DAYS ? 0 : ago <= 1 ? 3 : 2;
+  return ago == null ? 3 : ago >= 14 ? 2 : ago >= UNTRAINED_DAYS ? 1 : 0;
 }
 
 /* ---------- one lift: its own page, opened from Strength or a lift's card ---------- */

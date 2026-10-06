@@ -395,6 +395,40 @@ export default async function today({ browser, base, check }) {
   await leftLifts({ browser, base, check });
   await stuckLift({ browser, base, check });
   await readiness({ browser, base, check });
+  await pastDays({ browser, base, check });
+}
+
+// A day further back: opened from Progress's last two weeks or the date picker beside the week, to fix it or log one
+// done on paper; and a workout logged on the wrong day, moved to the right one. The rules are in train.test.ts.
+async function pastDays({ browser, base, check }) {
+  const day = (more = {}) => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...more });
+  const db = { logs: { [K(21)]: day({ exercises: { "Leg Press": { done: true, kg: 40, sets: [{ reps: 10, kg: 40 }] } }, steps: 7000 }) }, plan: null };
+  const { ctx, page } = await open(browser, base, { auth: session("00000000-0000-4000-8000-000000000071", "2026-08-26T05:00:00Z"), db });
+  await ready(page);
+  await openTab(page, "progress");
+  await page.click(`#hist [data-hday="${K(21)}"]`);
+  await page.waitForSelector("#trainView");
+  check("a day in Progress's last two weeks opens in Train", (await flat(page.locator("#weekLabel"))) === "Last week" && (await flat(page.locator("#sessName"))) === "Legs" && (await page.getAttribute("#dayChips .dchip.sel", "aria-label"))?.startsWith("Wed 16"));
+  // Logged on the wrong day: it was Tuesday's.
+  await page.click("#moveOpen");
+  await page.fill("#moveTo", K(20));
+  await page.click("#moveGo");
+  await until(() => db.logs[K(20)]?.exercises?.["Leg Press"] != null && db.logs[K(21)]?.exercises?.["Leg Press"] == null);
+  check(
+    "Move to another day takes the workout there, as the same session, and shows it",
+    db.logs[K(20)]?.session === 2 && db.logs[K(21)]?.steps === 7000 && (await flat(page.locator("#sessName"))) === "Legs" && (await page.getAttribute("#dayChips .dchip.sel", "aria-label"))?.startsWith("Tue 15"),
+    JSON.stringify([db.logs[K(20)], db.logs[K(21)]]),
+  );
+  await page.click("#moveOpen");
+  await page.fill("#moveTo", K(20));
+  await page.click("#moveGo");
+  check("and says why it can't: the day it's on already", (await flat(page.locator("#moveMsg"))) === "That’s the day it’s on already.");
+  // Further back with the date picker: a Monday a month ago, to log one done on paper.
+  await page.fill("#goDate", K(0));
+  await until(async () => (await page.getAttribute("#dayChips .dchip.sel", "aria-label"))?.startsWith("Wed 26"));
+  check("the date picker opens any day in Train", /^Week of 24 Aug$/.test(await flat(page.locator("#weekLabel"))), await flat(page.locator("#weekLabel")));
+  check("past days: no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
 }
 
 // Lifts left on an earlier day, offered in Add exercise, as in the report: Tuesday's Pull with 2 of its 6 lifts done.

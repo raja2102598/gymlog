@@ -57,3 +57,26 @@
 /* the muscles table fits a 320px screen: its column headers wrap */
 .musc-t th,.musc-t td{padding:9px 4px}
 .musc-t thead th{white-space:normal}
+/* Consistency over three months or more: a column a week, Monday at the top, small enough for a year on a phone */
+.heat{display:grid;grid-template-rows:repeat(7,auto);grid-auto-flow:column;grid-auto-columns:minmax(0,20px);gap:2px}
+.heat .cell{border-radius:2px;font-size:0;line-height:0}
+/* Too small for an outline to read: a missed day is filled, darker than a rest day, and the legend says so */
+.heat .cell.miss,.legend.filled i.miss{box-shadow:none;background:var(--outline)}
+.heat .cell.now{box-shadow:inset 0 0 0 1.5px var(--ink)}
+/* A day in the last two weeks: the whole cell opens it in Train */
+.hist .hday{display:grid;text-align:left;background:none;border:0;padding:4px 0;margin:-4px 0;min-height:44px;align-content:center;color:inherit;font:inherit;cursor:pointer;width:100%}
+.hist .hday .hs{display:block}
+/* Progress → Muscles' body map: front and back side by side, each group by how strongly it shows in the mode */
+.bm-figs{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:200px;margin:4px 0}
+.bm-fig{width:100%;height:auto;display:block}
+.bm-fig g{stroke:var(--surface);stroke-width:2}
+.bm-fig .bm-body,.bm-fig .bm-l0{fill:var(--surface-sunken)}
+.bodymap{--bm:var(--brand)}
+.bodymap[data-mode=recovery]{--bm:var(--warn)}
+.bodymap[data-mode=untrained]{--bm:var(--water)}
+.bm-fig .bm-l1{fill:var(--bm);fill-opacity:.3}
+.bm-fig .bm-l2{fill:var(--bm);fill-opacity:.6}
+.bm-fig .bm-l3{fill:var(--bm)}
+.bodymap .legend i.bm-l1{background:var(--bm);opacity:.3}
+.bodymap .legend i.bm-l2{background:var(--bm);opacity:.6}
+.bodymap .legend i.bm-l3{background:var(--bm)}

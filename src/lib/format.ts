@@ -35,17 +35,23 @@ const NB = "\u00a0";
  * changed; "50 kg" for older entries that hold only a weight; "12, 10 reps" with no weight. Lines can
  * break only after the commas.
  */
-const TYPE_MARK: Record<string, string> = { failure: "F", drop: "D" };
-export function setsSummary(sets: { reps: number | null; kg: number | null; type?: string }[]): string {
+const TYPE_MARK: Record<string, string> = { failure: "F", drop: "D", restpause: "R" };
+/** How a lift counts its reps: seconds for a hold ("45s, 40s"), each side for a lift done one side at a time ("10, 10
+ *  reps each side"), or plain reps. */
+export type RepUnit = "reps" | "sec" | "side";
+export const repUnit = (x: { timed?: boolean; perSide?: boolean } | null | undefined): RepUnit => (x?.timed ? "sec" : x?.perSide ? "side" : "reps");
+export function setsSummary(sets: { reps: number | null; kg: number | null; type?: string }[], unit: RepUnit = "reps"): string {
   const done = sets.filter((s) => s.reps != null || s.kg != null);
   if (!done.length) return "";
-  // A set to failure or a drop set is marked (F, D) after its reps; a plain working set reads as it always did.
-  const reps = (s: { reps: number | null; type?: string }) => (s.reps == null ? "-" : String(s.reps)) + (TYPE_MARK[s.type ?? ""] ?? "");
+  // A set to failure, a drop set or a rest-pause burst is marked (F, D, R) after its reps; a plain working set reads as
+  // it always did. A hold's seconds carry an s.
+  const reps = (s: { reps: number | null; type?: string }) => (s.reps == null ? "-" : String(s.reps) + (unit === "sec" ? "s" : "")) + (TYPE_MARK[s.type ?? ""] ?? "");
+  const side = unit === "side" ? `${NB}each side` : "";
   if (done.every((s) => s.reps == null)) return `${Math.max(...done.map((s) => s.kg as number))}${NB}kg`;
   const kgs = new Set(done.map((s) => s.kg));
   if (kgs.size === 1) {
     const [kg] = kgs;
-    return kg == null ? `${done.map(reps).join(", ")}${NB}reps` : `${done.map(reps).join(", ")}${NB}×${NB}${kg}${NB}kg`;
+    return kg == null ? `${done.map(reps).join(", ")}${unit === "sec" ? "" : `${NB}reps`}${side}` : `${done.map(reps).join(", ")}${NB}×${NB}${kg}${NB}kg${side}`;
   }
-  return `${done.map((s) => `${reps(s)}${NB}×${NB}${s.kg ?? "-"}`).join(", ")}${NB}kg`;
+  return `${done.map((s) => `${reps(s)}${NB}×${NB}${s.kg ?? "-"}`).join(", ")}${NB}kg${side}`;
 }

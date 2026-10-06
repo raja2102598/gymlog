@@ -69,7 +69,9 @@ export function AskHost() {
       aria-describedby={q?.body ? "askBody" : undefined}
       // A plain yes or no, which the browser tests answer the way they did the system dialog's.
       data-confirm={q && q.choices.length === 1 ? "" : undefined}
-      onClose={() => answer(null)}
+      // Closed by Back or Escape: Cancel. Not a close that arrives once the sheet is open again with the next question,
+      // asked as soon as this one was answered (as when a sync changed what it was about): that one waits for its answer.
+      onClose={(ev) => !ev.currentTarget.open && answer(null)}
       // A tap on the dimmed page around it (the dialog itself, outside its box) is Cancel.
       onClick={(ev) => ev.target === ev.currentTarget && answer(null)}
     >

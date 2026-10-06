@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { planHtml, readSharedPlan, sharedPlan } from "@/lib/planShare";
 import { DEFAULT_PLAN, DEFAULT_WEIGHTS, normalizeCustom, normalizeGym, normalizePlan, normalizeWeights } from "@/lib/plan";
 import { atWednesdayNoon, storeWith } from "./helpers";
 
@@ -46,9 +47,11 @@ describe("the plan as saved", () => {
     expect(q.days[0].exercises.map((x) => x.load)).toEqual(["dumbbell", undefined]);
   });
 
-  it("leaves My gym, its weights and your own lifts out until they're set, so older plans read back unchanged, and keeps them once they are", () => {
+  it("leaves My gym, its weights, your own lifts and favourites out until they're set, so older plans read back unchanged, and keeps them once they are", () => {
     const plain = normalizePlan(DEFAULT_PLAN, DEFAULT_PLAN);
-    expect(["gym", "weights", "custom"].filter((k) => k in plain)).toEqual([]);
+    expect(["gym", "weights", "custom", "favs"].filter((k) => k in plain)).toEqual([]);
+    // Favourites: each once, strings only.
+    expect(normalizePlan({ favs: ["Leg_Press", 3, "Leg_Press", "custom:Sled Push", ""] }, DEFAULT_PLAN).favs).toEqual(["Leg_Press", "custom:Sled Push"]);
     const p = normalizePlan(
       { ...DEFAULT_PLAN, gym: { off: ["cable"], always: [], never: ["X"] }, weights: { ...DEFAULT_WEIGHTS, ezbar: 8 }, custom: [{ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] }] },
       DEFAULT_PLAN,
@@ -57,7 +60,7 @@ describe("the plan as saved", () => {
     expect(normalizePlan(JSON.parse(JSON.stringify(p)), DEFAULT_PLAN)).toEqual(p);
   });
 
-  it("keeps each lift's rule and numbers, and drops a rule it doesn't know", () => {
+  it("keeps each lift's rule and numbers, how it counts its sets, and drops a rule it doesn't know", () => {
     const p = normalizePlan(
       {
         days: [
@@ -66,18 +69,23 @@ describe("the plan as saved", () => {
             exercises: [
               { name: "Squat", prog: "linear", deloadAfter: 3, deloadPct: "15" },
               { name: "Bench", prog: "percent", oneRm: "100", pct: 75 },
-              { name: "Row", prog: "wave" },
-              { name: "Curl" },
+              { name: "Row", prog: "wave", timed: "yes", perSide: true },
+              { name: "Plank", prog: "time", stepSec: 10, timed: true },
+              { name: "Deadlift", prog: "greyskull" },
+              { name: "Curl", timed: true },
             ],
           },
         ],
       },
       DEFAULT_PLAN,
     );
-    const [squat, bench, row, curl] = p.days[0].exercises;
+    const [squat, bench, row, plank, deadlift, curl] = p.days[0].exercises;
+    expect([plank.prog, plank.stepSec, deadlift.prog]).toEqual(["time", "10", "greyskull"]);
     expect(squat).toMatchObject({ prog: "linear", deloadAfter: "3", deloadPct: "15" });
     expect(bench).toMatchObject({ prog: "percent", oneRm: "100", pct: "75" });
     expect("prog" in row).toBe(false);
+    // Held for time, or reps each side: kept only when set to true, and left out otherwise.
+    expect([row.timed, row.perSide, curl.timed, "perSide" in curl, "timed" in squat]).toEqual([undefined, true, true, false, false]);
     // A lift with none of them round-trips unchanged.
     for (const k of ["prog", "oneRm", "pct", "deloadAfter", "deloadPct"]) expect(k in curl).toBe(false);
     expect(normalizePlan(JSON.parse(JSON.stringify(p)), DEFAULT_PLAN)).toEqual(p);
@@ -85,11 +93,12 @@ describe("the plan as saved", () => {
 });
 
 describe("Reset to the default plan", () => {
-  it("keeps what isn't the plan itself: My gym, its bar, plates and weights, and your own lifts", () => {
+  it("keeps what isn't the plan itself: My gym, its bar, plates and weights, your own lifts and favourites", () => {
     const s = storeWith();
     s.setEquip(false, "smith");
     s.setWeight("dumbbell", 2.5);
     s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] });
+    s.setFav(s.library()[1], true);
     s.editPlan((p) => {
       p.barKg = 15;
       p.plateKgs = [20, 10];
@@ -97,8 +106,56 @@ describe("Reset to the default plan", () => {
       p.days[0].name = "Chest day";
     });
     s.resetPlan();
-    expect([s.gym().off, s.weights().dumbbell, s.plan.barKg, s.plan.plateKgs, s.plan.custom?.map((c) => c.name)]).toEqual([["smith"], 2.5, 15, [20, 10], ["Sled Push"]]);
+    expect([s.gym().off, s.weights().dumbbell, s.plan.barKg, s.plan.plateKgs, s.plan.custom?.map((c) => c.name), s.plan.favs]).toEqual([["smith"], 2.5, 15, [20, 10], ["Sled Push"], [s.library()[1].id]]);
     // And the plan itself is the default's again.
     expect([s.plan.stepGoal, s.plan.days[0].name]).toEqual([DEFAULT_PLAN.stepGoal, DEFAULT_PLAN.days[0].name]);
   });
 });
+
+describe("a shared plan", () => {
+  it("carries the sessions, lifts, warm-ups, tempo and your own lifts they name, and nothing else", () => {
+    const s = storeWith();
+    s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] });
+    s.saveCustom({ name: "Not In Plan", equip: [], primary: [], secondary: [] });
+    s.saveCustom({ name: "Prowler", equip: ["other"], primary: ["calves"], secondary: [] });
+    s.editPlan((p) => {
+      p.days[2].exercises.push({ name: "Sled Push", sets: "3", reps: "20", cue: "", flag: "", step: "", knee: false });
+      p.days[4].exercises.push({ name: "Prowler", sets: "2", reps: "30", cue: "", flag: "", step: "", knee: false });
+      p.stepGoal = 12000;
+    });
+    s.setEquip(false, "smith");
+    const f = sharedPlan(s.plan);
+    expect([f.format, f.version, Object.keys(f.plan).sort(), f.plan.custom?.map((c) => c.name).sort()]).toEqual(["gymlog-plan", 1, ["custom", "days", "tempo", "warmups"], ["Prowler", "Sled Push"]]);
+
+    // Another account takes it: its sessions and the lift of its own it's missing (Prowler); its own goals, gym and its
+    // own Sled Push stay.
+    const t = storeWith();
+    t.saveCustom({ name: "Sled Push", equip: ["sled" as never], primary: ["glutes"], secondary: [] });
+    t.editPlan((p) => void (p.stepGoal = 8000));
+    t.adoptPlan(readSharedPlan(JSON.stringify(f)));
+    expect(t.plan.days[2].exercises.at(-1)?.name).toBe("Sled Push");
+    expect([t.plan.stepGoal, t.plan.gym, t.plan.custom?.map((c) => [c.name, c.primary])]).toEqual([8000, undefined, [["Sled Push", ["glutes"]], ["Prowler", ["calves"]]]]);
+  });
+
+  it("refuses a file that isn't one, or is from a newer Gym Log", () => {
+    expect(() => readSharedPlan("{")).toThrow("it isn’t a plan shared from Gym Log");
+    expect(() => readSharedPlan(JSON.stringify({ format: "gymlog-backup", version: 1 }))).toThrow("it isn’t a plan shared from Gym Log");
+    expect(() => readSharedPlan(JSON.stringify({ format: "gymlog-plan", version: 2, plan: { days: [] } }))).toThrow("it comes from a newer version of Gym Log");
+    expect(() => readSharedPlan(JSON.stringify({ format: "gymlog-plan", version: 1, plan: {} }))).toThrow("its plan can’t be read");
+  });
+
+  it("prints a table a day, rest days named, each lift's target, rest and notes, safe from what was typed", () => {
+    const s = storeWith();
+    s.editPlan((p) => {
+      Object.assign(p.days[2].exercises[2], { timed: true, reps: "30-45", rest: "60", cue: "Slow <down>" });
+      p.days[2].exercises[3].superset = true;
+    });
+    const html = planHtml(s.plan, "Raja's plan");
+    expect(html).toContain("<title>Raja's plan</title>");
+    expect(html).toContain("<h2>Wed · Legs</h2>");
+    expect(html).toContain("<td>Leg Extension</td><td>3 × 30–45 s</td><td>60 s</td><td class=\"n\">Slow &lt;down&gt; · KNEE NOTE: light, skip if painful</td>");
+    expect(html).toMatch(/<td>Hamstring Curl<\/td><td>3 × 10–12<\/td><td><\/td><td class="n">Superset with the lift above/);
+    expect((html.match(/· Rest<\/h2>/g) ?? []).length).toBe(s.plan.days.filter((d) => !d.exercises.length).length);
+  });
+});
+

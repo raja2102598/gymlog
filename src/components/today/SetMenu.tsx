@@ -6,12 +6,13 @@ import { num } from "@/lib/format";
 import type { Effort, SetLog } from "@/lib/types";
 
 /** The kinds of set a lift's row can be. Warm-ups aren't among them: they have their own panel (WarmupCalc). */
-export type SetKind = "working" | "failure" | "drop";
-export const kindOf = (s: Partial<SetLog>): SetKind => (s.type === "failure" || s.type === "drop" ? s.type : "working");
-const MARK: Record<SetKind, string> = { working: "", failure: "F", drop: "D" };
-const WORD: Record<SetKind, string> = { working: "", failure: ", to failure", drop: ", drop set" };
+export type SetKind = "working" | "failure" | "drop" | "restpause";
+export const kindOf = (s: Partial<SetLog>): SetKind => (s.type === "failure" || s.type === "drop" || s.type === "restpause" ? s.type : "working");
+const MARK: Record<SetKind, string> = { working: "", failure: "F", drop: "D", restpause: "R" };
+const WORD: Record<SetKind, string> = { working: "", failure: ", to failure", drop: ", drop set", restpause: ", rest-pause" };
 
-/** A set's number, as the button that opens its menu: 3, or 3F for a set to failure and 3D for a drop set. In a
+/** A set's number, as the button that opens its menu: 3, or 3F for a set to failure, 3D for a drop set and 3R for a
+ *  rest-pause burst. In a
  *  superset, the lift's place there (A1) stands in for the number, which the round gives. */
 export function SetNumber({ n, tag, s, id, did, open, onToggle }: { n: number; tag?: string; s: Partial<SetLog>; id: string; did: string; open: boolean; onToggle: () => void }) {
   const kind = kindOf(s);
@@ -34,7 +35,7 @@ export function effortValue(effort: Effort, text: string): number | null | undef
   return v >= 0 && v <= 10 ? Math.round(v) : undefined;
 }
 
-/** A set's menu, under its row: its kind (working, to failure, a drop set) and, when the plan logs it, its RPE or
+/** A set's menu, under its row: its kind (working, to failure, a drop set, a rest-pause burst) and, when the plan logs it, its RPE or
  *  reps in reserve. */
 export function SetMenu({ id, s, effort, onChange }: { id: string; s: Partial<SetLog>; effort: Effort; onChange: (patch: Partial<SetLog>) => void }) {
   const kind = kindOf(s), field = effort === "rir" ? "rir" : "rpe";
@@ -49,9 +50,13 @@ export function SetMenu({ id, s, effort, onChange }: { id: string; s: Partial<Se
           ["working", "Working"],
           ["failure", "To failure"],
           ["drop", "Drop set"],
+          ["restpause", "Rest-pause"],
         ]}
       />
       {kind === "drop" ? <p className="note">A drop set adds to the lift&rsquo;s volume, not to its planned sets or a record.</p> : null}
+      {kind === "restpause" ? (
+        <p className="note">A rest-pause burst, a few more reps after a short rest, adds to the lift&rsquo;s volume, not to its planned sets or a record.</p>
+      ) : null}
       {effort !== "off" ? (
         <label className="field" htmlFor={`${id}_e`}>
           <span>{effort === "rpe" ? "RPE, 1 to 10" : "Reps in reserve, 0 to 10"}</span>

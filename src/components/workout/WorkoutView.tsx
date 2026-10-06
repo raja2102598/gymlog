@@ -8,6 +8,7 @@ import { CardioFinisher } from "@/components/today/CardioFinisher";
 import { completeSet, keepCursor, LiftItem, nextSet, type Moves } from "@/components/today/LiftItem";
 import { nextInRounds, SupersetItem, supersetModels } from "@/components/today/SupersetItem";
 import type { LiftMenu } from "@/components/today/types";
+import { useKeepAwake } from "@/hooks/useAwake";
 import type { FocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
@@ -36,6 +37,7 @@ interface Props {
  *  Complete set N pinned at the bottom with the next exercise under it. The day's cardio is the last step. */
 export function WorkoutView({ day, startAt, onStep, onClose, onFinish, onOpenLift, menu, setMenu, focusNext }: Props) {
   const store = useGym();
+  useKeepAwake();
   const p = store.planFor(day), e = store.entry(day), free = e.free ?? null;
   const blocks = store.liftBlocks(day);
   const cardio = p.cardio.name && !free ? p.cardio : null;

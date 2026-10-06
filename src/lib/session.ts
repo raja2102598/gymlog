@@ -9,8 +9,10 @@ import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
 export const dash = (s: string) => s.replace(/\s*-\s*/g, "–");
 
-/** A lift's target in words: "3 × 8–10", "3–4 × 8–10": a range of sets with an en dash too, as reps have. */
-export const targetWords = (t: { sets: string; reps: string }) => [dash(t.sets), dash(t.reps)].filter(Boolean).join(" × ");
+/** A lift's target in words: "3 × 8–10", "3–4 × 8–10": a range of sets with an en dash too, as reps have. A hold's
+ *  are seconds ("3 × 30–45 s"), and a lift done one side at a time says so ("3 × 10 each side"). */
+export const targetWords = (t: { sets: string; reps: string }, x?: { timed?: boolean; perSide?: boolean } | null) =>
+  [dash(t.sets), t.reps ? dash(t.reps) + (x?.timed ? " s" : x?.perSide ? " each side" : "") : ""].filter(Boolean).join(" × ");
 
 export interface SessionSummary {
   lifts: number;
@@ -53,7 +55,7 @@ export function liftWeight(store: GymStore, k: DayKey, it: LiftItem): number | n
   const logged = r ? topKg(setsOf(r)) : null;
   if (logged != null) return logged;
   const did = performed(it.name, r), next = r?.skipped ? null : store.nextWeight(it.x, did, k);
-  if (next && !next.held && next.to != null) return next.to;
+  if (next && !next.held && next.rule !== "time" && next.to != null) return next.to;
   const last = store.lastDone(did, k);
   return last ? topKg(setsOf(last.r)) : null;
 }
@@ -62,7 +64,7 @@ export function liftWeight(store: GymStore, k: DayKey, it: LiftItem): number | n
 export function liftLine(store: GymStore, k: DayKey, it: LiftItem): string {
   const r = store.entry(k).exercises[it.name];
   if (r?.skipped) return r.reason ? `Skipped · ${r.reason}` : "Skipped";
-  const kg = liftWeight(store, k, it), t = targetWords(targetOf(r, it.x));
+  const kg = liftWeight(store, k, it), t = targetWords(targetOf(r, it.x), it.x);
   return [r?.swap ? `Instead of ${it.name}` : "", t, kg != null ? `${kg} kg` : ""].filter(Boolean).join(" · ") || "Not in the plan";
 }
 
@@ -79,17 +81,19 @@ export function tintOf(store: GymStore, name: string, x?: Pick<PlanExercise, "li
 }
 
 /** A day's lifting in numbers: working sets logged and planned, and kg lifted (weight × reps of every working set: a
- *  drop set adds to it, as it does to a lift's volume on Progress, and a warm-up never does). */
+ *  drop set adds to it, as it does to a lift's volume on Progress, and a warm-up never does; nor does a hold, whose
+ *  reps are seconds). */
 export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: number; kg: number } {
   const e = store.entry(k);
   let sets = 0, planned = 0, kg = 0;
   for (const it of store.liftsFor(k)) {
     const r = e.exercises[it.name];
     if (!it.extra && !r?.skipped) planned += minSets(targetOf(r, it.x));
+    const held = store.isTimed(performed(it.name, r));
     for (const s of setsOf(r)) {
       if (!isWorkingSet(s) || !(s.reps ?? 0)) continue;
       sets++;
-      if (s.kg) kg += s.kg * (s.reps ?? 0);
+      if (s.kg && !held) kg += s.kg * (s.reps ?? 0);
     }
   }
   return { sets, planned, kg: Math.round(kg) };

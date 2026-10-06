@@ -136,6 +136,20 @@ describe("your own lifts", () => {
   });
 });
 
+describe("favourites", () => {
+  it("are starred and unstarred by id, your own lifts too, each once, saved with the plan", () => {
+    const s = storeWith();
+    s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] });
+    const [mine, lib] = [s.library()[0], s.library().find((x) => x.name === "Leg Press")!];
+    s.setFav(lib, true);
+    s.setFav(mine, true);
+    s.setFav(lib, true);
+    expect([s.plan.favs, s.isFav(lib), s.planDirty]).toEqual([[mine.id, lib.id], true, true]);
+    s.setFav(lib, false);
+    expect([s.plan.favs, s.isFav(lib), s.isFav(mine)]).toEqual([["custom:Sled Push"], false, true]);
+  });
+});
+
 describe("the plan and the library", () => {
   it("points every lift of the plans the app comes with at a library lift that's there", () => {
     for (const p of [DEFAULT_PLAN, ...TEMPLATES.map((t) => t.plan)])

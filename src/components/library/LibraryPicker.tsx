@@ -1,5 +1,5 @@
 "use client";
-import { Bike, Check, ChevronLeft, Dumbbell, Plus, Search } from "lucide-react";
+import { Bike, Check, ChevronLeft, Dumbbell, Plus, Search, Star } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useGym } from "@/hooks/useGym";
 import { ExerciseThumb } from "@/components/exercise/ExerciseThumb";
@@ -76,10 +76,13 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const [making, setMaking] = useState(!!ask.edit);
   const [every, setEvery] = useState(!!ask.everything);
+  const [favsOnly, setFavsOnly] = useState(false);
   const have = new Set((ask.have ?? []).map((n) => n.toLowerCase()));
   // My gym leaves out what it can't do, unless it's unticked; with nothing left out, there's no tick to show.
   const all = store.library(), mine = all.filter((x) => store.canDo(x)), gym = mine.length < all.length;
-  const pool = every || !gym ? all : mine, found = searchLibrary(pool, q);
+  // Favourites first, in the order asked for; or, with their chip on, only them.
+  const pool = every || !gym ? all : mine, hits = searchLibrary(pool, q), faved = hits.filter((x) => store.isFav(x));
+  const found = favsOnly ? faved : [...faved, ...hits.filter((x) => !store.isFav(x))], favs = (store.plan.favs ?? []).length;
   const elsewhere = !found.length && pool !== all ? searchLibrary(all, q).length : 0;
   const set = (patch: Partial<LibQuery>) => {
     setQ({ ...q, ...patch });
@@ -106,7 +109,7 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
     );
   const muscles = Object.keys(MUSCLES) as Muscle[];
   // Train's suggestions show until a search or a filter narrows the list to what's asked for.
-  const suggesting = !!ask.suggest && !q.text?.trim() && !q.muscle && !q.equip;
+  const suggesting = !!ask.suggest && !q.text?.trim() && !q.muscle && !q.equip && !favsOnly;
   return (
     <div className="lib-in">
       <div className="lib-head">
@@ -134,6 +137,18 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
           >
             My gym
           </Chip>
+          {favs || favsOnly ? (
+            <Chip
+              id="libFavs"
+              on={favsOnly}
+              onClick={() => {
+                setFavsOnly(!favsOnly);
+                setShown(SHOWN);
+              }}
+            >
+              Favourites
+            </Chip>
+          ) : null}
           <Chip on={!q.muscle} data-muscle="" onClick={() => set({ muscle: "" })}>
             All
           </Chip>
@@ -158,7 +173,7 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
           </select>
         </div>
         <p className="label" id="libCount" role="status">
-          {[q.muscle ? MUSCLES[q.muscle] : "", !every && gym ? "only what fits my gym" : "", found.length === pool.length ? plural(pool.length, "lift") : `${plural(found.length, "lift")} of ${pool.length}`].filter(Boolean).join(" · ")}
+          {[favsOnly ? "Favourites" : "", q.muscle ? MUSCLES[q.muscle] : "", !every && gym ? "only what fits my gym" : "", found.length === pool.length ? plural(pool.length, "lift") : `${plural(found.length, "lift")} of ${pool.length}`].filter(Boolean).join(" · ")}
         </p>
       </div>
       <ListArea scroll={!!ask.suggest}>
@@ -198,6 +213,16 @@ function Picker({ ask, onClose }: { ask: LibraryAsk; onClose: () => void }) {
                     </span>
                     {x.custom ? null : <span className="lib-see">{open === x.id ? "Hide how to do it" : "See how to do it"}</span>}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  className={cx("lib-fav", store.isFav(x) && "on")}
+                  data-fav={x.id}
+                  aria-pressed={store.isFav(x)}
+                  aria-label={`Favourite: ${x.name}`}
+                  onClick={() => store.setFav(x, !store.isFav(x))}
+                >
+                  <Star size={20} aria-hidden="true" fill={store.isFav(x) ? "currentColor" : "none"} />
                 </button>
                 <button
                   type="button"

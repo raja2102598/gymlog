@@ -6,7 +6,10 @@ import type { DayKey, SetLog } from "./types";
 export const isWorkingSet = (s: SetLog) => s.type !== "warmup";
 /** Counts toward the planned sets, the go-up rule and records: a working set or one to failure, not a warm-up or a
  *  drop set (extra volume after the planned sets, at a lighter weight). */
-export const isStraightSet = (s: SetLog) => s.type !== "warmup" && s.type !== "drop";
+export const isStraightSet = (s: SetLog) => s.type !== "warmup" && !isExtraSet(s);
+/** Volume only, on top of the planned sets: a drop set, or a rest-pause burst. Neither counts toward the planned sets,
+ *  the go-up rule or a record, and the sets after one don't repeat it. */
+export const isExtraSet = (s: Partial<SetLog>) => s.type === "drop" || s.type === "restpause";
 
 const DAY = 86400000;
 export const dayNum = (k: DayKey) => {
@@ -130,9 +133,10 @@ export function repRange(s: string | null | undefined): [number, number] | null 
   return lo > 0 && hi >= lo ? [lo, hi] : null;
 }
 
-/** How a lift's weight goes up (PlanExercise.prog): double progression, the default; linear; or a percentage of a
- *  stored 1RM. A deload can follow any of them. */
-export type ProgRule = "double" | "linear" | "percent";
+/** How a lift's weight goes up (PlanExercise.prog): double progression, the default; linear; a percentage of a stored
+ *  1RM; Greyskull LP, its last set as many reps as you can; or, for a hold, adding time rather than weight. A deload
+ *  can follow any of them. */
+export type ProgRule = "double" | "linear" | "percent" | "greyskull" | "time";
 
 /** The next weight for a lift, and the rule that set it, so the hint can say why. */
 export interface NextStep {
@@ -145,9 +149,14 @@ export interface NextStep {
   /** A percentage of a 1RM: the percentage, and the 1RM. */
   pct?: number;
   oneRm?: number;
-  /** A deload: sessions in a row that fell short, and the percentage taken off. */
+  /** A deload: sessions in a row that fell short, and the percentage taken off. Greyskull's reset takes `off` too. */
   fails?: number;
   off?: number;
+  /** Greyskull LP: the reps the last set (as many as you can) reached, and whether that doubled the bottom of the
+   *  range, which earns a double step; or `reset`, a set fell short, so the weight goes back by `off` percent. */
+  amrap?: number;
+  doubled?: boolean;
+  reset?: boolean;
 }
 
 type Straight = { reps: number; kg: number };
@@ -177,6 +186,30 @@ export function linearStep(sets: SetLog[] | undefined, reps: string, minSets: nu
   const kg = work[0].kg;
   if (!work.every((s) => s.kg === kg && s.reps >= range[0])) return null;
   return { rule: "linear", from: kg, to: add(kg, step), top: range[0] };
+}
+
+// Greyskull LP: every set but the last is the bottom of the rep range, and the last as many reps as you can. Every set
+// reaching that bottom adds `step` kg, or twice it once the last set doubled it (10 or more on a 5); a set short of it
+// resets, `off` percent off (10, as the programme has it), down to a whole step.
+export function greyskullStep(sets: SetLog[] | undefined, reps: string, minSets: number, step: number, off = 10): NextStep | null {
+  const range = repRange(reps);
+  if (!range || !(step > 0)) return null;
+  const work = straight(sets);
+  if (!work.length || work.length < minSets) return null;
+  const kg = work[0].kg, lo = range[0], last = work[work.length - 1].reps;
+  if (!work.every((s) => s.kg === kg)) return null;
+  if (work.some((s) => s.reps < lo)) return { rule: "greyskull", from: kg, to: Math.round(Math.floor((kg * (1 - off / 100)) / step + 1e-9) * step * 100) / 100, top: lo, amrap: last, reset: true, off };
+  const doubled = last >= 2 * lo;
+  return { rule: "greyskull", from: kg, to: add(kg, doubled ? 2 * step : step), top: lo, amrap: last, doubled };
+}
+
+// Adding time, for a hold (PlanExercise.timed, its reps seconds): `step` seconds a session on last time's shortest hold,
+// once it had the planned sets. `from` and `to` are seconds here, not kg.
+export function timeStep(sets: SetLog[] | undefined, minSets: number, step: number): NextStep | null {
+  const held = (sets || []).filter((s) => s && isStraightSet(s) && (s.reps ?? 0) > 0).map((s) => s.reps as number);
+  if (!(step > 0) || !held.length || held.length < minSets) return null;
+  const short = Math.min(...held);
+  return { rule: "time", from: short, to: short + step, top: short };
 }
 
 // A percentage of a 1RM, to the nearest `step` (2.5 kg when there's none).
@@ -296,8 +329,8 @@ export function warmupLadder(workingKg: number, barKg: number, inc = 2.5): Warmu
 
 /* ---------- sets per muscle ---------- */
 
-/** How many of a lift's sets count toward its muscles' weekly sets: those done, with reps, and not a warm-up or a
- *  drop set, which carries on the set before it. */
+/** How many of a lift's sets count toward its muscles' weekly sets: those done, with reps, and not a warm-up, a
+ *  drop set or a rest-pause burst, which carry on the set before them. */
 export const muscleSetCount = (sets: SetLog[]) => sets.filter((s) => isStraightSet(s) && (s.reps ?? 0) > 0).length;
 
 export interface MuscleWeeks {
@@ -343,7 +376,8 @@ export function muscleWeeks(
 export type RecordKind = "weight" | "e1rm" | "reps";
 export interface LiftDay {
   day: DayKey;
-  lifts: { name: string; sets: SetLog[] }[];
+  /** `timed`: held for time, its reps seconds (PlanExercise.timed), so no estimated 1RM. */
+  lifts: { name: string; sets: SetLog[]; timed?: boolean }[];
 }
 export interface LiftRecord {
   day: DayKey;
@@ -374,13 +408,13 @@ export function records(days: LiftDay[]): LiftRecord[] {
 // caller can keep the fold of the days before today and re-check today on every keystroke.
 export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[] {
   const out: LiftRecord[] = [];
-  for (const { name, sets } of lifts) {
+  for (const { name, sets, timed } of lifts) {
     const b = best.get(name);
     if (!b) continue;
     const top: Partial<Record<RecordKind, { v: number; i: number }>> = {};
     sets.forEach((s, i) => {
       if (!s || s.kg == null || !isStraightSet(s)) return;
-      const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
+      const e = s.reps != null && !timed ? e1rm(s.kg, s.reps) : null;
       const cands: [RecordKind, number][] = [];
       if (s.kg > b.kg) cands.push(["weight", s.kg]);
       if (e != null && b.e1rm != null && e > b.e1rm + 1e-9) cands.push(["e1rm", e]);
@@ -393,7 +427,7 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
     });
     const bySet = new Map<number, RecordKind[]>();
     for (const [kind, t] of Object.entries(top) as [RecordKind, { v: number; i: number }][]) bySet.set(t.i, [...(bySet.get(t.i) || []), kind]);
-    for (const [i, kinds] of bySet) out.push({ day, name, set: i, kg: sets[i].kg as number, reps: sets[i].reps, e1rm: e1rm(sets[i].kg, sets[i].reps), kinds });
+    for (const [i, kinds] of bySet) out.push({ day, name, set: i, kg: sets[i].kg as number, reps: sets[i].reps, e1rm: timed ? null : e1rm(sets[i].kg, sets[i].reps), kinds });
   }
   return out;
 }
@@ -402,13 +436,13 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
 // Per exercise it keeps the heaviest weight, the best estimated 1RM and the most reps done at each
 // weight (a few distinct weights, so checking a set doesn't mean scanning every earlier set).
 export function foldDay(best: RecordFold, { lifts }: LiftDay): void {
-  for (const { name, sets } of lifts) {
+  for (const { name, sets, timed } of lifts) {
     const good = sets.filter((s) => s && s.kg != null && isStraightSet(s)) as { reps: number | null; kg: number }[];
     if (!good.length) continue;
     const b = best.get(name) || { kg: -Infinity, e1rm: null, repsAt: new Map<number, number>() };
     for (const s of good) {
       b.kg = Math.max(b.kg, s.kg);
-      const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
+      const e = s.reps != null && !timed ? e1rm(s.kg, s.reps) : null;
       if (e != null) b.e1rm = Math.max(b.e1rm ?? 0, e);
       const had = b.repsAt.get(s.kg);
       if (s.reps != null && !(had != null && had >= s.reps)) b.repsAt.set(s.kg, s.reps);

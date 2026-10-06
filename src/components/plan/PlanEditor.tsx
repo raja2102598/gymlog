@@ -1,6 +1,6 @@
 "use client";
 import { ChevronDown } from "lucide-react";
-import { useState, type InputHTMLAttributes } from "react";
+import { useRef, useState, type ChangeEvent, type InputHTMLAttributes } from "react";
 import { ask } from "@/components/ds/Ask";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
@@ -9,18 +9,23 @@ import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
 import { equipText, equipWords, isLoad, loadOf, LOADS, muscleText, type Exercise, type Load } from "@/lib/library";
+import { shareFile } from "@/lib/files";
 import { planBlocks } from "@/lib/plan";
+import { planHtml, readSharedPlan, sharedPlan } from "@/lib/planShare";
+import { printHtml } from "@/lib/print";
 import type { ProgRule } from "@/lib/stats";
 import type { Plan, PlanExercise } from "@/lib/types";
 import { TemplateList } from "./TemplateList";
 
-type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step" | "rest" | "oneRm" | "pct" | "deloadAfter" | "deloadPct";
+type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step" | "rest" | "oneRm" | "pct" | "stepSec" | "deloadAfter" | "deloadPct";
 
 /** Each progression rule's name, and what it does, under the choice. */
 const PROG: Record<ProgRule, [string, string]> = {
   double: ["Double progression", "Every set at the top of the rep range, then add the step."],
   linear: ["Linear", "Add the step every session each set reaches the bottom of the rep range."],
   percent: ["% of 1RM", "Work at a percentage of a 1RM you enter, to the nearest step."],
+  greyskull: ["Greyskull LP", "Do the last set for as many reps as you can. Every set at the bottom of the rep range adds the step, twice it once the last set doubles it; a set short takes 10% off."],
+  time: ["Add time", "Hold a little longer each session: your shortest hold last time, plus the seconds you set."],
 };
 
 interface Props {
@@ -91,7 +96,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   const setProg = (j: number, v: string) =>
     edit((p) => {
       const x = p.days[editDay].exercises[j];
-      if (v === "linear" || v === "percent") x.prog = v;
+      if (v === "linear" || v === "percent" || v === "greyskull" || v === "time") x.prog = v;
       else delete x.prog;
     });
   // Going by the library's equipment is the default, so it's left out of the plan rather than stored.
@@ -100,6 +105,15 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       const x = p.days[editDay].exercises[j];
       if (isLoad(v)) x.load = v;
       else delete x.load;
+    });
+  // How a lift counts its sets: held for seconds, or reps each side. Off is left out of the plan, as a superset is.
+  const setCount = (j: number, k: "timed" | "perSide", on: boolean) =>
+    edit((p) => {
+      const x = p.days[editDay].exercises[j];
+      if (on) x[k] = true;
+      else delete x[k];
+      // Adding time is a hold's rule: a lift no longer held goes back to double progression.
+      if (k === "timed" && !on && x.prog === "time") delete x.prog;
     });
   const setSuperset = (j: number, on: boolean) =>
     edit((p) => {
@@ -313,7 +327,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                 <div className="pe-row">
                   {nameField(x, j)}
                   {liftField(x, j, "sets", "Sets", { placeholder: "3" })}
-                  {liftField(x, j, "reps", "Reps", { placeholder: "8-10" })}
+                  {liftField(x, j, "reps", x.timed ? "Seconds" : x.perSide ? "Reps each side" : "Reps", { placeholder: x.timed ? "30-45" : "8-10" })}
                 </div>
                 <LibLine x={x} j={j} onFind={(own) => findInLibrary(x.name.trim(), j, own)} />
                 <label className="field" htmlFor={`pe_x${j}_cue`}>
@@ -341,6 +355,14 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                   </label>
                 </div>
                 <div className="pe-row2">
+                  <label className="pe-check" htmlFor={`pe_x${j}_timed`}>
+                    <input type="checkbox" id={`pe_x${j}_timed`} data-ptimed={j} checked={!!x.timed} onChange={(ev) => setCount(j, "timed", ev.target.checked)} /> Held for time (seconds)
+                  </label>
+                  <label className="pe-check" htmlFor={`pe_x${j}_side`}>
+                    <input type="checkbox" id={`pe_x${j}_side`} data-pside={j} checked={!!x.perSide} onChange={(ev) => setCount(j, "perSide", ev.target.checked)} /> Reps each side
+                  </label>
+                </div>
+                <div className="pe-row2">
                   {liftField(x, j, "rest", "Rest after a set (seconds, optional)", { placeholder: `Plan default (${plan.restSec})`, inputMode: "numeric" })}
                   {j > 0 ? (
                     <label className="pe-check" htmlFor={`pe_x${j}_ss`}>
@@ -360,7 +382,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                   <label className="field" htmlFor={`pe_x${j}_prog`}>
                     <span>How the weight goes up</span>
                     <select id={`pe_x${j}_prog`} data-pprog={j} value={x.prog ?? "double"} aria-describedby={`pe_x${j}_proghow`} onChange={(ev) => setProg(j, ev.target.value)}>
-                      {Object.entries(PROG).map(([k, [label]]) => (
+                      {/* Adding time is for a hold, and shows only on one (or a lift already set to it). */}
+                      {Object.entries(PROG).filter(([k]) => k !== "time" || x.timed || x.prog === "time").map(([k, [label]]) => (
                         <option key={k} value={k}>
                           {label}
                         </option>
@@ -370,6 +393,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                   <p className="sub" id={`pe_x${j}_proghow`}>
                     {PROG[x.prog ?? "double"][1]}
                   </p>
+                  {x.prog === "time" ? <div className="pe-row2">{liftField(x, j, "stepSec", "Add per session (seconds)", { placeholder: "5", inputMode: "numeric" })}</div> : null}
                   {x.prog === "percent" ? (
                     <div className="pe-row2">
                       {liftField(x, j, "oneRm", "1RM (kg)", { placeholder: "e.g. 100", inputMode: "decimal" })}
@@ -578,7 +602,64 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
             store.startFrom(t.plan);
           }}
         />
+        <SharePlan />
       </section>
+    </div>
+  );
+}
+
+/** The plan shared as a file another Gym Log can start from, printed (or saved as a PDF), or a shared one taken in
+ *  place of this one, after asking, as a template is. */
+function SharePlan() {
+  const store = useGym();
+  const file = useRef<HTMLInputElement>(null);
+  const [msg, setMsg] = useState("");
+  const share = async () => {
+    const how = await shareFile("gym-log-plan.json", "application/json", JSON.stringify(sharedPlan(store.plan), null, 1), "My Gym Log plan");
+    setMsg(how === "shared" ? "Plan shared." : how === "downloaded" ? "Plan saved as gym-log-plan.json. Send it to anyone with Gym Log: they open it with Use a shared plan." : "");
+  };
+  const print = () => void printHtml(planHtml(store.plan), "Gym Log plan").catch(() => setMsg("Couldn’t open printing on this phone."));
+  const use = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const f = ev.currentTarget.files?.[0];
+    ev.currentTarget.value = "";
+    if (!f) return;
+    let shared: Record<string, unknown>;
+    try {
+      shared = readSharedPlan(await f.text());
+    } catch (err) {
+      setMsg(`That file couldn’t be used: ${(err as Error).message}. Choose a plan shared from Gym Log.`);
+      return;
+    }
+    // Asked again if a sync brought another phone's plan while the question was up (the file picker put the app in the
+    // background, and coming back syncs), rather than replacing a plan never asked about.
+    let seen = JSON.stringify(store.plan);
+    for (;;) {
+      if (!(await ask("Replace your sessions, lifts, warm-ups and tempo with the shared plan?", "Replace", { body: "Your goals, My gym and the days you’ve already logged are kept.", danger: true }))) return setMsg("Nothing changed.");
+      const now = JSON.stringify(store.plan);
+      if (now === seen) break;
+      seen = now;
+    }
+    store.adoptPlan(shared);
+    setMsg("Using the shared plan.");
+  };
+  return (
+    <div className="pe-share">
+      <h3 className="pe-h">Share</h3>
+      <div className="pe-btns">
+        <button className="ghost" id="pe_share" onClick={() => void share()}>
+          Share this plan
+        </button>
+        <button className="ghost" id="pe_print" onClick={print}>
+          Print or save as PDF
+        </button>
+        <button className="ghost" id="pe_use" onClick={() => file.current?.click()}>
+          Use a shared plan
+        </button>
+      </div>
+      <input type="file" id="pe_useFile" accept="application/json,.json" hidden ref={file} onChange={(ev) => void use(ev)} />
+      <p className="note" id="pe_shareMsg" role="status">
+        {msg}
+      </p>
     </div>
   );
 }

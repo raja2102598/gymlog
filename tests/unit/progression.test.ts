@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { lighter, plateau, STUCK_AFTER, stuckWords } from "@/lib/plateau";
-import { deloadStep, fellShort, linearStep, percentOf, readyToAdd } from "@/lib/stats";
+import { deloadStep, fellShort, greyskullStep, linearStep, percentOf, readyToAdd, timeStep } from "@/lib/stats";
 import { GymStore, progWords } from "@/lib/store";
 import type { DayLog, PlanExercise } from "@/lib/types";
 import { atWednesdayNoon, day, LAST, lift, memoryStorage, sets, storeWith, WED } from "./helpers";
@@ -34,6 +34,22 @@ describe("the rules", () => {
     expect(readyToAdd(sets([[10, 50], [10, 50]]), "8-10", 3, 2.5)).toBeNull(); // fewer sets than asked
     expect(readyToAdd(sets([[10, 0], [10, 0], [10, 0]]), "8-10", 3, 2.5)?.to).toBe(2.5); // an empty sled
     expect(readyToAdd([{ reps: null, kg: 50 }], "8-10", 1, 2.5)).toBeNull(); // weight only (older entries)
+  });
+
+  it("Greyskull adds the step once every set reaches the bottom, twice it when the last set doubles it, and resets 10% on a set short", () => {
+    expect(greyskullStep(sets([[5, 60], [5, 60], [7, 60]]), "5", 3, 2.5)).toEqual({ rule: "greyskull", from: 60, to: 62.5, top: 5, amrap: 7, doubled: false });
+    expect(greyskullStep(sets([[5, 60], [5, 60], [10, 60]]), "5", 3, 2.5)).toMatchObject({ to: 65, amrap: 10, doubled: true }); // 10 is twice the 5
+    expect(greyskullStep(sets([[5, 60], [4, 60], [9, 60]]), "5", 3, 2.5)).toMatchObject({ to: 52.5, reset: true, off: 10 }); // 54, down to a step
+    expect(greyskullStep(sets([[5, 60], [5, 60]]), "5", 3, 2.5)).toBeNull(); // a set missing
+    expect(greyskullStep(sets([[5, 60], [5, 55], [8, 60]]), "5", 3, 2.5)).toBeNull(); // not one weight
+    expect(greyskullStep([...sets([[5, 60], [5, 60], [6, 60]]), { reps: 3, kg: 60, type: "restpause" }], "5", 3, 2.5)?.amrap).toBe(6); // a burst after it isn't the last set
+  });
+
+  it("adding time goes up from last time's shortest hold, once it had the planned sets", () => {
+    expect(timeStep(sets([[45, 0], [40, 0], [42, 0]]), 3, 5)).toEqual({ rule: "time", from: 40, to: 45, top: 40 });
+    expect(timeStep([{ reps: 30, kg: null }, { reps: 35, kg: null }], 2, 10)?.to).toBe(40); // a hold needs no weight
+    expect(timeStep(sets([[45, 0], [40, 0]]), 3, 5)).toBeNull(); // a set missing
+    expect(timeStep([{ reps: 60, kg: null, type: "warmup" }, { reps: 20, kg: null }], 1, 5)?.from).toBe(20); // a warm-up doesn't count
   });
 
   it("a percentage of a 1RM goes to the nearest step, 2.5 kg without one", () => {
@@ -94,6 +110,34 @@ describe("the next weight, by the lift's rule", () => {
     // Until both numbers make sense there's nothing to say.
     expect(s.nextWeight(curl(s, { pct: "" }), x.name, WED)).toBeNull();
     expect(s.nextWeight(curl(s, { pct: "120" }), x.name, WED)).toBeNull();
+  });
+
+  it("Greyskull says why: a step, a double step, or a reset, which shows as a deload does", () => {
+    const at = (a: [number, number][]) => storeWith({ [LAST]: day({ exercises: { "Hamstring Curl": lift(a) } }) });
+    let s = at([[10, 30], [10, 30], [14, 30]]);
+    let n = s.nextWeight(curl(s, { prog: "greyskull" }), "Hamstring Curl", WED)!;
+    expect(progWords(n)).toEqual({ lead: "Go up to ", kg: "32.5", why: ": Greyskull, every set hit 10 reps. Do the last one for as many as you can." });
+    s = at([[10, 30], [10, 30], [20, 30]]);
+    n = s.nextWeight(curl(s, { prog: "greyskull" }), "Hamstring Curl", WED)!;
+    expect(progWords(n)).toEqual({ lead: "Go up to ", kg: "35", why: ": Greyskull, your last set hit 20, twice the 10, so a double step." });
+    s = at(SHORT);
+    n = s.nextWeight(curl(s, { prog: "greyskull" }), "Hamstring Curl", WED)!;
+    expect(n).toMatchObject({ rule: "greyskull", reset: true, from: 50, to: 45, held: false });
+    expect(progWords(n)).toEqual({ lead: "Reset to ", kg: "45", why: ": Greyskull, a set fell short of 10 reps, so 10% off 50\u00a0kg." });
+    expect(s.placeholders(curl(s), s.lastDone("Hamstring Curl", WED), 0, n)).toEqual(["10", "45"]);
+  });
+
+  it("adding time suggests the seconds at last time's weight, and is never held for the knee", () => {
+    const s = storeWith({ [LAST]: day({ exercises: { "Leg Press": lift([[40, 20], [35, 20], [40, 20]]) }, kneeAfter: 9 }) });
+    const x = Object.assign(s.plan.days[2].exercises[1], { timed: true, prog: "time", stepSec: "10" } as Partial<PlanExercise>);
+    const n = s.nextWeight(x, x.name, WED)!;
+    expect(n).toMatchObject({ rule: "time", from: 35, to: 45, held: false });
+    expect(progWords(n)).toEqual({ lead: "Hold for ", kg: "45", unit: "s", why: ": adding time, +10\u00a0s on your shortest hold last time." });
+    expect(s.placeholders(x, s.lastDone(x.name, WED), 0, n)).toEqual(["45", "20"]);
+    delete x.stepSec;
+    expect(s.nextWeight(x, x.name, WED)?.to).toBe(40); // 5 s when it's empty
+    delete x.timed; // no longer a hold: seconds would be no answer for reps
+    expect(s.nextWeight(x, x.name, WED)?.rule).not.toBe("time");
   });
 
   it("puts a deload first once enough sessions in a row fell short, whatever the rule", () => {

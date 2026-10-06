@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CSV_COLUMNS, csvField, toCsv } from "@/lib/backup";
+import { dayOf, readOtherApp } from "@/lib/importers";
 import { DEFAULT_PLAN, normalizePlan } from "@/lib/plan";
 import type { HealthDay } from "@/lib/types";
 import { fakeSupabase, type Write } from "./fakeSupabase";
@@ -303,5 +304,67 @@ describe("workout CSV", () => {
       ["2026-09-23", "Legs", "Leg Press", 2, 9, 50, "failure", 10, null, false, "", ""],
       ["2026-09-23", "Legs", "Leg Press", 3, 12, 30, "drop", null, 0, false, "", ""],
     ]);
+  });
+});
+
+describe("importing from another app", () => {
+  const csv = (rows: string[]) => new File([rows.join("\r\n")], "export.csv", { type: "text/csv" });
+  const STRONG = [
+    "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Notes,Workout Notes,RPE",
+    '2026-09-14 18:02:11,"Push, heavy",1h,Bench Press (Barbell),W,40,10,0,0,,,',
+    "2026-09-14 18:02:11,\"Push, heavy\",1h,Bench Press (Barbell),1,80,5,0,0,,,8",
+    "2026-09-14 18:02:11,\"Push, heavy\",1h,Bench Press (Barbell),2,80,5,0,0,,,",
+    "2026-09-14 18:02:11,\"Push, heavy\",1h,Bench Press (Barbell),D,60,8,0,0,,,",
+    "2026-09-14 18:02:11,\"Push, heavy\",1h,Plank,1,0,0,0,60,,,",
+    "2026-09-16 07:30:00,Legs,1h,leg press,1,100,12,0,0,,,",
+  ];
+
+  it("reads Strong: its warm-up, drop and RPE marks, the workout's name, and leaves out a set with only a time", () => {
+    const got = readOtherApp(STRONG.join("\n"));
+    expect([got.app, got.sets, got.leftOut, got.days.map((d) => [d.day, d.title])]).toEqual(["Strong", 5, 1, [["2026-09-14", "Push, heavy"], ["2026-09-16", "Legs"]]]);
+    expect(got.days[0].lifts).toEqual([{ name: "Bench Press (Barbell)", sets: [{ reps: 10, kg: 40, type: "warmup" }, { reps: 5, kg: 80, rpe: 8 }, { reps: 5, kg: 80 }, { reps: 8, kg: 60, type: "drop" }] }]);
+    // Weights in pounds become kg, from a unit in the header or a Weight Unit column; semicolons split as commas do.
+    expect(readOtherApp("Date;Workout Name;Exercise Name;Set Order;Weight (lbs);Reps\n2026-09-14;A;Curl;1;45;10").days[0].lifts[0].sets).toEqual([{ reps: 10, kg: 20.41 }]);
+    expect(readOtherApp("Date,Exercise Name,Set Order,Weight,Weight Unit,Reps\n2026-09-14,Curl,1,45,lbs,10").days[0].lifts[0].sets[0].kg).toBe(20.41);
+  });
+
+  it("reads Hevy, its dates in either form, and FitNotes, a bodyweight set with no weight", () => {
+    const hevy = readOtherApp(
+      [
+        '"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"',
+        '"Upper","14 Sep 2026, 18:05","14 Sep 2026, 19:10","","Lat Pulldown (Cable)","","","0","warmup","30","12","","",""',
+        '"Upper","14 Sep 2026, 18:05","14 Sep 2026, 19:10","","Lat Pulldown (Cable)","","","1","normal","55","10","","","9"',
+        '"Upper","14 Sep 2026, 18:05","14 Sep 2026, 19:10","","Lat Pulldown (Cable)","","","2","failure","55","8","","",""',
+        '"Upper","2026-09-16 07:00:00","","","Pull Up","","","0","normal","","12","","",""',
+      ].join("\n"),
+    );
+    expect([hevy.app, hevy.days.map((d) => d.day)]).toEqual(["Hevy", ["2026-09-14", "2026-09-16"]]);
+    expect(hevy.days[0].lifts[0].sets).toEqual([{ reps: 12, kg: 30, type: "warmup" }, { reps: 10, kg: 55, rpe: 9 }, { reps: 8, kg: 55, type: "failure" }]);
+    expect(hevy.days[1].lifts[0].sets).toEqual([{ reps: 12, kg: null }]);
+    const fit = readOtherApp("Date,Exercise,Category,Weight (kgs),Reps,Distance,Distance Unit,Time,Comment\n2026-09-14,Dips,Chest,0,10,,,,\n2026-09-14,Treadmill,Cardio,,,2,km,0:10:00,");
+    expect([fit.app, fit.days[0].title, fit.days[0].lifts, fit.leftOut]).toEqual(["FitNotes", "Workout", [{ name: "Dips", sets: [{ reps: 10, kg: null }] }], 1]);
+  });
+
+  it("refuses a file that isn't one of theirs, or has no sets, saying why", () => {
+    expect(() => readOtherApp("a,b\n1,2")).toThrow("it isn’t a CSV export from Strong, Hevy or FitNotes");
+    expect(() => readOtherApp("Date,Exercise Name,Set Order,Weight,Reps,Seconds\n2026-09-14,Plank,1,0,0,60")).toThrow("it’s from Strong, but has no sets with reps or a weight");
+    expect(dayOf("not a date")).toBeNull();
+  });
+
+  it("adds an empty day's workout as a free-form one, beside what a day has, never over a lift already logged", async () => {
+    vi.stubGlobal("navigator", { onLine: false });
+    // The Monday was skipped here (Skip day), but trained in Strong.
+    const s = storeWith({ "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 90]]) } }), "2026-09-14": day({ skip: "ill", steps: 4000 }) });
+    const msg = await s.importOtherApp(csv([...STRONG, "2026-09-16 07:30:00,Legs,1h,Calf Raise,1,40,15,0,0,,,"]));
+    expect(msg).toBe("Imported 2 workouts from Strong, 5 sets in all. 1 lift already logged on its day was kept as it was. 1 set with only a time or a distance was left out.");
+    // The Monday was empty: Strong's workout, by its name there, in place of Push.
+    expect(s.entry("2026-09-14").free).toEqual({ name: "Push, heavy", lifts: ["Bench Press (Barbell)"] });
+    expect([s.entry("2026-09-14").skip, s.entry("2026-09-14").steps, s.dayState("2026-09-14")]).toEqual([undefined, 4000, "done"]); // not skipped after all
+    expect(s.entry("2026-09-14").exercises["Bench Press (Barbell)"]).toMatchObject({ done: true, kg: 80 });
+    // The Wednesday had Leg Press logged here: it stays, under the plan's name for it, and Calf Raise joins it.
+    const wed = s.entry("2026-09-16");
+    expect([wed.free, wed.exercises["Leg Press"].sets, wed.exercises["Calf Raise"]?.sets]).toEqual([undefined, [{ reps: 10, kg: 90 }], [{ reps: 15, kg: 40 }]]);
+    expect(Object.keys(s.pending).sort()).toEqual(["2026-09-14", "2026-09-16"]);
+    expect(await s.importOtherApp(csv(["x,y", "1,2"]))).toMatch(/^That file couldn’t be imported: it isn’t a CSV export from Strong, Hevy or FitNotes\. In the other app/);
   });
 });

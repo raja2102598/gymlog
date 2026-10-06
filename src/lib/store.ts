@@ -7,7 +7,7 @@ import { createClient, type Session, type SupabaseClient, type User } from "@sup
 import { TEMPLATES } from "@/data/templates";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
-import { addDays, dayMonth, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
+import { addDays, dayMonth, dm, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { createDemoSupabase } from "./demoSupabase";
 import { CATALOGUE, closeMatches, customLift, EQUIPMENT, exerciseFor, gymCan, gymLacks, isBar, libraryLift, libraryNamed, loadOf, type Equip, type Exercise, type Load } from "./library";
 import { DEFAULT_PLAN, DEFAULT_WEIGHTS, normalizeCustom, normalizeGym, normalizePlan, normalizeWeights, orderBlocks, planBlocks } from "./plan";
@@ -18,6 +18,8 @@ import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, NOT_NOW_KEY, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { keepRunsInMemory } from "./workout";
+import { plural, repUnit, type RepUnit } from "./format";
+import { readOtherApp, type OtherAppImport } from "./importers";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights, type WorkoutHeart } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
@@ -135,12 +137,16 @@ export const PR_WORDS: Record<S.RecordKind, string> = { weight: "heaviest yet", 
 export const prTitle = (kinds?: S.RecordKind[]) => (kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : "");
 /** A lift's next-weight hint, in words that name the rule behind it: what to do, the weight (bold on Today, empty
  *  for a knee hold, whose weight is in `lead`), and why. */
-export function progWords(n: NextWeight): { lead: string; kg: string; why: string } {
+export function progWords(n: NextWeight): { lead: string; kg: string; why: string; unit?: "s" } {
   const kg = String(n.to);
+  if (n.rule === "time") return { lead: "Hold for ", kg, unit: "s", why: `: adding time, +${n.to - (n.from ?? n.to)}\u00a0s on your shortest hold last time.` };
   if (n.held && n.heldFor === "day") return { lead: `Hold ${n.from} kg: you’re holding today’s weights.`, kg: "", why: "" };
   if (n.held) return { lead: `Hold ${n.from}\u00a0kg: your knee was sore after ${dayMonth(n.day)}.`, kg: "", why: "" };
   if (n.rule === "linear") return { lead: "Go up to ", kg, why: `: linear, +${Math.round((n.to - (n.from ?? n.to)) * 100) / 100}\u00a0kg a session while every set hits ${n.top} reps.` };
   if (n.rule === "percent") return { lead: "Work at ", kg, why: `: ${n.pct}% of your ${n.oneRm}\u00a0kg 1RM.` };
+  if (n.rule === "greyskull" && n.reset) return { lead: "Reset to ", kg, why: `: Greyskull, a set fell short of ${n.top} reps, so ${n.off}% off ${n.from}\u00a0kg.` };
+  if (n.rule === "greyskull" && n.doubled) return { lead: "Go up to ", kg, why: `: Greyskull, your last set hit ${n.amrap}, twice the ${n.top}, so a double step.` };
+  if (n.rule === "greyskull") return { lead: "Go up to ", kg, why: `: Greyskull, every set hit ${n.top} reps. Do the last one for as many as you can.` };
   if (n.rule === "deload") {
     const short = n.fails === 1 ? "last session fell short" : `${n.fails} sessions in a row fell short`;
     return { lead: "Deload to ", kg, why: `: ${short}, so ${n.off}% off ${n.from}\u00a0kg.` };
@@ -839,6 +845,40 @@ export class GymStore {
       true,
     );
   }
+  /** Moves day `from`'s workout to day `to`, as when it was logged on the wrong date: its lifts and their order, warm-ups,
+   *  cardio, the session it was (the plan's, kept as that session on the new day, or a free-form one), Hold today, the
+   *  watch's heart rate and the knee before and after. What belongs to the day itself stays: steps, weight, water,
+   *  measurements, the note and the knee on waking. Records and suggestions read the history again, as for any edit.
+   *  Returns why it can't, or "" once moved: not to the same day, a day ahead, or one with a workout of its own. */
+  moveWorkout(from: DayKey, to: DayKey): string {
+    if (from === to) return "That’s the day it’s on already.";
+    if (to > todayKey()) return "Pick today or a day before it.";
+    if (!this.worked(from) && !this.isFree(from)) return "There’s no workout logged on this day to move.";
+    if (this.worked(to) || this.isFree(to)) return `${dm(to)} has a workout logged already. Move or clear that one first.`;
+    const a = this.clone(from), b = this.clone(to);
+    // The session it was, so its lifts are the planned ones there too; one done as the new day's own needs nothing.
+    const slot = this.slotFor(from), free = !!a.free;
+    b.exercises = { ...b.exercises, ...a.exercises };
+    for (const k of ["warmup", "cardio"] as const) (b[k] as unknown) = a[k];
+    for (const k of ["free", "order", "hold", "hr", "kneeBefore", "kneeAfter", "cardioMin", "cardioKmh", "cardioIncline"] as const) {
+      if (a[k] != null) (b[k] as unknown) = a[k];
+      else delete b[k];
+      delete a[k];
+    }
+    delete b.skip;
+    if (free) delete b.session;
+    else {
+      if (slot === wdIndex(to)) delete b.session;
+      else b.session = slot;
+    }
+    delete a.session;
+    a.exercises = {};
+    a.warmup = [];
+    a.cardio = false;
+    this.save(from, a, true);
+    this.save(to, b, true);
+    return "";
+  }
   /** Back to day k's planned session. What was logged in the free-form workout stays, as lifts outside the plan. */
   endFree(k: DayKey) {
     this.editDay(
@@ -886,6 +926,17 @@ export class GymStore {
     this.editPlan((p) => {
       const g = normalizeGym(p.gym);
       p.gym = normalizeGym({ ...g, off: !e ? (on ? [] : Object.keys(EQUIPMENT)) : on ? g.off.filter((x) => x !== e) : [...g.off, e] });
+    });
+  }
+  /** Whether lift x is a favourite, starred in the library. */
+  isFav(x: Exercise): boolean {
+    return !!this.plan.favs?.includes(x.id);
+  }
+  /** Stars lift x in the library, or takes its star off; saved with the plan, as My gym is. */
+  setFav(x: Exercise, on: boolean) {
+    this.editPlan((p) => {
+      const rest = (p.favs ?? []).filter((id) => id !== x.id);
+      p.favs = on ? [...rest, x.id] : rest;
     });
   }
   /** Puts lifts, by library id, on My gym's always or never list and off the other; off both with null. */
@@ -1045,6 +1096,8 @@ export class GymStore {
   placeholders(x: PlanExercise, L: LastDone | null, j: number, next: NextWeight | null): [string, string] {
     const ls = L ? setsOf(L.r).filter(S.isWorkingSet) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
     const reps = String(s.reps ?? (parseInt(x.reps, 10) || "-"));
+    // Adding time suggests the seconds, at last time's weight.
+    if (next?.rule === "time") return [String(next.to), String(s.kg ?? "-")];
     if (next && !next.held) return [String(S.repRange(x.reps)?.[0] ?? reps), String(next.to)];
     return [reps, String(s.kg ?? "-")];
   }
@@ -1245,7 +1298,8 @@ export class GymStore {
     const grid = parseFloat(x.step) > 0 ? null : this.gridFor(load);
     const fit = (r: S.NextStep): S.NextStep => {
       if (!grid) return r;
-      if (r.rule === "deload") return { ...r, to: S.onGrid((r.from ?? r.to) * (1 - (r.off ?? 0) / 100), grid, "down") };
+      if (r.rule === "time") return r;
+      if (r.rule === "deload" || r.reset) return { ...r, to: S.onGrid((r.from ?? r.to) * (1 - (r.off ?? 0) / 100), grid, "down") };
       if (r.rule === "percent") return { ...r, to: S.onGrid(((r.oneRm ?? 0) * (r.pct ?? 0)) / 100, grid) };
       return { ...r, to: S.onGrid(r.to, grid, "up") };
     };
@@ -1261,12 +1315,16 @@ export class GymStore {
     if (x.prog === "percent") {
       const oneRm = parseFloat(x.oneRm ?? ""), pct = parseFloat(x.pct ?? "");
       if (oneRm > 0 && pct > 0 && pct <= 100) r = { rule: "percent", from: L ? topKg(setsOf(L.r).filter(S.isStraightSet)) : null, to: S.percentOf(oneRm, pct, step), top: S.repRange(x.reps)?.[0] ?? 0, pct, oneRm };
+    } else if (L && x.prog === "time" && x.timed) {
+      r = S.timeStep(setsOf(L.r), minSets(targetOf(L.r, x)), parseFloat(x.stepSec ?? "") || 5);
     } else if (L) {
       const t = targetOf(L.r, x);
-      r = (x.prog === "linear" ? S.linearStep : S.readyToAdd)(setsOf(L.r), t.reps, minSets(t), step);
+      r = (x.prog === "linear" ? S.linearStep : x.prog === "greyskull" ? S.greyskullStep : S.readyToAdd)(setsOf(L.r), t.reps, minSets(t), step);
     }
     if (!r) return null;
     r = fit(r);
+    // More time on a hold is no more load: nothing for the knee or the day to hold back.
+    if (r.rule === "time") return { ...r, day: L?.day ?? k, held: false };
     // Held: an increase only, on a knee lift after a sore session, or on any lift the day that holds (Hold today).
     const up = r.from != null && r.to > r.from, knee = up && !!x.knee && !!L && this.kneeBad(L.day), day = up && this.logs[k]?.hold === true;
     if (!knee && !day) return { ...r, day: L?.day ?? k, held: false };
@@ -1282,7 +1340,8 @@ export class GymStore {
         .filter((l) => l.name === name)
         .flatMap((l) => l.sets);
       if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
-      out.push({ day: d, e1rm: sessionE1rm(sets), top: topKg(sets.filter(S.isStraightSet)) });
+      // A hold's reps are seconds: no estimated 1RM to stall on.
+      out.push({ day: d, e1rm: this.isTimed(name) ? null : sessionE1rm(sets), top: topKg(sets.filter(S.isStraightSet)) });
     }
     return out;
   }
@@ -1306,11 +1365,23 @@ export class GymStore {
     if (!this.demo) lsSet(NOT_NOW_KEY, { user: this.user?.id, lifts: this.notNow });
     this.changed();
   }
-  // Working sets only: a warm-up never sets a record or counts toward volume.
+  // Working sets only: a warm-up never sets a record or counts toward volume. A hold's reps are seconds (`timed`).
   liftSets(d: DayKey) {
     return Object.entries(this.logs[d]?.exercises || {})
       .filter(([, r]) => r && !r.skipped)
-      .map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r).filter(S.isWorkingSet) }));
+      .map(([key, r]) => {
+        const name = performed(key, r);
+        return { name, sets: setsOf(r).filter(S.isWorkingSet), ...(this.isTimed(name) ? { timed: true } : {}) };
+      });
+  }
+  /** Whether lift `name` is held for time (PlanExercise.timed), as the plan's lift of that name says. */
+  isTimed(name: string): boolean {
+    return !!this.planLift(name)?.timed;
+  }
+  /** How lift `name` counts its reps: seconds for a hold, each side, or plain reps; through plan lift `x` when it's
+   *  the one done, else the plan's lift of that name. */
+  unitOf(name: string, x?: PlanExercise | null): RepUnit {
+    return repUnit(x && x.name === name ? x : this.planLift(name));
   }
   // Records set in the `n` days up to and including k. Earlier days are only folded in, not checked.
   recentRecords(k: DayKey, n: number): S.LiftRecord[] {
@@ -1713,9 +1784,9 @@ export class GymStore {
   }
   resetPlan() {
     // Your own lifts stay, as they name lifts in your history, and so does My gym, which is where you train: its
-    // equipment, and its bars, plates and weights.
-    const { custom, gym, weights, barKg, plateKgs } = this.plan;
-    this.plan = { ...copy(DEFAULT_PLAN), barKg, plateKgs: plateKgs.slice(), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}), ...(weights ? { weights } : {}) };
+    // equipment, and its bars, plates and weights. Favourites stay too.
+    const { custom, gym, weights, barKg, plateKgs, favs } = this.plan;
+    this.plan = { ...copy(DEFAULT_PLAN), barKg, plateKgs: plateKgs.slice(), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}), ...(weights ? { weights } : {}), ...(favs ? { favs } : {}) };
     this.planChanged(true);
   }
   /** Starts the plan over from a template (src/data/templates): its sessions, lifts, warm-ups and tempo. The goals
@@ -1724,6 +1795,15 @@ export class GymStore {
     const { tempo, warmups, days } = copy(t);
     this.plan = { ...this.plan, tempo, warmups, days };
     this.planChanged(true);
+  }
+  /** A plan shared from another Gym Log (lib/planShare.ts), as a template is taken: its sessions, lifts, warm-ups and
+   *  tempo, and the lifts of its own it names that you haven't a lift of that name for. Your goals, My gym and your
+   *  favourites stay. Saved like any edit. */
+  adoptPlan(shared: Record<string, unknown>) {
+    const p = normalizePlan(shared, DEFAULT_PLAN), mine = new Set((this.plan.custom ?? []).map((c) => c.name.toLowerCase()));
+    const add = (Array.isArray(shared.custom) ? normalizeCustom(shared.custom) : []).filter((c) => !mine.has(c.name.toLowerCase()));
+    this.startFrom(p);
+    if (add.length) this.editPlan((q) => void (q.custom = normalizeCustom([...(q.custom ?? []), ...add])));
   }
   /** A new account (no plan saved in Supabase, nothing logged) chooses a plan before anything else: "choose". "wait"
    *  while that can't be told yet: this phone has nothing for the account and the first load isn't back. Otherwise
@@ -1989,6 +2069,55 @@ export class GymStore {
     // The plan is named when the file has one of its own, or when its default replaced another.
     const done = `Imported ${backupWords(b.logs.length, plan !== null && (newPlan || b.plan !== "default"), saved ? health : 0)}.`;
     return saved ? done : `${done} The Health Connect days couldn’t be saved: import the file again when you’re online.`;
+  }
+  /** Workouts from another app's CSV (Strong, Hevy, FitNotes; lib/importers.ts), added to the log: an empty day gets
+   *  the workout as a free-form one, under its name there; a day with something logged gets its lifts beside what's
+   *  there. A lift already logged that day is never replaced: it's kept as it is, and counted. A lift's name is the
+   *  plan's, your own or the library's when one of those has it in any case, so its history joins theirs. Saved and
+   *  synced as any edit is. Returns what to show. */
+  async importOtherApp(file: File): Promise<string> {
+    let got: OtherAppImport;
+    try {
+      got = readOtherApp(await file.text());
+    } catch (err) {
+      return `That file couldn’t be imported: ${(err as Error).message.replace(/\.$/, "")}. In the other app, export your workouts as CSV, then choose that file.`;
+    }
+    const known = new Map<string, string>();
+    for (const d of this.plan.days) for (const x of d.exercises) known.set(x.name.toLowerCase(), x.name);
+    for (const c of this.plan.custom ?? []) known.set(c.name.toLowerCase(), c.name);
+    const nameOf = (n: string) => known.get(n.trim().toLowerCase()) ?? libraryNamed(n)?.name ?? n.trim();
+    let workouts = 0, kept = 0, sets = 0;
+    for (const d of got.days) {
+      const n = this.clone(d.day), empty = !Object.keys(n.exercises).length && !n.free, added: string[] = [];
+      for (const l of d.lifts) {
+        const name = nameOf(l.name);
+        if (n.exercises[name] || added.includes(name)) {
+          kept++;
+          continue;
+        }
+        n.exercises[name] = { done: true, kg: topKg(l.sets), sets: l.sets };
+        added.push(name);
+        sets += l.sets.length;
+      }
+      if (!added.length) continue;
+      // A workout came in for the day, so it wasn't skipped after all.
+      delete n.skip;
+      if (empty) n.free = { name: d.title, lifts: added };
+      else if (n.free) n.free.lifts.push(...added);
+      this.logs[d.day] = n;
+      this.pending[d.day] = n;
+      workouts++;
+    }
+    this.logsChanged();
+    this.persistLocal();
+    this.changed();
+    await this.flush();
+    const parts = [
+      `Imported ${plural(workouts, "workout")} from ${got.app}, ${plural(sets, "set")} in all.`,
+      kept ? `${plural(kept, "lift")} already logged on ${kept === 1 ? "its day was" : "their days were"} kept as ${kept === 1 ? "it was" : "they were"}.` : "",
+      got.leftOut ? `${plural(got.leftOut, "set")} with only a time or a distance ${got.leftOut === 1 ? "was" : "were"} left out.` : "",
+    ];
+    return parts.filter(Boolean).join(" ");
   }
   /** Health Connect days from a backup, into Supabase: only the days it doesn't have, since the ones it has may be
    *  newer. This device's copy then comes from Supabase, as always. Returns whether they were saved; unsaved, none are

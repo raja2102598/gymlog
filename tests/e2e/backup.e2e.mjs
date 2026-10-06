@@ -55,6 +55,20 @@ export default async function backup({ browser, base, check }) {
     await page.setInputFiles("#importFile", { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
     await until(async () => /couldn’t be imported/.test(await page.textContent("#dataMsg")));
     check("import: a wrong file says what to do next", /Choose a \.json file exported from Gym Log\.$/.test(await page.textContent("#dataMsg")), await page.textContent("#dataMsg"));
+
+    // From another app: Hevy's CSV, a workout on a day with nothing logged, which comes in as a free-form workout.
+    const hevy = [
+      '"title","start_time","end_time","description","exercise_title","superset_id","exercise_notes","set_index","set_type","weight_kg","reps","distance_km","duration_seconds","rpe"',
+      '"Upper","3 Jul 2026, 18:05","3 Jul 2026, 19:10","","Lat Pulldown (Cable)","","","0","normal","55","10","","",""',
+      '"Upper","3 Jul 2026, 18:05","3 Jul 2026, 19:10","","Lat Pulldown (Cable)","","","1","normal","55","9","","",""',
+    ].join("\n");
+    await page.setInputFiles("#importOtherFile", { name: "workouts.csv", mimeType: "text/csv", buffer: Buffer.from(hevy) });
+    await until(async () => /from Hevy/.test(await page.textContent("#dataMsg")) && db.logs["2026-07-03"] != null);
+    check(
+      "import from another app: Hevy's workout, as a free-form one by its name, saved",
+      (await page.textContent("#dataMsg")) === "Imported 1 workout from Hevy, 2 sets in all." && db.logs["2026-07-03"]?.free?.name === "Upper" && db.logs["2026-07-03"]?.exercises?.["Lat Pulldown (Cable)"]?.sets?.length === 2,
+      `${await page.textContent("#dataMsg")} ${JSON.stringify(db.logs["2026-07-03"])}`,
+    );
     await ctx.close();
   }
 

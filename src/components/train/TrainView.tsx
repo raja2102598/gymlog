@@ -54,7 +54,7 @@ export function TrainView({ sel, onSelect, onStart, onOpenPlan, onOpenGym, onOpe
       />
       <div className="screen">
         <DayChips sel={sel} onSelect={onSelect} />
-        <Session key={sel} sel={sel} onStart={onStart} focusNext={focusNext} />
+        <Session key={sel} sel={sel} onStart={onStart} onSelect={onSelect} focusNext={focusNext} />
         <div className="grid2">
           <LibraryTile sel={sel} focusNext={focusNext} />
           <ViewLink className="card link-tile" id="gymTile" href="#gym" onOpen={onOpenGym}>
@@ -129,7 +129,7 @@ function useAddLifts(sel: DayKey, focusNext: FocusNext, suggest = false) {
 
 /* ---------- the session ---------- */
 
-function Session({ sel, onStart, focusNext }: { sel: DayKey; onStart: (at: number | null) => void; focusNext: FocusNext }) {
+function Session({ sel, onStart, onSelect, focusNext }: { sel: DayKey; onStart: (at: number | null) => void; onSelect: (k: DayKey) => void; focusNext: FocusNext }) {
   const store = useGym();
   const plan = store.plan, p = store.planFor(sel), e = store.entry(sel);
   const blocks = store.liftBlocks(sel);
@@ -275,7 +275,59 @@ function Session({ sel, onStart, focusNext }: { sel: DayKey; onStart: (at: numbe
         </label>
       ) : null}
       {!free && slot !== own ? <p className="note moved">Usually {plan.days[own].name} · changed for this day</p> : null}
+      {store.worked(sel) || free ? <MoveWorkout sel={sel} onSelect={onSelect} focusNext={focusNext} /> : null}
     </section>
+  );
+}
+
+/** Logged on the wrong day: moves the day's workout to another, then shows it there. Folded until asked for. */
+function MoveWorkout({ sel, onSelect, focusNext }: { sel: DayKey; onSelect: (k: DayKey) => void; focusNext: FocusNext }) {
+  const store = useGym();
+  const [open, setOpen] = useState(false);
+  const [to, setTo] = useState(sel);
+  const [msg, setMsg] = useState("");
+  const move = (ev: FormEvent<HTMLFormElement>) => {
+    ev.preventDefault();
+    const why = store.moveWorkout(sel, to);
+    if (why) return setMsg(why);
+    onSelect(to);
+    focusNext("#sessName, #freeName");
+  };
+  if (!open)
+    return (
+      <Button size="sm" id="moveOpen" className="move-open" onClick={() => setOpen(true)}>
+        Move to another day
+      </Button>
+    );
+  return (
+    <form className="move-w" id="moveForm" onSubmit={move}>
+      <label className="field" htmlFor="moveTo">
+        <span>Move this workout to</span>
+        <input
+          id="moveTo"
+          type="date"
+          value={to}
+          max={todayKey()}
+          onChange={(ev) => {
+            setTo(ev.target.value);
+            setMsg("");
+          }}
+        />
+      </label>
+      <div className="btn-row">
+        <Button type="submit" variant="primary" id="moveGo" disabled={!to}>
+          Move
+        </Button>
+        <Button type="button" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+      {msg ? (
+        <p className="note" id="moveMsg" role="status">
+          {msg}
+        </p>
+      ) : null}
+    </form>
   );
 }
 

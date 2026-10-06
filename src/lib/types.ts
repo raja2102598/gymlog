@@ -9,14 +9,15 @@ import type { Equip, Load, Muscle } from "./library";
 /** "YYYY-MM-DD" in the phone's local time. */
 export type DayKey = string;
 
-export type SetType = "warmup" | "drop" | "failure";
+export type SetType = "warmup" | "drop" | "restpause" | "failure";
 export type Effort = "off" | "rpe" | "rir";
 export interface SetLog {
   reps: number | null;
   kg: number | null;
   /** What kind of set: unset (older sets too) is a working set. A warm-up counts toward nothing: not the planned
    *  sets, records or volume. A drop set is volume only: it doesn't count toward the planned sets, the go-up rule
-   *  or a record. A set to failure counts as a working set does. */
+   *  or a record, and nor does a rest-pause burst (a few more reps after a short rest, at the same weight). A set to
+   *  failure counts as a working set does. */
   type?: SetType;
   /** How hard it was, when the plan logs effort (Plan.effort): RPE 1-10, or reps in reserve 0-10. */
   rpe?: number;
@@ -191,15 +192,24 @@ export interface PlanExercise {
    *  left out rather than false, as `rest` is. */
   superset?: boolean;
   /** How its weight goes up: unset for double progression (every set at the top of the rep range, then add the
-   *  step), "linear" (add the step each session every set reaches the bottom of it), or "percent" (`pct` percent of
-   *  a stored 1RM, `oneRm` kg). Each left out until set, as `rest` is. */
-  prog?: "linear" | "percent";
+   *  step), "linear" (add the step each session every set reaches the bottom of it), "percent" (`pct` percent of
+   *  a stored 1RM, `oneRm` kg), "greyskull" (Greyskull LP: the last set as many reps as you can, a double step once it
+   *  doubles the bottom of the range, and 10% off when a set falls short), or "time" (a hold: `stepSec` seconds more a
+   *  session, 5 when empty, rather than more weight). Each left out until set, as `rest` is. */
+  prog?: "linear" | "percent" | "greyskull" | "time";
   oneRm?: string;
   pct?: string;
+  stepSec?: string;
   /** A simple deload, with any rule: after `deloadAfter` sessions in a row short of the rep range, take
    *  `deloadPct` percent off (10 when empty). Off while `deloadAfter` is empty. */
   deloadAfter?: string;
   deloadPct?: string;
+  /** Held for time rather than done for reps (a plank, a hang, a carry): `reps` is then seconds, as is what each set
+   *  logs in its `reps`. A hold has no estimated 1RM or volume. Left out rather than false, as `superset` is. */
+  timed?: true;
+  /** Reps counted on each side (a lunge, a one-arm row): what each set logs is one side's, and says so. Left out
+   *  rather than false. */
+  perSide?: true;
   /** The exercise library's lift this is (lib/library.ts), when its name isn't exactly that lift's: its muscles
    *  and equipment. Left out for a lift of your own, or one named as the library names it. */
   lib?: string;
@@ -252,6 +262,9 @@ export interface Plan {
   gym?: Gym;
   /** My gym's weights beyond the barbell's. Left out until one's changed, when each is its default. */
   weights?: Weights;
+  /** Favourite lifts, starred in the exercise library, by library id ("custom:" and the name for one of your own): first
+   *  in its list, and a chip of their own. Left out until there's one, so older plans round-trip. */
+  favs?: string[];
 }
 
 /** My gym: the equipment it hasn't got, so equipment the app adds later starts on, and lifts the library always
