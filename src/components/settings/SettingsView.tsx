@@ -14,6 +14,7 @@ import { useSpeechSupported, useVoicePref } from "@/hooks/useVoice";
 import { setAwakePref } from "@/lib/awake";
 import { backupWords, CSV_COLUMNS, toCsv } from "@/lib/backup";
 import { todayKey } from "@/lib/dates";
+import { download } from "@/lib/files";
 import { fmt, plural, syncedWhen } from "@/lib/format";
 import { isNative } from "@/lib/native";
 import { switchVoice } from "@/lib/speech";
@@ -635,17 +636,6 @@ function Password() {
 }
 
 /* ---------- data ---------- */
-
-/** Hands `text` to the browser as a file to download. */
-function download(name: string, type: string, text: string) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}
 
 function Data({ first, demo }: { first: string; demo: boolean }) {
   const store = useGym();

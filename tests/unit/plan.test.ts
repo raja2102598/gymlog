@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { planHtml, readSharedPlan, sharedPlan } from "@/lib/planShare";
 import { DEFAULT_PLAN, DEFAULT_WEIGHTS, normalizeCustom, normalizeGym, normalizePlan, normalizeWeights } from "@/lib/plan";
 import { atWednesdayNoon, storeWith } from "./helpers";
 
@@ -110,3 +111,51 @@ describe("Reset to the default plan", () => {
     expect([s.plan.stepGoal, s.plan.days[0].name]).toEqual([DEFAULT_PLAN.stepGoal, DEFAULT_PLAN.days[0].name]);
   });
 });
+
+describe("a shared plan", () => {
+  it("carries the sessions, lifts, warm-ups, tempo and your own lifts they name, and nothing else", () => {
+    const s = storeWith();
+    s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] });
+    s.saveCustom({ name: "Not In Plan", equip: [], primary: [], secondary: [] });
+    s.saveCustom({ name: "Prowler", equip: ["other"], primary: ["calves"], secondary: [] });
+    s.editPlan((p) => {
+      p.days[2].exercises.push({ name: "Sled Push", sets: "3", reps: "20", cue: "", flag: "", step: "", knee: false });
+      p.days[4].exercises.push({ name: "Prowler", sets: "2", reps: "30", cue: "", flag: "", step: "", knee: false });
+      p.stepGoal = 12000;
+    });
+    s.setEquip(false, "smith");
+    const f = sharedPlan(s.plan);
+    expect([f.format, f.version, Object.keys(f.plan).sort(), f.plan.custom?.map((c) => c.name).sort()]).toEqual(["gymlog-plan", 1, ["custom", "days", "tempo", "warmups"], ["Prowler", "Sled Push"]]);
+
+    // Another account takes it: its sessions and the lift of its own it's missing (Prowler); its own goals, gym and its
+    // own Sled Push stay.
+    const t = storeWith();
+    t.saveCustom({ name: "Sled Push", equip: ["sled" as never], primary: ["glutes"], secondary: [] });
+    t.editPlan((p) => void (p.stepGoal = 8000));
+    t.adoptPlan(readSharedPlan(JSON.stringify(f)));
+    expect(t.plan.days[2].exercises.at(-1)?.name).toBe("Sled Push");
+    expect([t.plan.stepGoal, t.plan.gym, t.plan.custom?.map((c) => [c.name, c.primary])]).toEqual([8000, undefined, [["Sled Push", ["glutes"]], ["Prowler", ["calves"]]]]);
+  });
+
+  it("refuses a file that isn't one, or is from a newer Gym Log", () => {
+    expect(() => readSharedPlan("{")).toThrow("it isn’t a plan shared from Gym Log");
+    expect(() => readSharedPlan(JSON.stringify({ format: "gymlog-backup", version: 1 }))).toThrow("it isn’t a plan shared from Gym Log");
+    expect(() => readSharedPlan(JSON.stringify({ format: "gymlog-plan", version: 2, plan: { days: [] } }))).toThrow("it comes from a newer version of Gym Log");
+    expect(() => readSharedPlan(JSON.stringify({ format: "gymlog-plan", version: 1, plan: {} }))).toThrow("its plan can’t be read");
+  });
+
+  it("prints a table a day, rest days named, each lift's target, rest and notes, safe from what was typed", () => {
+    const s = storeWith();
+    s.editPlan((p) => {
+      Object.assign(p.days[2].exercises[2], { timed: true, reps: "30-45", rest: "60", cue: "Slow <down>" });
+      p.days[2].exercises[3].superset = true;
+    });
+    const html = planHtml(s.plan, "Raja's plan");
+    expect(html).toContain("<title>Raja's plan</title>");
+    expect(html).toContain("<h2>Wed · Legs</h2>");
+    expect(html).toContain("<td>Leg Extension</td><td>3 × 30–45 s</td><td>60 s</td><td class=\"n\">Slow &lt;down&gt; · KNEE NOTE: light, skip if painful</td>");
+    expect(html).toMatch(/<td>Hamstring Curl<\/td><td>3 × 10–12<\/td><td><\/td><td class="n">Superset with the lift above/);
+    expect((html.match(/· Rest<\/h2>/g) ?? []).length).toBe(s.plan.days.filter((d) => !d.exercises.length).length);
+  });
+});
+

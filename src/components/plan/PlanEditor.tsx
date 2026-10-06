@@ -1,6 +1,6 @@
 "use client";
 import { ChevronDown } from "lucide-react";
-import { useState, type InputHTMLAttributes } from "react";
+import { useRef, useState, type ChangeEvent, type InputHTMLAttributes } from "react";
 import { ask } from "@/components/ds/Ask";
 import { useFocusNext } from "@/hooks/useFocusNext";
 import { useGym } from "@/hooks/useGym";
@@ -9,7 +9,10 @@ import { cx } from "@/lib/cx";
 import { DOW } from "@/lib/dates";
 import { num } from "@/lib/format";
 import { equipText, equipWords, isLoad, loadOf, LOADS, muscleText, type Exercise, type Load } from "@/lib/library";
+import { shareFile } from "@/lib/files";
 import { planBlocks } from "@/lib/plan";
+import { planHtml, readSharedPlan, sharedPlan } from "@/lib/planShare";
+import { printHtml } from "@/lib/print";
 import type { ProgRule } from "@/lib/stats";
 import type { Plan, PlanExercise } from "@/lib/types";
 import { TemplateList } from "./TemplateList";
@@ -597,7 +600,56 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
             store.startFrom(t.plan);
           }}
         />
+        <SharePlan />
       </section>
+    </div>
+  );
+}
+
+/** The plan shared as a file another Gym Log can start from, printed (or saved as a PDF), or a shared one taken in
+ *  place of this one, after asking, as a template is. */
+function SharePlan() {
+  const store = useGym();
+  const file = useRef<HTMLInputElement>(null);
+  const [msg, setMsg] = useState("");
+  const share = async () => {
+    const how = await shareFile("gym-log-plan.json", "application/json", JSON.stringify(sharedPlan(store.plan), null, 1), "My Gym Log plan");
+    setMsg(how === "shared" ? "Plan shared." : how === "downloaded" ? "Plan saved as gym-log-plan.json. Send it to anyone with Gym Log: they open it with Use a shared plan." : "");
+  };
+  const print = () => void printHtml(planHtml(store.plan), "Gym Log plan").catch(() => setMsg("Couldn’t open printing on this phone."));
+  const use = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const f = ev.currentTarget.files?.[0];
+    ev.currentTarget.value = "";
+    if (!f) return;
+    let shared: Record<string, unknown>;
+    try {
+      shared = readSharedPlan(await f.text());
+    } catch (err) {
+      setMsg(`That file couldn’t be used: ${(err as Error).message}. Choose a plan shared from Gym Log.`);
+      return;
+    }
+    if (!(await ask("Replace your sessions, lifts, warm-ups and tempo with the shared plan?", "Replace", { body: "Your goals, My gym and the days you’ve already logged are kept.", danger: true }))) return setMsg("Nothing changed.");
+    store.adoptPlan(shared);
+    setMsg("Using the shared plan.");
+  };
+  return (
+    <div className="pe-share">
+      <h3 className="pe-h">Share</h3>
+      <div className="pe-btns">
+        <button className="ghost" id="pe_share" onClick={() => void share()}>
+          Share this plan
+        </button>
+        <button className="ghost" id="pe_print" onClick={print}>
+          Print or save as PDF
+        </button>
+        <button className="ghost" id="pe_use" onClick={() => file.current?.click()}>
+          Use a shared plan
+        </button>
+      </div>
+      <input type="file" id="pe_useFile" accept="application/json,.json" hidden ref={file} onChange={(ev) => void use(ev)} />
+      <p className="note" id="pe_shareMsg" role="status">
+        {msg}
+      </p>
     </div>
   );
 }

@@ -1796,6 +1796,15 @@ export class GymStore {
     this.plan = { ...this.plan, tempo, warmups, days };
     this.planChanged(true);
   }
+  /** A plan shared from another Gym Log (lib/planShare.ts), as a template is taken: its sessions, lifts, warm-ups and
+   *  tempo, and the lifts of its own it names that you haven't a lift of that name for. Your goals, My gym and your
+   *  favourites stay. Saved like any edit. */
+  adoptPlan(shared: Record<string, unknown>) {
+    const p = normalizePlan(shared, DEFAULT_PLAN), mine = new Set((this.plan.custom ?? []).map((c) => c.name.toLowerCase()));
+    const add = (Array.isArray(shared.custom) ? normalizeCustom(shared.custom) : []).filter((c) => !mine.has(c.name.toLowerCase()));
+    this.startFrom(p);
+    if (add.length) this.editPlan((q) => void (q.custom = normalizeCustom([...(q.custom ?? []), ...add])));
+  }
   /** A new account (no plan saved in Supabase, nothing logged) chooses a plan before anything else: "choose". "wait"
    *  while that can't be told yet: this phone has nothing for the account and the first load isn't back. Otherwise
    *  null, and an account without a plan of its own uses the default one, as it always has. */

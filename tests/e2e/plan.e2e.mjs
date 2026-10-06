@@ -3,7 +3,7 @@
 // numbers and Strength on Progress then follow. It opens a renamed lift's page, so it runs with the other suites that
 // do when that page or its charts change.
 import fs from "node:fs";
-import { K, TAB_VIEWS, answerAsk, clearAsked, flat, lastAsked, open, openSetting, openTab, openWorkout, planDone, ready, session, until } from "./harness.mjs";
+import { K, TAB_VIEWS, answerAsk, clearAsked, flat, lastAsked, onDefaultPlan, open, openSetting, openTab, openWorkout, planDone, ready, session, until } from "./harness.mjs";
 
 export const covers = ["src/components/dashboard/LiftDetail.tsx", "src/components/health/Bars.tsx", "src/components/health/Trend.tsx", "src/lib/scale.ts"];
 
@@ -31,6 +31,43 @@ export default async function plan(t) {
   await renaming(t);
   await progressionRules(t);
   await howSetsCount(t);
+  await sharing(t);
+}
+
+// The plan shared as a file, printed, and a shared one used in place of this one. What a file holds, and what using
+// one keeps, are in plan.test.ts.
+async function sharing({ browser, base, check }) {
+  const auth = session("00000000-0000-4000-8000-000000000062", "2026-08-26T05:00:00Z", "t@example.com");
+  const { ctx, page } = await open(browser, base, { auth, db: onDefaultPlan() });
+  await ready(page);
+  await openTab(page, "train");
+  await page.click("#changePlan");
+  await page.waitForSelector("#planView");
+  // No share sheet for files here (as in the Android app's WebView): the file downloads.
+  await page.evaluate(() => Object.defineProperty(navigator, "canShare", { value: undefined }));
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#pe_share")]);
+  const shared = JSON.parse(fs.readFileSync(await dl.path(), "utf8"));
+  check("Share this plan saves it as a file", dl.suggestedFilename() === "gym-log-plan.json" && shared.format === "gymlog-plan" && shared.plan.days[2].name === "Legs" && !("stepGoal" in shared.plan), dl.suggestedFilename());
+  check("and says what to do with it", /Use a shared plan/.test(await flat(page.locator("#pe_shareMsg"))), await flat(page.locator("#pe_shareMsg")));
+  // Printing: the page goes to a hidden frame, whose print dialog saves a PDF too.
+  await page.evaluate(() => {
+    window.__printed = "";
+    new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => n.tagName === "IFRAME" && (window.__printed = n.srcdoc)))).observe(document.body, { childList: true });
+  });
+  await page.click("#pe_print");
+  await until(() => page.evaluate(() => !!window.__printed));
+  const printed = await page.evaluate(() => window.__printed);
+  check("Print or save as PDF lays the plan out a table a day", printed.includes("<h2>Wed · Legs</h2>") && printed.includes("<td>Leg Press</td><td>3 × 10–12</td>"), printed.slice(0, 120));
+  // A friend's plan: Legs renamed, used in place of this one once you say so.
+  shared.plan.days[2].name = "Leg day";
+  await page.setInputFiles("#pe_useFile", { name: "gym-log-plan.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(shared)) });
+  await until(async () => (await flat(page.locator("#pe_shareMsg"))) === "Using the shared plan.");
+  check("Use a shared plan asks, then takes its sessions", /Replace your sessions, lifts, warm-ups and tempo with the shared plan\?/.test(await lastAsked(page)) && (await page.inputValue("#pe_name")) === "Leg day", await lastAsked(page));
+  await page.setInputFiles("#pe_useFile", { name: "notes.json", mimeType: "application/json", buffer: Buffer.from("{}") });
+  await until(async () => /couldn’t be used/.test(await flat(page.locator("#pe_shareMsg"))));
+  check("a file that isn't one says so", (await flat(page.locator("#pe_shareMsg"))) === "That file couldn’t be used: it isn’t a plan shared from Gym Log. Choose a plan shared from Gym Log.", await flat(page.locator("#pe_shareMsg")));
+  check("sharing: no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
 }
 
 // How a lift counts its sets: held for time, its reps seconds (a plank), or reps each side (a lunge). Saved with the
