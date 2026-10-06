@@ -81,17 +81,19 @@ export function tintOf(store: GymStore, name: string, x?: Pick<PlanExercise, "li
 }
 
 /** A day's lifting in numbers: working sets logged and planned, and kg lifted (weight × reps of every working set: a
- *  drop set adds to it, as it does to a lift's volume on Progress, and a warm-up never does). */
+ *  drop set adds to it, as it does to a lift's volume on Progress, and a warm-up never does; nor does a hold, whose
+ *  reps are seconds). */
 export function dayTotals(store: GymStore, k: DayKey): { sets: number; planned: number; kg: number } {
   const e = store.entry(k);
   let sets = 0, planned = 0, kg = 0;
   for (const it of store.liftsFor(k)) {
     const r = e.exercises[it.name];
     if (!it.extra && !r?.skipped) planned += minSets(targetOf(r, it.x));
+    const held = store.isTimed(performed(it.name, r));
     for (const s of setsOf(r)) {
       if (!isWorkingSet(s) || !(s.reps ?? 0)) continue;
       sets++;
-      if (s.kg) kg += s.kg * (s.reps ?? 0);
+      if (s.kg && !held) kg += s.kg * (s.reps ?? 0);
     }
   }
   return { sets, planned, kg: Math.round(kg) };

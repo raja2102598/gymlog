@@ -186,7 +186,7 @@ describe("Complete set N", () => {
 // Workout complete (CompleteView.tsx): the day's numbers, the heart rate the watch measured, and whether the day's
 // workout is done at all (Train's Review, and no clock started when it's opened again).
 describe("what a session adds up to", () => {
-  it("counts the working sets logged against the planned ones, and the kg lifted in every one of them, drop sets too, never a warm-up", () => {
+  it("counts the working sets logged against the planned ones, and the kg lifted in every one of them, drop sets too, never a warm-up or a hold", () => {
     const s = storeWith({
       [WED]: day({
         exercises: {
@@ -204,6 +204,9 @@ describe("what a session adds up to", () => {
       planned: 3 + 4 + 3 + 3, // Hack Squat, Leg Extension (its own 4), Hamstring Curl, Calf Raise: not the skipped Leg Press
       kg: 1160 + 972 + 225 + 240,
     });
+    // Leg Extension held for time: its reps are seconds, so its sets count but add no kg lifted.
+    s.plan.days[2].exercises[2].timed = true;
+    expect(dayTotals(s, WED)).toMatchObject({ sets: 3 + 4 + 1, kg: 1160 + 240 });
   });
 
   it("names each lift's best record of the day, by what was done: of its record sets, the best estimated 1RM", () => {
