@@ -98,6 +98,36 @@ export interface PlanModel {
   heat: { day: DayKey; cls: HeatClass }[][];
 }
 
+/** What day k was for the workout, as of today `t`: workout days only, since steps and weigh-ins have their own cards. */
+export function heatClass(store: GymStore, t: DayKey, k: DayKey, start = store.firstDay()): HeatClass {
+  if (k > t) return "fut";
+  if (k < start) return "pre";
+  const p = store.planFor(k), n = p.exercises.filter((x) => store.entry(k).exercises[x.name]?.done).length;
+  if (!p.exercises.length || store.entry(k).skip != null) return "rest";
+  return n === p.exercises.length ? "done" : n || store.worked(k) ? "part" : k < t ? "miss" : "todo";
+}
+
+/** How far back Consistency looks: about a month (the default), three or six months, or a year. */
+export type HeatRange = "month" | "3m" | "6m" | "year";
+export const HEAT_WEEKS: Record<HeatRange, number> = { month: 5, "3m": 13, "6m": 26, year: 52 };
+
+export interface HeatModel {
+  /** Whole weeks, Monday to Sunday, oldest first, ending with this one. */
+  weeks: { day: DayKey; cls: HeatClass }[][];
+  /** Days up to today with a full workout, some lifts, or a missed one. */
+  done: number;
+  part: number;
+  miss: number;
+}
+
+/** Consistency over `range`: whole weeks back from this one, each day's workout as Progress colours it. */
+export function heatModel(store: GymStore, t: DayKey, range: HeatRange): HeatModel {
+  const start = store.firstDay(), first = addDays(mondayOf(t), -7 * (HEAT_WEEKS[range] - 1));
+  const weeks = Array.from({ length: HEAT_WEEKS[range] }, (_, w) => DOW.map((_, i) => addDays(first, 7 * w + i)).map((day) => ({ day, cls: heatClass(store, t, day, start) })));
+  const all = weeks.flat(), n = (c: HeatClass) => all.filter((d) => d.cls === c).length;
+  return { weeks, done: n("done"), part: n("part"), miss: n("miss") };
+}
+
 export function planModel(store: GymStore, t: DayKey): PlanModel {
   const start = store.firstDay(), mon = mondayOf(t), weeks = [];
   for (let m = mondayOf(start); m <= mon; m = addDays(m, 7)) weeks.push({ mon: m, ...store.weekSessions(m) });
@@ -107,14 +137,7 @@ export function planModel(store: GymStore, t: DayKey): PlanModel {
     else if (weeks[i].mon !== mon) break;
   }
   const recent = weeks.slice(-12), tw = weeks[weeks.length - 1], wk = tw.days.filter((k) => k <= t && k >= start);
-  // Workout days only: steps and weigh-ins have their own cards.
-  const cls = (k: DayKey): HeatClass => {
-    if (k > t) return "fut";
-    if (k < start) return "pre";
-    const p = store.planFor(k), n = p.exercises.filter((x) => store.entry(k).exercises[x.name]?.done).length;
-    if (!p.exercises.length || store.entry(k).skip != null) return "rest";
-    return n === p.exercises.length ? "done" : n || store.worked(k) ? "part" : k < t ? "miss" : "todo";
-  };
+  const cls = (k: DayKey) => heatClass(store, t, k, start);
   return {
     week: { done: tw.done, planned: tw.planned, extra: tw.extra },
     streak,

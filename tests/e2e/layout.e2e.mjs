@@ -207,7 +207,7 @@ export default async function layout({ browser, base, check }) {
     check("Progress warnings: dark amber text on the warning tint (7:1)", warn.c === "rgb(146, 64, 14)" && warn.bg === "rgb(254, 243, 199)", JSON.stringify(warn));
     const part = await page.$eval("#dashPlan .legend i.part", (e) => getComputedStyle(e).backgroundColor);
     check("consistency: some-lifts days are a lighter brand, not the full workout colour", part === "rgb(255, 210, 184)", part);
-    const monCell = await page.$eval("#dashPlan .cons .cell:nth-child(12)", (e) => e.className);
+    const monCell = await page.$eval('#dashPlan .cons .cell[data-day="2026-09-21"]', (e) => e.className);
     check("consistency: Monday's cell is part done", /\bpart\b/.test(monCell), monCell);
     await ctx.close();
   }

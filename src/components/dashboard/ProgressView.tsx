@@ -7,7 +7,7 @@ import { ChartCard, Stat } from "@/components/health/parts";
 import { History } from "@/components/today/History";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
-import { healthModel, HEAT_WORDS, kneeModel, musclesModel, planModel, stepsModel, strengthModel, weightModel, type HeatClass, type StrengthRow } from "@/lib/dashboard";
+import { healthModel, heatModel, HEAT_WORDS, kneeModel, musclesModel, planModel, stepsModel, strengthModel, weightModel, type HeatClass, type HeatRange, type StrengthRow } from "@/lib/dashboard";
 import { addDays, dm, mondayOf, parseKey, todayKey } from "@/lib/dates";
 import { fmt, plural } from "@/lib/format";
 import { hashOf } from "@/lib/route";
@@ -157,29 +157,61 @@ function WeightTrendCard() {
 const CELL: Record<HeatClass, string> = { done: "done", part: "part", miss: "miss", todo: "todo", rest: "rest", fut: "fut", pre: "pre" };
 
 /** The last 14 days as squares (Consistency): a full workout, a partial one, rest, missed; today outlined. */
+const RANGE_KEY = "gymlog.consRange.v1";
+const RANGE_WORDS: Record<HeatRange, string> = { month: "Last 5 weeks", "3m": "Last 3 months", "6m": "Last 6 months", year: "Last year" };
+const savedRange = (): HeatRange => {
+  try {
+    const v = localStorage.getItem(RANGE_KEY);
+    return v === "3m" || v === "6m" || v === "year" ? v : "month";
+  } catch {
+    return "month";
+  }
+};
+
+/** Consistency: each day's workout over about a month, as a calendar with its dates, or over three months, six or a
+ *  year, as a heatmap of weeks, Monday at the top. The range is this phone's choice, kept like Progress's tab. */
 function Consistency({ t }: { t: DayKey }) {
   const store = useGym();
   const plan = planModel(store, t);
-  const byDay = new Map(plan.heat.flat().map((c) => [c.day, c.cls]));
-  const days = Array.from({ length: 14 }, (_, i) => addDays(t, i - 13));
+  const [range, pick] = useState<HeatRange>(savedRange);
+  const choose = (v: HeatRange) => {
+    pick(v);
+    try {
+      localStorage.setItem(RANGE_KEY, v);
+    } catch {
+      /* not kept */
+    }
+  };
+  const heat = heatModel(store, t, range), month = range === "month";
   const { done, planned, weeks } = plan.recent;
+  const cell = (d: { day: DayKey; cls: HeatClass }) => (
+    <span key={d.day} data-day={d.day} className={cx("cell", CELL[d.cls], d.day === t && "now")} title={`${dm(d.day)}: ${HEAT_WORDS[d.cls]}`}>
+      {month ? parseKey(d.day).getDate() : null}
+    </span>
+  );
   return (
     <section className="card" id="dashPlan" aria-labelledby="consH">
       <div className="card-h">
         <h2 id="consH">Consistency</h2>
-        <span className="label">last 14 days</span>
+        <span className="label">{`since ${dm(heat.weeks[0][0].day)}`}</span>
       </div>
-      <div className="cons" role="img" aria-label={`Last 14 days: ${days.filter((k) => byDay.get(k) === "done").length} full workouts, ${days.filter((k) => byDay.get(k) === "part").length} partial, ${days.filter((k) => byDay.get(k) === "miss").length} missed.`}>
-        {days.map((k) => {
-          const cls = byDay.get(k) ?? "pre";
-          return (
-            <span key={k} className={cx("cell", CELL[cls], k === t && "now")} title={`${dm(k)}: ${HEAT_WORDS[cls]}`}>
-              {parseKey(k).getDate()}
-            </span>
-          );
-        })}
+      <SegmentedControl
+        id="consRange"
+        value={range}
+        label="How far back"
+        onChange={choose}
+        options={[
+          ["month", "Month"],
+          ["3m", "3 months"],
+          ["6m", "6 months"],
+          ["year", "Year"],
+        ]}
+      />
+      {/* A month reads as a calendar, a week to a row; longer, a column a week, as a heatmap. */}
+      <div className={month ? "cons" : "heat"} role="img" aria-label={`${RANGE_WORDS[range]}: ${heat.done} full workouts, ${heat.part} partial, ${heat.miss} missed.`}>
+        {heat.weeks.flat().map(cell)}
       </div>
-      <p className="legend">
+      <p className={cx("legend", !month && "filled")}>
         <span>
           <i className="done" />
           Workout

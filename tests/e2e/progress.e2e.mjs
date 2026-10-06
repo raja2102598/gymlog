@@ -142,7 +142,19 @@ async function fourWeeks({ browser, base, check }) {
     const stats = await flat(page.locator("#dashStats"));
     check("the week in three numbers: sessions, average steps, weight change", /\d+ ?of \d+ ?sessions/.test(stats) && /avg steps/.test(stats) && /kg this week/.test(stats), stats);
     const p = await flat(page.locator("#dashPlan"));
-    check("consistency: 14 days as squares, today marked, the week, streak and share", (await page.locator("#dashPlan .cons .cell").count()) === 14 && (await page.locator("#dashPlan .cons .cell.now").count()) === 1 && /\d+ of \d+ this week · .*in a row · \d+% of sessions/.test(p), p.slice(0, 200));
+    check(
+      "consistency: a month by default, five weeks as a calendar, today marked, the week, streak and share",
+      (await page.locator("#dashPlan .cons .cell").count()) === 35 && (await page.locator("#dashPlan .cons .cell.now").count()) === 1 && (await page.getAttribute('#consRange [data-seg="month"]', "aria-selected")) === "true" && /\d+ of \d+ this week · .*in a row · \d+% of sessions/.test(p),
+      p.slice(0, 200),
+    );
+    await page.click('#consRange [data-seg="year"]');
+    await page.waitForSelector("#dashPlan .heat");
+    const year = await page.$eval("#dashPlan .heat", (e) => ({ cells: e.children.length, fits: e.scrollWidth <= e.clientWidth + 1, label: e.getAttribute("aria-label"), cols: getComputedStyle(e).gridTemplateColumns.split(" ").length }));
+    check("a year instead: 52 weeks as a heatmap, a column a week, on the phone's width", year.cells === 364 && year.cols === 52 && year.fits && /^Last year: \d+ full workouts, \d+ partial, \d+ missed\.$/.test(year.label), JSON.stringify(year));
+    await page.reload();
+    await page.waitForSelector("#dashPlan");
+    check("the range chosen stays on this phone", (await page.getAttribute('#consRange [data-seg="year"]', "aria-selected")) === "true" && (await page.locator("#dashPlan .heat .cell").count()) === 364);
+    await page.click('#consRange [data-seg="month"]');
     const s = await flat(page.locator("#dashSteps"));
     check("steps card: weekly bars against the goal", /Steps by week/.test(s) && (await page.locator("#dashSteps svg rect.bar").count()) >= 4 && (await page.locator("#dashSteps .bc-goal").count()) === 1, s.slice(0, 120));
     // Charts further down draw when they're scrolled to, not all at once as the screen opens.

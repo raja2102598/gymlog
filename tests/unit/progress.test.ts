@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kneeModel, liftModel, musclesModel, strengthModel, weightModel } from "@/lib/dashboard";
+import { heatModel, kneeModel, liftModel, musclesModel, strengthModel, weightModel } from "@/lib/dashboard";
 import { DEFAULT_PLAN } from "@/lib/plan";
 import { muscleSetCount, muscleWeeks } from "@/lib/stats";
 import type { DayLog, LiftLog, PlanExercise, SetLog } from "@/lib/types";
@@ -51,6 +51,26 @@ describe("Weight", () => {
     expect(weightModel(s, "2026-09-23").waist).toEqual({ day: "2026-09-23", cm: 93.5, change: { since: "2026-08-26", cm: -2.5 } });
     // No waist logged yet: no card.
     expect(weightModel(storeWith(series(-0.05, 1)), "2026-08-27").waist).toBeNull();
+  });
+});
+
+describe("Consistency", () => {
+  it("shows whole weeks back from this one, a month by default or up to a year, each day as its workout went", () => {
+    const LEGS = ["Hack Squat", "Leg Press", "Leg Extension", "Hamstring Curl", "Calf Raise"];
+    const s = storeWith({
+      [LAST]: day({ exercises: Object.fromEntries(LEGS.map((n) => [n, lift([[10, 40]])])) }), // every lift done
+      "2026-09-21": day({ exercises: { "Bench Press": lift([[8, 60]]) } }), // Monday's Push, one lift of it
+      "2026-09-17": day({ skip: "ill" }), // Thursday, skipped on purpose: not missed
+    });
+    const m = heatModel(s, WED, "month");
+    expect([m.weeks.length, m.weeks[0][0].day, m.weeks[4][6].day]).toEqual([5, "2026-08-24", "2026-09-27"]); // Mondays to Sunday
+    const cls = new Map(m.weeks.flat().map((d) => [d.day, d.cls]));
+    expect([cls.get(LAST), cls.get("2026-09-21"), cls.get("2026-09-22"), cls.get("2026-09-17"), cls.get(WED), cls.get("2026-09-24"), cls.get("2026-08-24")]).toEqual(["done", "part", "miss", "rest", "todo", "fut", "pre"]);
+    expect([m.done, m.part]).toEqual([1, 1]);
+    expect(heatModel(s, WED, "3m").weeks.length).toBe(13);
+    expect(heatModel(s, WED, "6m").weeks.length).toBe(26);
+    const y = heatModel(s, WED, "year");
+    expect([y.weeks.length, y.weeks[0][0].day, y.done, y.part]).toEqual([52, "2025-09-29", 1, 1]);
   });
 });
 

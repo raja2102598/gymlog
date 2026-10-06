@@ -57,3 +57,9 @@
 /* the muscles table fits a 320px screen: its column headers wrap */
 .musc-t th,.musc-t td{padding:9px 4px}
 .musc-t thead th{white-space:normal}
+/* Consistency over three months or more: a column a week, Monday at the top, small enough for a year on a phone */
+.heat{display:grid;grid-template-rows:repeat(7,auto);grid-auto-flow:column;grid-auto-columns:minmax(0,20px);gap:2px}
+.heat .cell{border-radius:2px;font-size:0;line-height:0}
+/* Too small for an outline to read: a missed day is filled, darker than a rest day, and the legend says so */
+.heat .cell.miss,.legend.filled i.miss{box-shadow:none;background:var(--outline)}
+.heat .cell.now{box-shadow:inset 0 0 0 1.5px var(--ink)}
