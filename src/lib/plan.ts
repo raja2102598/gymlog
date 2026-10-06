@@ -74,6 +74,7 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
       };
     }),
     ...(Array.isArray(q.custom) ? { custom: normalizeCustom(q.custom) } : d?.custom ? { custom: normalizeCustom(d.custom) } : {}),
+    ...(Array.isArray(q.favs) ? { favs: [...new Set((q.favs as unknown[]).filter((v): v is string => typeof v === "string" && !!v))] } : d?.favs ? { favs: d.favs.slice() } : {}),
     ...(q.gym && typeof q.gym === "object" ? { gym: normalizeGym(q.gym) } : d?.gym ? { gym: normalizeGym(d.gym) } : {}),
     ...(q.weights && typeof q.weights === "object" ? { weights: normalizeWeights(q.weights) } : d?.weights ? { weights: normalizeWeights(d.weights) } : {}),
   };

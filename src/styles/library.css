@@ -46,3 +46,6 @@
 .lib-sec{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
 .lib-sec legend{font:var(--type-label);color:var(--ink-muted);margin-bottom:6px;padding:0}
 .lib-chip{position:relative}
+/* A lift's star: a favourite comes first in the list, and under its own chip */
+.lib-fav{flex:none;width:44px;height:44px;border:0;border-radius:22px;background:none;color:var(--ink-muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.lib-fav.on{color:var(--warn)}

@@ -46,9 +46,11 @@ describe("the plan as saved", () => {
     expect(q.days[0].exercises.map((x) => x.load)).toEqual(["dumbbell", undefined]);
   });
 
-  it("leaves My gym, its weights and your own lifts out until they're set, so older plans read back unchanged, and keeps them once they are", () => {
+  it("leaves My gym, its weights, your own lifts and favourites out until they're set, so older plans read back unchanged, and keeps them once they are", () => {
     const plain = normalizePlan(DEFAULT_PLAN, DEFAULT_PLAN);
-    expect(["gym", "weights", "custom"].filter((k) => k in plain)).toEqual([]);
+    expect(["gym", "weights", "custom", "favs"].filter((k) => k in plain)).toEqual([]);
+    // Favourites: each once, strings only.
+    expect(normalizePlan({ favs: ["Leg_Press", 3, "Leg_Press", "custom:Sled Push", ""] }, DEFAULT_PLAN).favs).toEqual(["Leg_Press", "custom:Sled Push"]);
     const p = normalizePlan(
       { ...DEFAULT_PLAN, gym: { off: ["cable"], always: [], never: ["X"] }, weights: { ...DEFAULT_WEIGHTS, ezbar: 8 }, custom: [{ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] }] },
       DEFAULT_PLAN,
@@ -90,11 +92,12 @@ describe("the plan as saved", () => {
 });
 
 describe("Reset to the default plan", () => {
-  it("keeps what isn't the plan itself: My gym, its bar, plates and weights, and your own lifts", () => {
+  it("keeps what isn't the plan itself: My gym, its bar, plates and weights, your own lifts and favourites", () => {
     const s = storeWith();
     s.setEquip(false, "smith");
     s.setWeight("dumbbell", 2.5);
     s.saveCustom({ name: "Sled Push", equip: ["other"], primary: ["quadriceps"], secondary: [] });
+    s.setFav(s.library()[1], true);
     s.editPlan((p) => {
       p.barKg = 15;
       p.plateKgs = [20, 10];
@@ -102,7 +105,7 @@ describe("Reset to the default plan", () => {
       p.days[0].name = "Chest day";
     });
     s.resetPlan();
-    expect([s.gym().off, s.weights().dumbbell, s.plan.barKg, s.plan.plateKgs, s.plan.custom?.map((c) => c.name)]).toEqual([["smith"], 2.5, 15, [20, 10], ["Sled Push"]]);
+    expect([s.gym().off, s.weights().dumbbell, s.plan.barKg, s.plan.plateKgs, s.plan.custom?.map((c) => c.name), s.plan.favs]).toEqual([["smith"], 2.5, 15, [20, 10], ["Sled Push"], [s.library()[1].id]]);
     // And the plan itself is the default's again.
     expect([s.plan.stepGoal, s.plan.days[0].name]).toEqual([DEFAULT_PLAN.stepGoal, DEFAULT_PLAN.days[0].name]);
   });

@@ -928,6 +928,17 @@ export class GymStore {
       p.gym = normalizeGym({ ...g, off: !e ? (on ? [] : Object.keys(EQUIPMENT)) : on ? g.off.filter((x) => x !== e) : [...g.off, e] });
     });
   }
+  /** Whether lift x is a favourite, starred in the library. */
+  isFav(x: Exercise): boolean {
+    return !!this.plan.favs?.includes(x.id);
+  }
+  /** Stars lift x in the library, or takes its star off; saved with the plan, as My gym is. */
+  setFav(x: Exercise, on: boolean) {
+    this.editPlan((p) => {
+      const rest = (p.favs ?? []).filter((id) => id !== x.id);
+      p.favs = on ? [...rest, x.id] : rest;
+    });
+  }
   /** Puts lifts, by library id, on My gym's always or never list and off the other; off both with null. */
   showLifts(ids: string[], list: "always" | "never" | null) {
     this.editPlan((p) => {
@@ -1773,9 +1784,9 @@ export class GymStore {
   }
   resetPlan() {
     // Your own lifts stay, as they name lifts in your history, and so does My gym, which is where you train: its
-    // equipment, and its bars, plates and weights.
-    const { custom, gym, weights, barKg, plateKgs } = this.plan;
-    this.plan = { ...copy(DEFAULT_PLAN), barKg, plateKgs: plateKgs.slice(), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}), ...(weights ? { weights } : {}) };
+    // equipment, and its bars, plates and weights. Favourites stay too.
+    const { custom, gym, weights, barKg, plateKgs, favs } = this.plan;
+    this.plan = { ...copy(DEFAULT_PLAN), barKg, plateKgs: plateKgs.slice(), ...(custom ? { custom } : {}), ...(gym ? { gym } : {}), ...(weights ? { weights } : {}), ...(favs ? { favs } : {}) };
     this.planChanged(true);
   }
   /** Starts the plan over from a template (src/data/templates): its sessions, lifts, warm-ups and tempo. The goals

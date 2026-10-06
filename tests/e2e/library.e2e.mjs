@@ -51,6 +51,18 @@ async function addingLifts({ browser, base, check }) {
     check("+ From the library opens it over the plan", (await isOpen(page)) && (await flat(page.locator("#libTitle"))) === "Add lifts to Legs");
     check("common lifts first", (await rows(page)).slice(0, 3).join("|") === "Barbell Squat|Barbell Bench Press - Medium Grip|Barbell Deadlift", (await rows(page)).slice(0, 3).join("|"));
     check("and how many there are", (await flat(page.locator("#libCount"))) === "657 lifts", await flat(page.locator("#libCount")));
+    // --- a favourite: starred, it comes first, and under a chip of its own; saved with the plan
+    check("no Favourites chip before a lift is starred", (await page.locator("#libFavs").count()) === 0);
+    const dead = await page.locator("#libList .lib-row").nth(2).locator("[data-fav]").getAttribute("data-fav");
+    await page.click(`[data-fav="${dead}"]`);
+    await until(() => db.plan?.favs?.includes(dead));
+    check("a starred lift goes first, saved with the plan", (await rows(page))[0] === "Barbell Deadlift" && (await page.getAttribute(`[data-fav="${dead}"]`, "aria-pressed")) === "true" && JSON.stringify(db.plan?.favs) === JSON.stringify([dead]), JSON.stringify(db.plan?.favs));
+    await page.click("#libFavs");
+    check("Favourites shows only them", (await rows(page)).join("|") === "Barbell Deadlift" && (await flat(page.locator("#libCount"))).startsWith("Favourites · "), `${(await rows(page)).join("|")} · ${await flat(page.locator("#libCount"))}`);
+    await page.click("#libFavs");
+    await page.click(`[data-fav="${dead}"]`);
+    await until(() => db.plan?.favs?.length === 0);
+    check("and its star comes off again", (await rows(page)).slice(0, 3).join("|") === "Barbell Squat|Barbell Bench Press - Medium Grip|Barbell Deadlift", (await rows(page)).slice(0, 3).join("|"));
     check(
       "the day's lifts show as added, by the library's name too",
       (await page.locator('[data-lib="Leg_Press"]').isDisabled()) && (await page.locator('[data-lib="Leg_Extensions"]').isDisabled()) && (await pressed(page, "Leg_Press")) && (await page.locator("#libList .lib-row.had", { has: page.locator('[data-lib="Leg_Press"]') }).count()) === 1,

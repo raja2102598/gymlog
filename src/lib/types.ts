@@ -262,6 +262,9 @@ export interface Plan {
   gym?: Gym;
   /** My gym's weights beyond the barbell's. Left out until one's changed, when each is its default. */
   weights?: Weights;
+  /** Favourite lifts, starred in the exercise library, by library id ("custom:" and the name for one of your own): first
+   *  in its list, and a chip of their own. Left out until there's one, so older plans round-trip. */
+  favs?: string[];
 }
 
 /** My gym: the equipment it hasn't got, so equipment the app adds later starts on, and lifts the library always
