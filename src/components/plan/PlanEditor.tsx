@@ -101,6 +101,13 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       if (isLoad(v)) x.load = v;
       else delete x.load;
     });
+  // How a lift counts its sets: held for seconds, or reps each side. Off is left out of the plan, as a superset is.
+  const setCount = (j: number, k: "timed" | "perSide", on: boolean) =>
+    edit((p) => {
+      const x = p.days[editDay].exercises[j];
+      if (on) x[k] = true;
+      else delete x[k];
+    });
   const setSuperset = (j: number, on: boolean) =>
     edit((p) => {
       const xs = p.days[editDay].exercises;
@@ -313,7 +320,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                 <div className="pe-row">
                   {nameField(x, j)}
                   {liftField(x, j, "sets", "Sets", { placeholder: "3" })}
-                  {liftField(x, j, "reps", "Reps", { placeholder: "8-10" })}
+                  {liftField(x, j, "reps", x.timed ? "Seconds" : x.perSide ? "Reps each side" : "Reps", { placeholder: x.timed ? "30-45" : "8-10" })}
                 </div>
                 <LibLine x={x} j={j} onFind={(own) => findInLibrary(x.name.trim(), j, own)} />
                 <label className="field" htmlFor={`pe_x${j}_cue`}>
@@ -338,6 +345,14 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                       }}
                     />{" "}
                     Knee-sensitive
+                  </label>
+                </div>
+                <div className="pe-row2">
+                  <label className="pe-check" htmlFor={`pe_x${j}_timed`}>
+                    <input type="checkbox" id={`pe_x${j}_timed`} data-ptimed={j} checked={!!x.timed} onChange={(ev) => setCount(j, "timed", ev.target.checked)} /> Held for time (seconds)
+                  </label>
+                  <label className="pe-check" htmlFor={`pe_x${j}_side`}>
+                    <input type="checkbox" id={`pe_x${j}_side`} data-pside={j} checked={!!x.perSide} onChange={(ev) => setCount(j, "perSide", ev.target.checked)} /> Reps each side
                   </label>
                 </div>
                 <div className="pe-row2">

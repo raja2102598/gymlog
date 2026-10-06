@@ -346,7 +346,8 @@ export function muscleWeeks(
 export type RecordKind = "weight" | "e1rm" | "reps";
 export interface LiftDay {
   day: DayKey;
-  lifts: { name: string; sets: SetLog[] }[];
+  /** `timed`: held for time, its reps seconds (PlanExercise.timed), so no estimated 1RM. */
+  lifts: { name: string; sets: SetLog[]; timed?: boolean }[];
 }
 export interface LiftRecord {
   day: DayKey;
@@ -377,13 +378,13 @@ export function records(days: LiftDay[]): LiftRecord[] {
 // caller can keep the fold of the days before today and re-check today on every keystroke.
 export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[] {
   const out: LiftRecord[] = [];
-  for (const { name, sets } of lifts) {
+  for (const { name, sets, timed } of lifts) {
     const b = best.get(name);
     if (!b) continue;
     const top: Partial<Record<RecordKind, { v: number; i: number }>> = {};
     sets.forEach((s, i) => {
       if (!s || s.kg == null || !isStraightSet(s)) return;
-      const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
+      const e = s.reps != null && !timed ? e1rm(s.kg, s.reps) : null;
       const cands: [RecordKind, number][] = [];
       if (s.kg > b.kg) cands.push(["weight", s.kg]);
       if (e != null && b.e1rm != null && e > b.e1rm + 1e-9) cands.push(["e1rm", e]);
@@ -396,7 +397,7 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
     });
     const bySet = new Map<number, RecordKind[]>();
     for (const [kind, t] of Object.entries(top) as [RecordKind, { v: number; i: number }][]) bySet.set(t.i, [...(bySet.get(t.i) || []), kind]);
-    for (const [i, kinds] of bySet) out.push({ day, name, set: i, kg: sets[i].kg as number, reps: sets[i].reps, e1rm: e1rm(sets[i].kg, sets[i].reps), kinds });
+    for (const [i, kinds] of bySet) out.push({ day, name, set: i, kg: sets[i].kg as number, reps: sets[i].reps, e1rm: timed ? null : e1rm(sets[i].kg, sets[i].reps), kinds });
   }
   return out;
 }
@@ -405,13 +406,13 @@ export function checkDay(best: RecordFold, { day, lifts }: LiftDay): LiftRecord[
 // Per exercise it keeps the heaviest weight, the best estimated 1RM and the most reps done at each
 // weight (a few distinct weights, so checking a set doesn't mean scanning every earlier set).
 export function foldDay(best: RecordFold, { lifts }: LiftDay): void {
-  for (const { name, sets } of lifts) {
+  for (const { name, sets, timed } of lifts) {
     const good = sets.filter((s) => s && s.kg != null && isStraightSet(s)) as { reps: number | null; kg: number }[];
     if (!good.length) continue;
     const b = best.get(name) || { kg: -Infinity, e1rm: null, repsAt: new Map<number, number>() };
     for (const s of good) {
       b.kg = Math.max(b.kg, s.kg);
-      const e = s.reps != null ? e1rm(s.kg, s.reps) : null;
+      const e = s.reps != null && !timed ? e1rm(s.kg, s.reps) : null;
       if (e != null) b.e1rm = Math.max(b.e1rm ?? 0, e);
       const had = b.repsAt.get(s.kg);
       if (s.reps != null && !(had != null && had >= s.reps)) b.repsAt.set(s.kg, s.reps);

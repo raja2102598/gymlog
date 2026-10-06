@@ -57,7 +57,7 @@ describe("the plan as saved", () => {
     expect(normalizePlan(JSON.parse(JSON.stringify(p)), DEFAULT_PLAN)).toEqual(p);
   });
 
-  it("keeps each lift's rule and numbers, and drops a rule it doesn't know", () => {
+  it("keeps each lift's rule and numbers, how it counts its sets, and drops a rule it doesn't know", () => {
     const p = normalizePlan(
       {
         days: [
@@ -66,8 +66,8 @@ describe("the plan as saved", () => {
             exercises: [
               { name: "Squat", prog: "linear", deloadAfter: 3, deloadPct: "15" },
               { name: "Bench", prog: "percent", oneRm: "100", pct: 75 },
-              { name: "Row", prog: "wave" },
-              { name: "Curl" },
+              { name: "Row", prog: "wave", timed: "yes", perSide: true },
+              { name: "Curl", timed: true },
             ],
           },
         ],
@@ -78,6 +78,8 @@ describe("the plan as saved", () => {
     expect(squat).toMatchObject({ prog: "linear", deloadAfter: "3", deloadPct: "15" });
     expect(bench).toMatchObject({ prog: "percent", oneRm: "100", pct: "75" });
     expect("prog" in row).toBe(false);
+    // Held for time, or reps each side: kept only when set to true, and left out otherwise.
+    expect([row.timed, row.perSide, curl.timed, "perSide" in curl, "timed" in squat]).toEqual([undefined, true, true, false, false]);
     // A lift with none of them round-trips unchanged.
     for (const k of ["prog", "oneRm", "pct", "deloadAfter", "deloadPct"]) expect(k in curl).toBe(false);
     expect(normalizePlan(JSON.parse(JSON.stringify(p)), DEFAULT_PLAN)).toEqual(p);

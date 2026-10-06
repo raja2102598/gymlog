@@ -60,6 +60,8 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
             // Left out (not "") when the plan doesn't set one, so a plan with no overrides round-trips unchanged.
             ...(x?.rest != null ? { rest: str(x.rest) } : {}),
             ...(x?.superset === true ? { superset: true } : {}),
+            ...(x?.timed === true ? { timed: true as const } : {}),
+            ...(x?.perSide === true ? { perSide: true as const } : {}),
             ...(x?.prog === "linear" || x?.prog === "percent" ? { prog: x.prog as "linear" | "percent" } : {}),
             ...Object.fromEntries((["oneRm", "pct", "deloadAfter", "deloadPct"] as const).filter((k) => x?.[k] != null).map((k) => [k, str(x?.[k])])),
             ...(typeof x?.lib === "string" && x.lib ? { lib: x.lib } : {}),

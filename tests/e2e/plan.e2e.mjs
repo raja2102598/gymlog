@@ -30,6 +30,38 @@ const LEGS = ["Hack Squat", "Leg Press", "Leg Extension", "Hamstring Curl", "Cal
 export default async function plan(t) {
   await renaming(t);
   await progressionRules(t);
+  await howSetsCount(t);
+}
+
+// How a lift counts its sets: held for time, its reps seconds (a plank), or reps each side (a lunge). Saved with the
+// plan, and the workout's set table, target and last time follow. The rules (no 1RM for a hold) are in the unit tests.
+async function howSetsCount({ browser, base, check }) {
+  const auth = session("00000000-0000-4000-8000-000000000061", "2026-08-26T05:00:00Z", "t@example.com");
+  const day = (more = {}) => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...more });
+  const db = { logs: { [K(0)]: day({ steps: 6000 }), [K(21)]: day({ exercises: { "Leg Extension": { done: true, kg: 10, sets: [{ reps: 45, kg: 10 }, { reps: 40, kg: 10 }] } } }) }, plan: null };
+  const { ctx, page } = await open(browser, base, { auth, db });
+  await ready(page);
+  const legs = () => db.plan?.days?.[2]?.exercises ?? [];
+  await openTab(page, "train");
+  await page.click("#changePlan");
+  await page.waitForSelector("#planView");
+  await page.check("#pe_x2_timed");
+  await page.check("#pe_x4_side");
+  await until(() => legs()[2]?.timed === true && legs()[4]?.perSide === true);
+  check("held for time and reps each side save with the plan", legs()[2]?.timed === true && legs()[4]?.perSide === true && !("timed" in legs()[4]), JSON.stringify([legs()[2], legs()[4]]));
+  check("a held lift's reps field asks for seconds", (await flat(page.locator('label[for="pe_x2_reps"] span'))) === "Seconds");
+  await planDone(page);
+  await openWorkout(page, "Leg Extension");
+  const card = page.locator("#workoutView section.ex-card");
+  const head = async () => (await card.locator(".shead span").allInnerTexts()).join("|");
+  check("a hold's set table counts seconds", (await head()) === "Set|Last|kg|Sec|", await head());
+  check("its last time reads in seconds", /Last 45s, 40s × 10 kg/.test((await flat(card.locator(".ex-meta"))).replace(/\u00a0/g, " ")), await flat(card.locator(".ex-meta")));
+  check("its seconds box says so", (await page.getAttribute("#s2_0_r", "aria-label")) === "Leg Extension, set 1, seconds");
+  await page.locator("ol.wprog li button").nth(4).click();
+  await until(async () => (await flat(card.locator(".ex-name .nm"))) === "Calf Raise");
+  check("a lift done one side at a time counts each side", (await head()) === "Set|Last|kg|Each|" && /× 12–15 each side/.test((await flat(card.locator(".ex-meta"))).replace(/\u00a0/g, " ")), `${await head()} ${await flat(card.locator(".ex-meta"))}`);
+  check("how sets count: no console errors", page.errors.length === 0, page.errors.join(" | "));
+  await ctx.close();
 }
 
 // Renaming a lift in the plan editor (RAJ-34): carrying its logged history over to the new name, refusing a

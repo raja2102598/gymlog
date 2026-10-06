@@ -215,6 +215,20 @@ describe("a lift's own page", () => {
     expect(m.planned).toEqual([{ day: "Legs", reps: [10, 12] }]);
   });
 
+  it("gives a hold no estimated 1RM, volume or 1RM record: its reps are seconds", () => {
+    const s = storeWith({
+      [LAST]: day({ exercises: { "Leg Press": lift([[30, 20], [30, 20]]) } }),
+      [WED]: day({ exercises: { "Leg Press": lift([[40, 20], [10, 25]]) } }),
+    });
+    s.plan.days[2].exercises[1].timed = true;
+    const m = liftModel(s, WED, "Leg Press");
+    expect(m.points.map((p) => [p.top, p.e1rm, p.volume])).toEqual([[20, null, 0], [25, null, 0]]);
+    // The heavier hold and the longer one at 20 kg are records; neither is an estimated 1RM.
+    expect(s.recentRecords(WED, 1).map((r) => [r.set, r.kinds, r.e1rm])).toEqual([[0, ["reps"], null], [1, ["weight"], null]]);
+    delete s.plan.days[2].exercises[1].timed;
+    expect(liftModel(s, WED, "Leg Press").points[1].e1rm).not.toBeNull();
+  });
+
   it("matches a lift by its logged name on any day, not only the plan's usual day for it", () => {
     // Monday is Push, which has no Leg Press: a day moved, or logged under an older plan, still has to count.
     const s = storeWith({ "2026-09-21": day({ exercises: { "Leg Press": lift([[10, 40]]) } }) });

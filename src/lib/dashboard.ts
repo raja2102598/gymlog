@@ -194,16 +194,17 @@ const loaded = (sets: SetLog[]) => sets.filter((s): s is { reps: number; kg: num
 function liftPoints(store: GymStore, days: DayKey[], name: string): LiftPoint[] {
   const out: LiftPoint[] = [];
   for (const k of days) {
-    const sets = store.liftSets(k).filter((l) => l.name === name).flatMap((l) => l.sets);
+    const lifts = store.liftSets(k).filter((l) => l.name === name), sets = lifts.flatMap((l) => l.sets);
     if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
-    // A drop set adds to the volume but, as with records, never to the heaviest set or the 1RM.
-    const straight = sets.filter(S.isStraightSet), top = topKg(straight);
+    // A drop set adds to the volume but, as with records, never to the heaviest set or the 1RM. A hold, whose reps
+    // are seconds, has neither a 1RM nor a volume.
+    const straight = sets.filter(S.isStraightSet), top = topKg(straight), timed = lifts.some((l) => l.timed);
     out.push({
       day: k,
       top,
       topReps: Math.max(0, ...loaded(straight).filter((s) => s.kg === top).map((s) => s.reps)) || null,
-      e1rm: Math.max(0, ...straight.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
-      volume: sum(loaded(sets).map((s) => s.reps * s.kg)),
+      e1rm: timed ? null : Math.max(0, ...straight.map((s) => S.e1rm(s.kg, s.reps) || 0)) || null,
+      volume: timed ? 0 : sum(loaded(sets).map((s) => s.reps * s.kg)),
     });
   }
   return out;

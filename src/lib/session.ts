@@ -9,8 +9,10 @@ import { currentRun, runMs, runOf, STALE_RUN_MS } from "./workout";
 /** "8-10" → "8–10": the range with an en dash, as the screens print it. */
 export const dash = (s: string) => s.replace(/\s*-\s*/g, "–");
 
-/** A lift's target in words: "3 × 8–10", "3–4 × 8–10": a range of sets with an en dash too, as reps have. */
-export const targetWords = (t: { sets: string; reps: string }) => [dash(t.sets), dash(t.reps)].filter(Boolean).join(" × ");
+/** A lift's target in words: "3 × 8–10", "3–4 × 8–10": a range of sets with an en dash too, as reps have. A hold's
+ *  are seconds ("3 × 30–45 s"), and a lift done one side at a time says so ("3 × 10 each side"). */
+export const targetWords = (t: { sets: string; reps: string }, x?: { timed?: boolean; perSide?: boolean } | null) =>
+  [dash(t.sets), t.reps ? dash(t.reps) + (x?.timed ? " s" : x?.perSide ? " each side" : "") : ""].filter(Boolean).join(" × ");
 
 export interface SessionSummary {
   lifts: number;
@@ -62,7 +64,7 @@ export function liftWeight(store: GymStore, k: DayKey, it: LiftItem): number | n
 export function liftLine(store: GymStore, k: DayKey, it: LiftItem): string {
   const r = store.entry(k).exercises[it.name];
   if (r?.skipped) return r.reason ? `Skipped · ${r.reason}` : "Skipped";
-  const kg = liftWeight(store, k, it), t = targetWords(targetOf(r, it.x));
+  const kg = liftWeight(store, k, it), t = targetWords(targetOf(r, it.x), it.x);
   return [r?.swap ? `Instead of ${it.name}` : "", t, kg != null ? `${kg} kg` : ""].filter(Boolean).join(" · ") || "Not in the plan";
 }
 

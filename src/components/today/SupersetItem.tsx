@@ -88,7 +88,7 @@ export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, 
   // − Round takes the last round's sets that are more than their lift's planned number.
   const extra = ms.filter((m) => !m.r.skipped && m.sets.length === rounds && rounds > m.min);
   const dropRound = async () => {
-    const said = extra.map((m) => [tags[ms.indexOf(m)], setsSummary([m.sets[rounds - 1]])]).filter(([, s]) => s);
+    const said = extra.map((m) => [tags[ms.indexOf(m)], setsSummary([m.sets[rounds - 1]], m.unit)]).filter(([, s]) => s);
     if (said.length && !(await ask(`Remove round ${rounds} (${said.map(([t, s]) => `${t} ${s}`).join(", ")})?`, "Remove", { danger: true }))) return;
     // Only the round asked about: not one voice added to while the question was up.
     if (extra.every((m) => m.sameSets())) for (const m of extra) m.dropSet();
@@ -115,7 +115,7 @@ export function SupersetItem({ lifts, letter, sel, entry, marks, menu, setMenu, 
       ))}
       {rounds ? (
         <div className="sets rounds" role="group" aria-label={`Superset ${letter}, rounds`}>
-          <SetHead tag />
+          <SetHead tag unit={ms.every((m) => m.unit === ms[0].unit) ? ms[0].unit : "reps"} />
           {Array.from({ length: rounds }, (_, j) => (
             <div key={j} className="round" role="group" aria-labelledby={`rd${first}_${j}`}>
               <div className="round-h" id={`rd${first}_${j}`}>

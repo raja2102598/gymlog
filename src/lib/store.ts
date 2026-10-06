@@ -18,6 +18,7 @@ import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, NOT_NOW_KEY, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { keepRunsInMemory } from "./workout";
+import { repUnit, type RepUnit } from "./format";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights, type WorkoutHeart } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
@@ -1282,7 +1283,8 @@ export class GymStore {
         .filter((l) => l.name === name)
         .flatMap((l) => l.sets);
       if (!sets.some((s) => s.reps != null || s.kg != null)) continue;
-      out.push({ day: d, e1rm: sessionE1rm(sets), top: topKg(sets.filter(S.isStraightSet)) });
+      // A hold's reps are seconds: no estimated 1RM to stall on.
+      out.push({ day: d, e1rm: this.isTimed(name) ? null : sessionE1rm(sets), top: topKg(sets.filter(S.isStraightSet)) });
     }
     return out;
   }
@@ -1306,11 +1308,23 @@ export class GymStore {
     if (!this.demo) lsSet(NOT_NOW_KEY, { user: this.user?.id, lifts: this.notNow });
     this.changed();
   }
-  // Working sets only: a warm-up never sets a record or counts toward volume.
+  // Working sets only: a warm-up never sets a record or counts toward volume. A hold's reps are seconds (`timed`).
   liftSets(d: DayKey) {
     return Object.entries(this.logs[d]?.exercises || {})
       .filter(([, r]) => r && !r.skipped)
-      .map(([key, r]) => ({ name: performed(key, r), sets: setsOf(r).filter(S.isWorkingSet) }));
+      .map(([key, r]) => {
+        const name = performed(key, r);
+        return { name, sets: setsOf(r).filter(S.isWorkingSet), ...(this.isTimed(name) ? { timed: true } : {}) };
+      });
+  }
+  /** Whether lift `name` is held for time (PlanExercise.timed), as the plan's lift of that name says. */
+  isTimed(name: string): boolean {
+    return !!this.planLift(name)?.timed;
+  }
+  /** How lift `name` counts its reps: seconds for a hold, each side, or plain reps; through plan lift `x` when it's
+   *  the one done, else the plan's lift of that name. */
+  unitOf(name: string, x?: PlanExercise | null): RepUnit {
+    return repUnit(x && x.name === name ? x : this.planLift(name));
   }
   // Records set in the `n` days up to and including k. Earlier days are only folded in, not checked.
   recentRecords(k: DayKey, n: number): S.LiftRecord[] {

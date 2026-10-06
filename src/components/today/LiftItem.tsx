@@ -11,7 +11,7 @@ import { useVoice, useVoiceOn } from "@/hooks/useVoice";
 import { HowTo } from "@/components/exercise/HowTo";
 import { cx } from "@/lib/cx";
 import { dayMonth } from "@/lib/dates";
-import { mmss, num, setsSummary } from "@/lib/format";
+import { mmss, num, setsSummary, type RepUnit } from "@/lib/format";
 import { hashOf } from "@/lib/route";
 import { liftModel, type LiftModel } from "@/lib/lift";
 import { isWorkingSet, type RecordKind } from "@/lib/stats";
@@ -66,7 +66,7 @@ export function voiceHandler(store: GymStore, sel: DayKey, m: LiftModel, focusNe
   return (said: VoiceResult, heard: string): string => {
     const now = () => setsOf(store.entry(sel).exercises[name]).filter(isWorkingSet);
     const lastLogged = () => now().findLastIndex((s) => (s.reps ?? 0) > 0);
-    const at = `Heard “${heard}”`, logged = (j: number) => `${at}: set ${j + 1}, ${setsSummary([now()[j]])}.`;
+    const at = `Heard “${heard}”`, logged = (j: number) => `${at}: set ${j + 1}, ${setsSummary([now()[j]], m.unit)}.`;
     if (store.entry(sel).exercises[name]?.skipped) return "";
     if (said.kind === "unknown") return `${at}. Say it like “10 at 45”.`;
     if (said.kind === "set") {
@@ -110,13 +110,16 @@ export function voiceHandler(store: GymStore, sel: DayKey, m: LiftModel, focusNe
   };
 }
 
-/** Last time's set `j`, as "30 × 15" (kg × reps), for the set table's Last column. */
-function lastSet(last: LastDone | null, j: number): string {
+/** Last time's set `j`, as "30 × 15" (kg × reps), for the set table's Last column: "30 × 45s" for a hold. */
+function lastSet(last: LastDone | null, j: number, unit: RepUnit): string {
   if (!last) return "–";
   const s = setsOf(last.r).filter(isWorkingSet)[j];
   if (!s) return "–";
-  return s.kg != null && s.reps != null ? `${s.kg} × ${s.reps}` : s.reps != null ? `${s.reps} reps` : s.kg != null ? `${s.kg} kg` : "–";
+  const sec = unit === "sec" ? "s" : "";
+  return s.kg != null && s.reps != null ? `${s.kg} × ${s.reps}${sec}` : s.reps != null ? (sec ? `${s.reps}s` : `${s.reps} reps`) : s.kg != null ? `${s.kg} kg` : "–";
 }
+/** The set table's heading over the reps, and its boxes' name for a screen reader. */
+const REPS_HEAD: Record<RepUnit, [string, string]> = { reps: ["Reps", "reps"], sec: ["Sec", "seconds"], side: ["Each", "reps each side"] };
 
 /** Logs set `j` as it stands: whatever is typed, and for what isn't, the suggestion in its box (LiftModel.sugFor: the
  *  set logged before it today, or else the next weight and the target reps). The reps go in last, so the rest timer starts
@@ -408,7 +411,7 @@ export function LiftHead({
   const rest = restSecFor(store.plan, x), tempo = store.plan.tempo.replace(/[:/-]/g, "·");
   // Each part kept whole ("tempo 3·1·2·1", not "tempo" at the end of one line and its numbers on the next): a line
   // breaks only between them.
-  const meta = [target.sets || target.reps ? targetWords(target) : "", m.item.extra ? "" : `rest ${mmss(rest)}`, tempo && !m.item.extra ? `tempo ${tempo}` : ""]
+  const meta = [target.sets || target.reps ? targetWords(target, { timed: m.unit === "sec", perSide: m.unit === "side" }) : "", m.item.extra ? "" : `rest ${mmss(rest)}`, tempo && !m.item.extra ? `tempo ${tempo}` : ""]
     .filter(Boolean)
     .map((part) => part.replace(/ /g, "\u00a0"))
     .join(" · ");
@@ -434,7 +437,7 @@ export function LiftHead({
             {meta ? <span className="sr">{meta}</span> : null}
             {r.skipped ? null : (
               <span className={cx("last", cur != null && lastTop != null && cur > lastTop && "up")}>
-                {last ? `Last ${setsSummary(setsOf(last.r).filter(isWorkingSet))} · ${dayMonth(last.day)}` : "First time"}
+                {last ? `Last ${setsSummary(setsOf(last.r).filter(isWorkingSet), m.unit)} · ${dayMonth(last.day)}` : "First time"}
                 {cur != null && lastTop != null && cur > lastTop ? <span className="sr-only"> (heavier than last time)</span> : null}
               </span>
             )}
@@ -474,13 +477,13 @@ export function LiftHead({
 }
 
 /** The set table's header row: a .srow like the sets under it, so each heading takes its column's place and centre. */
-export function SetHead({ tag }: { tag?: boolean }) {
+export function SetHead({ tag, unit = "reps" }: { tag?: boolean; unit?: RepUnit }) {
   return (
     <div className="srow shead" aria-hidden="true">
       <span>{tag ? "" : "Set"}</span>
       <span>Last</span>
       <span>kg</span>
-      <span>Reps</span>
+      <span>{REPS_HEAD[unit][0]}</span>
       <span />
     </div>
   );
@@ -519,7 +522,7 @@ export function SetRow({
     <>
       <div className={cx("srow set", done ? "done logged" : active ? "active" : "up", pr && "pr")}>
         <SetNumber n={j + 1} tag={tag} s={s} id={menuId} did={did} open={menuOpen} onToggle={onMenu} />
-        <span className="last">{lastSet(last, j)}</span>
+        <span className="last">{lastSet(last, j, m.unit)}</span>
         <SyncedInput
           id={`s${i}_${j}_k`}
           data-set={`${i}:${j}:kg`}
@@ -544,7 +547,7 @@ export function SetRow({
           step="1"
           placeholder={phR}
           value={s.reps}
-          aria-label={`${did}, set ${j + 1}, reps`}
+          aria-label={`${did}, set ${j + 1}, ${REPS_HEAD[m.unit][1]}`}
           onFocus={() => m.typeIn(j)}
           onBlur={() => m.typeOut(j)}
           onChange={(ev) => m.setField(j, "reps", ev.target.value)}
@@ -593,7 +596,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
       <ProgHint next={m.next} />
       <StuckHint m={m} setMenu={setMenu} focusNext={focusNext} />
       <div className="sets" role="group" aria-label={`${m.did}, sets`}>
-        <SetHead />
+        <SetHead unit={m.unit} />
         {Array.from({ length: rows }, (_, j) => (
           <SetRow key={j} m={m} j={j} marks={marks} active={j === active} menuOpen={menuRow === j} onMenu={() => setMenuRow(menuRow === j ? null : j)} />
         ))}
@@ -607,7 +610,7 @@ export function LiftItem({ item, i, sel, entry, marks, menu, setMenu, focusNext,
             className="btn btn-sm"
             data-rmset={i}
             onClick={async () => {
-              const said = setsSummary([sets[sets.length - 1]]);
+              const said = setsSummary([sets[sets.length - 1]], m.unit);
               if (said && !(await ask(`Remove set ${sets.length} (${said})?`, "Remove", { danger: true }))) return;
               // Only the set asked about: not one voice logged after it while the question was up.
               if (m.sameSets()) m.dropSet();

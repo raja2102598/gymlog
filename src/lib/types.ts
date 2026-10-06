@@ -201,6 +201,12 @@ export interface PlanExercise {
    *  `deloadPct` percent off (10 when empty). Off while `deloadAfter` is empty. */
   deloadAfter?: string;
   deloadPct?: string;
+  /** Held for time rather than done for reps (a plank, a hang, a carry): `reps` is then seconds, as is what each set
+   *  logs in its `reps`. A hold has no estimated 1RM or volume. Left out rather than false, as `superset` is. */
+  timed?: true;
+  /** Reps counted on each side (a lunge, a one-arm row): what each set logs is one side's, and says so. Left out
+   *  rather than false. */
+  perSide?: true;
   /** The exercise library's lift this is (lib/library.ts), when its name isn't exactly that lift's: its muscles
    *  and equipment. Left out for a lift of your own, or one named as the library names it. */
   lib?: string;
