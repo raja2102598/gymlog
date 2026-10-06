@@ -41,8 +41,9 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - Home shows today at a glance: the week, today's workout with **Start workout**, activity rings, water and weight in one tap. Train has the selected day's lifts, reordered by dragging, and the day's log.
 - The workout goes one exercise at a time: the target (3 × 8-10), what you did last time, and a row per set with kg and reps already suggested, so **Complete set** logs it; then a rest timer, and a summary with your personal bests when you finish. In the Android app, with the phone locked, the workout's clock and the rest countdown stay on the lock screen as Android 16 Live Updates (in Samsung's Now Bar with *Live notifications for all apps* on; see [docs/android.md](docs/android.md#lock-screen-and-samsungs-now-bar)).
 - Log a set by voice: tap the microphone and say *10 at 45*, or *again*, *undo*, *done* or *skip*. Once switched on in Settings: in the browser, or in the Android app with the phone's own speech recognition.
-- Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it.
-- Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days.
+- Progression built in. When every set reached the top of its rep range last time, the lift says *Go up to … kg*, and a set that beats your history gets a **PR** badge as you type it. Each lift can follow its own rule instead: linear, a percentage of your 1RM, Greyskull LP, or, for a hold, adding time; each hint says why it's that number.
+- Sets to failure, drop sets and rest-pause bursts; lifts held for time (a plank, in seconds) or counted each side (a lunge). The screen stays on while the workout is open.
+- Skip a lift or swap in another, give a day a different session, and catch up on missed sessions on rest days. Go back to any day with the date picker, or from Progress, to fix a workout or log one done on paper, and move one logged on the wrong day to the right one.
 - Knee pain scores before, after and the next morning. After a bad session, knee-sensitive lifts hold their weight instead of going up.
 - Warm-ups, a cardio finisher (minutes, speed, incline), steps, body weight, waist, other measurements (chest, arms, thighs, hips, body fat) and notes.
 
@@ -53,7 +54,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 
 **Progress: is it working?**
 - Weight trend (Holt smoothing, as [TrendWeight](https://github.com/ervwalter/trendweight) does) and the weekly rate, with a goal date and your pace against the target.
-- Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, working sets per muscle each week, and knee scores by session, with notes on anything that needs attention.
+- Consistency over a month, three, six or twelve, sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, working sets per muscle each week, and knee scores by session, with notes on anything that needs attention.
 - A body map, front and back: where the last 7 days' sets went, which muscles are still recovering, and which have gone untrained.
 - Tap a lift, in Strength or in the workout's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
 
@@ -61,9 +62,9 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 - **Try it with sample data** on the sign-in screen: no account or database needed, four weeks of made-up history to look around, and nothing you do is saved.
 - Installable as a PWA from Chrome, or as an Android app. It opens instantly from the phone's cache and works offline; edits queue and sync when you're back online.
 - Your data in your own free Supabase project, one account per person, kept apart by row-level security in the database.
-- Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON.
-- An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. Start from a blank week or a 3, 4 or 5-day template.
-- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it and add lifts to the plan, a swap or a free-form workout, or create your own. Each lift's photos take turns so you see it move, and its YouTube videos play right in the app. My gym leaves out what your equipment can't do, and knows what each bar weighs and what dumbbells, machines and cables go up by, so plates, warm-up sets and *Go up to* suggest weights you can load.
+- Sign in with Google, an email link or a password. Light and dark themes. Export and import as JSON, and bring your history over from Strong, Hevy or FitNotes from the CSV each exports.
+- An editable plan: sessions, lifts, sets and reps, cues, warm-ups, a weight step per lift, goals and the knee limit. Start from a blank week or a 3, 4 or 5-day template. Share it as a small file another Gym Log can use, or print it or save it as a PDF.
+- An exercise library of 657 lifts with the muscles each works and the equipment it needs: search it, filter it, star your favourites and add lifts to the plan, a swap or a free-form workout, or create your own. Each lift's photos take turns so you see it move, and its YouTube videos play right in the app. My gym leaves out what your equipment can't do, and knows what each bar weighs and what dumbbells, machines and cables go up by, so plates, warm-up sets and *Go up to* suggest weights you can load.
 
 ## How it works
 
