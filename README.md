@@ -54,6 +54,7 @@ Every set you lift, your body's numbers, and what Health Connect knows, in one p
 **Progress: is it working?**
 - Weight trend (Holt smoothing, as [TrendWeight](https://github.com/ervwalter/trendweight) does) and the weekly rate, with a goal date and your pace against the target.
 - Sessions kept and full weeks in a row, steps by week, estimated 1RM for every lift with a sparkline, lifts ready for more weight, recent records, working sets per muscle each week, and knee scores by session, with notes on anything that needs attention.
+- A body map, front and back: where the last 7 days' sets went, which muscles are still recovering, and which have gone untrained.
 - Tap a lift, in Strength or in the workout's **···** menu, for its own page: heaviest set, estimated 1RM, volume and sessions a week, charted over time.
 
 **Everywhere**
@@ -161,4 +162,4 @@ Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the
 
 ## License
 
-[MIT](LICENSE). The font, Nunito, is under the SIL Open Font License, with its licence in `src/fonts/`; the icons are [Lucide](https://lucide.dev) (ISC). The exercise library, with each lift's photos and steps, comes from [free-exercise-db](https://github.com/yuhonas/free-exercise-db), itself from [exercises.json](https://github.com/wrkout/exercises.json), both public domain under the Unlicense; see [docs/exercise-library.md](docs/exercise-library.md).
+[MIT](LICENSE). The font, Nunito, is under the SIL Open Font License, with its licence in `src/fonts/`; the icons are [Lucide](https://lucide.dev) (ISC). The exercise library, with each lift's photos and steps, comes from [free-exercise-db](https://github.com/yuhonas/free-exercise-db), itself from [exercises.json](https://github.com/wrkout/exercises.json), both public domain under the Unlicense; see [docs/exercise-library.md](docs/exercise-library.md). The body map's outlines on Progress → Muscles are from [MuscleMap](https://github.com/melihcolpan/MuscleMap) by Melih Colpan (MIT), with its licence in `src/data/bodyMap.ts`.

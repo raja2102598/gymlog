@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { heatModel, kneeModel, liftModel, musclesModel, strengthModel, weightModel } from "@/lib/dashboard";
+import { bodyLevel, bodyModel, heatModel, kneeModel, liftModel, musclesModel, strengthModel, weightModel } from "@/lib/dashboard";
 import { DEFAULT_PLAN } from "@/lib/plan";
 import { muscleSetCount, muscleWeeks } from "@/lib/stats";
 import type { DayLog, LiftLog, PlanExercise, SetLog } from "@/lib/types";
@@ -208,6 +208,32 @@ describe("Muscles", () => {
 
   it("has nothing to show before a session is logged", () => {
     expect(musclesModel(storeWith({}), WED)).toEqual({ weeks: WEEKS, rows: [], untagged: [] });
+  });
+});
+
+describe("the body map", () => {
+  it("counts each muscle's sets in the last 7 days, and the last day in four weeks it was a main muscle", () => {
+    const s = storeWith({
+      [WED]: day({ exercises: { "Leg Press": lift([[10, 90], [10, 90], [10, 90]]) } }),
+      "2026-09-17": day({ exercises: { "Leg Press": lift([[10, 90], [10, 90]]) } }), // 6 days ago: in the week
+      "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 90]]) } }), // 7 days ago: not
+      "2026-08-20": day({ exercises: { "Lying Leg Curls": lift([[10, 30]]) } }), // over four weeks ago: not at all
+    });
+    // Leg Press: quads first, then calves, glutes and hamstrings, a half set each.
+    const by = new Map(bodyModel(s, WED).map((b) => [b.muscle, b]));
+    expect(by.get("quadriceps")).toEqual({ muscle: "quadriceps", sets: 5, last: WED });
+    expect(["calves", "glutes", "hamstrings"].map((m) => by.get(m as "calves"))).toEqual([2.5, 2.5, 2.5].map((sets, i) => ({ muscle: ["calves", "glutes", "hamstrings"][i], sets, last: null })));
+    expect(by.get("biceps")).toEqual({ muscle: "biceps", sets: 0, last: null });
+  });
+
+  it("shows a muscle by its sets, how lately it was trained, or how long it's gone untrained", () => {
+    const m = (sets: number, last: string | null) => ({ muscle: "chest" as const, sets, last });
+    expect([0, 3, 5, 9.5, 10].map((n) => bodyLevel(m(n, WED), "volume", WED))).toEqual([0, 1, 2, 2, 3]);
+    // Recovering: trained today or yesterday, then two days ago; three days on, ready.
+    expect([WED, "2026-09-22", "2026-09-21", "2026-09-20"].map((k) => bodyLevel(m(3, k), "recovery", WED))).toEqual([3, 3, 2, 0]);
+    expect(bodyLevel(m(0, null), "recovery", WED)).toBe(0);
+    // Untrained: a week, two, or not in the four weeks looked at.
+    expect(["2026-09-17", "2026-09-16", "2026-09-09", null].map((k) => bodyLevel(m(0, k), "untrained", WED))).toEqual([0, 1, 2, 3]);
   });
 });
 

@@ -7,12 +7,13 @@ import { ChartCard, Stat } from "@/components/health/parts";
 import { History } from "@/components/today/History";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
-import { healthModel, heatModel, HEAT_WORDS, kneeModel, musclesModel, planModel, stepsModel, strengthModel, weightModel, type HeatClass, type HeatRange, type StrengthRow } from "@/lib/dashboard";
+import { bodyModel, healthModel, heatModel, HEAT_WORDS, kneeModel, musclesModel, planModel, stepsModel, strengthModel, weightModel, type HeatClass, type HeatRange, type StrengthRow } from "@/lib/dashboard";
 import { addDays, dm, mondayOf, parseKey, todayKey } from "@/lib/dates";
 import { fmt, plural } from "@/lib/format";
 import { hashOf } from "@/lib/route";
 import { cx } from "@/lib/cx";
 import type { DayKey } from "@/lib/types";
+import { BodyMap } from "./BodyMap";
 import { KneeCard } from "./KneeCard";
 import { MusclesCard } from "./MusclesCard";
 import { StrengthCard } from "./StrengthCard";
@@ -61,7 +62,12 @@ export function ProgressView({ onSetGoal, onOpenLift, onOpenTrain, onOpenSetting
         {tab === "overview" ? <Overview onOpenLift={onOpenLift} onAll={() => setTab("strength")} onOpenTrain={onOpenTrain} /> : null}
         {tab === "strength" ? <StrengthCard m={strengthModel(store, t)} onOpenLift={onOpenLift} /> : null}
         {tab === "body" ? <BodyTab onSetGoal={onSetGoal} /> : null}
-        {tab === "muscles" ? <MusclesCard m={musclesModel(store, t)} /> : null}
+        {tab === "muscles" ? (
+          <>
+            <BodyMap muscles={bodyModel(store, t)} t={t} />
+            <MusclesCard m={musclesModel(store, t)} />
+          </>
+        ) : null}
       </div>
     </>
   );

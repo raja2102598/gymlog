@@ -342,6 +342,18 @@ async function muscles({ browser, base, check }) {
   check("but not for a muscle only worked on the side", (await row("glutes").locator(".musc-n").count()) === 0);
   const untagged = await flat(page.locator("#muscUntagged"));
   check("a lift with no muscles is listed apart, not guessed", untagged.startsWith("Untagged, so not counted: Mystery Press (2 sets)."), untagged);
+
+  // The body map above it: today's two sets of Leg Extension, the only ones in the last 7 days.
+  await page.waitForSelector('#bodyMap .bm-fig[data-side="back"]');
+  const quads = () => page.getAttribute('#bodyMap .bm-fig[data-side="front"] g[data-slug="quadriceps"]', "class");
+  const hams = () => page.getAttribute('#bodyMap .bm-fig[data-side="back"] g[data-slug="hamstring"]', "class");
+  const said = () => flat(page.locator("#bodyMapSaid"));
+  check("the body map: front and back, the quads lightly for 2 sets this week", (await quads()) === "bm-l1" && (await hams()) === "bm-l0" && (await said()) === "Sets in the last 7 days: Quads 2.", `${await quads()} ${await said()}`);
+  await page.click('#bodyMode [data-seg="recovery"]');
+  check("Recovering: the quads, trained today", (await quads()) === "bm-l3" && (await said()) === "Still recovering: Quads (today). Everything else is ready.", await said());
+  await page.click('#bodyMode [data-seg="untrained"]');
+  check("Not trained: the hamstrings, a week since", (await hams()) === "bm-l1" && (await quads()) === "bm-l0" && /Not in a week or more: Hamstrings \(7 days\)/.test(await said()), await said());
+  check("and a screen reader hears it", (await page.getAttribute("#bodyMap .bm-figs", "aria-label")) === (await said()));
   await page.locator("#dashMuscles").scrollIntoViewIfNeeded();
   await shot(page, "muscles");
   // It fits a small phone, with no sideways scroll.

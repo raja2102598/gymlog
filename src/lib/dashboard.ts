@@ -375,6 +375,51 @@ export function musclesModel(store: GymStore, t: DayKey): MusclesModel {
   };
 }
 
+/* ---------- the body map: where the sets went, what's recovering, what's gone untrained ---------- */
+
+export type BodyMode = "volume" | "recovery" | "untrained";
+export interface BodyMuscle {
+  muscle: Muscle;
+  /** Sets in the last 7 days, today's included: 1 for a lift's main muscles, a half for its others. */
+  sets: number;
+  /** The last day it was one of a lift's main muscles, within the last four weeks, or null. */
+  last: DayKey | null;
+}
+/** How long a muscle trained as a main one takes to recover, days: 48 to 72 hours, as most advice has it. */
+export const RECOVERY_DAYS = 3;
+/** Not trained as a main muscle for this many days: untrained. */
+export const UNTRAINED_DAYS = 7;
+
+/** Each muscle's sets in the last 7 days and the last day it was trained as a main one, from the last four weeks. */
+export function bodyModel(store: GymStore, t: DayKey): BodyMuscle[] {
+  const from = addDays(t, -27), week = addDays(t, -6);
+  const out = new Map<Muscle, BodyMuscle>((Object.keys(MUSCLES) as Muscle[]).map((m) => [m, { muscle: m, sets: 0, last: null }]));
+  for (const k of store.days()) {
+    if (k < from || k > t) continue;
+    for (const { name, sets } of store.liftSets(k)) {
+      const x = store.exerciseOf(name), n = S.muscleSetCount(sets);
+      if (!x || !n) continue;
+      for (const m of x.primary) {
+        const b = out.get(m)!;
+        if (k >= week) b.sets += n;
+        if (!b.last || k > b.last) b.last = k;
+      }
+      if (k >= week) for (const m of x.secondary) out.get(m)!.sets += n / 2;
+    }
+  }
+  return [...out.values()];
+}
+
+/** How strongly a muscle shows in a mode, 0 (not at all) to 3, and its words. Volume: sets in the last 7 days, 10 to
+ *  20 a week being the usual advice. Recovery: trained as a main muscle today or yesterday, two days ago, or before.
+ *  Untrained: not a main muscle in a week, or in four. */
+export function bodyLevel(b: BodyMuscle, mode: BodyMode, t: DayKey): 0 | 1 | 2 | 3 {
+  const ago = b.last ? S.daysBetween(b.last, t) : null;
+  if (mode === "volume") return b.sets >= 10 ? 3 : b.sets >= 5 ? 2 : b.sets > 0 ? 1 : 0;
+  if (mode === "recovery") return ago == null || ago >= RECOVERY_DAYS ? 0 : ago <= 1 ? 3 : 2;
+  return ago == null ? 3 : ago >= 14 ? 2 : ago >= UNTRAINED_DAYS ? 1 : 0;
+}
+
 /* ---------- one lift: its own page, opened from Strength or a lift's card ---------- */
 
 export interface LiftModel {
