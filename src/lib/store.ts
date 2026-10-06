@@ -18,7 +18,8 @@ import * as S from "./stats";
 import { APP_LOGIN_PAGE, GOOGLE_WEB_CLIENT_ID, isNative } from "./native";
 import { CACHE_KEY, copy, HEALTH_KEY, lsDel, lsGet, lsSet, NOT_NOW_KEY, PENDING_KEY, PLAN_KEY, REST_KEY } from "./storage";
 import { keepRunsInMemory } from "./workout";
-import { repUnit, type RepUnit } from "./format";
+import { plural, repUnit, type RepUnit } from "./format";
+import { readOtherApp, type OtherAppImport } from "./importers";
 import { EXTRA_FIELDS, MEASURE_FIELDS, type CustomExercise, type DayKey, type Gym, type DayLog, type FreeWorkout, type HealthDay, type LiftLog, type MeasureField, type Plan, type PlanDay, type PlanExercise, type SetLog, type Weights, type WorkoutHeart } from "./types";
 
 export type AuthState = "starting" | "setup" | "signedOut" | "signedIn";
@@ -2014,6 +2015,53 @@ export class GymStore {
     // The plan is named when the file has one of its own, or when its default replaced another.
     const done = `Imported ${backupWords(b.logs.length, plan !== null && (newPlan || b.plan !== "default"), saved ? health : 0)}.`;
     return saved ? done : `${done} The Health Connect days couldn’t be saved: import the file again when you’re online.`;
+  }
+  /** Workouts from another app's CSV (Strong, Hevy, FitNotes; lib/importers.ts), added to the log: an empty day gets
+   *  the workout as a free-form one, under its name there; a day with something logged gets its lifts beside what's
+   *  there. A lift already logged that day is never replaced: it's kept as it is, and counted. A lift's name is the
+   *  plan's, your own or the library's when one of those has it in any case, so its history joins theirs. Saved and
+   *  synced as any edit is. Returns what to show. */
+  async importOtherApp(file: File): Promise<string> {
+    let got: OtherAppImport;
+    try {
+      got = readOtherApp(await file.text());
+    } catch (err) {
+      return `That file couldn’t be imported: ${(err as Error).message.replace(/\.$/, "")}. In the other app, export your workouts as CSV, then choose that file.`;
+    }
+    const known = new Map<string, string>();
+    for (const d of this.plan.days) for (const x of d.exercises) known.set(x.name.toLowerCase(), x.name);
+    for (const c of this.plan.custom ?? []) known.set(c.name.toLowerCase(), c.name);
+    const nameOf = (n: string) => known.get(n.trim().toLowerCase()) ?? libraryNamed(n)?.name ?? n.trim();
+    let workouts = 0, kept = 0, sets = 0;
+    for (const d of got.days) {
+      const n = this.clone(d.day), empty = !Object.keys(n.exercises).length && !n.free, added: string[] = [];
+      for (const l of d.lifts) {
+        const name = nameOf(l.name);
+        if (n.exercises[name] || added.includes(name)) {
+          kept++;
+          continue;
+        }
+        n.exercises[name] = { done: true, kg: topKg(l.sets), sets: l.sets };
+        added.push(name);
+        sets += l.sets.length;
+      }
+      if (!added.length) continue;
+      if (empty) n.free = { name: d.title, lifts: added };
+      else if (n.free) n.free.lifts.push(...added);
+      this.logs[d.day] = n;
+      this.pending[d.day] = n;
+      workouts++;
+    }
+    this.logsChanged();
+    this.persistLocal();
+    this.changed();
+    await this.flush();
+    const parts = [
+      `Imported ${plural(workouts, "workout")} from ${got.app}, ${plural(sets, "set")} in all.`,
+      kept ? `${plural(kept, "lift")} already logged on ${kept === 1 ? "its day was" : "their days were"} kept as ${kept === 1 ? "it was" : "they were"}.` : "",
+      got.leftOut ? `${plural(got.leftOut, "set")} with only a time or a distance ${got.leftOut === 1 ? "was" : "were"} left out.` : "",
+    ];
+    return parts.filter(Boolean).join(" ");
   }
   /** Health Connect days from a backup, into Supabase: only the days it doesn't have, since the ones it has may be
    *  newer. This device's copy then comes from Supabase, as always. Returns whether they were saved; unsaved, none are

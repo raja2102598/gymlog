@@ -649,7 +649,7 @@ function download(name: string, type: string, text: string) {
 
 function Data({ first, demo }: { first: string; demo: boolean }) {
   const store = useGym();
-  const file = useRef<HTMLInputElement>(null);
+  const file = useRef<HTMLInputElement>(null), other = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState(first);
   const exportData = () => {
     const b = store.exportBackup();
@@ -676,6 +676,14 @@ function Data({ first, demo }: { first: string; demo: boolean }) {
     const m = await store.importFile(f, replace);
     if (n === imports.current) setMsg(m);
   };
+  const importOther = async (ev: ChangeEvent<HTMLInputElement>) => {
+    const f = ev.currentTarget.files?.[0];
+    ev.currentTarget.value = "";
+    if (!f) return;
+    const n = ++imports.current;
+    const m = await store.importOtherApp(f);
+    if (n === imports.current) setMsg(m);
+  };
   return (
     <Group title="Export & backup" id="setData" open={!!first}>
       <button type="button" className="pref-row pref-tap" id="exportBtn" onClick={exportData}>
@@ -688,11 +696,18 @@ function Data({ first, demo }: { first: string; demo: boolean }) {
           <Upload className="pref-go" size={18} aria-hidden="true" />
         </button>
       )}
+      {demo ? null : (
+        <button type="button" className="pref-row pref-tap" id="importOtherBtn" onClick={() => other.current?.click()}>
+          <Text title="Import from Strong, Hevy or FitNotes (.csv)" sub="Brings in the workouts you logged there. Nothing you’ve logged here is replaced." />
+          <Upload className="pref-go" size={18} aria-hidden="true" />
+        </button>
+      )}
       <button type="button" className="pref-row pref-tap" id="csvBtn" onClick={exportCsv}>
         <Text title="Export workouts as CSV" sub="Every set you’ve logged, a row each, for a spreadsheet" />
         <Download className="pref-go" size={18} aria-hidden="true" />
       </button>
       {demo ? null : <input type="file" id="importFile" accept="application/json,.json" hidden ref={file} onChange={importData} />}
+      {demo ? null : <input type="file" id="importOtherFile" accept="text/csv,.csv" hidden ref={other} onChange={importOther} />}
       {/* Focusable, so the app can put you here after a restore on the first-run screen, reading what came in. */}
       <p className="note pref-msg" id="dataMsg" role="status" tabIndex={-1}>
         {msg}
