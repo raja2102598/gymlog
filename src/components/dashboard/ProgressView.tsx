@@ -23,7 +23,7 @@ const SECTION_KEY = "gymlog.progressTab";
 
 /** Progress (Progress board): Overview, Strength, Body and Muscles. Overview leads with the week in three numbers,
  *  the weight trend, the last 14 days' consistency and the pinned lifts. */
-export function ProgressView({ onSetGoal, onOpenLift, onOpenTrain, onOpenSettings }: { onSetGoal: () => void; onOpenLift: (name: string) => void; onOpenTrain: () => void; onOpenSettings: () => void }) {
+export function ProgressView({ onSetGoal, onOpenLift, onOpenTrain, onOpenSettings }: { onSetGoal: () => void; onOpenLift: (name: string) => void; onOpenTrain: (k?: DayKey) => void; onOpenSettings: () => void }) {
   const [tab, setTabState] = useState<Section>(() => {
     try {
       const v = sessionStorage.getItem(SECTION_KEY);
@@ -67,7 +67,7 @@ export function ProgressView({ onSetGoal, onOpenLift, onOpenTrain, onOpenSetting
   );
 }
 
-function Overview({ onOpenLift, onAll, onOpenTrain }: { onOpenLift: (name: string) => void; onAll: () => void; onOpenTrain: () => void }) {
+function Overview({ onOpenLift, onAll, onOpenTrain }: { onOpenLift: (name: string) => void; onAll: () => void; onOpenTrain: (k?: DayKey) => void }) {
   const store = useGym();
   const t = todayKey();
   const weight = weightModel(store, t), strength = strengthModel(store, t), knee = kneeModel(store, t), health = healthModel(store, t), plan = planModel(store, t), steps = stepsModel(store, t);
@@ -92,7 +92,7 @@ function Overview({ onOpenLift, onAll, onOpenTrain }: { onOpenLift: (name: strin
       </section>
       <WeightTrendCard />
       <Consistency t={t} />
-      <Pinned rows={strength.rows} onOpenLift={onOpenLift} onAll={onAll} anyLogged={strength.anyLogged} onOpenTrain={onOpenTrain} />
+      <Pinned rows={strength.rows} onOpenLift={onOpenLift} onAll={onAll} anyLogged={strength.anyLogged} onOpenTrain={() => onOpenTrain()} />
       {steps.bars.some(([, v]) => v != null) ? (
         <ChartCard id="dashSteps" title="Steps by week" caption={`${steps.atGoal} of ${steps.daysSoFar} days at ${fmt(steps.goal)} this week`}>
           {(w) => (
@@ -107,7 +107,7 @@ function Overview({ onOpenLift, onAll, onOpenTrain }: { onOpenLift: (name: strin
           )}
         </ChartCard>
       ) : null}
-      <History />
+      <History onOpenDay={onOpenTrain} />
     </>
   );
 }

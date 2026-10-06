@@ -63,3 +63,6 @@
 /* Too small for an outline to read: a missed day is filled, darker than a rest day, and the legend says so */
 .heat .cell.miss,.legend.filled i.miss{box-shadow:none;background:var(--outline)}
 .heat .cell.now{box-shadow:inset 0 0 0 1.5px var(--ink)}
+/* A day in the last two weeks: the whole cell opens it in Train */
+.hist .hday{display:grid;text-align:left;background:none;border:0;padding:4px 0;margin:-4px 0;min-height:44px;align-content:center;color:inherit;font:inherit;cursor:pointer;width:100%}
+.hist .hday .hs{display:block}

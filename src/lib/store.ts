@@ -7,7 +7,7 @@ import { createClient, type Session, type SupabaseClient, type User } from "@sup
 import { TEMPLATES } from "@/data/templates";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { BACKUP_FORMAT, BACKUP_VERSION, backupWords, ImportError, readBackup, type Backup, type BackupContents, type CsvValue } from "./backup";
-import { addDays, dayMonth, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
+import { addDays, dayMonth, dm, DOW, keyOf, mondayOf, todayKey, wdIndex } from "./dates";
 import { createDemoSupabase } from "./demoSupabase";
 import { CATALOGUE, closeMatches, customLift, EQUIPMENT, exerciseFor, gymCan, gymLacks, isBar, libraryLift, libraryNamed, loadOf, type Equip, type Exercise, type Load } from "./library";
 import { DEFAULT_PLAN, DEFAULT_WEIGHTS, normalizeCustom, normalizeGym, normalizePlan, normalizeWeights, orderBlocks, planBlocks } from "./plan";
@@ -844,6 +844,40 @@ export class GymStore {
       },
       true,
     );
+  }
+  /** Moves day `from`'s workout to day `to`, as when it was logged on the wrong date: its lifts and their order, warm-ups,
+   *  cardio, the session it was (the plan's, kept as that session on the new day, or a free-form one), Hold today, the
+   *  watch's heart rate and the knee before and after. What belongs to the day itself stays: steps, weight, water,
+   *  measurements, the note and the knee on waking. Records and suggestions read the history again, as for any edit.
+   *  Returns why it can't, or "" once moved: not to the same day, a day ahead, or one with a workout of its own. */
+  moveWorkout(from: DayKey, to: DayKey): string {
+    if (from === to) return "That’s the day it’s on already.";
+    if (to > todayKey()) return "Pick today or a day before it.";
+    if (!this.worked(from) && !this.isFree(from)) return "There’s no workout logged on this day to move.";
+    if (this.worked(to) || this.isFree(to)) return `${dm(to)} has a workout logged already. Move or clear that one first.`;
+    const a = this.clone(from), b = this.clone(to);
+    // The session it was, so its lifts are the planned ones there too; one done as the new day's own needs nothing.
+    const slot = this.slotFor(from), free = !!a.free;
+    b.exercises = { ...b.exercises, ...a.exercises };
+    for (const k of ["warmup", "cardio"] as const) (b[k] as unknown) = a[k];
+    for (const k of ["free", "order", "hold", "hr", "kneeBefore", "kneeAfter", "cardioMin", "cardioKmh", "cardioIncline"] as const) {
+      if (a[k] != null) (b[k] as unknown) = a[k];
+      else delete b[k];
+      delete a[k];
+    }
+    delete b.skip;
+    if (free) delete b.session;
+    else {
+      if (slot === wdIndex(to)) delete b.session;
+      else b.session = slot;
+    }
+    delete a.session;
+    a.exercises = {};
+    a.warmup = [];
+    a.cardio = false;
+    this.save(from, a, true);
+    this.save(to, b, true);
+    return "";
   }
   /** Back to day k's planned session. What was logged in the free-form workout stays, as lifts outside the plan. */
   endFree(k: DayKey) {

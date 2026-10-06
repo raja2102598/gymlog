@@ -2,9 +2,10 @@
 import { useGym } from "@/hooks/useGym";
 import { addDays, DOW, todayKey, wdIndex } from "@/lib/dates";
 import { fmt } from "@/lib/format";
+import type { DayKey } from "@/lib/types";
 
-/** The last two weeks at a glance, from the day logging started. */
-export function History() {
+/** The last two weeks at a glance, from the day logging started. A day opens in Train, to look at it or fix it. */
+export function History({ onOpenDay }: { onOpenDay?: (k: DayKey) => void }) {
   const store = useGym();
   const t = todayKey(), start = store.firstDay(), rows = [];
   for (let i = 0; i < 14; i++) {
@@ -14,10 +15,21 @@ export function History() {
     rows.push(
       <tr key={k}>
         <td>
-          <span className="num">
-            {DOW[wdIndex(k)]} {+k.slice(8)}
-          </span>
-          <div className="hs">{p.name}</div>
+          {onOpenDay ? (
+            <button type="button" className="hday" data-hday={k} aria-label={`Open ${DOW[wdIndex(k)]} ${+k.slice(8)}, ${p.name}, in Train`} onClick={() => onOpenDay(k)}>
+              <span className="num">
+                {DOW[wdIndex(k)]} {+k.slice(8)}
+              </span>
+              <span className="hs">{p.name}</span>
+            </button>
+          ) : (
+            <>
+              <span className="num">
+                {DOW[wdIndex(k)]} {+k.slice(8)}
+              </span>
+              <div className="hs">{p.name}</div>
+            </>
+          )}
         </td>
         <td className="r num">{p.exercises.length ? `${done}/${p.exercises.length}` : "-"}</td>
         <td className="c">{e.cardio ? "Yes" : "–"}</td>

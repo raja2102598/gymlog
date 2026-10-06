@@ -70,6 +70,40 @@ describe("a day's log", () => {
 
 // The workout's set table as a phone types into it. Leg Press is 3 × 10–12 and done for the first time, so its boxes
 // suggest 10 reps and no weight, as Dumbbell Curls' did in the report of 12 reps coming back as 10.
+describe("a workout moved to another day", () => {
+  it("takes the lifts, the session and its knee scores, and leaves the day's own steps, weight and note behind", () => {
+    // Legs, logged on Monday the 14th by mistake (Push's day), with the day's steps, weight and note.
+    const s = storeWith({ "2026-09-14": day({ exercises: { "Leg Press": lift([[10, 90]]) }, warmup: ["Bike"], cardio: true, cardioMin: 12, session: 2, kneeBefore: 2, kneeAfter: 3, steps: 9000, weight: 81, note: "tired", kneeWake: 2 }) });
+    expect(s.moveWorkout("2026-09-14", "2026-09-15")).toBe("");
+    const from = s.entry("2026-09-14"), to = s.entry("2026-09-15");
+    expect([to.exercises["Leg Press"]?.sets, to.warmup, to.cardio, to.cardioMin, to.session, to.kneeBefore, to.kneeAfter]).toEqual([[{ reps: 10, kg: 90 }], ["Bike"], true, 12, 2, 2, 3]);
+    expect(s.planFor("2026-09-15").name).toBe("Legs"); // still Legs on a Tuesday, so its lifts are the planned ones
+    expect([from.exercises, from.session, from.cardio, from.steps, from.weight, from.note, from.kneeWake, from.kneeBefore]).toEqual([{}, undefined, false, 9000, 81, "tired", 2, undefined]);
+    expect([s.worked("2026-09-14"), s.worked("2026-09-15")]).toEqual([false, true]);
+    // Back to a Wednesday, Legs' own day: no session to name there.
+    expect(s.moveWorkout("2026-09-15", LAST)).toBe("");
+    expect([s.entry(LAST).session, s.planFor(LAST).name]).toEqual([undefined, "Legs"]);
+  });
+
+  it("moves a free-form workout as one, and refuses a day ahead, the same day, nothing to move, or a day with its own", () => {
+    const s = storeWith({ "2026-09-19": day({ free: { name: "Hotel gym", lifts: ["Push Up"] }, exercises: { "Push Up": lift([[20, 0]]) } }), "2026-09-21": day({ exercises: { "Bench Press": lift([[8, 60]]) } }) });
+    expect(s.moveWorkout("2026-09-19", "2026-09-24")).toBe("Pick today or a day before it.");
+    expect(s.moveWorkout("2026-09-19", "2026-09-19")).toBe("That’s the day it’s on already.");
+    expect(s.moveWorkout("2026-09-20", "2026-09-18")).toBe("There’s no workout logged on this day to move.");
+    expect(s.moveWorkout("2026-09-19", "2026-09-21")).toBe("21 Sept has a workout logged already. Move or clear that one first.");
+    expect(s.moveWorkout("2026-09-19", "2026-09-18")).toBe("");
+    expect([s.entry("2026-09-18").free, s.isFree("2026-09-19"), s.entry("2026-09-18").session]).toEqual([{ name: "Hotel gym", lifts: ["Push Up"] }, false, undefined]);
+  });
+
+  it("reads records again from the corrected history", () => {
+    // 100 kg logged on the 14th, then the same on the 21st: no record, until the 14th's turns out to be the 22nd's.
+    const s = storeWith({ "2026-09-14": day({ exercises: { "Leg Press": lift([[10, 100]]) }, session: 2 }), "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 90]]) } }), "2026-09-21": day({ exercises: { "Leg Press": lift([[8, 95]]) }, session: 2 }) });
+    expect(s.recordsOn("2026-09-21").size).toBe(0);
+    expect(s.moveWorkout("2026-09-14", "2026-09-22")).toBe("");
+    expect([...s.recordsOn("2026-09-21").keys()]).toEqual(["Leg Press|0"]);
+  });
+});
+
 describe("a set typed in the workout", () => {
   /** A lift as the workout draws it now: each keystroke draws it again. `rests` hears each set that starts a rest. */
   const at = (s: GymStore, name = "Leg Press", rests: number[] = []) => {

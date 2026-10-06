@@ -1,5 +1,5 @@
 "use client";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useRef, type TouchEvent } from "react";
 import { useGym } from "@/hooks/useGym";
 import { cx } from "@/lib/cx";
@@ -44,6 +44,17 @@ const short = (name: string) => {
   return w.length > 6 ? (w[0] + w.slice(1).replace(/[aeiou]/gi, "")).slice(0, 5) : w;
 };
 
+/** Any day, past or a week or two ahead, from the phone's date picker: the calendar button opens it, and the day picked
+ *  opens in Train, to look back at a workout, fix it, or log one done on paper. */
+function GoToDate({ sel, onSelect }: { sel: DayKey; onSelect: (k: DayKey) => void }) {
+  return (
+    <label className="btn btn-icon btn-quiet godate">
+      <CalendarDays size={18} aria-hidden="true" />
+      <input type="date" id="goDate" aria-label="Go to a date" value={sel} max={addDays(todayKey(), 14)} onChange={(ev) => ev.target.value && onSelect(ev.target.value)} />
+    </label>
+  );
+}
+
 /** Train's day chips: the larger WeekStrip (62px, the session under the weekday), the selected day filled brand.
  *  Swipe, or the chevrons, change the week. */
 export function DayChips({ sel, onSelect }: { sel: DayKey; onSelect: (k: DayKey) => void }) {
@@ -67,6 +78,7 @@ export function DayChips({ sel, onSelect }: { sel: DayKey; onSelect: (k: DayKey)
         <span className="label" id="weekLabel" aria-live="polite">
           {week}
         </span>
+        <GoToDate sel={sel} onSelect={onSelect} />
         {mon !== mondayOf(t) ? (
           <button type="button" className="btn btn-sm btn-quiet" id="todayB" onClick={() => onSelect(t)}>
             Today
