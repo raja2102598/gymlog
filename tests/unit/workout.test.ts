@@ -146,13 +146,15 @@ describe("Complete set N", () => {
     expect(nextSet(card(s, "Leg Press"))).toBe(-1);
   });
 
-  it("repeats the last set logged, reps and weight, and passes over a drop set", () => {
+  it("repeats the last set logged, reps and weight, and passes over a drop set or a rest-pause burst", () => {
     const s = lastWeek(), m = () => card(s, "Leg Press");
     m().setField(0, "kg", "55");
     m().setField(0, "reps", "12");
     expect(m().sugFor(m().sets, 1)).toEqual(["12", "55"]); // what set 2's boxes show greyed
     m().setInfo(0, { type: "drop" }); // set 1 a drop set after all: lighter on purpose, so not repeated
     expect(m().sugFor(m().sets, 1)).toEqual(["10", "55"]); // last week's reps; the weight typed just before it
+    m().setInfo(0, { type: "restpause" }); // a few reps after a short rest: not what the next set repeats either
+    expect(m().sugFor(m().sets, 1)).toEqual(["10", "55"]);
     m().setInfo(0, { type: undefined });
     logSet(s, m(), 1);
     logSet(s, m(), 2);

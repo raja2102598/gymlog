@@ -18,6 +18,9 @@ describe("set types", () => {
     expect(G.readyToAdd(sets, "10-12", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 12 });
     // Without the drop set's exclusion, 15 reps at 30 kg would have broken "every set at one weight".
     expect(G.readyToAdd([set(12, 50), set(12, 50), set(15, 30, "drop")], "10-12", 3, 2.5)).toBeNull(); // only 2 count
+    // A rest-pause burst is the same: 4 more reps at 50 kg neither holds the rule back nor makes the third set.
+    expect(G.readyToAdd([set(12, 50), set(12, 50), set(12, 50), set(4, 50, "restpause")], "10-12", 3, 2.5)).toEqual({ rule: "double", from: 50, to: 52.5, top: 12 });
+    expect(G.readyToAdd([set(12, 50), set(12, 50), set(4, 50, "restpause")], "10-12", 3, 2.5)).toBeNull();
     expect(G.readyToAdd([set(8, 20, "warmup"), set(5, 30, "warmup")], "8-10", 1, 2.5)).toBeNull(); // nothing but warm-ups
   });
 
@@ -25,6 +28,7 @@ describe("set types", () => {
     expect(setsComplete([set(10, 50), set(9, 50, "failure"), set(12, 30, "drop")], 3)).toBe(false);
     expect(setsComplete([set(10, 50), set(9, 50, "failure"), set(8, 50)], 3)).toBe(true);
     expect(setsComplete([set(10, 20, "warmup"), set(10, 50), set(9, 50)], 3)).toBe(false);
+    expect(setsComplete([set(10, 50), set(9, 50), set(4, 50, "restpause")], 3)).toBe(false);
     expect(topKg([set(5, 60, "warmup"), set(10, 50), set(10, 50)])).toBe(50);
   });
 
@@ -33,7 +37,7 @@ describe("set types", () => {
     G.foldDay(best, { day: "2026-09-16", lifts: [{ name: "Leg Press", sets: [set(10, 50), set(10, 50)] }] });
     const found = G.checkDay(best, {
       day: "2026-09-23",
-      lifts: [{ name: "Leg Press", sets: [set(10, 80, "warmup"), set(30, 20, "drop"), set(11, 50, "failure")] }],
+      lifts: [{ name: "Leg Press", sets: [set(10, 80, "warmup"), set(30, 20, "drop"), set(11, 50, "failure"), set(5, 70, "restpause")] }],
     });
     expect(found.map((r) => [r.set, r.kinds])).toEqual([[2, ["e1rm", "reps"]]]);
     G.foldDay(best, { day: "2026-09-23", lifts: [{ name: "Leg Press", sets: [set(10, 80, "warmup"), set(30, 20, "drop")] }] });

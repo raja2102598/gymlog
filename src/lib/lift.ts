@@ -3,7 +3,7 @@
  * logs its sets through the same changes so a set done on the wrist counts exactly as one done on the phone. */
 import { num } from "./format";
 import type { Stuck } from "./plateau";
-import { isWorkingSet } from "./stats";
+import { isExtraSet, isWorkingSet } from "./stats";
 import { minSets, performed, restSecFor, setsComplete, setsOf, targetOf, topKg, type GymStore, type LastDone, type LiftItem as Item, type NextWeight } from "./store";
 import type { DayKey, DayLog, LiftLog, PlanExercise, SetLog } from "./types";
 
@@ -83,7 +83,7 @@ function tickFollows(r: LiftLog, work: SetLog[], min: number) {
 }
 
 /** The last set before set `j` that's logged, a drop set aside: the one the sets after it repeat (LiftModel.sugFor). */
-const loggedBefore = (sets: Partial<SetLog>[], j: number) => sets.slice(0, j).findLast((s) => (s.reps ?? 0) > 0 && s.type !== "drop");
+const loggedBefore = (sets: Partial<SetLog>[], j: number) => sets.slice(0, j).findLast((s) => (s.reps ?? 0) > 0 && !isExtraSet(s));
 
 /** A lift's model on a day. `onReps` hears of a set just given its first reps with no later set of the lift logged:
  *  when a rest can start. A lift's own card starts it then; a superset waits for the round. */
@@ -152,7 +152,7 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
       }, false);
       if (first) onReps(m, j);
     },
-    // A set's kind or effort, from its menu. Making a set a drop set, or a working set again, changes how many
+    // A set's kind or effort, from its menu. Making a set a drop set or a rest-pause burst, or a working set again, changes how many
     // count toward the planned sets.
     setInfo(j, patch) {
       edit((r) => {

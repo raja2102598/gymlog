@@ -46,7 +46,7 @@ export function MusclesCard({ m }: { m: MusclesModel }) {
           </table>
           <p className="note">
             Working sets a week, from the Monday shown: a set counts 1 for a lift’s main muscles and a half for the
-            others it works, leaving out warm-ups and drop sets. Most advice puts a muscle at 10 to 20 sets a week.
+            others it works, leaving out warm-ups, drop sets and rest-pause bursts. Most advice puts a muscle at 10 to 20 sets a week.
           </p>
         </>
       ) : (

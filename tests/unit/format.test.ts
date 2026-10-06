@@ -17,10 +17,11 @@ describe("setsSummary", () => {
     expect(said([s(null, null), s(10, 0)])).toBe("10 × 0 kg");
     expect(said([])).toBe("");
   });
-  it("marks sets to failure and drop sets, leaving plain working sets as they read", () => {
-    const typed = (reps: number, kg: number, type: "failure" | "drop") => ({ reps, kg, type });
+  it("marks sets to failure, drop sets and rest-pause bursts, leaving plain working sets as they read", () => {
+    const typed = (reps: number, kg: number, type: "failure" | "drop" | "restpause") => ({ reps, kg, type });
     expect(said([s(10, 45), typed(8, 45, "failure")])).toBe("10, 8F × 45 kg");
     expect(said([s(10, 45), typed(12, 30, "drop")])).toBe("10 × 45, 12D × 30 kg");
+    expect(said([s(10, 45), typed(4, 45, "restpause")])).toBe("10, 4R × 45 kg");
   });
   it("only breaks a line after a comma, never inside 8 × 45 kg", () => {
     expect(setsSummary([s(10, 40), s(8, 45)])).toBe("10\u00a0×\u00a040, 8\u00a0×\u00a045\u00a0kg");

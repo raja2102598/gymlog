@@ -307,7 +307,7 @@ object OverlayLogic {
         val set = lift.rows.mapIndexed { i, r -> if (i == j) r.copy(reps = c.reps, kg = kg) else r }
         val rows = set.mapIndexed { i, r ->
             // Only the rows after it change; one with nothing logged before it keeps the phone's own suggestion.
-            val before = if (i > j && r.reps == null) set.subList(0, i).lastOrNull { StepLogic.logged(it) && it.type != "drop" } else null
+            val before = if (i > j && r.reps == null) set.subList(0, i).lastOrNull { StepLogic.logged(it) && it.type != "drop" && it.type != "restpause" } else null
             if (before == null) r else r.copy(sugReps = before.reps, sugKg = before.kg ?: r.sugKg)
         }
         val done = when {

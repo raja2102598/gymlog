@@ -6,7 +6,10 @@ import type { DayKey, SetLog } from "./types";
 export const isWorkingSet = (s: SetLog) => s.type !== "warmup";
 /** Counts toward the planned sets, the go-up rule and records: a working set or one to failure, not a warm-up or a
  *  drop set (extra volume after the planned sets, at a lighter weight). */
-export const isStraightSet = (s: SetLog) => s.type !== "warmup" && s.type !== "drop";
+export const isStraightSet = (s: SetLog) => s.type !== "warmup" && !isExtraSet(s);
+/** Volume only, on top of the planned sets: a drop set, or a rest-pause burst. Neither counts toward the planned sets,
+ *  the go-up rule or a record, and the sets after one don't repeat it. */
+export const isExtraSet = (s: Partial<SetLog>) => s.type === "drop" || s.type === "restpause";
 
 const DAY = 86400000;
 export const dayNum = (k: DayKey) => {
@@ -296,8 +299,8 @@ export function warmupLadder(workingKg: number, barKg: number, inc = 2.5): Warmu
 
 /* ---------- sets per muscle ---------- */
 
-/** How many of a lift's sets count toward its muscles' weekly sets: those done, with reps, and not a warm-up or a
- *  drop set, which carries on the set before it. */
+/** How many of a lift's sets count toward its muscles' weekly sets: those done, with reps, and not a warm-up, a
+ *  drop set or a rest-pause burst, which carry on the set before them. */
 export const muscleSetCount = (sets: SetLog[]) => sets.filter((s) => isStraightSet(s) && (s.reps ?? 0) > 0).length;
 
 export interface MuscleWeeks {

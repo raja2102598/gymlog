@@ -9,14 +9,15 @@ import type { Equip, Load, Muscle } from "./library";
 /** "YYYY-MM-DD" in the phone's local time. */
 export type DayKey = string;
 
-export type SetType = "warmup" | "drop" | "failure";
+export type SetType = "warmup" | "drop" | "restpause" | "failure";
 export type Effort = "off" | "rpe" | "rir";
 export interface SetLog {
   reps: number | null;
   kg: number | null;
   /** What kind of set: unset (older sets too) is a working set. A warm-up counts toward nothing: not the planned
    *  sets, records or volume. A drop set is volume only: it doesn't count toward the planned sets, the go-up rule
-   *  or a record. A set to failure counts as a working set does. */
+   *  or a record, and nor does a rest-pause burst (a few more reps after a short rest, at the same weight). A set to
+   *  failure counts as a working set does. */
   type?: SetType;
   /** How hard it was, when the plan logs effort (Plan.effort): RPE 1-10, or reps in reserve 0-10. */
   rpe?: number;

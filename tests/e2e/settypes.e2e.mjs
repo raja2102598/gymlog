@@ -60,7 +60,7 @@ export default async function settypes({ browser, base, check }) {
   const menu = card.locator(".setmenu");
   check(
     "it opens the set's menu, with the kinds of set and an RPE field",
-    (await menu.count()) === 1 && (await sn.getAttribute("aria-expanded")) === "true" && (await menu.locator(".seg button").allInnerTexts()).join("|") === "Working|To failure|Drop set" && (await menu.locator("input").count()) === 1,
+    (await menu.count()) === 1 && (await sn.getAttribute("aria-expanded")) === "true" && (await menu.locator(".seg button").allInnerTexts()).join("|") === "Working|To failure|Drop set|Rest-pause" && (await menu.locator("input").count()) === 1,
   );
 
   // --- a drop set: volume only, so the lift's third planned set is missing again and the tick goes
@@ -71,6 +71,13 @@ export default async function settypes({ browser, base, check }) {
   await until(() => today()?.done === false);
   check("a drop set doesn't count toward the planned sets: the tick it gave goes", today()?.done === false);
   check("the menu says what a drop set counts toward", /volume, not to its planned sets or a record/.test(await flat(menu)));
+
+  // --- a rest-pause burst: volume only too, marked R
+  await menu.locator("button", { hasText: "Rest-pause" }).click();
+  await until(() => today()?.sets?.[2]?.type === "restpause");
+  check("set 3 saves as a rest-pause burst, its number 3R, still not ticking the lift off", today()?.sets?.[2]?.type === "restpause" && (await flat(sn)) === "3R" && today()?.done === false, JSON.stringify(today()));
+  const segFits = await menu.locator(".seg").evaluate((e) => e.scrollWidth <= e.clientWidth + 1);
+  check("the four kinds of set fit the phone's width", segFits);
 
   // --- to failure, with an RPE: counts again, and the tick comes back
   await menu.locator("button", { hasText: "To failure" }).click();

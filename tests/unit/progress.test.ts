@@ -121,8 +121,8 @@ describe("Muscles", () => {
   const worked = (n: number, more: SetLog[] = [], x: Partial<LiftLog> = {}): LiftLog => ({ done: true, kg: 40, sets: [...Array.from({ length: n }, () => ({ reps: 10, kg: 40 })), ...more], ...x });
   const WARM: SetLog = { reps: 8, kg: 20, type: "warmup" }, DROP: SetLog = { reps: 12, kg: 30, type: "drop" };
 
-  it("counts sets done, leaving out warm-ups, drop sets and sets with no reps", () => {
-    expect(muscleSetCount([WARM, { reps: 10, kg: 40 }, { reps: 8, kg: 40, type: "failure" }, DROP, { reps: null, kg: 40 }, { reps: 0, kg: 40 }])).toBe(2);
+  it("counts sets done, leaving out warm-ups, drop sets, rest-pause bursts and sets with no reps", () => {
+    expect(muscleSetCount([WARM, { reps: 10, kg: 40 }, { reps: 8, kg: 40, type: "failure" }, DROP, { reps: 4, kg: 40, type: "restpause" }, { reps: null, kg: 40 }, { reps: 0, kg: 40 }])).toBe(2);
   });
 
   it("gives a lift's main muscles a set each and its others a half, week by week", () => {
