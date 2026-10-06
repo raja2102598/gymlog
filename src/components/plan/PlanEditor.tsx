@@ -14,13 +14,15 @@ import type { ProgRule } from "@/lib/stats";
 import type { Plan, PlanExercise } from "@/lib/types";
 import { TemplateList } from "./TemplateList";
 
-type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step" | "rest" | "oneRm" | "pct" | "deloadAfter" | "deloadPct";
+type LiftText = "name" | "sets" | "reps" | "cue" | "flag" | "step" | "rest" | "oneRm" | "pct" | "stepSec" | "deloadAfter" | "deloadPct";
 
 /** Each progression rule's name, and what it does, under the choice. */
 const PROG: Record<ProgRule, [string, string]> = {
   double: ["Double progression", "Every set at the top of the rep range, then add the step."],
   linear: ["Linear", "Add the step every session each set reaches the bottom of the rep range."],
   percent: ["% of 1RM", "Work at a percentage of a 1RM you enter, to the nearest step."],
+  greyskull: ["Greyskull LP", "Do the last set for as many reps as you can. Every set at the bottom of the rep range adds the step, twice it once the last set doubles it; a set short takes 10% off."],
+  time: ["Add time", "Hold a little longer each session: your shortest hold last time, plus the seconds you set."],
 };
 
 interface Props {
@@ -91,7 +93,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
   const setProg = (j: number, v: string) =>
     edit((p) => {
       const x = p.days[editDay].exercises[j];
-      if (v === "linear" || v === "percent") x.prog = v;
+      if (v === "linear" || v === "percent" || v === "greyskull" || v === "time") x.prog = v;
       else delete x.prog;
     });
   // Going by the library's equipment is the default, so it's left out of the plan rather than stored.
@@ -375,7 +377,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                   <label className="field" htmlFor={`pe_x${j}_prog`}>
                     <span>How the weight goes up</span>
                     <select id={`pe_x${j}_prog`} data-pprog={j} value={x.prog ?? "double"} aria-describedby={`pe_x${j}_proghow`} onChange={(ev) => setProg(j, ev.target.value)}>
-                      {Object.entries(PROG).map(([k, [label]]) => (
+                      {/* Adding time is for a hold, and shows only on one (or a lift already set to it). */}
+                      {Object.entries(PROG).filter(([k]) => k !== "time" || x.timed || x.prog === "time").map(([k, [label]]) => (
                         <option key={k} value={k}>
                           {label}
                         </option>
@@ -385,6 +388,7 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
                   <p className="sub" id={`pe_x${j}_proghow`}>
                     {PROG[x.prog ?? "double"][1]}
                   </p>
+                  {x.prog === "time" ? <div className="pe-row2">{liftField(x, j, "stepSec", "Add per session (seconds)", { placeholder: "5", inputMode: "numeric" })}</div> : null}
                   {x.prog === "percent" ? (
                     <div className="pe-row2">
                       {liftField(x, j, "oneRm", "1RM (kg)", { placeholder: "e.g. 100", inputMode: "decimal" })}

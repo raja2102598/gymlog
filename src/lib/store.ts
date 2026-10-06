@@ -136,12 +136,16 @@ export const PR_WORDS: Record<S.RecordKind, string> = { weight: "heaviest yet", 
 export const prTitle = (kinds?: S.RecordKind[]) => (kinds ? "Personal record: " + kinds.map((k) => PR_WORDS[k]).join(", ") : "");
 /** A lift's next-weight hint, in words that name the rule behind it: what to do, the weight (bold on Today, empty
  *  for a knee hold, whose weight is in `lead`), and why. */
-export function progWords(n: NextWeight): { lead: string; kg: string; why: string } {
+export function progWords(n: NextWeight): { lead: string; kg: string; why: string; unit?: "s" } {
   const kg = String(n.to);
+  if (n.rule === "time") return { lead: "Hold for ", kg, unit: "s", why: `: adding time, +${n.to - (n.from ?? n.to)}\u00a0s on your shortest hold last time.` };
   if (n.held && n.heldFor === "day") return { lead: `Hold ${n.from} kg: you’re holding today’s weights.`, kg: "", why: "" };
   if (n.held) return { lead: `Hold ${n.from}\u00a0kg: your knee was sore after ${dayMonth(n.day)}.`, kg: "", why: "" };
   if (n.rule === "linear") return { lead: "Go up to ", kg, why: `: linear, +${Math.round((n.to - (n.from ?? n.to)) * 100) / 100}\u00a0kg a session while every set hits ${n.top} reps.` };
   if (n.rule === "percent") return { lead: "Work at ", kg, why: `: ${n.pct}% of your ${n.oneRm}\u00a0kg 1RM.` };
+  if (n.rule === "greyskull" && n.reset) return { lead: "Reset to ", kg, why: `: Greyskull, a set fell short of ${n.top} reps, so ${n.off}% off ${n.from}\u00a0kg.` };
+  if (n.rule === "greyskull" && n.doubled) return { lead: "Go up to ", kg, why: `: Greyskull, your last set hit ${n.amrap}, twice the ${n.top}, so a double step.` };
+  if (n.rule === "greyskull") return { lead: "Go up to ", kg, why: `: Greyskull, every set hit ${n.top} reps. Do the last one for as many as you can.` };
   if (n.rule === "deload") {
     const short = n.fails === 1 ? "last session fell short" : `${n.fails} sessions in a row fell short`;
     return { lead: "Deload to ", kg, why: `: ${short}, so ${n.off}% off ${n.from}\u00a0kg.` };
@@ -1046,6 +1050,8 @@ export class GymStore {
   placeholders(x: PlanExercise, L: LastDone | null, j: number, next: NextWeight | null): [string, string] {
     const ls = L ? setsOf(L.r).filter(S.isWorkingSet) : [], s = ls[j] || ls[ls.length - 1] || ({} as Partial<SetLog>);
     const reps = String(s.reps ?? (parseInt(x.reps, 10) || "-"));
+    // Adding time suggests the seconds, at last time's weight.
+    if (next?.rule === "time") return [String(next.to), String(s.kg ?? "-")];
     if (next && !next.held) return [String(S.repRange(x.reps)?.[0] ?? reps), String(next.to)];
     return [reps, String(s.kg ?? "-")];
   }
@@ -1246,7 +1252,8 @@ export class GymStore {
     const grid = parseFloat(x.step) > 0 ? null : this.gridFor(load);
     const fit = (r: S.NextStep): S.NextStep => {
       if (!grid) return r;
-      if (r.rule === "deload") return { ...r, to: S.onGrid((r.from ?? r.to) * (1 - (r.off ?? 0) / 100), grid, "down") };
+      if (r.rule === "time") return r;
+      if (r.rule === "deload" || r.reset) return { ...r, to: S.onGrid((r.from ?? r.to) * (1 - (r.off ?? 0) / 100), grid, "down") };
       if (r.rule === "percent") return { ...r, to: S.onGrid(((r.oneRm ?? 0) * (r.pct ?? 0)) / 100, grid) };
       return { ...r, to: S.onGrid(r.to, grid, "up") };
     };
@@ -1262,12 +1269,16 @@ export class GymStore {
     if (x.prog === "percent") {
       const oneRm = parseFloat(x.oneRm ?? ""), pct = parseFloat(x.pct ?? "");
       if (oneRm > 0 && pct > 0 && pct <= 100) r = { rule: "percent", from: L ? topKg(setsOf(L.r).filter(S.isStraightSet)) : null, to: S.percentOf(oneRm, pct, step), top: S.repRange(x.reps)?.[0] ?? 0, pct, oneRm };
+    } else if (L && x.prog === "time") {
+      r = S.timeStep(setsOf(L.r), minSets(targetOf(L.r, x)), parseFloat(x.stepSec ?? "") || 5);
     } else if (L) {
       const t = targetOf(L.r, x);
-      r = (x.prog === "linear" ? S.linearStep : S.readyToAdd)(setsOf(L.r), t.reps, minSets(t), step);
+      r = (x.prog === "linear" ? S.linearStep : x.prog === "greyskull" ? S.greyskullStep : S.readyToAdd)(setsOf(L.r), t.reps, minSets(t), step);
     }
     if (!r) return null;
     r = fit(r);
+    // More time on a hold is no more load: nothing for the knee or the day to hold back.
+    if (r.rule === "time") return { ...r, day: L?.day ?? k, held: false };
     // Held: an increase only, on a knee lift after a sore session, or on any lift the day that holds (Hold today).
     const up = r.from != null && r.to > r.from, knee = up && !!x.knee && !!L && this.kneeBad(L.day), day = up && this.logs[k]?.hold === true;
     if (!knee && !day) return { ...r, day: L?.day ?? k, held: false };

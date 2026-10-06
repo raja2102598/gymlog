@@ -192,11 +192,14 @@ export interface PlanExercise {
    *  left out rather than false, as `rest` is. */
   superset?: boolean;
   /** How its weight goes up: unset for double progression (every set at the top of the rep range, then add the
-   *  step), "linear" (add the step each session every set reaches the bottom of it), or "percent" (`pct` percent of
-   *  a stored 1RM, `oneRm` kg). Each left out until set, as `rest` is. */
-  prog?: "linear" | "percent";
+   *  step), "linear" (add the step each session every set reaches the bottom of it), "percent" (`pct` percent of
+   *  a stored 1RM, `oneRm` kg), "greyskull" (Greyskull LP: the last set as many reps as you can, a double step once it
+   *  doubles the bottom of the range, and 10% off when a set falls short), or "time" (a hold: `stepSec` seconds more a
+   *  session, 5 when empty, rather than more weight). Each left out until set, as `rest` is. */
+  prog?: "linear" | "percent" | "greyskull" | "time";
   oneRm?: string;
   pct?: string;
+  stepSec?: string;
   /** A simple deload, with any rule: after `deloadAfter` sessions in a row short of the rep range, take
    *  `deloadPct` percent off (10 when empty). Off while `deloadAfter` is empty. */
   deloadAfter?: string;

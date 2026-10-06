@@ -1,7 +1,7 @@
 import planJson from "@/data/plan.json";
 import { DOW } from "./dates";
 import { EQUIPMENT, isEquip, isLoad, isMuscle, MUSCLES, type Equip, type Muscle } from "./library";
-import type { CustomExercise, Gym, Plan, Weights } from "./types";
+import type { CustomExercise, Gym, Plan, PlanExercise, Weights } from "./types";
 
 type Loose = Record<string, unknown> | null | undefined;
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -62,8 +62,8 @@ export function normalizePlan(p: unknown, d: Plan | null): Plan {
             ...(x?.superset === true ? { superset: true } : {}),
             ...(x?.timed === true ? { timed: true as const } : {}),
             ...(x?.perSide === true ? { perSide: true as const } : {}),
-            ...(x?.prog === "linear" || x?.prog === "percent" ? { prog: x.prog as "linear" | "percent" } : {}),
-            ...Object.fromEntries((["oneRm", "pct", "deloadAfter", "deloadPct"] as const).filter((k) => x?.[k] != null).map((k) => [k, str(x?.[k])])),
+            ...(x?.prog === "linear" || x?.prog === "percent" || x?.prog === "greyskull" || x?.prog === "time" ? { prog: x.prog as NonNullable<PlanExercise["prog"]> } : {}),
+            ...Object.fromEntries((["oneRm", "pct", "stepSec", "deloadAfter", "deloadPct"] as const).filter((k) => x?.[k] != null).map((k) => [k, str(x?.[k])])),
             ...(typeof x?.lib === "string" && x.lib ? { lib: x.lib } : {}),
             ...(isLoad(x?.load) ? { load: x.load } : {}),
           }))

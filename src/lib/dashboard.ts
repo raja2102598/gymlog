@@ -284,8 +284,10 @@ export function strengthModel(store: GymStore, t: DayKey): StrengthModel {
   store.plan.days.forEach((d) =>
     d.exercises.forEach((x: PlanExercise) => {
       const nw = store.nextWeight(x, x.name, tomorrow);
-      if (!nw || nw.from == null) return;
-      const list = nw.rule === "deload" ? deload : nw.held ? held : nw.to > nw.from ? ready : null, key = `${x.name}|${nw.rule === "deload"}|${nw.held}|${nw.to}`;
+      // Adding time to a hold is no more weight, so it isn't listed; Greyskull's reset is a deload.
+      if (!nw || nw.from == null || nw.rule === "time") return;
+      const down = nw.rule === "deload" || !!nw.reset;
+      const list = down ? deload : nw.held ? held : nw.to > nw.from ? ready : null, key = `${x.name}|${down}|${nw.held}|${nw.to}`;
       if (!list || seen.has(key)) return;
       seen.add(key);
       list.push({ name: x.name, day: d.name, from: nw.from, to: nw.to });

@@ -67,6 +67,8 @@ describe("the plan as saved", () => {
               { name: "Squat", prog: "linear", deloadAfter: 3, deloadPct: "15" },
               { name: "Bench", prog: "percent", oneRm: "100", pct: 75 },
               { name: "Row", prog: "wave", timed: "yes", perSide: true },
+              { name: "Plank", prog: "time", stepSec: 10, timed: true },
+              { name: "Deadlift", prog: "greyskull" },
               { name: "Curl", timed: true },
             ],
           },
@@ -74,7 +76,8 @@ describe("the plan as saved", () => {
       },
       DEFAULT_PLAN,
     );
-    const [squat, bench, row, curl] = p.days[0].exercises;
+    const [squat, bench, row, plank, deadlift, curl] = p.days[0].exercises;
+    expect([plank.prog, plank.stepSec, deadlift.prog]).toEqual(["time", "10", "greyskull"]);
     expect(squat).toMatchObject({ prog: "linear", deloadAfter: "3", deloadPct: "15" });
     expect(bench).toMatchObject({ prog: "percent", oneRm: "100", pct: "75" });
     expect("prog" in row).toBe(false);

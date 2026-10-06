@@ -174,10 +174,14 @@ export function ProgHint({ next }: { next: NextWeight | null }) {
   if (!next) return null;
   const w = progWords(next);
   return (
-    <div className={cx("prog callout", next.held || next.rule === "deload" ? "hold warn" : "good")} data-rule={next.held ? "hold" : next.rule}>
+    <div className={cx("prog callout", next.held || next.rule === "deload" || next.reset ? "hold warn" : "good")} data-rule={next.held ? "hold" : next.rule}>
       <span>
         {w.lead}
-        {w.kg ? <b>{w.kg}&nbsp;kg</b> : null}
+        {w.kg ? (
+          <b>
+            {w.kg}&nbsp;{w.unit ?? "kg"}
+          </b>
+        ) : null}
         {w.why}
       </span>
     </div>

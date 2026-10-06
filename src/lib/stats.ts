@@ -133,9 +133,10 @@ export function repRange(s: string | null | undefined): [number, number] | null 
   return lo > 0 && hi >= lo ? [lo, hi] : null;
 }
 
-/** How a lift's weight goes up (PlanExercise.prog): double progression, the default; linear; or a percentage of a
- *  stored 1RM. A deload can follow any of them. */
-export type ProgRule = "double" | "linear" | "percent";
+/** How a lift's weight goes up (PlanExercise.prog): double progression, the default; linear; a percentage of a stored
+ *  1RM; Greyskull LP, its last set as many reps as you can; or, for a hold, adding time rather than weight. A deload
+ *  can follow any of them. */
+export type ProgRule = "double" | "linear" | "percent" | "greyskull" | "time";
 
 /** The next weight for a lift, and the rule that set it, so the hint can say why. */
 export interface NextStep {
@@ -148,9 +149,14 @@ export interface NextStep {
   /** A percentage of a 1RM: the percentage, and the 1RM. */
   pct?: number;
   oneRm?: number;
-  /** A deload: sessions in a row that fell short, and the percentage taken off. */
+  /** A deload: sessions in a row that fell short, and the percentage taken off. Greyskull's reset takes `off` too. */
   fails?: number;
   off?: number;
+  /** Greyskull LP: the reps the last set (as many as you can) reached, and whether that doubled the bottom of the
+   *  range, which earns a double step; or `reset`, a set fell short, so the weight goes back by `off` percent. */
+  amrap?: number;
+  doubled?: boolean;
+  reset?: boolean;
 }
 
 type Straight = { reps: number; kg: number };
@@ -180,6 +186,30 @@ export function linearStep(sets: SetLog[] | undefined, reps: string, minSets: nu
   const kg = work[0].kg;
   if (!work.every((s) => s.kg === kg && s.reps >= range[0])) return null;
   return { rule: "linear", from: kg, to: add(kg, step), top: range[0] };
+}
+
+// Greyskull LP: every set but the last is the bottom of the rep range, and the last as many reps as you can. Every set
+// reaching that bottom adds `step` kg, or twice it once the last set doubled it (10 or more on a 5); a set short of it
+// resets, `off` percent off (10, as the programme has it), down to a whole step.
+export function greyskullStep(sets: SetLog[] | undefined, reps: string, minSets: number, step: number, off = 10): NextStep | null {
+  const range = repRange(reps);
+  if (!range || !(step > 0)) return null;
+  const work = straight(sets);
+  if (!work.length || work.length < minSets) return null;
+  const kg = work[0].kg, lo = range[0], last = work[work.length - 1].reps;
+  if (!work.every((s) => s.kg === kg)) return null;
+  if (work.some((s) => s.reps < lo)) return { rule: "greyskull", from: kg, to: Math.round(Math.floor((kg * (1 - off / 100)) / step + 1e-9) * step * 100) / 100, top: lo, amrap: last, reset: true, off };
+  const doubled = last >= 2 * lo;
+  return { rule: "greyskull", from: kg, to: add(kg, doubled ? 2 * step : step), top: lo, amrap: last, doubled };
+}
+
+// Adding time, for a hold (PlanExercise.timed, its reps seconds): `step` seconds a session on last time's shortest hold,
+// once it had the planned sets. `from` and `to` are seconds here, not kg.
+export function timeStep(sets: SetLog[] | undefined, minSets: number, step: number): NextStep | null {
+  const held = (sets || []).filter((s) => s && isStraightSet(s) && (s.reps ?? 0) > 0).map((s) => s.reps as number);
+  if (!(step > 0) || !held.length || held.length < minSets) return null;
+  const short = Math.min(...held);
+  return { rule: "time", from: short, to: short + step, top: short };
 }
 
 // A percentage of a 1RM, to the nearest `step` (2.5 kg when there's none).

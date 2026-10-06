@@ -38,7 +38,7 @@ export default async function plan(t) {
 async function howSetsCount({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000061", "2026-08-26T05:00:00Z", "t@example.com");
   const day = (more = {}) => ({ exercises: {}, warmup: [], cardio: false, steps: null, weight: null, note: "", ...more });
-  const db = { logs: { [K(0)]: day({ steps: 6000 }), [K(21)]: day({ exercises: { "Leg Extension": { done: true, kg: 10, sets: [{ reps: 45, kg: 10 }, { reps: 40, kg: 10 }] } } }) }, plan: null };
+  const db = { logs: { [K(0)]: day({ steps: 6000 }), [K(21)]: day({ exercises: { "Leg Extension": { done: true, kg: 10, sets: [{ reps: 45, kg: 10 }, { reps: 40, kg: 10 }, { reps: 42, kg: 10 }] } } }) }, plan: null };
   const { ctx, page } = await open(browser, base, { auth, db });
   await ready(page);
   const legs = () => db.plan?.days?.[2]?.exercises ?? [];
@@ -50,13 +50,22 @@ async function howSetsCount({ browser, base, check }) {
   await until(() => legs()[2]?.timed === true && legs()[4]?.perSide === true);
   check("held for time and reps each side save with the plan", legs()[2]?.timed === true && legs()[4]?.perSide === true && !("timed" in legs()[4]), JSON.stringify([legs()[2], legs()[4]]));
   check("a held lift's reps field asks for seconds", (await flat(page.locator('label[for="pe_x2_reps"] span'))) === "Seconds");
+  await page.locator(".pe-ex").nth(2).locator(".pe-prog summary").click();
+  await page.selectOption("#pe_x2_prog", "time");
+  await until(() => legs()[2]?.prog === "time");
+  check("a hold can add time each session", legs()[2]?.prog === "time" && (await page.locator("#pe_x2_stepSec").count()) === 1);
   await planDone(page);
   await openWorkout(page, "Leg Extension");
   const card = page.locator("#workoutView section.ex-card");
   const head = async () => (await card.locator(".shead span").allInnerTexts()).join("|");
   check("a hold's set table counts seconds", (await head()) === "Set|Last|kg|Sec|", await head());
-  check("its last time reads in seconds", /Last 45s, 40s × 10 kg/.test((await flat(card.locator(".ex-meta"))).replace(/\u00a0/g, " ")), await flat(card.locator(".ex-meta")));
+  check("its last time reads in seconds", /Last 45s, 40s, 42s × 10 kg/.test((await flat(card.locator(".ex-meta"))).replace(/\u00a0/g, " ")), await flat(card.locator(".ex-meta")));
   check("its seconds box says so", (await page.getAttribute("#s2_0_r", "aria-label")) === "Leg Extension, set 1, seconds");
+  check(
+    "adding time asks for 5 s more than its shortest hold, and suggests it",
+    (await flat(card.locator(".prog"))) === "Hold for 45 s: adding time, +5 s on your shortest hold last time." && (await page.getAttribute("#s2_0_r", "placeholder")) === "45" && (await page.getAttribute("#s2_0_k", "placeholder")) === "10",
+    await flat(card.locator(".prog")),
+  );
   await page.locator("ol.wprog li button").nth(4).click();
   await until(async () => (await flat(card.locator(".ex-name .nm"))) === "Calf Raise");
   check("a lift done one side at a time counts each side", (await head()) === "Set|Last|kg|Each|" && /× 12–15 each side/.test((await flat(card.locator(".ex-meta"))).replace(/\u00a0/g, " ")), `${await head()} ${await flat(card.locator(".ex-meta"))}`);
@@ -276,7 +285,8 @@ async function progressionRules({ browser, base, check }) {
   const db = {
     logs: {
       [K(0)]: day({ steps: 6000 }),
-      [K(14)]: day({ exercises: { "Hamstring Curl": lift(short) } }),
+      // Hack Squat, knee-sensitive, the week before the sore knee: its Greyskull step isn't held.
+      [K(14)]: day({ exercises: { "Hamstring Curl": lift(short), "Hack Squat": lift([[8, 60], [8, 60], [17, 60]]) } }),
       [K(21)]: day({
         exercises: { "Hamstring Curl": lift(short), "Calf Raise": lift([[12, 40], [12, 40], [12, 40]]), "Leg Press": lift([[12, 50], [12, 50], [12, 50]]) },
         kneeBefore: 2,
@@ -331,6 +341,11 @@ async function progressionRules({ browser, base, check }) {
   await page.fill("#pe_x2_pct", "75");
   await until(() => legs()[2]?.pct === "75");
   check("a percentage saves its 1RM with it", legs()[2]?.prog === "percent" && legs()[2]?.oneRm === "60" && legs()[2]?.pct === "75", JSON.stringify(legs()[2]));
+  // Hack Squat: Greyskull LP.
+  await prog(0).locator("summary").click();
+  await page.selectOption("#pe_x0_prog", "greyskull");
+  await until(() => legs()[0]?.prog === "greyskull");
+  check("Greyskull LP saves with the plan, and adding time isn't offered for a lift that isn't held", legs()[0]?.prog === "greyskull" && !(await page.locator("#pe_x0_prog option").allInnerTexts()).includes("Add time"));
   await planDone(page);
   await openWorkout(page, "Hamstring Curl");
 
@@ -343,6 +358,7 @@ async function progressionRules({ browser, base, check }) {
   check("the deload is a warning", await (await hint("Hamstring Curl")).evaluate((el) => el.classList.contains("warn")));
   check("linear, with its step", JSON.stringify(await words("Calf Raise")) === JSON.stringify(["Go up to 42.5 kg: linear, +2.5 kg a session while every set hits 12 reps.", "linear"]), (await words("Calf Raise")).join(" | "));
   check("a percentage of the 1RM, with no history", JSON.stringify(await words("Leg Extension")) === JSON.stringify(["Work at 45 kg: 75% of your 60 kg 1RM.", "percent"]), (await words("Leg Extension")).join(" | "));
+  check("Greyskull, its last set past twice the bottom of the range: a double step", JSON.stringify(await words("Hack Squat")) === JSON.stringify(["Go up to 65 kg: Greyskull, your last set hit 17, twice the 8, so a double step.", "greyskull"]), (await words("Hack Squat")).join(" | "));
   check("a sore knee still holds a knee lift", JSON.stringify(await words("Leg Press")) === JSON.stringify(["Hold 50 kg: your knee was sore after 16/09.", "hold"]), (await words("Leg Press")).join(" | "));
   const ph = async (name) => {
     await at(name);
@@ -360,14 +376,18 @@ async function progressionRules({ browser, base, check }) {
   const flags = await flat(page.locator("#dashFlags"));
   check(
     "Overview's notes point to Strength for the lifts that change weight (two notes at most)",
-    flags.includes("1 lift is ready for more weight. See Strength.") && (await page.locator("#dashFlags > *").count()) <= 2,
+    flags.includes("2 lifts are ready for more weight. See Strength.") && (await page.locator("#dashFlags > *").count()) <= 2,
     flags,
   );
   await page.click('#progTabs button[data-seg="strength"]');
   await page.waitForSelector("#dashStrength");
   const up = await page.locator('#dashStrength h3.dh:has-text("Ready to add weight") + ul.plain > li').allInnerTexts();
   const rows = up.map((t) => t.replace(/\s+/g, " ").trim());
-  check("Strength lists it, and the linear lift", rows.includes("Calf Raise Legs: 40 → 42.5 kg") && rows.includes("Hamstring Curl Legs: 50 → 45 kg (deload)"), rows.join(" | "));
+  check(
+    "Strength lists it, the linear lift and the Greyskull one",
+    rows.includes("Calf Raise Legs: 40 → 42.5 kg") && rows.includes("Hamstring Curl Legs: 50 → 45 kg (deload)") && rows.includes("Hack Squat Legs: 60 → 65 kg"),
+    rows.join(" | "),
+  );
   check("a percentage with nothing logged to go up from isn't listed", !rows.some((r) => r.startsWith("Leg Extension")), rows.join(" | "));
 
   // --- back to double progression: the rule leaves the plan

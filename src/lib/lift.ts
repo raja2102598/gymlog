@@ -118,7 +118,7 @@ export function liftModel(store: GymStore, sel: DayKey, item: Item, i: number, e
     sets,
     min,
     rows: Math.max(min, sets.length),
-    defaultWorkingKg: next && !next.held ? next.to : last ? topKg(setsOf(last.r)) : null,
+    defaultWorkingKg: next && !next.held && next.rule !== "time" ? next.to : last ? topKg(setsOf(last.r)) : null,
     bar: store.barFor(load),
     inc: store.gridFor(load)?.inc ?? 2.5,
     // How to do the lift: folded, since it's the same every week. Warnings (e.g. a KNEE NOTE) always show.

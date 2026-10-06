@@ -55,7 +55,7 @@ export function liftWeight(store: GymStore, k: DayKey, it: LiftItem): number | n
   const logged = r ? topKg(setsOf(r)) : null;
   if (logged != null) return logged;
   const did = performed(it.name, r), next = r?.skipped ? null : store.nextWeight(it.x, did, k);
-  if (next && !next.held && next.to != null) return next.to;
+  if (next && !next.held && next.rule !== "time" && next.to != null) return next.to;
   const last = store.lastDone(did, k);
   return last ? topKg(setsOf(last.r)) : null;
 }
