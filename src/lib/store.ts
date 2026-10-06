@@ -1315,7 +1315,7 @@ export class GymStore {
     if (x.prog === "percent") {
       const oneRm = parseFloat(x.oneRm ?? ""), pct = parseFloat(x.pct ?? "");
       if (oneRm > 0 && pct > 0 && pct <= 100) r = { rule: "percent", from: L ? topKg(setsOf(L.r).filter(S.isStraightSet)) : null, to: S.percentOf(oneRm, pct, step), top: S.repRange(x.reps)?.[0] ?? 0, pct, oneRm };
-    } else if (L && x.prog === "time") {
+    } else if (L && x.prog === "time" && x.timed) {
       r = S.timeStep(setsOf(L.r), minSets(targetOf(L.r, x)), parseFloat(x.stepSec ?? "") || 5);
     } else if (L) {
       const t = targetOf(L.r, x);
@@ -2100,6 +2100,8 @@ export class GymStore {
         sets += l.sets.length;
       }
       if (!added.length) continue;
+      // A workout came in for the day, so it wasn't skipped after all.
+      delete n.skip;
       if (empty) n.free = { name: d.title, lifts: added };
       else if (n.free) n.free.lifts.push(...added);
       this.logs[d.day] = n;

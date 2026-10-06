@@ -112,6 +112,8 @@ export function PlanEditor({ editDay, onEditDay, onDone }: Props) {
       const x = p.days[editDay].exercises[j];
       if (on) x[k] = true;
       else delete x[k];
+      // Adding time is a hold's rule: a lift no longer held goes back to double progression.
+      if (k === "timed" && !on && x.prog === "time") delete x.prog;
     });
   const setSuperset = (j: number, on: boolean) =>
     edit((p) => {
@@ -628,7 +630,15 @@ function SharePlan() {
       setMsg(`That file couldn’t be used: ${(err as Error).message}. Choose a plan shared from Gym Log.`);
       return;
     }
-    if (!(await ask("Replace your sessions, lifts, warm-ups and tempo with the shared plan?", "Replace", { body: "Your goals, My gym and the days you’ve already logged are kept.", danger: true }))) return setMsg("Nothing changed.");
+    // Asked again if a sync brought another phone's plan while the question was up (the file picker put the app in the
+    // background, and coming back syncs), rather than replacing a plan never asked about.
+    let seen = JSON.stringify(store.plan);
+    for (;;) {
+      if (!(await ask("Replace your sessions, lifts, warm-ups and tempo with the shared plan?", "Replace", { body: "Your goals, My gym and the days you’ve already logged are kept.", danger: true }))) return setMsg("Nothing changed.");
+      const now = JSON.stringify(store.plan);
+      if (now === seen) break;
+      seen = now;
+    }
     store.adoptPlan(shared);
     setMsg("Using the shared plan.");
   };

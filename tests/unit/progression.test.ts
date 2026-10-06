@@ -136,6 +136,8 @@ describe("the next weight, by the lift's rule", () => {
     expect(s.placeholders(x, s.lastDone(x.name, WED), 0, n)).toEqual(["45", "20"]);
     delete x.stepSec;
     expect(s.nextWeight(x, x.name, WED)?.to).toBe(40); // 5 s when it's empty
+    delete x.timed; // no longer a hold: seconds would be no answer for reps
+    expect(s.nextWeight(x, x.name, WED)?.rule).not.toBe("time");
   });
 
   it("puts a deload first once enough sessions in a row fell short, whatever the rule", () => {

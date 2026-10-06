@@ -38,7 +38,8 @@ export default async function plan(t) {
 // one keeps, are in plan.test.ts.
 async function sharing({ browser, base, check }) {
   const auth = session("00000000-0000-4000-8000-000000000062", "2026-08-26T05:00:00Z", "t@example.com");
-  const { ctx, page } = await open(browser, base, { auth, db: onDefaultPlan() });
+  const db = onDefaultPlan();
+  const { ctx, page } = await open(browser, base, { auth, db });
   await ready(page);
   await openTab(page, "train");
   await page.click("#changePlan");
@@ -66,6 +67,27 @@ async function sharing({ browser, base, check }) {
   await page.setInputFiles("#pe_useFile", { name: "notes.json", mimeType: "application/json", buffer: Buffer.from("{}") });
   await until(async () => /couldn’t be used/.test(await flat(page.locator("#pe_shareMsg"))));
   check("a file that isn't one says so", (await flat(page.locator("#pe_shareMsg"))) === "That file couldn’t be used: it isn’t a plan shared from Gym Log. Choose a plan shared from Gym Log.", await flat(page.locator("#pe_shareMsg")));
+  // Another phone's plan, synced while the question is up (the file picker put the app in the background): asked
+  // again, about the plan there now, rather than replacing one never asked about.
+  await until(() => db.plan?.days?.[2]?.name === "Leg day");
+  shared.plan.days[2].name = "Legs, shared";
+  await clearAsked(page);
+  await answerAsk(page, "leave");
+  await page.setInputFiles("#pe_useFile", { name: "gym-log-plan.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(shared)) });
+  await page.waitForSelector("#askDialog[open]");
+  const other = JSON.parse(JSON.stringify(db.plan));
+  other.days[2].name = "Leg day, other phone";
+  db.plan = other;
+  db.planAt = "2026-09-23T07:00:00+00:00";
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await until(async () => (await page.inputValue("#pe_name")) === "Leg day, other phone");
+  await page.click("#askDialog [data-choice]");
+  await until(async () => (await flat(page.locator("#pe_shareMsg"))) === "Using the shared plan.");
+  check(
+    "a plan synced while it asks is asked about again before it's replaced",
+    (await page.evaluate(() => window.__ask.asked.length)) === 2 && (await page.inputValue("#pe_name")) === "Legs, shared",
+    `${await page.evaluate(() => window.__ask.asked.length)} ${await page.inputValue("#pe_name")}`,
+  );
   check("sharing: no console errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();
 }

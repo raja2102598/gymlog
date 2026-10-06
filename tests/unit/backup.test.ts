@@ -353,11 +353,13 @@ describe("importing from another app", () => {
 
   it("adds an empty day's workout as a free-form one, beside what a day has, never over a lift already logged", async () => {
     vi.stubGlobal("navigator", { onLine: false });
-    const s = storeWith({ "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 90]]) } }) });
+    // The Monday was skipped here (Skip day), but trained in Strong.
+    const s = storeWith({ "2026-09-16": day({ exercises: { "Leg Press": lift([[10, 90]]) } }), "2026-09-14": day({ skip: "ill", steps: 4000 }) });
     const msg = await s.importOtherApp(csv([...STRONG, "2026-09-16 07:30:00,Legs,1h,Calf Raise,1,40,15,0,0,,,"]));
     expect(msg).toBe("Imported 2 workouts from Strong, 5 sets in all. 1 lift already logged on its day was kept as it was. 1 set with only a time or a distance was left out.");
     // The Monday was empty: Strong's workout, by its name there, in place of Push.
     expect(s.entry("2026-09-14").free).toEqual({ name: "Push, heavy", lifts: ["Bench Press (Barbell)"] });
+    expect([s.entry("2026-09-14").skip, s.entry("2026-09-14").steps, s.dayState("2026-09-14")]).toEqual([undefined, 4000, "done"]); // not skipped after all
     expect(s.entry("2026-09-14").exercises["Bench Press (Barbell)"]).toMatchObject({ done: true, kg: 80 });
     // The Wednesday had Leg Press logged here: it stays, under the plan's name for it, and Calf Raise joins it.
     const wed = s.entry("2026-09-16");
