@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { liftModel, logSet, nextSet } from "@/components/today/LiftItem";
 import { wdIndex } from "@/lib/dates";
+import { AWAKE_KEY, awakePref, keepScreenOn, setAwakePref } from "@/lib/awake";
 import { dayBests, dayTotals, heartWords, liveWorkout, sessionDone, workoutUnderWay } from "@/lib/session";
 import type { GymStore } from "@/lib/store";
 import type { LiftLog } from "@/lib/types";
@@ -311,5 +312,59 @@ describe("the workout on the lock screen", () => {
     expect(workoutUnderWay(s, LATE)).toMatchObject({ title: "Pull", text: "1 of 6 exercises done", since: LATE - 50 * MIN });
     pauseRun(TUE, LATE);
     expect(workoutUnderWay(s, LATE)).toBeNull();
+  });
+});
+
+describe("keeping the screen on", () => {
+  /** A browser's Screen Wake Lock and page visibility: what's held now, and how many times it was asked for. */
+  function screen() {
+    const shown = new Set<() => void>(), held: { released: boolean; release: () => Promise<void> }[] = [];
+    const doc = { hidden: false, addEventListener: (_: string, fn: () => void) => void shown.add(fn), removeEventListener: (_: string, fn: () => void) => void shown.delete(fn) };
+    const request = vi.fn(async () => {
+      const l = { released: false, release: async () => void (l.released = true) };
+      held.push(l);
+      return l;
+    });
+    vi.stubGlobal("document", doc);
+    vi.stubGlobal("navigator", { wakeLock: { request } });
+    const on = () => held.filter((l) => !l.released).length;
+    return { doc, request, on, held, show: () => shown.forEach((fn) => fn()) };
+  }
+  beforeEach(() => mem.clear());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("is on until switched off, and the switch is kept on the phone", () => {
+    expect(awakePref()).toBe(true);
+    setAwakePref(false);
+    expect(awakePref()).toBe(false);
+    expect(mem.get(AWAKE_KEY)).toBe("false");
+    setAwakePref(true);
+    expect(awakePref()).toBe(true);
+  });
+
+  it("holds the screen while the workout is open, takes it again when the page comes back, and lets go on leaving", async () => {
+    const s = screen();
+    const release = keepScreenOn();
+    await vi.waitFor(() => expect(s.on()).toBe(1));
+    // Hidden, the browser lets it go by itself; back on show, it's asked for again.
+    s.held[0].released = true;
+    s.doc.hidden = true;
+    s.show();
+    expect(s.request).toHaveBeenCalledTimes(1);
+    s.doc.hidden = false;
+    s.show();
+    await vi.waitFor(() => expect(s.on()).toBe(1));
+    expect(s.request).toHaveBeenCalledTimes(2);
+    release();
+    expect(s.on()).toBe(0);
+    s.show(); // gone: coming back no longer takes it
+    expect(s.request).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets go of a hold that arrives after the workout closed", async () => {
+    const s = screen();
+    keepScreenOn()();
+    await vi.waitFor(() => expect(s.held.length).toBe(1));
+    expect(s.on()).toBe(0);
   });
 });

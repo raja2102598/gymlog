@@ -7,7 +7,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // The app's own plugins, for background sync, Continue with Google, voice logging, self-updating, the
-        // home-screen widget, the rest timer, lifts' videos and the watch; plugins from npm register themselves.
+        // home-screen widget, the rest timer, lifts' videos, the watch and keeping the screen on during a workout;
+        // plugins from npm register themselves.
         registerPlugin(GymSyncPlugin.class);
         registerPlugin(GoogleSignInPlugin.class);
         registerPlugin(SpeechPlugin.class);
@@ -16,6 +17,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(RestTimerPlugin.class);
         registerPlugin(EmbeddedVideoPlugin.class);
         registerPlugin(WatchPlugin.class);
+        registerPlugin(ScreenPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -9,7 +9,9 @@ import { Group, NumField, Text } from "@/components/settings/parts";
 import { alarmRows, watchRestNotifs, type RestNotifs } from "@/components/settings/restNotifications";
 import { ViewLink } from "@/components/ui/ViewLink";
 import { useGym } from "@/hooks/useGym";
+import { useAwakePref } from "@/hooks/useAwake";
 import { useSpeechSupported, useVoicePref } from "@/hooks/useVoice";
+import { setAwakePref } from "@/lib/awake";
 import { backupWords, CSV_COLUMNS, toCsv } from "@/lib/backup";
 import { todayKey } from "@/lib/dates";
 import { fmt, plural, syncedWhen } from "@/lib/format";
@@ -331,9 +333,25 @@ function Training() {
           ]}
         />
       </div>
+      <ScreenOn />
       {isNative() ? <RestNotifications /> : null}
       {isNative() ? <SamsungTimerCard /> : null}
     </Group>
+  );
+}
+
+/** Keep the screen on during a workout: on until switched off, and kept on this phone, like Voice. */
+function ScreenOn() {
+  const on = useAwakePref();
+  return (
+    <button type="button" className="pref-row pref-tap" role="switch" id="screenOn" aria-checked={on} aria-labelledby="screenOnT" aria-describedby="screenOnD" onClick={() => setAwakePref(!on)}>
+      <Text
+        id="screenOn"
+        title="Keep the screen on during a workout"
+        sub={on ? "The screen stays on while the workout is open, so the next set is there when you look." : "The screen goes off as usual during a workout."}
+      />
+      <span className="switch" aria-hidden="true" />
+    </button>
   );
 }
 

@@ -18,7 +18,16 @@ async function typingASet({ browser, base, check, auth }) {
   const lastWeek = { [K(21)]: day({ "Hack Squat": { done: true, kg: 60, sets: [{ reps: 8, kg: 60 }] } }) };
   const { ctx, page, db } = await open(browser, base, { auth, db: { logs: lastWeek, plan: {} } });
   await ready(page);
+  // The screen's wake lock, as a stand-in that says what's held: the workout holds it while it's open.
+  await page.evaluate(() => {
+    window.__held = 0;
+    Object.defineProperty(navigator, "wakeLock", {
+      value: { request: async () => (window.__held++, { released: false, release: async function () { this.released = true; window.__held--; } }) },
+    });
+  });
   await openWorkout(page, "Leg Press");
+  await until(() => page.evaluate(() => window.__held === 1));
+  check("the workout keeps the screen on while it's open", (await page.evaluate(() => window.__held)) === 1, String(await page.evaluate(() => window.__held)));
   const saved = () => db.logs[K(28)]?.exercises?.["Leg Press"]?.sets;
   const button = () => flat(page.locator("#completeSet"));
   const box = (id) => page.$eval(id, (e) => ({ value: e.value, color: getComputedStyle(e).color, hint: getComputedStyle(e, "::placeholder").color, row: e.closest(".srow").className }));
@@ -67,6 +76,9 @@ async function typingASet({ browser, base, check, auth }) {
   await until(() => hack()?.[0]?.kg === null);
   const none = await page.$eval("#s0_0_k", (e) => ({ value: e.value, placeholder: e.placeholder, row: e.closest(".srow").className }));
   check("a logged set with its weight taken off shows none, not the suggestion that would pass for one", hack()?.[0]?.kg === null && none.value === "" && none.placeholder === "" && /\blogged\b/.test(none.row), JSON.stringify({ saved: hack(), none }));
+  await page.click("#closeWorkout");
+  await until(() => page.evaluate(() => window.__held === 0));
+  check("closing the workout lets the screen go off again", (await page.evaluate(() => window.__held)) === 0, String(await page.evaluate(() => window.__held)));
   check("typing a set: no console errors", page.errors.length === 0, page.errors.join(" | "));
   await ctx.close();
 }
